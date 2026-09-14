@@ -1,0 +1,8 @@
+<resources>
+  <!-- Must match React Splash 1 / cinematic startup background (#1A2517 Deep Olive). -->
+  <color name="splashscreen_background">#1A2517</color>
+  <!-- Adaptive icon plate — current VidoraX brand (not Expo default blue). -->
+  <color name="iconBackground">#FF9A3D</color>
+  <color name="colorPrimary">#ACC8A2</color>
+  <color name="notification_icon_color">#1A2517</color>
+</resources>

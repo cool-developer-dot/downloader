@@ -1,0 +1,45 @@
+/**
+ * DEV-only sanitized App Lock diagnostics.
+ * NEVER log PIN, recovery code, salts, or verifiers.
+ */
+
+export type AppLockTraceEvent =
+  | 'BOOTSTRAP_STARTED'
+  | 'BOOTSTRAP_DISABLED'
+  | 'BOOTSTRAP_LOCKED'
+  | 'BOOTSTRAP_CORRUPT'
+  | 'BOOTSTRAP_SECURE_STORE_ERROR'
+  | 'SETUP_STARTED'
+  | 'PIN_CONFIRMED'
+  | 'RECOVERY_GENERATED'
+  | 'SETUP_COMMITTED'
+  | 'SETUP_CANCELLED'
+  | 'LOCKED_ON_BACKGROUND'
+  | 'UNLOCK_ATTEMPT'
+  | 'UNLOCK_SUCCEEDED'
+  | 'UNLOCK_REJECTED'
+  | 'DISABLE_STARTED'
+  | 'DISABLE_SUCCEEDED'
+  | 'DISABLE_COMMITTED'
+  | 'DISABLE_REJECTED'
+  | 'SECURE_STORAGE_ERROR'
+  | 'CHANGE_PIN_STARTED'
+  | 'CURRENT_PIN_VERIFIED'
+  | 'CHANGE_PIN_COMMITTED'
+  | 'CHANGE_PIN_REJECTED'
+  | 'RECOVERY_STARTED'
+  | 'RECOVERY_VERIFY_SUCCEEDED'
+  | 'RECOVERY_VERIFY_REJECTED'
+  | 'RECOVERY_PIN_RESET_COMMITTED'
+  | 'RECOVERY_ROTATION_STARTED'
+  | 'RECOVERY_ROTATION_COMMITTED'
+  | 'RECOVERY_ROTATION_CANCELLED'
+  | 'PIN_THROTTLED'
+  | 'RECOVERY_THROTTLED';
+
+export function appLockTrace(event: AppLockTraceEvent): void {
+  if (typeof __DEV__ !== 'undefined' && __DEV__) {
+    // eslint-disable-next-line no-console
+    console.log(`APP_LOCK_TRACE { event: '${event}' }`);
+  }
+}

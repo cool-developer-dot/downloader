@@ -1,0 +1,108 @@
+appId: com.anonymous.vidorax
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: ".*Download.*"
+    timeout: 30000
+- runFlow:
+    when:
+      visible: "Skip"
+    commands:
+      - tapOn: "Skip"
+- extendedWaitUntil:
+    visible: ".*Browser.*"
+    timeout: 30000
+- tapOn:
+    text: "Browser.*"
+- extendedWaitUntil:
+    visible: "Open browser menu"
+    timeout: 20000
+- takeScreenshot: R00-browser-home
+
+# TEST 1 — Mobile YouTube
+- tapOn: "Open YouTube"
+- extendedWaitUntil:
+    visible: "Open browser menu"
+    timeout: 30000
+- takeScreenshot: R01-youtube
+- tapOn: "Open browser menu"
+- assertVisible: "Desktop site"
+- takeScreenshot: R01-menu-off
+
+# TEST 2 — Desktop ON
+- tapOn: "Desktop site"
+- waitForAnimationToEnd
+- takeScreenshot: R02-desktop-on
+- tapOn: "Open browser menu"
+- takeScreenshot: R02-menu-on
+
+# TEST 3 — Desktop OFF
+- tapOn: "Desktop site"
+- waitForAnimationToEnd
+- takeScreenshot: R03-desktop-off
+
+# TEST 4 — New tab B
+- tapOn: "Open browser menu"
+- tapOn: "New tab"
+- extendedWaitUntil:
+    visible: "Open YouTube"
+    timeout: 15000
+- takeScreenshot: R04-new-tab
+- tapOn: "Open Instagram"
+- extendedWaitUntil:
+    visible: "Open browser menu"
+    timeout: 30000
+- tapOn: "Open browser menu"
+- assertVisible: "Desktop site"
+- takeScreenshot: R04-tabB-menu
+- tapOn:
+    point: "20%,50%"
+
+# TEST 5 — tab switcher
+- tapOn: "Open tab switcher"
+- takeScreenshot: R05-switcher
+- back
+
+# More tabs for eviction path
+- tapOn: "Open browser menu"
+- tapOn: "New tab"
+- extendedWaitUntil:
+    visible: "Open Facebook"
+    timeout: 15000
+- tapOn: "Open Facebook"
+- extendedWaitUntil:
+    visible: "Open browser menu"
+    timeout: 30000
+- takeScreenshot: R11-facebook
+
+# TEST 15 — TikTok
+- tapOn: "Open browser menu"
+- tapOn: "New tab"
+- extendedWaitUntil:
+    visible: "Open TikTok"
+    timeout: 15000
+- tapOn: "Open TikTok"
+- extendedWaitUntil:
+    visible: "Open browser menu"
+    timeout: 45000
+- takeScreenshot: R15-tiktok
+- tapOn: "Open browser menu"
+- takeScreenshot: R15-tiktok-menu
+
+# TEST 16 — explicit Desktop on TikTok
+- tapOn: "Desktop site"
+- waitForAnimationToEnd
+- takeScreenshot: R16-tiktok-desktop
+
+# Rapid toggle on current tab
+- tapOn: "Open browser menu"
+- tapOn: "Desktop site"
+- tapOn: "Open browser menu"
+- tapOn: "Desktop site"
+- tapOn: "Open browser menu"
+- tapOn: "Desktop site"
+- waitForAnimationToEnd
+- takeScreenshot: R08-rapid-toggle
+- tapOn: "Open tab switcher"
+- takeScreenshot: R19-final-switcher

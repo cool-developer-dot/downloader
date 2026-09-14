@@ -1,0 +1,18 @@
+export const HISTORY_COPY = {
+  title: 'History',
+  searchPlaceholder: 'Search history',
+  emptyTitle: 'No browsing history',
+  emptyDescription: 'Pages you visit in the browser will show up here.',
+  emptyAction: 'Open browser',
+  errorTitle: 'Couldn’t load history',
+  clearTitle: 'Clear browsing history?',
+  clearMessage: 'This permanently removes your saved browsing history from this device.',
+  clearConfirm: 'Clear all',
+  clearCancel: 'Cancel',
+  deleteTitle: 'Remove this page?',
+  deleteMessage: 'This page will be removed from your browsing history.',
+  deleteConfirm: 'Remove',
+  deleteCancel: 'Cancel',
+  loadingAnnouncement: 'Loading browsing history',
+  endOfList: 'You’re all caught up',
+} as const;

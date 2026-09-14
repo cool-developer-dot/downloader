@@ -1,0 +1,10 @@
+export { aboutRoutes, type AboutRoute } from './about/routes';
+export { authenticationRoutes, type AuthenticationRoute } from './authentication/routes';
+export { browserRoutes, type BrowserRoute } from './browser/routes';
+export { downloadsRoutes, type DownloadsRoute } from './downloads/routes';
+export { favoritesRoutes, type FavoritesRoute } from './favorites/routes';
+export { libraryRoutes, type LibraryRoute } from './library/routes';
+export { onboardingRoutes, type OnboardingRoute } from './onboarding/routes';
+export { settingsRoutes, type SettingsRoute } from './settings/routes';
+export { splashRoutes, type SplashRoute } from './splash/routes';
+export { supportRoutes, type SupportRoute } from './support/routes';

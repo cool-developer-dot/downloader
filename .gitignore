@@ -1,0 +1,94 @@
+# Dependencies
+node_modules/
+
+# Expo / Metro
+.expo/
+.expo-shared/
+dist/
+web-build/
+expo-env.d.ts
+.metro-health-check*
+
+# Environment / secrets (never commit real env files)
+.env
+.env.*
+!.env.example
+
+# Logs / debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# Testing
+coverage/
+.nyc_output/
+
+# TypeScript
+*.tsbuildinfo
+
+# Packaging / installables
+*.apk
+*.aab
+*.ipa
+*.jsbundle
+
+# Signing / credentials (keep debug keystore for local Android builds)
+*.jks
+*.keystore
+!android/app/debug.keystore
+*.p8
+*.p12
+*.key
+*.pem
+*.mobileprovision
+key.properties
+
+# Android generated build output (DO NOT ignore android/ source)
+android/app/build/
+android/build/
+android/.gradle/
+android/app/.cxx/
+android/.kotlin/
+android/local.properties
+local.properties
+.cxx/
+.gradle/
+.kotlin/
+*.hprof
+*.iml
+.idea/
+
+# iOS generated
+ios/Pods/
+ios/build/
+ios/DerivedData/
+ios/.xcode.env.local
+*.xcuserstate
+xcuserdata/
+
+# Local QA / scratch artifacts at repo root only
+/*.png
+/crash.txt
+/phase2-remaining/
+
+# OS / editor
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+*.swp
+*.swo
+*~
+.cache/
+.turbo/
+tmp/
+temp/
+.tmp/

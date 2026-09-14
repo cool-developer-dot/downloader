@@ -1,0 +1,111 @@
+appId: com.anonymous.vidorax
+---
+- launchApp:
+    clearState: false
+    stopApp: true
+# Onboarding if present
+- runFlow:
+    when:
+      visible: "Skip"
+    commands:
+      - tapOn: "Skip"
+      - waitForAnimationToEnd
+- runFlow:
+    when:
+      visible: "Continue"
+    commands:
+      - tapOn: "Continue"
+      - waitForAnimationToEnd
+      - tapOn: "Continue"
+      - waitForAnimationToEnd
+      - tapOn: "Continue"
+      - waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Browser tab"
+    timeout: 20000
+- tapOn: "Browser tab"
+- extendedWaitUntil:
+    visible: "Open browser menu"
+    timeout: 20000
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M00-browser-home
+
+# TEST 1 — Mobile YouTube
+- tapOn: "Open YouTube"
+- extendedWaitUntil:
+    visible: "Open browser menu"
+    timeout: 25000
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M01-youtube-mobile
+- tapOn: "Open browser menu"
+- assertVisible: "Desktop site"
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M01-menu-off
+
+# TEST 2 — Desktop ON
+- tapOn: "Desktop site"
+- waitForAnimationToEnd
+- extendedWaitUntil:
+    visible: "Open browser menu"
+    timeout: 20000
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M02-after-desktop-on
+- tapOn: "Open browser menu"
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M02-menu-on
+
+# TEST 3 — Desktop OFF
+- tapOn: "Desktop site"
+- waitForAnimationToEnd
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M03-after-desktop-off
+
+# TEST 4/6 — New tab (B) remains mobile while A was toggled
+- tapOn: "Open browser menu"
+- tapOn: "New tab"
+- extendedWaitUntil:
+    visible: "Open YouTube"
+    timeout: 15000
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M04-tabB-home
+- tapOn: "Open Instagram"
+- extendedWaitUntil:
+    visible: "Open browser menu"
+    timeout: 25000
+- tapOn: "Open browser menu"
+- assertVisible: "Desktop site"
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M04-tabB-menu
+- tapOn:
+    point: "15%,55%"
+
+# TEST 5 — switcher / tab switch
+- tapOn: "Open tab switcher"
+- extendedWaitUntil:
+    visible: ".*[Tt]ab.*"
+    timeout: 10000
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M05-switcher
+
+# Create third tab for eviction later
+- back
+- tapOn: "Open browser menu"
+- tapOn: "New tab"
+- extendedWaitUntil:
+    visible: "Open Facebook"
+    timeout: 10000
+- tapOn: "Open Facebook"
+- extendedWaitUntil:
+    visible: "Open browser menu"
+    timeout: 25000
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M11-third-tab
+
+# TEST 15 — TikTok mobile no auto desktop
+- tapOn: "Open tab switcher"
+- tapOn: "New tab"
+- extendedWaitUntil:
+    visible: "Open TikTok"
+    timeout: 10000
+- tapOn: "Open TikTok"
+- extendedWaitUntil:
+    visible: "Open browser menu"
+    timeout: 30000
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M15-tiktok
+- tapOn: "Open browser menu"
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M15-tiktok-menu
+
+# TEST 16 — explicit Desktop on TikTok
+- tapOn: "Desktop site"
+- waitForAnimationToEnd
+- takeScreenshot: /tmp/vidorax-phase3d-evidence/M16-tiktok-desktop

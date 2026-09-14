@@ -1,0 +1,125 @@
+/**
+ * Bridge protocol between injected page observers and React Native.
+ * Keep payloads small and JSON-serializable.
+ */
+
+import type { DetectionSource, HlsPlaylistType } from './media.types';
+
+export const MEDIA_BRIDGE_CHANNEL = 'vidorax-media-detection' as const;
+
+export type MediaBridgeMessageType =
+  | 'ready'
+  | 'page_meta'
+  | 'media_candidate'
+  | 'mutation_batch'
+  | 'scan_complete'
+  | 'error'
+  | 'blob_indicator'
+  | 'active_video'
+  | 'active_iframe_player';
+
+export interface MediaBridgeEnvelope<T = unknown> {
+  channel: typeof MEDIA_BRIDGE_CHANNEL;
+  type: MediaBridgeMessageType;
+  payload: T;
+  ts: number;
+}
+
+export interface BridgePageMetaPayload {
+  pageUrl: string;
+  title: string | null;
+  description: string | null;
+  ogImage: string | null;
+  ogVideo: string | null;
+  canonicalUrl: string | null;
+}
+
+export interface BridgeMediaCandidatePayload {
+  url: string;
+  pageUrl: string;
+  mimeType: string | null;
+  extension: string | null;
+  title: string | null;
+  thumbnailUrl: string | null;
+  duration: number | null;
+  width: number | null;
+  height: number | null;
+  estimatedFileSize: number | null;
+  isLive: boolean;
+  isDrm: boolean;
+  playlistType: HlsPlaylistType | null;
+  detectionSource: DetectionSource;
+  tagName: string | null;
+  /** Blob URL indicator only — never a download target. */
+  blobIndicator?: string | null;
+}
+
+export interface BridgeMutationBatchPayload {
+  candidates: BridgeMediaCandidatePayload[];
+  pageUrl: string;
+}
+
+export interface BridgeErrorPayload {
+  code: string;
+  message: string;
+}
+
+export interface BridgeBlobIndicatorPayload {
+  pageUrl: string;
+  blobUrl: string;
+}
+
+/**
+ * Bounded active <video> evidence for Phase 4A ownership correlation.
+ * Cheap fields only — never a full DOM dump.
+ */
+export interface BridgeActiveVideoPayload {
+  pageUrl: string;
+  elementIdentity: string;
+  currentSrc: string | null;
+  src: string | null;
+  isBlob: boolean;
+  paused: boolean | null;
+  ended: boolean | null;
+  readyState: number | null;
+  videoWidth: number | null;
+  videoHeight: number | null;
+  muted: boolean | null;
+  /** Floor(currentTime / 5) — coalesced, not per-frame. */
+  currentTimeBucket: number | null;
+  intersectionRatio: number | null;
+  viewportCenterDistance: number | null;
+  isDisplayed: boolean;
+  isVisibleStyle: boolean;
+  recentlyPlayed: boolean;
+  explicitAdMarker: boolean;
+  associatedContentId: string | null;
+}
+
+export interface BridgeActiveIframePlayerPayload {
+  pageUrl: string;
+  iframeIdentity: string;
+  iframeSrc: string | null;
+  frameClass: 'same-origin' | 'cross-origin';
+  isDisplayed: boolean;
+  isVisibleStyle: boolean;
+  intersectionRatio: number | null;
+  viewportCenterDistance: number | null;
+  width: number | null;
+  height: number | null;
+  allowFullscreen: boolean;
+  allow: string | null;
+  looksPlayer: boolean;
+  sameOriginVideoCount: number | null;
+  associatedContentId: string | null;
+}
+
+export type MediaBridgePayload =
+  | BridgePageMetaPayload
+  | BridgeMediaCandidatePayload
+  | BridgeMutationBatchPayload
+  | BridgeErrorPayload
+  | BridgeBlobIndicatorPayload
+  | BridgeActiveVideoPayload
+  | BridgeActiveIframePlayerPayload
+  | Record<string, never>;

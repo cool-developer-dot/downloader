@@ -1,0 +1,84 @@
+{
+  "expo": {
+    "name": "VidoraX",
+    "slug": "vidorax",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/logos/icon.png",
+    "scheme": "vidorax",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "icon": "./assets/logos/icon.png",
+      "bundleIdentifier": "com.anonymous.vidorax"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FF9A3D",
+        "foregroundImage": "./assets/logos/android-icon-foreground.png",
+        "backgroundImage": "./assets/logos/android-icon-background.png",
+        "monochromeImage": "./assets/logos/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.anonymous.vidorax",
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.INTERNET",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-file-system",
+        {
+          "enableFileSharing": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/logos/icon.png",
+          "color": "#1A2517",
+          "defaultChannel": "vidorax_download_events",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#1A2517",
+          "image": "./assets/logos/splash-icon.png",
+          "imageWidth": 120
+        }
+      ],
+      [
+        "expo-sqlite",
+        {
+          "enableFTS": true
+        }
+      ],
+      "expo-image",
+      "expo-status-bar",
+      "expo-web-browser",
+      "expo-video",
+      "expo-screen-orientation",
+      "expo-navigation-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    },
+    "extra": {
+      "router": {
+        "origin": "https://vidorax.app"
+      }
+    }
+  }
+}
