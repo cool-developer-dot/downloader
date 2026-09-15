@@ -1,0 +1,35 @@
+[
+  {
+    "data": {
+      "clip": {
+        "id": "3000000001",
+        "slug": "ExampleClipSlug-AbCdEf123",
+        "title": "Unbelievable clutch",
+        "durationSeconds": 28,
+        "thumbnailURL": "https://clips-media-assets2.twitch.tv/ExampleClipSlug/preview-480x272.jpg",
+        "broadcaster": { "id": "40000001", "login": "examplestreamer", "displayName": "ExampleStreamer" },
+        "playbackAccessToken": {
+          "signature": "0123abcd4567ef89",
+          "value": "{\"authorization\":{\"forbidden\":false,\"reason\":\"\"},\"clip_uri\":\"\",\"device_id\":null,\"expires\":1757100000,\"user_id\":\"\",\"version\":2}",
+          "__typename": "PlaybackAccessToken"
+        },
+        "videoQualities": [
+          {
+            "frameRate": 30,
+            "quality": "480",
+            "sourceURL": "https://production.assets.clips.twitchcdn.net/v2/media/ExampleClipSlug-AbCdEf123/480.mp4",
+            "__typename": "ClipVideoQuality"
+          },
+          {
+            "frameRate": 60,
+            "quality": "1080",
+            "sourceURL": "https://production.assets.clips.twitchcdn.net/v2/media/ExampleClipSlug-AbCdEf123/1080.mp4",
+            "__typename": "ClipVideoQuality"
+          }
+        ],
+        "__typename": "Clip"
+      }
+    },
+    "extensions": { "durationMilliseconds": 41, "operationName": "VideoAccessToken_Clip" }
+  }
+]

@@ -1,0 +1,36 @@
+{
+  "resource_response": {
+    "status": "success",
+    "code": 0,
+    "data": {
+      "id": "987654321098765432",
+      "type": "pin",
+      "title": "Easy pasta in 10 minutes",
+      "grid_title": "Easy pasta",
+      "description": "Weeknight dinner idea",
+      "images": {
+        "orig": { "width": 1080, "height": 1920, "url": "https://i.pinimg.com/originals/aa/bb/cc/pasta.jpg" }
+      },
+      "videos": {
+        "id": "5550001",
+        "video_list": {
+          "V_HLSV3_MOBILE": {
+            "width": 720,
+            "height": 1280,
+            "duration": 42000,
+            "url": "https://v1.pinimg.com/videos/mc/hls/aa/bb/cc/pasta.m3u8",
+            "thumbnail": "https://i.pinimg.com/videos/thumbnails/originals/aa/bb/cc/pasta.0000000.jpg"
+          },
+          "V_720P": {
+            "width": 720,
+            "height": 1280,
+            "duration": 42000,
+            "url": "https://v1.pinimg.com/videos/mc/720p/aa/bb/cc/pasta.mp4",
+            "thumbnail": "https://i.pinimg.com/videos/thumbnails/originals/aa/bb/cc/pasta.0000000.jpg"
+          }
+        }
+      }
+    }
+  },
+  "request_identifier": "0000000000000000000"
+}

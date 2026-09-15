@@ -1,0 +1,34 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+  <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
+
+  <!-- Android 11+ package visibility for "Open with": FileActions checks that some app can view the file. -->
+  <queries>
+    <intent>
+      <action android:name="android.intent.action.VIEW" />
+      <data android:mimeType="video/*" />
+    </intent>
+    <intent>
+      <action android:name="android.intent.action.VIEW" />
+      <data android:mimeType="audio/*" />
+    </intent>
+  </queries>
+
+  <application>
+    <!-- Open with / share for library files. The job service, foreground service and notification receiver are
+         declared by the download engine. -->
+    <provider
+      android:name="com.vidorax.media.files.VidoraFileProvider"
+      android:authorities="${applicationId}.vidorax.files"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/vidorax_media_file_paths" />
+    </provider>
+  </application>
+</manifest>

@@ -1,0 +1,47 @@
+[
+  {
+    "kind": "Listing",
+    "data": {
+      "children": [
+        {
+          "kind": "t3",
+          "data": {
+            "id": "1fh2xyz",
+            "name": "t3_1fh2xyz",
+            "subreddit": "example",
+            "title": "My dog learned a new trick",
+            "permalink": "/r/example/comments/1fh2xyz/my_dog_learned_a_new_trick/",
+            "thumbnail": "https://b.thumbs.redditmedia.com/thumb.jpg",
+            "preview": {
+              "images": [
+                {
+                  "source": {
+                    "url": "https://external-preview.redd.it/preview.png?format=pjpg&amp;auto=webp&amp;s=abc123",
+                    "width": 1080,
+                    "height": 1920
+                  }
+                }
+              ]
+            },
+            "is_video": true,
+            "secure_media": {
+              "reddit_video": {
+                "bitrate_kbps": 2400,
+                "fallback_url": "https://v.redd.it/ab12cd34ef56/CMAF_720.mp4?source=fallback",
+                "has_audio": true,
+                "height": 1280,
+                "width": 720,
+                "scrubber_media_url": "https://v.redd.it/ab12cd34ef56/CMAF_96.mp4",
+                "dash_url": "https://v.redd.it/ab12cd34ef56/DASHPlaylist.mpd?a=1759999999%2CZmFrZQ%3D%3D&amp;v=1&amp;f=sd",
+                "duration": 18,
+                "hls_url": "https://v.redd.it/ab12cd34ef56/HLSPlaylist.m3u8?a=1759999999%2CZmFrZQ%3D%3D&amp;v=1&amp;f=sd",
+                "is_gif": false,
+                "transcoding_status": "completed"
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+]

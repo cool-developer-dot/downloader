@@ -11,6 +11,8 @@
  *   ERR_POLICY_BLOCKED     YouTube / googlevideo sources
  *   ERR_STORAGE_PERMISSION API 24-28 gallery export without WRITE_EXTERNAL_STORAGE
  *   ERR_RUNNER_START       background runner could not start (app not visible on API 34+)
+ *   ERR_STORAGE            a file could not be copied or written (e.g. disk full while saving to the gallery)
+ *   ERR_NO_APP             `openWith`: no installed app can open the file
  */
 
 export type SourceKind = 'progressive' | 'hls' | 'dash';

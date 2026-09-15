@@ -26,12 +26,21 @@ export type CandidateSource =
       audioUrl?: string;
     }
   | { kind: 'hls'; url: string; width?: number; height?: number; bitrate?: number }
-  | { kind: 'dash'; url: string; manifestText?: string };
+  | {
+      kind: 'dash';
+      /** Manifest URL; for an inline manifest, the document that relative BaseURLs resolve against. */
+      url: string;
+      /** Inline MPD (e.g. Instagram video_dash_manifest, or an MPD the page served from a blob: URL). */
+      manifestText?: string;
+    };
 
 export type CandidateProvenance = 'json' | 'dom' | 'network' | 'manifest-body' | 'web-download';
 
 export interface PageCandidate {
-  /** '<site>:<assetId>' when the asset id is known (e.g. 'instagram:C9xYz'), else 'url:<canonical url>'. */
+  /**
+   * '<site>:<assetId>' when the asset id is known (e.g. 'instagram:C9xYz'), else 'url:<canonical url>'. Sources
+   * without a SiteId of their own use a lowercase namespace with site 'web' (e.g. 'threads:', 'jwplayer:').
+   */
   key: string;
   site: SiteId;
   title?: string;
@@ -60,7 +69,7 @@ export interface PlayerHint {
   playing: boolean;
   /** 0..1 fraction of the element inside the viewport. */
   visibleRatio: number;
-  /** Codecs seen in MediaSource.addSourceBuffer for this element. */
+  /** Types passed to MediaSource.addSourceBuffer for this element, e.g. 'video/mp4; codecs="avc1.640028"'. */
   mseCodecs?: string[];
 }
 
@@ -75,6 +84,10 @@ export type DetectorMessage =
   | (MessageBase & { type: 'nav'; url: string; title?: string })
   | (MessageBase & { type: 'candidates'; candidates: PageCandidate[] })
   | (MessageBase & { type: 'players'; players: PlayerHint[] })
+  /**
+   * The page attached MediaKeys to a media element or media fired 'encrypted'. Key-system probes alone are not
+   * reported. keySystem is the last one the page requested, or 'unknown'.
+   */
   | (MessageBase & { type: 'drm'; keySystem: string })
   | (MessageBase & { type: 'policy'; blocked: 'youtube' });
 

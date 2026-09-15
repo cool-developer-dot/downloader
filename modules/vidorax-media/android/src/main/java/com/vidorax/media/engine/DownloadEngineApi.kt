@@ -1,0 +1,49 @@
+package com.vidorax.media.engine
+
+import com.vidorax.media.model.DownloadProgress
+import com.vidorax.media.model.DownloadRecord
+import com.vidorax.media.model.DownloadSettings
+import com.vidorax.media.model.EnqueueRequest
+import com.vidorax.media.model.ProbeRequest
+import com.vidorax.media.model.ProbeResult
+import kotlinx.coroutines.flow.Flow
+
+/**
+ * What VidoraMediaModule needs from the download engine. The engine is application-scoped and outlives the module:
+ * it owns the queue, the background runners and the downloads/parts tables, and adds finished items through
+ * LibraryStore.insert. Failures are the coded exceptions of MediaErrors.kt.
+ */
+interface DownloadEngineApi {
+  /** Progress events, throttled by the engine. */
+  val progress: Flow<DownloadProgress>
+
+  /** Every persisted state change. */
+  val stateChanges: Flow<DownloadRecord>
+
+  suspend fun probe(request: ProbeRequest): ProbeResult
+
+  suspend fun enqueue(request: EnqueueRequest): DownloadRecord
+
+  suspend fun pause(id: String)
+
+  suspend fun resume(id: String)
+
+  suspend fun retry(id: String)
+
+  suspend fun cancel(id: String)
+
+  /** Removes a failed, cancelled or completed record and its temp files, never the library item. */
+  suspend fun removeDownload(id: String)
+
+  suspend fun pauseAll()
+
+  suspend fun resumeAll()
+
+  /** Every non-completed record plus records completed in the last 24 h, newest first. */
+  suspend fun listDownloads(): List<DownloadRecord>
+
+  suspend fun setDownloadSettings(settings: DownloadSettings)
+
+  /** Deletes work folders no download owns; returns the bytes freed. */
+  suspend fun clearTempFiles(): Long
+}

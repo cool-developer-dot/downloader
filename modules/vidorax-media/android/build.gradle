@@ -1,0 +1,39 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'com.vidorax'
+version = '1.0.0'
+
+android {
+  namespace "com.vidorax.media"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+  }
+}
+
+dependencies {
+  implementation 'com.facebook.react:react-android'
+
+  // Must stay identical to the Media3 version in node_modules/expo-video/android/build.gradle:
+  // two Media3 versions in one APK crash at runtime.
+  def media3Version = "1.9.0"
+  implementation "androidx.media3:media3-common:${media3Version}"
+  implementation "androidx.media3:media3-container:${media3Version}"
+  implementation "androidx.media3:media3-muxer:${media3Version}"
+  implementation "androidx.media3:media3-inspector:${media3Version}"
+  implementation "androidx.media3:media3-exoplayer-hls:${media3Version}"
+  implementation "androidx.media3:media3-exoplayer-dash:${media3Version}"
+  implementation "androidx.media3:media3-datasource-okhttp:${media3Version}"
+
+  implementation "com.squareup.okhttp3:okhttp:4.12.0"
+
+  testImplementation "junit:junit:4.13.2"
+  testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
+  // Real android.net.Uri, XmlPullParser, MediaFormat and SQLite for tests of the Media3 parsers, remuxer and ledger.
+  testImplementation "org.robolectric:robolectric:4.16.1"
+  // android.jar only ships throwing org.json stubs; JVM tests need the real implementation.
+  testImplementation "org.json:json:20250517"
+}

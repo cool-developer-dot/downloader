@@ -1,0 +1,82 @@
+{
+  "data": {
+    "threaded_conversation_with_injections_v2": {
+      "instructions": [
+        {
+          "type": "TimelineAddEntries",
+          "entries": [
+            {
+              "entryId": "tweet-1834567890123456789",
+              "content": {
+                "entryType": "TimelineTimelineItem",
+                "itemContent": {
+                  "itemType": "TimelineTweet",
+                  "tweet_results": {
+                    "result": {
+                      "__typename": "Tweet",
+                      "rest_id": "1834567890123456789",
+                      "core": { "user_results": { "result": { "legacy": { "screen_name": "example_news" } } } },
+                      "legacy": {
+                        "id_str": "1834567890123456789",
+                        "full_text": "Launch day from the pad https://t.co/AbCdEf1234",
+                        "extended_entities": {
+                          "media": [
+                            {
+                              "id_str": "1834567000000000000",
+                              "media_key": "7_1834567000000000000",
+                              "type": "video",
+                              "expanded_url": "https://x.com/example_news/status/1834567890123456789/video/1",
+                              "media_url_https": "https://pbs.twimg.com/amplify_video_thumb/1834567000000000000/img/thumb.jpg",
+                              "original_info": { "width": 1920, "height": 1080 },
+                              "video_info": {
+                                "aspect_ratio": [16, 9],
+                                "duration_millis": 45045,
+                                "variants": [
+                                  {
+                                    "content_type": "application/x-mpegURL",
+                                    "url": "https://video.twimg.com/amplify_video/1834567000000000000/pl/master.m3u8?tag=16&v=1a2"
+                                  },
+                                  {
+                                    "bitrate": 288000,
+                                    "content_type": "video/mp4",
+                                    "url": "https://video.twimg.com/amplify_video/1834567000000000000/vid/avc1/480x270/low.mp4?tag=16"
+                                  },
+                                  {
+                                    "bitrate": 10368000,
+                                    "content_type": "video/mp4",
+                                    "url": "https://video.twimg.com/amplify_video/1834567000000000000/vid/avc1/1920x1080/high.mp4?tag=16"
+                                  },
+                                  {
+                                    "bitrate": 2176000,
+                                    "content_type": "video/mp4",
+                                    "url": "https://video.twimg.com/amplify_video/1834567000000000000/vid/avc1/1280x720/mid.mp4?tag=16"
+                                  }
+                                ]
+                              }
+                            },
+                            {
+                              "id_str": "1834567000000000001",
+                              "type": "animated_gif",
+                              "expanded_url": "https://x.com/example_news/status/1834567890123456789/video/2",
+                              "media_url_https": "https://pbs.twimg.com/tweet_video_thumb/GIF01.jpg",
+                              "video_info": {
+                                "aspect_ratio": [1, 1],
+                                "variants": [
+                                  { "bitrate": 0, "content_type": "video/mp4", "url": "https://video.twimg.com/tweet_video/GIF01.mp4" }
+                                ]
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

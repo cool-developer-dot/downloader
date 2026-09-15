@@ -1,0 +1,92 @@
+{
+  "data": {
+    "xdt_api__v1__media__shortcode__web_info": {
+      "items": [
+        {
+          "id": "3456789012345678901_1234567",
+          "pk": "3456789012345678901",
+          "code": "DAbCdEf12_x",
+          "media_type": 2,
+          "product_type": "clips",
+          "has_audio": true,
+          "video_duration": 14.2,
+          "caption": { "text": "Sunset over the bay 🌅" },
+          "user": { "pk": "1234567", "username": "example.creator" },
+          "image_versions2": {
+            "candidates": [
+              {
+                "width": 640,
+                "height": 1136,
+                "url": "https://scontent-lhr8-1.cdninstagram.com/v/t51.2885-15/thumb_640.jpg?stp=dst-jpg_e15&_nc_ht=scontent-lhr8-1.cdninstagram.com&oh=00_AbThumb640&oe=68C1B2C3"
+              },
+              {
+                "width": 1080,
+                "height": 1920,
+                "url": "https://scontent-lhr8-1.cdninstagram.com/v/t51.2885-15/thumb_1080.jpg?stp=dst-jpg_e35&_nc_ht=scontent-lhr8-1.cdninstagram.com&oh=00_AbThumb1080&oe=68C1B2C3"
+              }
+            ]
+          },
+          "video_versions": [
+            {
+              "type": 102,
+              "width": 480,
+              "height": 854,
+              "id": "2",
+              "url": "https://scontent-lhr8-2.cdninstagram.com/o1/v/t16/f2/m86/AQ480.mp4?efg=eyJ2ZW5jb2RlX3RhZyI6InZ0c192b2RfdXJsZ2VuIn0&_nc_ht=scontent-lhr8-2.cdninstagram.com&oh=00_Ab480&oe=68C1B2C3"
+            },
+            {
+              "type": 101,
+              "width": 720,
+              "height": 1280,
+              "id": "1",
+              "url": "https://scontent-lhr8-2.cdninstagram.com/o1/v/t16/f2/m86/AQ720.mp4?efg=eyJ2ZW5jb2RlX3RhZyI6InZ0c192b2RfdXJsZ2VuIn0&_nc_ht=scontent-lhr8-2.cdninstagram.com&oh=00_Ab720&oe=68C1B2C3"
+            },
+            {
+              "type": 103,
+              "width": 480,
+              "height": 854,
+              "id": "3",
+              "url": "https://scontent-lhr8-2.cdninstagram.com/o1/v/t16/f2/m86/AQ480.mp4?efg=eyJ2ZW5jb2RlX3RhZyI6InZ0c192b2RfdXJsZ2VuIn0&_nc_ht=scontent-lhr8-2.cdninstagram.com&oh=00_Ab480&oe=68C1B2C3"
+            }
+          ],
+          "video_dash_manifest": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<MPD xmlns=\"urn:mpeg:dash:schema:mpd:2011\" minBufferTime=\"PT1.500S\" type=\"static\" mediaPresentationDuration=\"PT0H0M14.200S\"><Period duration=\"PT0H0M14.200S\"><AdaptationSet segmentAlignment=\"true\" maxWidth=\"1080\" maxHeight=\"1920\"><Representation id=\"1080v\" mimeType=\"video/mp4\" codecs=\"avc1.640028\" width=\"1080\" height=\"1920\" bandwidth=\"2412000\"><BaseURL>https://scontent-lhr8-2.cdninstagram.com/o1/v/t2/f2/m367/AQv1080.mp4?_nc_ht=scontent-lhr8-2.cdninstagram.com&amp;oh=00_AbV1080&amp;oe=68C1B2C3</BaseURL><SegmentBase indexRange=\"818-893\" timescale=\"15360\"><Initialization range=\"0-817\"/></SegmentBase></Representation></AdaptationSet><AdaptationSet segmentAlignment=\"true\"><Representation id=\"audio\" mimeType=\"audio/mp4\" codecs=\"mp4a.40.5\" audioSamplingRate=\"44100\" bandwidth=\"48000\"><BaseURL>https://scontent-lhr8-2.cdninstagram.com/o1/v/t2/f2/m69/AQaudio.mp4?_nc_ht=scontent-lhr8-2.cdninstagram.com&amp;oh=00_AbAudio&amp;oe=68C1B2C3</BaseURL><SegmentBase indexRange=\"788-863\" timescale=\"44100\"><Initialization range=\"0-787\"/></SegmentBase></Representation></AdaptationSet></Period></MPD>"
+        },
+        {
+          "id": "3456789012345670000_1234567",
+          "code": "DCaRoUsEl01",
+          "media_type": 8,
+          "caption": { "text": "Weekend trip" },
+          "user": { "username": "example.creator" },
+          "carousel_media": [
+            {
+              "media_type": 1,
+              "image_versions2": {
+                "candidates": [{ "width": 1080, "height": 1350, "url": "https://scontent-lhr8-1.cdninstagram.com/v/t51.2885-15/photo.jpg?oh=00_P&oe=68C1B2C3" }]
+              }
+            },
+            {
+              "media_type": 2,
+              "has_audio": false,
+              "video_duration": 6.5,
+              "image_versions2": {
+                "candidates": [{ "width": 1080, "height": 1350, "url": "https://scontent-lhr8-1.cdninstagram.com/v/t51.2885-15/slide2.jpg?oh=00_S2&oe=68C1B2C3" }]
+              },
+              "video_versions": [
+                {
+                  "type": 101,
+                  "width": 1080,
+                  "height": 1350,
+                  "url": "https://scontent-lhr8-2.cdninstagram.com/o1/v/t16/f2/m86/slide2.mp4?_nc_ht=scontent-lhr8-2.cdninstagram.com&oh=00_Slide2&oe=68C1B2C3"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "num_results": 2,
+      "more_available": false
+    }
+  },
+  "extensions": { "is_final": true },
+  "status": "ok"
+}

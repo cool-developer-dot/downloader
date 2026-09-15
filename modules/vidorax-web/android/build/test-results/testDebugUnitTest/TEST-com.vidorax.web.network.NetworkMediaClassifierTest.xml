@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.vidorax.web.network.NetworkMediaClassifierTest" tests="10" skipped="0" failures="0" errors="0" timestamp="2026-09-15T15:42:01.530Z" hostname="macs-MacBook-Pro.local" time="0.005">
+  <properties/>
+  <testcase name="rangeStartParsesTheFirstOffset" classname="com.vidorax.web.network.NetworkMediaClassifierTest" time="0.001"/>
+  <testcase name="progressiveFiles" classname="com.vidorax.web.network.NetworkMediaClassifierTest" time="0.003"/>
+  <testcase name="manifestsByExtensionAcceptOrEmbeddedUrl" classname="com.vidorax.web.network.NetworkMediaClassifierTest" time="0.0"/>
+  <testcase name="urlPartsSplitHostFileAndQuery" classname="com.vidorax.web.network.NetworkMediaClassifierTest" time="0.0"/>
+  <testcase name="unknownWhenOnlyAcceptSuggestsMedia" classname="com.vidorax.web.network.NetworkMediaClassifierTest" time="0.0"/>
+  <testcase name="ignoresDocumentsStaticAssetsAndApiCalls" classname="com.vidorax.web.network.NetworkMediaClassifierTest" time="0.0"/>
+  <testcase name="ignoresYouTubeNonHttpAndNonGetRequests" classname="com.vidorax.web.network.NetworkMediaClassifierTest" time="0.0"/>
+  <testcase name="dedupeKeyDropsByteRangeParamsAndFragment" classname="com.vidorax.web.network.NetworkMediaClassifierTest" time="0.001"/>
+  <testcase name="byteRangeRequests" classname="com.vidorax.web.network.NetworkMediaClassifierTest" time="0.0"/>
+  <testcase name="segmentsAndInitSegments" classname="com.vidorax.web.network.NetworkMediaClassifierTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
