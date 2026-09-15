@@ -70,7 +70,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
     "test": "node --test \"src/**/*.test.ts\" \"modules/**/*.test.ts\"",
     "build:detector": "node scripts/build-detector.mjs",
     "adb:reverse": "adb reverse tcp:8081 tcp:8081"
