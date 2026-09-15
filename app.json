@@ -22,8 +22,6 @@
       "package": "com.anonymous.vidorax",
       "versionCode": 1,
       "permissions": [
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.INTERNET",
         "android.permission.POST_NOTIFICATIONS"
       ]
@@ -67,7 +65,13 @@
       "expo-image",
       "expo-status-bar",
       "expo-web-browser",
-      "expo-video",
+      [
+        "expo-video",
+        {
+          "supportsPictureInPicture": true,
+          "supportsBackgroundPlayback": true
+        }
+      ],
       "expo-screen-orientation",
       "expo-navigation-bar"
     ],

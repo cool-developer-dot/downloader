@@ -1,3 +1,7 @@
+import { detectionUr } from './catalogs/detection.ur';
+import { mediaUr } from './catalogs/media.ur';
+import { shellUr } from './catalogs/shell.ur';
+import { videoPlayerUr } from './catalogs/videoPlayer.ur';
 import type { CatalogStrings } from './types';
 import type { en } from './en';
 
@@ -1853,4 +1857,8 @@ export const ur: CatalogStrings<typeof en> = {
     savedNewRecoveryConfirm: 'میں نے اپنا نیا ریکوری کوڈ محفوظ کر لیا ہے',
     saveNewRecovery: 'نیا ریکوری کوڈ محفوظ کریں',
   },
+  shell: shellUr,
+  detection: detectionUr,
+  media: mediaUr,
+  videoPlayer: videoPlayerUr,
 };

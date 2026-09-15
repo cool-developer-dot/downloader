@@ -1,3 +1,8 @@
+import { detectionEn } from './catalogs/detection.en';
+import { mediaEn } from './catalogs/media.en';
+import { shellEn } from './catalogs/shell.en';
+import { videoPlayerEn } from './catalogs/videoPlayer.en';
+
 export const en = {
   common: {
     ok: 'OK',
@@ -1850,4 +1855,8 @@ export const en = {
     savedNewRecoveryConfirm: "I've saved my new recovery code",
     saveNewRecovery: 'Save new recovery code',
   },
+  shell: shellEn,
+  detection: detectionEn,
+  media: mediaEn,
+  videoPlayer: videoPlayerEn,
 } as const;
