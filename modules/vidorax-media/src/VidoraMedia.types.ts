@@ -295,6 +295,21 @@ export interface VidoraMediaModuleApi {
   // Library
   listLibrary(query: LibraryQuery): Promise<LibraryPage>;
   getLibraryItem(id: string): Promise<LibraryItem | null>;
+  /** Items for the given ids that exist, in the same order (missing ids are skipped). */
+  getLibraryItems(ids: string[]): Promise<LibraryItem[]>;
+  /**
+   * One-time migration from the v1 app: JS reads titles/sites/pages/favorites from the old catalog and applies
+   * them to items created by the native legacy file import (matched by id). Unknown ids are ignored.
+   */
+  applyLegacyMetadata(
+    entries: {
+      id: string;
+      title?: string;
+      site?: SiteId;
+      pageUrl?: string | null;
+      favorite?: boolean;
+    }[],
+  ): Promise<void>;
   /** Neighbours of `id` in `query` order, for player next/previous. */
   getAdjacentLibraryItems(
     id: string,
