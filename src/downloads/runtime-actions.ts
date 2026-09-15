@@ -17,6 +17,11 @@ export type DownloadRuntimeActions = {
   canResume: boolean;
   canCancel: boolean;
   canRetry: boolean;
+  /**
+   * Why Pause is withheld on a row that is otherwise pausable. Lets the UI
+   * explain the gap instead of silently dropping the control.
+   */
+  pauseBlockedReason: 'SOURCE_NOT_RESUMABLE' | null;
 };
 
 export type ResolveDownloadRuntimeActionsInput = {
@@ -26,6 +31,13 @@ export type ResolveDownloadRuntimeActionsInput = {
   workerState?: string | null;
   /** True when bytes are moving on this download. Omit = treat DOWNLOADING as active. */
   hasActiveTransfer?: boolean;
+  /**
+   * Engine-owned source capability (`TransferProgressSnapshot.supportsResume`).
+   * Omit/null = unknown, which keeps Pause available. Only an explicit `false`
+   * withholds Pause, because pausing a source that refuses Range requests
+   * discards the bytes already downloaded.
+   */
+  sourceSupportsResume?: boolean | null;
 };
 
 function normalizeStatus(value: string | null | undefined): string {
@@ -44,17 +56,14 @@ function isResumeAdvanced(execution: string): boolean {
   );
 }
 
-/**
- * Resolve Pause/Resume/Cancel/Retry from authoritative Phase 1 status
- * (+ execution state when available). No URL heuristics. No progress heuristics.
- */
-export function resolveDownloadRuntimeActions(
+/** Capability-independent state resolution — see `resolveDownloadRuntimeActions`. */
+function resolveStateActions(
   input: ResolveDownloadRuntimeActionsInput,
-): DownloadRuntimeActions {
+): Omit<DownloadRuntimeActions, 'pauseBlockedReason'> {
   const status = normalizeStatus(input.status);
   const execution = normalizeStatus(input.executionState ?? undefined);
 
-  const none: DownloadRuntimeActions = {
+  const none: Omit<DownloadRuntimeActions, 'pauseBlockedReason'> = {
     canPause: false,
     canResume: false,
     canCancel: false,
@@ -167,6 +176,31 @@ export function resolveDownloadRuntimeActions(
   }
 
   return none;
+}
+
+/**
+ * Resolve Pause/Resume/Cancel/Retry from authoritative Phase 1 status
+ * (+ execution state when available). No URL heuristics. No progress heuristics.
+ *
+ * Pause is additionally withheld when the engine reports the source cannot
+ * resume from a partial file: those sources answer a Range request with a full
+ * 200 body, so a pause costs the user every byte already transferred. Resume
+ * stays available on an already-PAUSED row so such a row is never stranded.
+ */
+export function resolveDownloadRuntimeActions(
+  input: ResolveDownloadRuntimeActionsInput,
+): DownloadRuntimeActions {
+  const state = resolveStateActions(input);
+
+  if (state.canPause && input.sourceSupportsResume === false) {
+    return {
+      ...state,
+      canPause: false,
+      pauseBlockedReason: 'SOURCE_NOT_RESUMABLE',
+    };
+  }
+
+  return { ...state, pauseBlockedReason: null };
 }
 
 /** Map runtime capabilities to Downloads card action ids (transfer only). */

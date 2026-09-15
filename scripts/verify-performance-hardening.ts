@@ -233,8 +233,9 @@ test('18. discovery overlay is bottom-anchored', () => {
   mustInclude(discovery, ['pointerEvents="box-none"', "bottom: 0"], 'anchor');
   mustNotInclude(discovery, ['StyleSheet.absoluteFill'], 'no fill overlay');
 });
-test('19. CTA bar still uses ActionSheetModal', () => {
-  mustInclude(ctaBar, ['ActionSheetModal', 'Video available'], 'sheet');
+test('19. CTA bar has no Play/Download action sheet', () => {
+  mustInclude(ctaBar, ['Video available'], 'bar');
+  mustNotInclude(ctaBar, ['ActionSheetModal'], 'no sheet intercept');
 });
 test('20. BrowserScreen still mounts CTA bar', () => {
   mustInclude(browserScreen, ['BrowserMediaDownloadBar'], 'bar');

@@ -33,6 +33,7 @@ import {
 } from '@/media-detection/services/request-context.service';
 import { browserMediaActionService } from '@/browser/media-actions/browser-media-action.service';
 import { selectVerifiedStandaloneQualities } from '@/browser/media-actions/verified-quality-options';
+import { buildResourceIdentityKey, sameResourceFamily } from '@/media-detection/social-source/resource-identity';
 import {
   resolveSocialPlatform,
   socialPageContextStore,
@@ -666,6 +667,10 @@ export function useQualitySelection(
       ctx = buildMediaRequestContextSync({ mediaUrl: payload.sourceUrl });
     }
 
+    // Lock before the first async gate so rapid confirmations cannot enqueue twice.
+    creatingRef.current = true;
+    setCreating(true);
+    try {
     if (ctx) {
       setPhase('verifying_media');
       const gate = await runPreDownloadGate({
@@ -683,7 +688,7 @@ export function useQualitySelection(
               previousMediaUrl: payload.sourceUrl,
               requiresCookies: ctx.cookiesRequired,
             });
-            if (refresh.ok && refresh.mediaUrl) {
+            if (refresh.ok && refresh.mediaUrl && sameResourceFamily(payload.sourceUrl, refresh.mediaUrl)) {
               const refreshedCtx = await buildMediaRequestContext({
                 mediaUrl: refresh.mediaUrl,
                 pageUrl: refresh.pageUrl ?? session.canonicalUrl,
@@ -738,12 +743,9 @@ export function useQualitySelection(
       }
     }
 
-    creatingRef.current = true;
-    setCreating(true);
     setCreateError(null);
     setPhase('creating_download');
 
-    try {
       const ctaState = browserMediaActionService.getState();
       const tabId = browserMediaActionService.getActiveTabId() ?? '__default__';
       if (
@@ -764,7 +766,15 @@ export function useQualitySelection(
         socialPlatform && ctaState.contentIdentity && ctaState.variantIdentity
           ? {
               contentIdentity: ctaState.contentIdentity,
-              variantIdentity: ctaState.variantIdentity,
+              variantIdentity: buildResourceIdentityKey({
+                contentIdentity: ctaState.contentIdentity,
+                executableUrl: selectedOption.sourceUrl,
+                transport: selectedOption.streamType === 'AUDIO' ? 'audio_only' : isHlsOption ? 'hls' : 'progressive',
+                width: selectedOption.width,
+                height: selectedOption.height,
+                bitrate: selectedOption.bitrate,
+                container: selectedOption.container,
+              }),
               tabId,
               pageUrl: ctaState.pageUrl,
               navigationEpoch:

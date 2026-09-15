@@ -20,7 +20,7 @@ import { AppModal } from '@/components/modals/AppModal';
 import { TextField } from '@/components/inputs/TextField';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
-import { navigation, playerPath } from '@/navigation';
+import { openPlayer } from '@/navigation';
 import {
   FILE_UNAVAILABLE_SUPPORT_CONTEXT,
   getDownloadSupportContext,
@@ -137,6 +137,7 @@ type DetailsBodyProps = {
   folderLabel: string;
   folderPending: boolean;
   onOpenFolderPicker: () => void;
+  onPlay: () => void;
   onPrimary: () => void;
   onSecondary: (action: DownloadCardAction) => void;
 };
@@ -152,6 +153,7 @@ const DetailsBody = memo(function DetailsBody({
   folderLabel,
   folderPending,
   onOpenFolderPicker,
+  onPlay,
   onPrimary,
   onSecondary,
 }: DetailsBodyProps) {
@@ -161,6 +163,7 @@ const DetailsBody = memo(function DetailsBody({
   const transfer = useDownloadsStore((s) => s.transferById[item.id] ?? null);
 
   const title = item.title?.trim() || item.fileName?.trim() || t('downloads.untitled');
+  const showInternalPlay = item.status === 'COMPLETED' && canUseLocalFile;
   const statusLabel = getExecutionStatusLabel({
     status: item.status,
     workerState: item.workerState,
@@ -417,7 +420,17 @@ const DetailsBody = memo(function DetailsBody({
         </Text>
       ) : null}
 
-      {primaryAction ? (
+      {showInternalPlay ? (
+        <Button
+          title={t('files.play')}
+          variant="primary"
+          onPress={onPlay}
+          fullWidth
+          accessibilityLabel={t('files.play')}
+          accessibilityHint={t('library.playHint')}
+          testID="download-details-primary-play"
+        />
+      ) : primaryAction ? (
         <Button
           title={t(PRIMARY_LABEL_KEYS[primaryAction])}
           variant={PRIMARY_VARIANT[primaryAction]}
@@ -429,7 +442,7 @@ const DetailsBody = memo(function DetailsBody({
         />
       ) : null}
 
-      {secondaryActions.length > 0 ? (
+      {!showInternalPlay && secondaryActions.length > 0 ? (
         <Box row gap={10} style={{ flexWrap: 'wrap' }}>
           {secondaryActions.map((action) => (
             <Box key={action} flex={1} style={{ minWidth: 120 }}>
@@ -822,15 +835,6 @@ export const DownloadDetailsScreen = memo(function DownloadDetailsScreen() {
           },
         },
         {
-          id: 'play',
-          label: t('files.play'),
-          onPress: () => {
-            setFileActionsVisible(false);
-            if (!downloadId) return;
-            navigation.push(playerPath(downloadId) as any);
-          },
-        },
-        {
           id: 'rename',
           label: t('files.rename'),
           onPress: () => {
@@ -848,9 +852,9 @@ export const DownloadDetailsScreen = memo(function DownloadDetailsScreen() {
         },
       ];
 
-      // If local file isn’t usable, keep rename/play hidden.
+      // If local file isn’t usable, keep rename hidden.
       if (!canUseLocalFile) {
-        return actions.filter((a) => a.id !== 'rename' && a.id !== 'play');
+        return actions.filter((a) => a.id !== 'rename');
       }
 
       return actions;
@@ -858,8 +862,6 @@ export const DownloadDetailsScreen = memo(function DownloadDetailsScreen() {
     [
       item,
       canUseLocalFile,
-      downloadId,
-      navigation,
       runAction,
       startRenameFile,
       t,
@@ -877,6 +879,13 @@ export const DownloadDetailsScreen = memo(function DownloadDetailsScreen() {
     }
     void runAction(primaryAction);
   }, [primaryAction, runAction]);
+
+  const handlePlay = useCallback(() => {
+    if (!downloadId) {
+      return;
+    }
+    openPlayer(downloadId);
+  }, [downloadId]);
 
   const handleSecondary = useCallback(
     (action: DownloadCardAction) => {
@@ -976,6 +985,7 @@ export const DownloadDetailsScreen = memo(function DownloadDetailsScreen() {
           folderLabel={folderLabel}
           folderPending={folderPending}
           onOpenFolderPicker={handleOpenFolderPicker}
+          onPlay={handlePlay}
           onPrimary={handlePrimary}
           onSecondary={handleSecondary}
         />

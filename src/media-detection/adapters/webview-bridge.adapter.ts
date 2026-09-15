@@ -235,6 +235,8 @@ function sanitizeCandidate(raw: unknown): BridgeMediaCandidatePayload | null {
     playlistType,
     detectionSource: source as DetectionSource,
     tagName: optionalString(obj.tagName, 32),
+    ownerElementIdentity: optionalString(obj.ownerElementIdentity, 64),
+    frameUrl: sanitizeOptionalHttpUrl(obj.frameUrl, pageUrl),
     blobIndicator:
       blobIndicator && blobIndicator.toLowerCase().startsWith('blob:')
         ? blobIndicator

@@ -22,7 +22,10 @@ export type { HlsParseResult, HlsVariantInfo } from './hls.parser';
 export {
   isDashManifestUrl,
   isDashMimeType,
+  isFragmentedDashManifest,
   mapDashRepresentationsToQualities,
   parseDashManifest,
+  selectDownloadableStandaloneDash,
+  selectStandaloneDashFiles,
 } from './dash.parser';
 export type { DashParseResult, DashRepresentation } from './dash.parser';

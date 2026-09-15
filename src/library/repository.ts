@@ -148,7 +148,9 @@ export function reconcileAvailabilityForIds(
 
     if (assessment.availability === 'missing') {
       missing += 1;
-      libraryLog('library.file_missing', { downloadId: id }, 'warn');
+      // Handled data condition (e.g. file removed externally), not a defect —
+      // surfaced in dev via the per-id line and always via the reconcile summary.
+      libraryLog('library.file_missing', { downloadId: id });
     }
 
     if (assessment.availability === 'available' && localUri) {

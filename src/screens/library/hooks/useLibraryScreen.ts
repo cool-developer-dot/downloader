@@ -17,7 +17,7 @@ import {
   type MediaLibraryItem,
 } from '@/library';
 import { translate, type TranslationKey } from '@/localization';
-import { navigation, playerPath, routePaths, consumeSecondaryDestinationIntent } from '@/navigation';
+import { navigation, openPlayer, routePaths, consumeSecondaryDestinationIntent } from '@/navigation';
 import {
   buildPlaybackSummaryMap,
   listLocalPlaybackSummaries,
@@ -397,10 +397,6 @@ export function useLibraryScreen() {
     await loadLocalAndReconcile(true);
   }, [continueQuery, loadLocalAndReconcile, recentQuery, setRefreshing]);
 
-  const openDetails = useCallback((id: string) => {
-    navigation.push(playerPath(id));
-  }, []);
-
   const [actionItemId, setActionItemId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const actionSheetVisible = actionItemId != null;
@@ -412,25 +408,6 @@ export function useLibraryScreen() {
 
   const closeItemActions = useCallback(() => {
     setActionItemId(null);
-  }, []);
-
-  const playItem = useCallback(async (id: string) => {
-    setActionError(null);
-    try {
-      const { playCompletedFile } = await import(
-        '@/downloads/completed-file/action-service'
-      );
-      const result = await playCompletedFile(id);
-      if (!result.ok) {
-        setActionError(localizeCompletedActionError(result.error.code));
-        return;
-      }
-      if (result.kind === 'play') {
-        navigation.push(playerPath(id));
-      }
-    } catch {
-      setActionError(translate('files.openFailed'));
-    }
   }, []);
 
   const openItemExternal = useCallback(async (id: string) => {
@@ -576,7 +553,7 @@ export function useLibraryScreen() {
     onToggleViewMode,
     onReset,
     refresh,
-    openDetails,
+    openPlayer,
     openItemActions,
     closeItemActions,
     actionSheetVisible,
@@ -584,7 +561,6 @@ export function useLibraryScreen() {
     actionError,
     actionStatusMessage,
     clearActionStatusMessage: () => setActionStatusMessage(null),
-    playItem,
     openItemExternal,
     shareItem,
     saveItemToDevice,

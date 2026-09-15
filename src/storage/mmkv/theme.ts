@@ -1,12 +1,15 @@
 import { mmkvKeys } from '@/storage/constants';
 import {
+  DEFAULT_THEME_PREFERENCE,
   normalizeThemePreference,
   type ThemePreference,
 } from '@/theme/theme-preference';
 
 import { getMmkvInstance } from './instance';
 
-export function getThemeMode(defaultValue: ThemePreference = 'light'): ThemePreference {
+export function getThemeMode(
+  defaultValue: ThemePreference = DEFAULT_THEME_PREFERENCE,
+): ThemePreference {
   try {
     const value = getMmkvInstance()?.getString(mmkvKeys.themeMode);
     if (value == null || value === '') {

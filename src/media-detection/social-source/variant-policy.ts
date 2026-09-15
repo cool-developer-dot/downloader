@@ -29,6 +29,7 @@ export function selectPreferredVariant(
     if (bH !== aH) {
       return bH - aH;
     }
+    if ((b.bitrate ?? 0) !== (a.bitrate ?? 0)) return (b.bitrate ?? 0) - (a.bitrate ?? 0);
     return a.variantId.localeCompare(b.variantId);
   });
 

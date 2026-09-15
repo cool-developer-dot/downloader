@@ -25,7 +25,7 @@ export type MediaIdentityInput = {
 
 export function buildMediaId(input: MediaIdentityInput): string {
   const parts = [
-    input.url.trim().toLowerCase(),
+    input.url.trim(),
     input.mimeType?.toLowerCase() ?? '',
     input.container?.toLowerCase() ?? '',
     input.width != null ? String(input.width) : '',

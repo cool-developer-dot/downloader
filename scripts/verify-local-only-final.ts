@@ -168,7 +168,17 @@ test('Visible EN catalog rejects cloud-auth UX strings', () => {
   const joined = Object.values(flat).join('\n');
   assert(!/Please sign in again to view your settings/i.test(joined), 'settings auth');
   assert(!/Please sign in again to update your settings/i.test(joined), 'settings save auth');
-  assert(!/session expired/i.test(joined), 'session expired');
+  // Legitimate third-party browser sessions can expire; VidoraX has no account session.
+  assert(flat['errors.codes.SESSION_EXPIRED']?.includes('website session expired'), 'website session guidance retained');
+  assert(flat['downloads.notifications.reasons.sessionExpired'] === 'Session expired', 'download source session notification retained');
+  const sourceSessionKeys = new Set([
+    'errors.codes.SESSION_EXPIRED',
+    'downloads.notifications.reasons.sessionExpired',
+  ]);
+  const appAccountCopy = Object.entries(flat)
+    .filter(([key]) => !sourceSessionKeys.has(key))
+    .map(([, value]) => value).join('\n');
+  assert(!/session expired/i.test(appAccountCopy), 'no VidoraX account session expiry');
   assert(!/backend unavailable/i.test(joined), 'backend unavailable');
   assert(!/Failed to sync/i.test(joined), 'failed to sync');
   assert(!/login required/i.test(joined), 'login required');

@@ -4,10 +4,16 @@ import {
   classifyHostRelation,
   resourceFingerprintFromUrl,
 } from '../general-media/general-network-resource';
+import { canonicalizeObservedMediaUrl } from '../general-media/playback-media-evidence';
 import { logGeneralNetworkTrace } from '../general-media/general-media-diagnostics';
 import { extractHostname, isSafeMediaUrl, normalizeMediaUrl } from '../utils';
+import { resolveNativeObservationScope } from './native-observation-scope';
 
 export type NativeMediaCandidate = {
+  tabId?: string;
+  navigationEpoch?: number;
+  observedAt?: number;
+  frameUrl?: string | null;
   url: string;
   mimeType: string | null;
   requiresCookies: boolean;
@@ -19,6 +25,10 @@ export type NativeMediaCandidate = {
 };
 
 export type NativeMediaCandidateEvent = {
+  webViewId?: number;
+  parentViewId?: number;
+  observedAt?: number;
+  requestReferer?: string | null;
   url?: string;
   method?: string;
   mimeHint?: string | null;
@@ -126,7 +136,7 @@ export function processNativeMediaCandidateEvent(
     return null;
   }
 
-  const url = normalizeMediaUrl(urlRaw);
+  const url = normalizeMediaUrl(canonicalizeObservedMediaUrl(urlRaw));
   if (!url) {
     logGeneralNetworkTrace('RESOURCE_REJECTED', {
       candidateFingerprintHash: fingerprint,
@@ -136,12 +146,14 @@ export function processNativeMediaCandidateEvent(
     return null;
   }
 
+  const scope = resolveNativeObservationScope(event);
   const now = Date.now();
-  const prev = lastKeys.get(url);
+  const dedupeKey = `${scope?.tabId ?? event.parentViewId ?? event.webViewId ?? 'unowned'}|${scope?.navigationEpoch ?? ''}|${url}`;
+  const prev = lastKeys.get(dedupeKey);
   if (prev != null && now - prev < DETECTION_TIMING.nativeEventDedupeMs) {
     return null;
   }
-  lastKeys.set(url, now);
+  lastKeys.set(dedupeKey, now);
 
   if (lastKeys.size > 300) {
     const first = lastKeys.keys().next().value;
@@ -156,7 +168,7 @@ export function processNativeMediaCandidateEvent(
       : null;
   const hasRange = Boolean(event.hasRange);
   const isForMainFrame = Boolean(event.isForMainFrame);
-  const pageUrl = typeof event.pageUrl === 'string' ? event.pageUrl : undefined;
+  const pageUrl = scope?.pageUrl ?? (typeof event.pageUrl === 'string' ? event.pageUrl : undefined);
   const classified = classifyGeneralNetworkResource({
     url,
     mimeType: mimeHint,
@@ -215,6 +227,10 @@ export function processNativeMediaCandidateEvent(
 
   return {
     url,
+    tabId: scope?.tabId,
+    navigationEpoch: scope?.navigationEpoch,
+    observedAt: event.observedAt,
+    frameUrl: typeof event.requestReferer === 'string' && isSafeMediaUrl(event.requestReferer) ? event.requestReferer : null,
     mimeType: mimeHint,
     requiresCookies: Boolean(event.hasCookieHeader),
     pageUrl,

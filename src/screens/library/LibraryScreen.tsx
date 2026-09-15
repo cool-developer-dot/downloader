@@ -59,14 +59,13 @@ export const LibraryScreen = memo(function LibraryScreen() {
     onToggleViewMode,
     onReset,
     refresh,
-    openDetails,
+    openPlayer,
     openItemActions,
     closeItemActions,
     actionSheetVisible,
     actionItemId,
     actionError,
     actionStatusMessage,
-    playItem,
     openItemExternal,
     shareItem,
     saveItemToDevice,
@@ -88,14 +87,6 @@ export const LibraryScreen = memo(function LibraryScreen() {
     }
     const id = actionItemId;
     return [
-      {
-        id: 'play',
-        label: t('library.play'),
-        onPress: () => {
-          closeItemActions();
-          void playItem(id);
-        },
-      },
       {
         id: 'open',
         label: t('library.openWith'),
@@ -133,7 +124,6 @@ export const LibraryScreen = memo(function LibraryScreen() {
     actionItemId,
     closeItemActions,
     openItemExternal,
-    playItem,
     requestDeleteItem,
     saveItemToDevice,
     shareItem,
@@ -318,7 +308,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
             viewMode={viewMode}
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            onPressItem={openDetails}
+            onPressItem={openPlayer}
             onLongPressItem={openItemActions}
           />
         </Box>

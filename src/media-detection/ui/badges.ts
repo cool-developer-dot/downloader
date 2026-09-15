@@ -65,9 +65,13 @@ export function isDownloadAffordable(media: DetectedMedia): boolean {
     return false;
   }
   if (media.container === 'unknown') {
-    return false;
+    const mime = (media.mimeType ?? '').toLowerCase();
+    if (!mime.startsWith('video/') && !mime.startsWith('audio/')) {
+      return false;
+    }
   }
   // DASH download engine not implemented — do not offer false-positive affordance.
+  // Standalone DASH BaseURL files are rewritten to progressive before this gate.
   if (media.container === 'dash' || media.streamType === 'DASH') {
     return false;
   }

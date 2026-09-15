@@ -952,6 +952,10 @@ export class HlsTransferWorker {
       // Keep Phase 1 validated path.
     }
 
+    if (!verifyCompletedFile(new File(identityLocalUri), validation.size, { downloadId: input.id }).ok) {
+      throw new DownloadEngineError('FINAL_FILE_INVALID', 'Completed file is unavailable.');
+    }
+
     await upsertLocalRecord({
       downloadId: input.id,
       sourceUrl: input.sourceUrl,

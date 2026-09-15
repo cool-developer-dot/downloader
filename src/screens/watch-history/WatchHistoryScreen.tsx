@@ -18,7 +18,7 @@ import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { ScreenHeader } from '@/components/headers/ScreenHeader';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
-import { navigation, playerPath } from '@/navigation';
+import { navigation, openPlayer } from '@/navigation';
 import {
   formatLastPlayedLabel,
   formatProgressPercentLabel,
@@ -170,7 +170,7 @@ export const WatchHistoryScreen = memo(function WatchHistoryScreen() {
     if (item.missing) {
       return;
     }
-    navigation.push(playerPath(item.mediaId));
+    openPlayer(item.mediaId);
   }, []);
 
   const keyExtractor = useCallback((item: HistoryRow) => item.mediaId, []);

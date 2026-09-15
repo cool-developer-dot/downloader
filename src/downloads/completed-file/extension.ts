@@ -8,10 +8,12 @@ import type {
   CompletedValidationEvidence,
 } from './types';
 import { completedFileExtension } from './sanitize';
+import { VIDEO_FORMATS, resolveVideoFormatHint, videoFormatFromExtension, videoFormatFromMime } from '@/media-detection/resource/video-resource';
 
 const OCTET_STREAM = new Set(['application/octet-stream', 'binary/octet-stream']);
 
 const KIND_TO_CONTAINER: Record<string, CompletedMediaContainer> = {
+  mov: 'mov', avi: 'avi', wmv: 'wmv', m4v: 'm4v',
   mp4: 'mp4',
   webm: 'webm',
   ts: 'ts',
@@ -21,6 +23,7 @@ const KIND_TO_CONTAINER: Record<string, CompletedMediaContainer> = {
 };
 
 const CONTAINER_TO_EXT: Record<CompletedMediaContainer, string | null> = {
+  mov: 'mov', avi: 'avi', wmv: 'wmv', m4v: 'm4v',
   mp4: 'mp4',
   webm: 'webm',
   ts: 'ts',
@@ -29,6 +32,8 @@ const CONTAINER_TO_EXT: Record<CompletedMediaContainer, string | null> = {
 };
 
 const CONTAINER_TO_MIME: Record<CompletedMediaContainer, string | null> = {
+  mov: VIDEO_FORMATS.mov.mime, avi: VIDEO_FORMATS.avi.mime,
+  wmv: VIDEO_FORMATS.wmv.mime, m4v: VIDEO_FORMATS.m4v.mime,
   mp4: 'video/mp4',
   webm: 'video/webm',
   ts: 'video/mp2t',
@@ -81,7 +86,8 @@ function containerFromMime(mime: string | null): CompletedMediaContainer | null 
   if (!mime || OCTET_STREAM.has(mime)) {
     return null;
   }
-  return MIME_TO_CONTAINER[mime] ?? null;
+  const video = videoFormatFromMime(mime);
+  return video && video !== 'hls' ? video : MIME_TO_CONTAINER[mime] ?? null;
 }
 
 function containerFromKind(kind: string | null | undefined): CompletedMediaContainer | null {
@@ -100,6 +106,8 @@ function containerFromHint(hint: string | null | undefined): CompletedMediaConta
     return null;
   }
   const key = hint.trim().toLowerCase().replace(/^\./, '');
+  const video = videoFormatFromExtension(key);
+  if (video && video !== 'hls') return video;
   if (key === 'hls' || key === 'm3u8') {
     // Playlist is not a completed artifact container.
     return null;
@@ -124,6 +132,8 @@ function containerFromExtension(ext: string | null | undefined): CompletedMediaC
     return null;
   }
   const key = ext.trim().toLowerCase().replace(/^\./, '');
+  const video = videoFormatFromExtension(key);
+  if (video && video !== 'hls') return video;
   if (NON_FINAL_EXTENSIONS.has(key)) {
     return null;
   }
@@ -148,6 +158,10 @@ export function resolveCompletedContainer(
 
   const fromSig = containerFromKind(e.signatureKind);
   if (fromSig) {
+    if (fromSig === 'mp4') {
+      const isoHint = resolveVideoFormatHint({ mimeType: e.verifiedMimeType, extension: e.containerHint ?? completedFileExtension(currentFileName ?? '') });
+      if (isoHint === 'mov' || isoHint === 'm4v') return isoHint;
+    }
     return fromSig;
   }
 
@@ -229,6 +243,7 @@ export function resolveCompletedMimeType(
 }
 
 export function formatContainerLabel(container: CompletedMediaContainer): string | null {
+  if (container === 'mov' || container === 'm4v' || container === 'avi' || container === 'wmv') return container.toUpperCase();
   switch (container) {
     case 'mp4':
       return 'MP4';

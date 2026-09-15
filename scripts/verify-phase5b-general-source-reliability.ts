@@ -214,6 +214,7 @@ async function main(): Promise<void> {
   await test('2. valid complete fragmented MP4', () => {
     const bytes = concat(
       ftypBox(),
+      appendBox('moov', 32),
       appendBox('moof', 32),
       appendBox('mdat', 64),
     );

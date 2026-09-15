@@ -38,7 +38,10 @@ export function downloadDetailsPath(id: string): `/downloads/${string}` {
   return `/downloads/${encodeURIComponent(id)}`;
 }
 
+/** App-stack route for internal Player handoff. */
+export type PlayerRoute = `/player/${string}`;
+
 /** App-stack path for internal Player handoff. */
-export function playerPath(id: string): `/player/${string}` {
+export function playerPath(id: string): PlayerRoute {
   return `/player/${encodeURIComponent(id)}`;
 }

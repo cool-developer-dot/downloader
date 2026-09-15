@@ -344,7 +344,8 @@ async function main(): Promise<void> {
 
   await test('42. Library external open uses openCompletedFile', () => {
     assert(libraryHook.includes('openCompletedFile'), 'lib open');
-    assert(libraryHook.includes('playCompletedFile'), 'lib play separate');
+    assert(libraryHook.includes('openPlayer'), 'lib play is tap via openPlayer');
+    assert(!libraryHook.includes('playCompletedFile'), 'no duplicate play path');
   });
 
   await test('43. FileActions package registered', () => {

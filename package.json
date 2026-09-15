@@ -72,6 +72,8 @@
     "web": "expo start --web",
     "lint": "expo lint",
     "verify:video-detection": "npx tsx scripts/verify-video-detection-engine.ts",
+    "verify:universal-video-detection": "npx tsx scripts/verify-universal-video-detection.ts",
+    "verify:dynamic-video-format-handoff": "npx tsx scripts/verify-dynamic-video-format-handoff.ts",
     "verify:media-pipeline": "npx tsx scripts/verify-media-pipeline-fixtures.ts",
     "verify:phase3": "npx tsx scripts/verify-phase3-integration.ts",
     "verify:day2-phase1": "npx tsx scripts/verify-week7-day2-phase1.ts",

@@ -46,7 +46,7 @@ export function toUserFacingErrorMessage(
     case 'NETWORK_TIMEOUT':
       return 'The connection timed out.';
     case 'RATE_LIMITED':
-      return 'The server is temporarily busy. Try again shortly.';
+      return 'The media source is temporarily busy. Try again shortly.';
     case 'HTTP_ERROR':
       return 'The download source could not be reached.';
     case 'FILE_SYSTEM_ERROR':
@@ -82,7 +82,7 @@ export function toUserFacingErrorMessage(
     case 'RESUME_UNSUPPORTED':
       return (
         fallback?.trim() ||
-        'This server doesn’t support resumable downloads.'
+        'This media source doesn’t allow resuming a partial download.'
       );
     case 'RESUME_STATE_MISSING':
       return fallback?.trim() || 'Unable to resume this download.';
@@ -95,12 +95,12 @@ export function toUserFacingErrorMessage(
     case 'RANGE_REJECTED':
       return (
         fallback?.trim() ||
-        'This server doesn’t support resumable downloads.'
+        'This media source doesn’t allow resuming a partial download.'
       );
     case 'INVALID_RANGE_RESPONSE':
       return (
         fallback?.trim() ||
-        'The server returned an invalid resume response.'
+        'The media source returned an invalid resume response.'
       );
     case 'SOURCE_CHANGED':
       return 'The source file changed and can’t be safely resumed.';
@@ -231,7 +231,7 @@ function classifyHttpStatus(status: number, rawMessage: string): DownloadEngineE
   if (status === 429) {
     return new DownloadEngineError(
       'RATE_LIMITED',
-      'The server is temporarily busy. Try again shortly.',
+      'The media source is temporarily busy. Try again shortly.',
       { httpStatus: status, retryAfterSeconds: retryAfter },
     );
   }

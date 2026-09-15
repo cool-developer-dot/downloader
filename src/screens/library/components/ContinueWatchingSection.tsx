@@ -13,7 +13,7 @@ import { Text } from '@/components/base/Text';
 import { ProgressBar } from '@/components/common/ProgressBar';
 import { useTheme } from '@/hooks/use-theme';
 import type { MediaLibraryItem } from '@/library';
-import { playerPath, navigation } from '@/navigation';
+import { openPlayer } from '@/navigation';
 import {
   formatLastPlayedLabel,
   formatProgressPercentLabel,
@@ -127,15 +127,11 @@ export const ContinueWatchingSection = memo(function ContinueWatchingSection({
   const theme = useTheme();
   const { t } = useTranslation();
 
-  const openPlayer = useCallback((id: string) => {
-    navigation.push(playerPath(id));
-  }, []);
-
   const keyExtractor = useCallback((item: ContinueWatchingRow) => item.id, []);
 
   const renderItem: ListRenderItem<ContinueWatchingRow> = useCallback(
     ({ item }) => <ContinueWatchingCard item={item} onPress={openPlayer} />,
-    [openPlayer],
+    [],
   );
 
   if (items.length === 0) {

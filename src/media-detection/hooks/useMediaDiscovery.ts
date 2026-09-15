@@ -185,8 +185,30 @@ export function useMediaDiscovery(): MediaDiscoveryViewModel {
         msePlaybackAgeMs: mse.msePlaybackAgeMs,
       });
       if (general.usedGeneralCorrelation) {
-        // Honor ownership result even when null — do not let size/recency steal CTA.
-        return general.media;
+        if (general.media) {
+          return general.media;
+        }
+        // Ownership found no current player, but HTTP media still exists on
+        // the page (extensionless CDN, JSON-LD, preload). Offer that rather
+        // than hiding a working download.
+        const http = candidates.filter((m) => {
+          const url = (m.finalUrl || m.url).toLowerCase();
+          return url.startsWith('http://') || url.startsWith('https://');
+        });
+        if (http.length > 0) {
+          return (
+            pickBestCorrelatedMedia(http, {
+              pageUrl: lastNavigation,
+              msePlaybackActive: mse.msePlaybackActive,
+              msePlaybackAgeMs: mse.msePlaybackAgeMs,
+            }) ??
+            http.find((m) => m.category === 'video') ??
+            http.find((m) => m.category === 'stream') ??
+            http[0] ??
+            null
+          );
+        }
+        return null;
       }
     }
 

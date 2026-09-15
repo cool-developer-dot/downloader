@@ -6,6 +6,7 @@ import type {
   MediaAnalysisStreamType,
   MediaAnalysisVariant,
 } from '@/api/types';
+import { normalizeVideoMime, resolveVideoFormatHint, videoFormatFromMime } from '@/media-detection/resource/video-resource';
 
 export function emptyAnalysis(
   sourceUrl: string,
@@ -68,22 +69,11 @@ export function derivePlatform(url: string): string {
 }
 
 export function parseContentType(raw: string | null): string | null {
-  if (!raw) {
-    return null;
-  }
-  const base = raw.split(';')[0]?.trim().toLowerCase() ?? '';
-  return base || null;
+  return normalizeVideoMime(raw);
 }
 
 export function isHlsMimeType(mime: string | null): boolean {
-  if (!mime) {
-    return false;
-  }
-  return (
-    mime.includes('mpegurl') ||
-    mime.includes('x-mpegurl') ||
-    mime === 'application/vnd.apple.mpegurl'
-  );
+  return videoFormatFromMime(mime) === 'hls';
 }
 
 export function isNonMediaDocumentMime(mime: string | null): boolean {
@@ -104,6 +94,8 @@ export function resolveExtension(
   url: string,
   mime: string | null,
 ): string | null {
+  const video = resolveVideoFormatHint({ url, mimeType: mime });
+  if (video) return video === 'hls' ? 'm3u8' : video;
   try {
     const path = new URL(url).pathname.toLowerCase();
     const ext = path.includes('.') ? path.split('.').pop() ?? '' : '';
@@ -134,6 +126,8 @@ export function resolveContainer(
   extension: string | null,
   mime: string | null,
 ): MediaAnalysisContainer {
+  const video = resolveVideoFormatHint({ extension, mimeType: mime });
+  if (video) return video;
   const ext = extension?.toLowerCase() ?? '';
   if (ext === 'm3u8' || ext === 'm3u' || isHlsMimeType(mime)) {
     return 'hls';
@@ -162,9 +156,6 @@ export function resolveContainer(
   if (mime?.startsWith('audio/')) {
     return 'm4a';
   }
-  if (mime?.startsWith('video/')) {
-    return 'mp4';
-  }
   return 'unknown';
 }
 
@@ -189,6 +180,8 @@ export function resolveMediaType(
     container === 'webm' ||
     container === 'mov' ||
     container === 'm4v' ||
+    container === 'avi' ||
+    container === 'wmv' ||
     mime?.startsWith('video/')
   ) {
     return 'video';

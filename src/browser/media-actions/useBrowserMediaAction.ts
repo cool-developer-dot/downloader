@@ -107,7 +107,6 @@ export type BrowserMediaActionViewModel = BrowserMediaActionState & {
   downloadable: boolean;
   ctaState: ReturnType<typeof toBrowserMediaCtaState>;
   dismiss: () => void;
-  play: () => { ok: true };
   download: () => Promise<{
     ok: boolean;
     downloadId?: string;
@@ -1053,7 +1052,11 @@ export function useBrowserMediaAction(
     const mse = getMsePlaybackContext(lastNavigation);
     const shouldVerify =
       discovery.downloadable ||
-      (mse.msePlaybackActive && discovery.media.confidence >= 0.42);
+      (mse.msePlaybackActive && discovery.media.confidence >= 0.42) ||
+      (!discovery.media.isDrm &&
+        (discovery.media.category === 'video' ||
+          discovery.media.category === 'stream' ||
+          discovery.media.confidence >= 0.42));
 
     if (!shouldVerify) {
       return;
@@ -1454,18 +1457,6 @@ export function useBrowserMediaAction(
     }
   }, [hasMultipleQualities, options]);
 
-  const play = useCallback(() => {
-    logBrowserCta('media_action_play', {
-      tabId:
-        browserMediaActionService.getActiveTabId() ??
-        useBrowserStore.getState().activeTabId ??
-        '__default__',
-      state: toBrowserMediaCtaState(browserMediaActionService.getState().status),
-    });
-    // Existing playback is the current webpage. Do not reload WebView or enqueue.
-    return { ok: true as const };
-  }, []);
-
   const viewDownloads = useCallback(() => {
     navigation.navigate(routePaths.downloads);
   }, []);
@@ -1499,7 +1490,6 @@ export function useBrowserMediaAction(
       presentation.isEligible,
     ctaState,
     dismiss,
-    play,
     download,
     viewDownloads,
     openLibrary,

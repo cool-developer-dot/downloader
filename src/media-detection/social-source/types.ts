@@ -62,6 +62,8 @@ export type SocialSourceVerificationEvidence = {
 };
 
 export type VerifiedSocialMediaVariant = {
+  /** Bounded manifest expansion retained with the cached primary. */
+  alternatives?: VerifiedSocialMediaVariant[];
   variantId: string;
   /** Stable identity — host+path (+ quality/transport), never signed query alone. */
   resourceIdentity: string;

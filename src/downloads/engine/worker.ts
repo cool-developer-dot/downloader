@@ -13,6 +13,7 @@ import {
   getPartialTransferFile,
   migrateLegacyFinalToPartial,
   resolveDestinationFile,
+  verifyCompletedFile,
 } from './file-paths';
 import {
   classifyTransferError,
@@ -64,6 +65,7 @@ import { StallWatchdog } from './stall-watchdog';
 import {
   assertSessionContextReady,
   detectSocialCdnKind,
+  getSourceCapability,
   shouldUseAuthenticatedFetchTransfer,
   shouldUseMultiRangeForSource,
 } from './source-capability';
@@ -367,6 +369,11 @@ export class TransferWorker {
       snapshot.attemptStartBytes = attemptBaseline;
       snapshot.workerState =
         bytesWritten > attemptBaseline ? 'TRANSFERRING' : 'STARTING';
+      snapshot.supportsResume = getSourceCapability(
+        input.sourceUrl,
+        input.requestContext,
+        Platform.OS,
+      ).supportsResume;
 
       const knownTotal = normalizeTotalBytes(totalBytes);
       const shouldUpdateUi =
@@ -944,7 +951,7 @@ export class TransferWorker {
         if (resumeRestartDetected) {
           throw new DownloadEngineError(
             'RESUME_UNSUPPORTED',
-            'This server doesn’t support resumable downloads.',
+            'This media source doesn’t allow resuming a partial download.',
           );
         }
         if (this.active.pauseRequested) {
@@ -954,7 +961,7 @@ export class TransferWorker {
         if (floor > 0 && readPartialFileSize(transferFile) + 1024 < floor) {
           throw new DownloadEngineError(
             'RESUME_UNSUPPORTED',
-            'This server doesn’t support resumable downloads.',
+            'This media source doesn’t allow resuming a partial download.',
           );
         }
 
@@ -1080,7 +1087,7 @@ export class TransferWorker {
         if (resumeRestartDetected) {
           const classifiedRestart = new DownloadEngineError(
             'RESUME_UNSUPPORTED',
-            'This server doesn’t support resumable downloads.',
+            'This media source doesn’t allow resuming a partial download.',
           );
           await this.fail(
             input,
@@ -1449,6 +1456,10 @@ export class TransferWorker {
         identityContainer = identity.descriptor.container;
       } catch {
         // Keep Phase 1 validated path — identity is best-effort metadata.
+      }
+
+      if (!verifyCompletedFile(new File(identityLocalUri), validation.size, { downloadId: input.id }).ok) {
+        throw new DownloadEngineError('FINAL_FILE_INVALID', 'Completed file is unavailable.');
       }
 
       const record: LocalDownloadRecord = {

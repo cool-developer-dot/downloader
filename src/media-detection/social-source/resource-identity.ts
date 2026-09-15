@@ -37,7 +37,8 @@ export function buildResourceIdentityKey(input: {
 }
 
 /**
- * Host + pathname only — for fingerprint/dedupe/diagnostics.
+ * Host, case-sensitive path and resource selectors — for internal identity.
+ * Hash this value before diagnostics; unknown query fields can contain secrets.
  * NEVER use the result as the download URL.
  */
 export function stableResourcePath(url: string): string | null {
@@ -50,7 +51,13 @@ export function stableResourcePath(url: string): string | null {
     if (host.startsWith('www.')) {
       host = host.slice(4);
     }
-    return `${host}${parsed.pathname}`.toLowerCase();
+    // Preserve content/quality/codec selectors and case-sensitive object paths.
+    // Only explicit credential/expiry fields may rotate within an owned resource.
+    const selectors = [...parsed.searchParams.entries()]
+      .filter(([key]) => !/^(?:token|tok|sig|signature|expires|expire|exp|oe|oh|policy|key-pair-id|x-amz-.+|x-goog-.+|__gda__|hdnea|hdnts)$/i.test(key))
+      .sort(([ak, av], [bk, bv]) => ak.localeCompare(bk) || av.localeCompare(bv));
+    const query = new URLSearchParams(selectors).toString();
+    return `${host}${parsed.port ? `:${parsed.port}` : ''}${parsed.pathname}${query ? `?${query}` : ''}`;
   } catch {
     return null;
   }
@@ -71,8 +78,7 @@ export function sameResourceFamily(a: string, b: string): boolean {
 
 export function hashIdentity(value: string): string {
   let hash = 0x811c9dc5;
-  const sample =
-    value.length > 96 ? `${value.slice(0, 48)}…${value.slice(-24)}` : value;
+  const sample = value;
   for (let i = 0; i < sample.length; i += 1) {
     hash ^= sample.charCodeAt(i);
     hash = Math.imul(hash, 0x01000193);

@@ -8,6 +8,7 @@ import {
   WEAK_MEDIA_EXTENSIONS,
 } from '../constants';
 import type { MediaCategory, MediaContainer, StreamType } from '../types';
+import { resolveVideoFormatHint } from '../resource/video-resource';
 
 const VIDEO_SET = new Set<string>(PROGRESSIVE_VIDEO_EXTENSIONS);
 const AUDIO_SET = new Set<string>(PROGRESSIVE_AUDIO_EXTENSIONS);
@@ -47,6 +48,8 @@ export function resolveExtension(
   url: string,
   mimeType?: string | null,
 ): string | null {
+  const format = resolveVideoFormatHint({ url, mimeType });
+  if (format) return format === 'hls' ? 'm3u8' : format;
   return parseExtensionFromUrl(url) ?? parseExtensionFromMime(mimeType);
 }
 

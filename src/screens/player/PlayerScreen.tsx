@@ -13,7 +13,8 @@ import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { ErrorState } from '@/components/common/ErrorState';
 import { Loader } from '@/components/common/Loader';
 import { useTheme } from '@/hooks/use-theme';
-import { localizePlayerError, useTranslation } from '@/localization';
+import { localizePlayerError, useTranslation, type TranslationKey } from '@/localization';
+import { completedActionErrorMessageKey } from '@/downloads/completed-file/action-errors';
 import {
   formatPlaybackRateLabel,
   isRecoverablePlayerError,
@@ -94,6 +95,22 @@ export const PlayerScreen = memo(function PlayerScreen() {
   } = useFullscreenLifecycle();
 
   const [speedSheetOpen, setSpeedSheetOpen] = useState(false);
+  const [externalOpenError, setExternalOpenError] = useState<string | null>(null);
+  const [externalOpenBusy, setExternalOpenBusy] = useState(false);
+  const openExternal = useCallback(async () => {
+    if (!mediaId || externalOpenBusy) return;
+    setExternalOpenBusy(true);
+    setExternalOpenError(null);
+    try {
+      const { openCompletedFile } = await import('@/downloads/completed-file/action-service');
+      const result = await openCompletedFile(mediaId);
+      if (!result.ok) setExternalOpenError(t(completedActionErrorMessageKey(result.error.code) as TranslationKey));
+    } catch {
+      setExternalOpenError(t('files.openFailed'));
+    } finally {
+      setExternalOpenBusy(false);
+    }
+  }, [externalOpenBusy, mediaId, t]);
   const [orientationSheetOpen, setOrientationSheetOpen] = useState(false);
   const [doubleTapSide, setDoubleTapSide] = useState<DoubleTapSeekSide | null>(
     null,
@@ -505,6 +522,15 @@ export const PlayerScreen = memo(function PlayerScreen() {
                 : undefined
             }
           />
+          {session.error === 'UNSUPPORTED_MEDIA' || session.error === 'PLAYBACK_FAILED' ? (
+            <Button
+              title={t('library.openWith')}
+              onPress={() => { void openExternal(); }}
+              disabled={externalOpenBusy}
+              testID="player-open-externally"
+            />
+          ) : null}
+          {externalOpenError ? <Text color="error">{externalOpenError}</Text> : null}
           <Button
             title={t('common.goBack')}
             variant="outline"

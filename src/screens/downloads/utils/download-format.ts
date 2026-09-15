@@ -404,6 +404,8 @@ export type LocalMediaActionOptions = {
   /** Phase 1 execution state — preferred for FINALIZING pause suppression. */
   executionState?: TransferProgressSnapshot['executionState'] | null;
   workerState?: string | null;
+  /** Engine-owned resume capability — omit when unknown (keeps Pause). */
+  supportsResume?: boolean | null;
 };
 
 /** Canonical Open/Share gate — Card and Details must share this. */
@@ -415,6 +417,26 @@ export function canOpenOrShareCompletedFile(
     status,
     localUri: options?.localUri,
     localState: options?.localState,
+  });
+}
+
+/** Runtime capabilities behind `getSupportedActions` — same inputs, richer result. */
+export function resolveTransferRuntime(
+  status: DownloadStatus,
+  localMedia?: LocalMediaActionOptions,
+) {
+  return resolveDownloadRuntimeActions({
+    status,
+    executionState: localMedia?.executionState ?? null,
+    workerState: localMedia?.workerState ?? null,
+    sourceSupportsResume: localMedia?.supportsResume ?? null,
+    hasActiveTransfer:
+      localMedia?.localState === 'transferring' ||
+      localMedia?.executionState === 'DOWNLOADING'
+        ? true
+        : localMedia?.localState
+          ? false
+          : undefined,
   });
 }
 
@@ -438,18 +460,7 @@ export function getSupportedActions(
     return ['remove'];
   }
 
-  const runtime = resolveDownloadRuntimeActions({
-    status,
-    executionState: localMedia?.executionState ?? null,
-    workerState: localMedia?.workerState ?? null,
-    hasActiveTransfer:
-      localMedia?.localState === 'transferring' ||
-      localMedia?.executionState === 'DOWNLOADING'
-        ? true
-        : localMedia?.localState
-          ? false
-          : undefined,
-  });
+  const runtime = resolveTransferRuntime(status, localMedia);
   const transferActions = runtimeActionsToCardActions(runtime);
 
   if (status === 'FAILED') {

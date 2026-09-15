@@ -1,4 +1,5 @@
 import { isSameDocumentUrl, normalizeMediaUrl } from '@/media-detection/utils';
+import { stableResourcePath } from '@/media-detection/social-source/resource-identity';
 
 /**
  * Stable identity for duplicate download prevention across signed URL refreshes.
@@ -26,9 +27,9 @@ export function buildBrowserMediaFingerprint(input: {
   let mediaKey = media;
   try {
     const parsed = new URL(media);
-    mediaKey = `${parsed.hostname}${parsed.pathname}`.toLowerCase();
+    mediaKey = stableResourcePath(parsed.href) ?? media;
   } catch {
-    mediaKey = (media ?? '').toLowerCase();
+    mediaKey = media ?? '';
   }
 
   return `${platform}|${pageKey}|${mediaKey}`;

@@ -15,6 +15,7 @@ import {
   buildProgressMeta,
   getStatusLabel,
   getSupportedActions,
+  resolveTransferRuntime,
   type DownloadCardAction,
 } from '../utils/download-format';
 
@@ -164,12 +165,17 @@ export const DownloadCard = memo(function DownloadCard({
   const progressMeta = buildProgressMeta(item, transfer);
   const statusLabel = getStatusLabel(item.status);
   const statusColors = downloadsTokens.status[item.status];
-  const actions = getSupportedActions(item.status, item.sourceUrl, {
+  const runtimeOptions = {
     localUri: transfer?.localUri ?? null,
     localState: transfer?.localState ?? null,
     executionState: transfer?.executionState ?? null,
     workerState: item.workerState ?? transfer?.workerState ?? null,
-  });
+    supportsResume: transfer?.supportsResume ?? null,
+  };
+  const actions = getSupportedActions(item.status, item.sourceUrl, runtimeOptions);
+  const pauseBlocked =
+    resolveTransferRuntime(item.status, runtimeOptions).pauseBlockedReason ===
+    'SOURCE_NOT_RESUMABLE';
   const progressValue = Math.max(
     transfer?.progress ?? 0,
     item.progress ?? 0,
@@ -327,6 +333,16 @@ export const DownloadCard = memo(function DownloadCard({
             {showCompletedBadge && progressMeta ? (
               <Text variant="caption" color="textSecondary" numberOfLines={1}>
                 {progressMeta}
+              </Text>
+            ) : null}
+
+            {pauseBlocked ? (
+              <Text
+                variant="caption"
+                color="textSecondary"
+                numberOfLines={2}
+                testID={testID ? `${testID}-pause-unsupported` : undefined}>
+                {t('downloads.pauseUnsupported')}
               </Text>
             ) : null}
 

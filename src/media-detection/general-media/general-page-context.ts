@@ -10,6 +10,7 @@ import { resolveSocialPlatform } from '../social/social-content-identity';
 import type { ActiveVideoEvidence } from '../social/types';
 import { buildGeneralCurrentMediaIdentity } from './general-content-identity';
 import { classifyGeneralContentNavigation } from './general-content-navigation';
+import { stableResourcePath } from '../social-source/resource-identity';
 import {
   looksLikeGeneralPlayerIframe,
   resolveIframeOwnerStrength,
@@ -92,8 +93,7 @@ function resourcePathKey(url: string | null | undefined): string | null {
     return `blob:${url.slice(0, 48)}`;
   }
   try {
-    const u = new URL(url);
-    return `${u.hostname}${u.pathname}`.toLowerCase();
+    return stableResourcePath(url);
   } catch {
     return null;
   }

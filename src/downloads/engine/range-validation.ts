@@ -82,7 +82,7 @@ export function validateRangeResumeResponse(options: {
     }
     throw new DownloadEngineError(
       'RESUME_UNSUPPORTED',
-      'This server doesn’t support resumable downloads.',
+      'This media source doesn’t allow resuming a partial download.',
     );
   }
 
@@ -96,7 +96,7 @@ export function validateRangeResumeResponse(options: {
   if (status !== 206) {
     throw new DownloadEngineError(
       'RANGE_REJECTED',
-      'This server doesn’t support resumable downloads.',
+      'This media source doesn’t allow resuming a partial download.',
     );
   }
 
@@ -104,14 +104,14 @@ export function validateRangeResumeResponse(options: {
   if (!parsed) {
     throw new DownloadEngineError(
       'INVALID_RANGE_RESPONSE',
-      'The server returned an invalid Content-Range header.',
+      'The media source returned an invalid Content-Range header.',
     );
   }
 
   if (parsed.start !== Math.trunc(offset)) {
     throw new DownloadEngineError(
       'INVALID_RANGE_RESPONSE',
-      'The server returned a Content-Range that does not match the partial file.',
+      'The media source returned a Content-Range that does not match the partial file.',
     );
   }
 
@@ -186,7 +186,7 @@ export function validateRangeResumeResponse(options: {
   ) {
     throw new DownloadEngineError(
       'INVALID_RANGE_RESPONSE',
-      'The server returned an inconsistent Content-Length for this Range.',
+      'The media source returned an inconsistent Content-Length for this Range.',
     );
   }
 

@@ -107,6 +107,13 @@ export type TransferProgressSnapshot = {
   generation?: number;
   /** Bytes already on disk when this transfer attempt began (resume baseline). */
   attemptStartBytes?: number;
+  /**
+   * Engine-owned: whether this source can continue from a partial file.
+   * Omitted means unknown — UI must assume Pause is allowed. Explicit `false`
+   * (e.g. social CDNs on signed links) suppresses Pause so a pause cannot
+   * strand progress the source will refuse to resume.
+   */
+  supportsResume?: boolean;
   errorCode: DownloadEngineErrorCode | null;
   errorMessage: string | null;
 };

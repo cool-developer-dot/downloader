@@ -16,6 +16,7 @@ function isInstagramHost(url: string): boolean {
 function isReelOrPostPath(pathname: string): boolean {
   return (
     /^\/reel\/[^/]+/i.test(pathname) ||
+    /^\/reels\/[^/]+/i.test(pathname) ||
     /^\/p\/[^/]+/i.test(pathname) ||
     /^\/tv\/[^/]+/i.test(pathname)
   );

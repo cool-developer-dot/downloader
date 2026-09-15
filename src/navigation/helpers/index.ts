@@ -9,6 +9,7 @@ export {
   resetNavigation,
 } from './navigation';
 export type { NavigationTarget } from './navigation';
+export { openPlayer } from './open-player';
 export { resolveDeepLinkPath, getLinkingPrefixes, isValidDeepLinkPath, normalizeDeepLinkPath } from './deep-link';
 export { getRootGroupForRoute } from './get-root-group-for-route';
 export { resolveFallbackRoute } from './resolve-fallback-route';

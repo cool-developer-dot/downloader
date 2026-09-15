@@ -119,3 +119,16 @@ export function isPlayableAvailability(
 ): boolean {
   return availability === 'available';
 }
+
+/**
+ * Whether a play affordance should stay enabled, which is a deliberately looser
+ * question than `isPlayableAvailability`.
+ *
+ * Verification is TTL-based, so `unverified` only means "not checked recently" —
+ * blocking it would hide files that are really on disk. Only a known-`missing`
+ * file disables the control. The file is verified for real when the player
+ * mounts, so an optimistic tap surfaces an error instead of doing nothing.
+ */
+export function canAttemptPlayback(availability: LocalAvailability): boolean {
+  return availability !== 'missing';
+}

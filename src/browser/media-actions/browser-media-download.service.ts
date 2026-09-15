@@ -15,53 +15,51 @@ import { buildMediaRequestContext } from '@/media-detection/services/request-con
 import { pendingMediaResolutionService } from '@/media-detection/services/pending-media-resolution.service';
 import { useDownloadsStore } from '@/store/downloads';
 import { logSocialSource } from '@/media-detection/social-source/social-source-diagnostics';
-
-import { buildBrowserMediaFingerprint } from './media-fingerprint';
+import { normalizeMediaUrl } from '@/media-detection/utils';
+import { sameResourceFamily, stableResourcePath } from '@/media-detection/social-source/resource-identity';
 
 export type BrowserDownloadResult =
   | { ok: true; downloadId: string }
   | { ok: false; message: string; refreshable?: boolean };
 
-function findActiveDownloadByFingerprint(fingerprint: string): {
-  id: string;
-  status: string;
-  progress: number;
-} | null {
-  const { itemsById } = useDownloadsStore.getState();
-  for (const item of Object.values(itemsById)) {
-    const itemFingerprint = buildBrowserMediaFingerprint({
-      pageUrl: item.sourceUrl,
-      mediaUrl: item.sourceUrl,
-      platform: item.platform,
-    });
-    if (itemFingerprint === fingerprint) {
-      return { id: item.id, status: item.status, progress: item.progress };
-    }
-    if (item.sourceUrl && fingerprint.includes(item.sourceUrl.toLowerCase())) {
-      return { id: item.id, status: item.status, progress: item.progress };
-    }
+/**
+ * Share the verified-resource identity policy: retain content/quality selectors
+ * and case-sensitive paths while allowing known credential rotation.
+ */
+function mediaIdentityKey(url: string | null | undefined): string | null {
+  const trimmed = url?.trim();
+  if (!trimmed) {
+    return null;
   }
-  return null;
+  const normalized = normalizeMediaUrl(trimmed) ?? trimmed;
+  return stableResourcePath(normalized);
+}
+
+/** Media component of a `platform|pageKey|mediaKey` fingerprint. */
+function fingerprintMediaKey(fingerprint: string): string | null {
+  const separator = fingerprint.lastIndexOf('|');
+  const key = (separator >= 0 ? fingerprint.slice(separator + 1) : fingerprint).trim();
+  return key || null;
 }
 
 export function findDownloadForBrowserMedia(input: {
   fingerprint: string;
   mediaUrl: string | null;
 }): { id: string; status: string; progress: number } | null {
-  const { itemsById } = useDownloadsStore.getState();
-  const normalizedMedia = input.mediaUrl?.trim().toLowerCase() ?? '';
+  const targetKey =
+    mediaIdentityKey(input.mediaUrl) ?? fingerprintMediaKey(input.fingerprint);
+  if (!targetKey) {
+    return null;
+  }
 
+  const { itemsById } = useDownloadsStore.getState();
   for (const item of Object.values(itemsById)) {
-    const source = item.sourceUrl?.trim().toLowerCase() ?? '';
-    if (!source) {
-      continue;
-    }
-    if (normalizedMedia && (source === normalizedMedia || source.includes(normalizedMedia.slice(0, 48)))) {
+    if (mediaIdentityKey(item.sourceUrl) === targetKey) {
       return { id: item.id, status: item.status, progress: item.progress };
     }
   }
 
-  return findActiveDownloadByFingerprint(input.fingerprint);
+  return null;
 }
 
 export async function enqueueBrowserMediaDownload(input: {
@@ -71,23 +69,11 @@ export async function enqueueBrowserMediaDownload(input: {
   fingerprint: string;
   socialSourceIdentity?: SocialSourceRefreshIdentity | null;
 }): Promise<BrowserDownloadResult> {
-  const existing = findDownloadForBrowserMedia({
-    fingerprint: input.fingerprint,
-    mediaUrl: input.analysis.finalUrl ?? input.analysis.sourceUrl,
-  });
-
-  if (existing) {
-    const active = ['QUEUED', 'DOWNLOADING', 'PAUSED'].includes(existing.status);
-    if (active || existing.status === 'COMPLETED') {
-      return { ok: true, downloadId: existing.id };
-    }
-  }
-
   const selection = normalizeAnalysisToSelection(input.analysis);
   const option =
-    (input.selectedOptionId
+    input.selectedOptionId != null
       ? findQualityOptionById(selection.options, input.selectedOptionId)
-      : null) ?? selectDefaultQualityOption(selection.options);
+      : selectDefaultQualityOption(selection.options);
 
   if (!option?.downloadable) {
     return { ok: false, message: 'This quality is not available for download.' };
@@ -96,6 +82,15 @@ export async function enqueueBrowserMediaDownload(input: {
   const payload = toCreateDownloadInput(selection, option);
   if (!payload) {
     return { ok: false, message: 'Could not prepare download.' };
+  }
+
+  // Dedupe the exact chosen variant, never the analysis' preferred source.
+  const existing = findDownloadForBrowserMedia({
+    fingerprint: input.fingerprint,
+    mediaUrl: payload.sourceUrl,
+  });
+  if (existing && !['FAILED', 'CANCELLED'].includes(existing.status)) {
+    return { ok: true, downloadId: existing.id };
   }
 
   let ctx = input.requestContext;
@@ -182,7 +177,7 @@ export async function enqueueBrowserMediaDownload(input: {
             previousMediaUrl: payload.sourceUrl,
             requiresCookies: ctx.cookiesRequired,
           });
-          if (refresh.ok && refresh.mediaUrl) {
+          if (refresh.ok && refresh.mediaUrl && sameResourceFamily(payload.sourceUrl, refresh.mediaUrl)) {
             const refreshedCtx = await buildMediaRequestContext({
               mediaUrl: refresh.mediaUrl,
               pageUrl: refresh.pageUrl ?? session.canonicalUrl,

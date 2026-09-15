@@ -254,6 +254,10 @@ class MediaDetectionEngine {
   }
 
   observeNativeCandidate(input: {
+    tabId?: string;
+    navigationEpoch?: number;
+    observedAt?: number;
+    frameUrl?: string | null;
     url: string;
     mimeType?: string | null;
     requiresCookies?: boolean;
@@ -266,6 +270,8 @@ class MediaDetectionEngine {
     if (!this.started || !this.pageUrl) {
       return;
     }
+    // Never attribute process-global or parked WebView traffic to the active tab.
+    if (input.tabId !== this.activeTabId || input.navigationEpoch !== this.navigationEpoch) return;
     const effectivePage = input.pageUrl ?? this.pageUrl;
     const social = resolveSocialPlatform(this.pageUrl);
     const pageMatches = social
@@ -304,6 +310,12 @@ class MediaDetectionEngine {
       return;
     }
     const beforeCount = store.detectedMedia.length;
+    result.media = result.media.map((media) => media.url === input.url ? {
+      ...media, frameUrl: input.frameUrl ?? media.frameUrl,
+      observedTabId: input.tabId,
+      observedNavigationEpoch: input.navigationEpoch,
+      observedPageGeneration: this.activeTabId ? generalPageMediaContextStore.get(this.activeTabId)?.pageGeneration : undefined,
+    } : media);
     this.applyPipelineResult(result);
     if (result.media.length > beforeCount) {
       logIgRuntime('network_candidate', {
@@ -435,6 +447,11 @@ class MediaDetectionEngine {
       String(payload.paused),
       String(payload.recentlyPlayed),
       payload.associatedContentId ?? '',
+      String(payload.intersectionRatio),
+      String(payload.isDisplayed),
+      String(payload.isVisibleStyle),
+      String(payload.explicitAdMarker),
+      String(payload.videoWidth), String(payload.videoHeight),
     ].join('|');
     if (videoKey === this.lastActiveVideoKey) {
       return;
@@ -713,6 +730,14 @@ class MediaDetectionEngine {
     }
 
     const store = useMediaDetectionStore.getState();
+    if (result.media !== store.detectedMedia) {
+      result.media = result.media.map((media) => media.observedTabId ? media : {
+        ...media,
+        observedTabId: this.activeTabId,
+        observedNavigationEpoch: this.navigationEpoch,
+        observedPageGeneration: this.activeTabId ? generalPageMediaContextStore.get(this.activeTabId)?.pageGeneration : undefined,
+      });
+    }
     const previousCount = store.detectedMedia.length;
 
     if (result.media !== store.detectedMedia) {

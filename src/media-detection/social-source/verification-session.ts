@@ -33,7 +33,8 @@ export function buildVerificationCacheKey(input: {
   contentIdentity: string;
   executableUrl: string;
 }): CacheKey {
-  const path = stableResourcePath(input.executableUrl) ?? input.executableUrl.slice(0, 120);
+  // Verification is for this executable URL, including its current credential.
+  const path = input.executableUrl;
   return [
     input.tabId,
     String(input.navigationEpoch),
@@ -64,6 +65,9 @@ export function setCachedVerifiedVariant(
   const safe: VerifiedSocialMediaVariant = {
     ...variant,
     requestContext: stripRequestContextSecrets(variant.requestContext),
+    alternatives: variant.alternatives?.slice(0, 6).map((v) => ({
+      ...v, alternatives: undefined, requestContext: stripRequestContextSecrets(v.requestContext),
+    })),
   };
   verifiedCache.set(key, {
     variant: safe,
@@ -80,8 +84,10 @@ export function joinOrStartVerification(
   if (existing) {
     return { joined: true, promise: existing.promise };
   }
-  const promise = start().finally(() => {
-    inFlight.delete(key);
+  if (inFlight.size >= MAX_ENTRIES) return { joined: false, promise: Promise.resolve(null) };
+  // Defer start until the entry is installed (also avoids caller TDZ on `joined`).
+  const promise = Promise.resolve().then(start).finally(() => {
+    if (inFlight.get(key)?.promise === promise) inFlight.delete(key);
   });
   inFlight.set(key, { promise });
   return { joined: false, promise };

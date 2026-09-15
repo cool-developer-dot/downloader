@@ -20,6 +20,7 @@ export function extractFromDomCandidate(
     detectionSource: payload.detectionSource,
     title: payload.title,
     estimatedFileSize: payload.estimatedFileSize,
+    videoElementEvidence: payload.tagName === 'video' || payload.tagName === 'source',
   });
 
   if (!base) {
@@ -30,6 +31,8 @@ export function extractFromDomCandidate(
 
   return {
     ...base,
+    ownerElementIdentity: payload.ownerElementIdentity,
+    frameUrl: payload.frameUrl,
     thumbnailUrl,
     duration: payload.duration,
     width: payload.width,

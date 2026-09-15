@@ -47,7 +47,7 @@ function safeUrl(raw: string): URL | null {
 }
 
 function canonicalizePath(pathname: string): string {
-  let path = pathname.toLowerCase();
+  let path = pathname;
   if (path.length > 1 && path.endsWith('/')) {
     path = path.slice(0, -1);
   }
@@ -111,7 +111,7 @@ export function canonicalizeGeneralContentKey(url: string | null | undefined): s
   const host = stripWww(parsed.hostname);
   const videoId = extractGeneralPageVideoId(url) ?? contentQueryId(parsed);
   if (videoId) {
-    return `id:${videoId}`;
+    return `id:${host}:${videoId}`;
   }
   const path = canonicalizePath(parsed.pathname);
   const q = meaningfulQueryIdentity(parsed);

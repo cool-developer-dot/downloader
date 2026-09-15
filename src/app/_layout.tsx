@@ -32,7 +32,7 @@ function RootNavigator() {
       ...rootStackScreenOptions,
       // Theme continuity: hydrated store when ready; MMKV seed before ready.
       ...createContentStyleOptions(
-        isReady ? theme.colors.background : resolveStartupBackground('light'),
+        isReady ? theme.colors.background : resolveStartupBackground(),
       ),
     }),
     [isReady, theme.colors.background],

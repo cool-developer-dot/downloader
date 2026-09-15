@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   Pressable,
@@ -9,8 +9,6 @@ import {
 import { Box } from '@/components/base/Box';
 import { Icon } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
-import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
-import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
 import { BROWSER_TOUCH_TARGET } from '@/browser/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
@@ -36,7 +34,8 @@ export type BrowserMediaDownloadBarProps = {
 
 /**
  * Compact persistent "Video available" bar above the browser toolbar.
- * Opens an app-owned Play / Download sheet. Never auto-popups.
+ * Tap starts download (or quality selection). Never auto-popups.
+ * In-page playback stays in the WebView — this bar is not a second player.
  */
 export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
   testID = 'browser-media-download-bar',
@@ -54,11 +53,11 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
   });
   const presentation = action.presentation;
 
-  const [sheetVisible, setSheetVisible] = useState(false);
   const [toastVisible, setToastVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState('');
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const announcedRef = useRef(false);
+  const downloadInFlightRef = useRef(false);
 
   const showToast = useCallback((message: string) => {
     setToastMessage(message);
@@ -84,7 +83,6 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
   useEffect(() => {
     if (!presentation.showCard) {
       announcedRef.current = false;
-      setSheetVisible(false);
     }
   }, [presentation.showCard]);
 
@@ -96,58 +94,38 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
     };
   }, []);
 
-  const closeSheet = useCallback(() => {
-    setSheetVisible(false);
-  }, []);
+  const handleDownload = useCallback(async () => {
+    if (downloadInFlightRef.current) {
+      return;
+    }
+    downloadInFlightRef.current = true;
+    try {
+      const result = await action.download();
+      if (result.ok) {
+        showToast(t('downloads.successToast'));
+        return;
+      }
+      const toast = toastForUserTriggeredDownloadOutcome(
+        result.outcome ?? {
+          kind: 'STALE_CONTEXT',
+          reason: 'NOT_AVAILABLE',
+        },
+        action.errorMessage,
+      );
+      if (toast) {
+        showToast(toast);
+      }
+    } finally {
+      downloadInFlightRef.current = false;
+    }
+  }, [action, showToast, t]);
 
   const handleBarPress = useCallback(() => {
     if (presentation.buttonDisabled) {
       return;
     }
-    setSheetVisible(true);
-  }, [presentation.buttonDisabled]);
-
-  const handlePlay = useCallback(() => {
-    action.play();
-  }, [action]);
-
-  const handleDownload = useCallback(async () => {
-    const result = await action.download();
-    if (result.ok) {
-      showToast(t('downloads.successToast'));
-      return;
-    }
-    const toast = toastForUserTriggeredDownloadOutcome(
-      result.outcome ?? {
-        kind: 'STALE_CONTEXT',
-        reason: 'NOT_AVAILABLE',
-      },
-      action.errorMessage,
-    );
-    if (toast) {
-      showToast(toast);
-    }
-  }, [action, showToast, t]);
-
-  const sheetActions = useMemo<ActionSheetItem[]>(
-    () => [
-      {
-        id: 'play',
-        label: t('browser.media.play'),
-        icon: 'play',
-        onPress: handlePlay,
-      },
-      {
-        id: 'download',
-        label: t('browser.media.download'),
-        icon: 'download',
-        onPress: () => {
-          void handleDownload();
-        },
-      },
-    ],
-    [handleDownload, handlePlay, t],
-  );
+    void handleDownload();
+  }, [handleDownload, presentation.buttonDisabled]);
 
   if (!presentation.showCard && !toastVisible) {
     return null;
@@ -234,21 +212,13 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
                 : t('browser.media.videoAvailable')}
             </Text>
             <Icon
-              name="chevron-down"
+              name="download"
               size={20}
               color={barEnabled ? 'primary' : 'disabled'}
             />
           </Pressable>
         </View>
       ) : null}
-
-      <ActionSheetModal
-        visible={sheetVisible}
-        title={t('browser.media.videoAvailable')}
-        actions={sheetActions}
-        onClose={closeSheet}
-        testID="browser-media-action-sheet"
-      />
     </Box>
   );
 });

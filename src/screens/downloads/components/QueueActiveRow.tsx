@@ -59,6 +59,7 @@ export const QueueActiveRow = memo(function QueueActiveRow({
     status: item.status,
     executionState: transfer?.executionState ?? null,
     workerState: item.workerState ?? transfer?.workerState ?? null,
+    sourceSupportsResume: transfer?.supportsResume ?? null,
     hasActiveTransfer:
       transfer?.localState === 'transferring' ||
       transfer?.executionState === 'DOWNLOADING'
@@ -119,6 +120,15 @@ export const QueueActiveRow = memo(function QueueActiveRow({
             {progressMeta ? (
               <Text variant="caption" color="textSecondary" numberOfLines={1}>
                 {progressMeta}
+              </Text>
+            ) : null}
+            {runtime.pauseBlockedReason === 'SOURCE_NOT_RESUMABLE' ? (
+              <Text
+                variant="caption"
+                color="textSecondary"
+                numberOfLines={2}
+                testID={`queue-active-pause-unsupported-${id}`}>
+                {t('downloads.pauseUnsupported')}
               </Text>
             ) : null}
           </Box>

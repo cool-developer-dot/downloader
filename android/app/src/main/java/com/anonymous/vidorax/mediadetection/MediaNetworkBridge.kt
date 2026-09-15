@@ -10,6 +10,7 @@ import android.webkit.ServiceWorkerController
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import android.view.View
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.WritableMap
@@ -52,7 +53,7 @@ object MediaNetworkBridge {
 
   private val MEDIA_PATH =
     Regex(
-      "\\.(mp4|webm|mov|m4v|mkv|avi|mpeg|mpg|m3u8|mpd|mp3|m4a|aac|ogg|3gp|3g2|flv|wmv|m2ts)(?:[?#]|$)",
+      "\\.(mp4|webm|mov|m4v|mkv|avi|mpeg|mpg|m3u8|mpd|mp3|m4a|aac|ogg|ogv|opus|wav|flac|3gp|3g2|flv|wmv|m2ts)(?:[?#]|$)",
       RegexOption.IGNORE_CASE,
     )
   private val SKIP_PATH =
@@ -62,9 +63,11 @@ object MediaNetworkBridge {
     )
   private val MEDIA_FAMILY_PATH =
     Regex(
-      "(?:^|/)(?:hls|m3u8|manifest|playlist|stream(?:ing)?|vod|video)(?:[/._-]|$)",
+      "(?:^|/)(?:hls|m3u8|manifest|playlist|stream(?:ing)?|vod|videoplayback|dashplaylist|video)(?:[/._-]|$)",
       RegexOption.IGNORE_CASE,
     )
+  private val VIDEO_OBJECT_PATH =
+    Regex("(?:^|/)v/t\\d{2,}(?:[/._-]|$)", RegexOption.IGNORE_CASE)
   private val API_PATH =
     Regex(
       "(?:^|/)(?:api|graphql|metadata|beacon|analytics|tracking|telemetry|stats)(?:[/._-]|$)",
@@ -126,6 +129,7 @@ object MediaNetworkBridge {
   }
 
   @JvmStatic
+  @Synchronized
   fun observeRequestFrom(view: WebView?, request: WebResourceRequest?, source: String) {
     if (request == null) {
       return
@@ -147,6 +151,7 @@ object MediaNetworkBridge {
     } catch (_: Throwable) {
       null
     }
+    val requestReferer = headers?.entries?.firstOrNull { it.key.equals("Referer", ignoreCase = true) }?.value?.take(8192)
 
     val accept = headers?.entries
       ?.firstOrNull { it.key.equals("Accept", ignoreCase = true) }
@@ -176,9 +181,11 @@ object MediaNetworkBridge {
 
     val pathLooksMedia = MEDIA_PATH.containsMatchIn(url)
     val acceptLooksMedia = accept != null && MEDIA_ACCEPT.containsMatchIn(accept)
-    val familyPath = MEDIA_FAMILY_PATH.containsMatchIn(path)
+    val familyPath = MEDIA_FAMILY_PATH.containsMatchIn(path) || VIDEO_OBJECT_PATH.containsMatchIn(path)
     val skipPath = SKIP_PATH.containsMatchIn(url)
     val tiktokLooksMedia = tiktokLooksMedia(host, path, hasRange, pathLooksMedia)
+    val instagramLooksMedia = instagramLooksMedia(host, path)
+    val queryLooksMedia = queryLooksMedia(url)
     val interesting =
       !isMain ||
         hasRange ||
@@ -186,6 +193,8 @@ object MediaNetworkBridge {
         acceptLooksMedia ||
         familyPath ||
         tiktokLooksMedia ||
+        instagramLooksMedia ||
+        queryLooksMedia ||
         source == "service-worker"
 
     if (interesting && !skipPath) {
@@ -243,20 +252,21 @@ object MediaNetworkBridge {
       return
     }
 
-    val iframeMediaHint = !isMain && (hasRange || familyPath || acceptLooksMedia)
+    val iframeMediaHint = !isMain && (hasRange || familyPath || acceptLooksMedia || queryLooksMedia)
     val rangeFamilyMedia = hasRange && familyPath
 
-    if (!pathLooksMedia && !acceptLooksMedia && !tiktokLooksMedia && !iframeMediaHint && !rangeFamilyMedia) {
+    if (!pathLooksMedia && !acceptLooksMedia && !tiktokLooksMedia && !instagramLooksMedia && !iframeMediaHint && !rangeFamilyMedia && !queryLooksMedia) {
       emitRejected(source, request, url, "NO_MEDIA_EVIDENCE", interesting = interesting)
       return
     }
 
     val now = System.currentTimeMillis()
-    val prev = recent[url]
+    val scopedKey = "${view?.id ?: -1}|$url"
+    val prev = recent[scopedKey]
     if (prev != null && now - prev < DEDUPE_MS) {
       return
     }
-    recent[url] = now
+    recent[scopedKey] = now
 
     if (recent.size > 400) {
       val cutoff = now - 60_000L
@@ -266,6 +276,10 @@ object MediaNetworkBridge {
         if (entry.value < cutoff) {
           iterator.remove()
         }
+      }
+      while (recent.size > 400) {
+        val oldest = recent.entries.minByOrNull { it.value }?.key ?: break
+        recent.remove(oldest)
       }
     }
 
@@ -279,25 +293,26 @@ object MediaNetworkBridge {
     }
     windowCount += 1
 
-    val pageUrl = try {
-      view?.url
-    } catch (_: Throwable) {
-      null
-    }
+    // WebView URL is UI-thread-only; RN binds tab/epoch from the physical view id.
+    val pageUrl: String? = null
+    val webViewId = view?.id ?: -1
 
     // Request metadata only — never fabricate response Content-Type.
     // TikTok MIME hint is preserved as existing playback-path evidence, not a response header.
     val mimeHint = when {
       tiktokLooksMedia -> "video/mp4"
+      instagramLooksMedia && !acceptLooksMedia -> "video/mp4"
       acceptLooksMedia && accept != null -> firstMediaAcceptToken(accept)
+      queryLooksMedia -> queryMimeHint(url)
       else -> null
     }
 
     val fingerprint = resourceFingerprint(url)
 
-    worker.execute {
+    mainHandler.post {
+      val parentViewId = (view?.parent as? View)?.id ?: -1
       emitCandidate(
-        url = url,
+        url = canonicalizeObservedUrl(url),
         method = method,
         mimeHint = mimeHint,
         isForMainFrame = isMain,
@@ -306,6 +321,10 @@ object MediaNetworkBridge {
         pageUrl = pageUrl,
         resourceFingerprint = fingerprint,
         observationSource = source,
+        webViewId = webViewId,
+        parentViewId = parentViewId,
+        observedAt = now,
+        requestReferer = requestReferer,
       )
       emitTrace(
         stage = "NATIVE_EMITTED",
@@ -362,6 +381,66 @@ object MediaNetworkBridge {
     return !host.contains("ibyteimg") &&
       ((tiktokCdnHost && (tiktokPlaybackPath || hasRange || pathLooksMedia)) ||
         tiktokSitePlayback)
+  }
+
+  private fun instagramLooksMedia(host: String, path: String): Boolean {
+    val igHost =
+      host.contains("cdninstagram") ||
+        host.contains("fbcdn.net") ||
+        host.contains("scontent")
+    if (!igHost) return false
+    if (Regex("\\.(jpg|jpeg|png|webp|gif|js|css|json|html|m4s|ts)(?:[?#]|$)", RegexOption.IGNORE_CASE).containsMatchIn(path)) {
+      return false
+    }
+    return path.contains("/v/t") ||
+      Regex("\\.(mp4|m4v|webm|mov)(?:$|[/?])", RegexOption.IGNORE_CASE).containsMatchIn(path)
+  }
+
+  private fun queryLooksMedia(url: String): Boolean {
+    val lower = url.lowercase()
+    if (lower.contains("mime=video") || lower.contains("mime=audio")) return true
+    if (lower.contains("mime=application%2fvnd.apple") || lower.contains("mime=application/vnd.apple")) {
+      return true
+    }
+    if (lower.contains("format=mp4") || lower.contains("ext=mp4") || lower.contains("file=mp4")) {
+      return true
+    }
+    return lower.contains("itag=") &&
+      (lower.contains("mime=") || lower.contains("clen=") || lower.contains("dur="))
+  }
+
+  private fun queryMimeHint(url: String): String? {
+    val lower = url.lowercase()
+    if (lower.contains("mime=video%2fwebm") || lower.contains("mime=video/webm")) return "video/webm"
+    if (lower.contains("mime=video")) return "video/mp4"
+    if (lower.contains("mime=audio")) return "audio/mp4"
+    if (lower.contains("mpegurl")) return "application/vnd.apple.mpegurl"
+    return null
+  }
+
+  private fun canonicalizeObservedUrl(url: String): String {
+    return try {
+      val uri = Uri.parse(url)
+      val path = uri.path ?: ""
+      if (!path.contains("videoplayback", ignoreCase = true)) {
+        return url
+      }
+      val drop = setOf("range", "rn", "rbuf", "alr", "ump", "keepalive")
+      val builder = uri.buildUpon().clearQuery()
+      var changed = false
+      for (name in uri.queryParameterNames) {
+        if (drop.contains(name.lowercase())) {
+          changed = true
+          continue
+        }
+        for (value in uri.getQueryParameters(name)) {
+          builder.appendQueryParameter(name, value)
+        }
+      }
+      if (changed) builder.build().toString() else url
+    } catch (_: Throwable) {
+      url
+    }
   }
 
   private fun firstMediaAcceptToken(accept: String): String? {
@@ -607,6 +686,10 @@ object MediaNetworkBridge {
     pageUrl: String?,
     resourceFingerprint: String,
     observationSource: String,
+    webViewId: Int,
+    parentViewId: Int,
+    observedAt: Long,
+    requestReferer: String?,
   ) {
     val context = reactContextRef?.get() ?: return
     if (!context.hasActiveCatalystInstance()) {
@@ -631,6 +714,10 @@ object MediaNetworkBridge {
       }
       putString("resourceFingerprint", resourceFingerprint)
       putString("observationSource", observationSource)
+      putInt("webViewId", webViewId)
+      putInt("parentViewId", parentViewId)
+      putDouble("observedAt", observedAt.toDouble())
+      if (requestReferer != null) putString("requestReferer", requestReferer) else putNull("requestReferer")
     }
 
     mainHandler.post {

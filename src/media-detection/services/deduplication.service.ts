@@ -1,4 +1,5 @@
 import type { DetectedMedia } from '../types';
+import { stableResourcePath } from '../social-source/resource-identity';
 
 /**
  * Merge an incoming detection into an existing list.
@@ -70,17 +71,7 @@ function isSameLogicalMedia(a: DetectedMedia, b: DetectedMedia): boolean {
 
 /** Strip common CDN cache-busters for dedup without dropping quality tokens. */
 function stripVolatileQuery(url: string): string {
-  try {
-    const u = new URL(url);
-    const drop = ['_', 'cachebust', 'cb', 't', 'timestamp', 'v'];
-    for (const key of drop) {
-      u.searchParams.delete(key);
-    }
-    u.hash = '';
-    return u.toString();
-  } catch {
-    return url;
-  }
+  return stableResourcePath(url) ?? url;
 }
 
 function preferNullish<T>(prev: T | null, next: T | null): T | null {
@@ -94,6 +85,12 @@ function mergeMedia(prev: DetectedMedia, incoming: DetectedMedia): DetectedMedia
 
   return {
     ...prev,
+    ownerElementIdentity: incoming.ownerElementIdentity ?? prev.ownerElementIdentity,
+    frameUrl: incoming.frameUrl ?? prev.frameUrl,
+    observedTabId: incoming.observedTabId ?? prev.observedTabId,
+    observedNavigationEpoch: incoming.observedNavigationEpoch ?? prev.observedNavigationEpoch,
+    observedPageGeneration: incoming.observedPageGeneration ?? prev.observedPageGeneration,
+    container: incoming.container !== 'unknown' ? incoming.container : prev.container,
     url: preferIncomingUrl ? incoming.url || prev.url : prev.url,
     sourceUrl: preferNullish(prev.sourceUrl, incoming.sourceUrl) ?? prev.url,
     finalUrl: preferIncomingUrl
@@ -145,6 +142,9 @@ function mergeMedia(prev: DetectedMedia, incoming: DetectedMedia): DetectedMedia
 
 function shallowEqualMedia(a: DetectedMedia, b: DetectedMedia): boolean {
   return (
+    a.ownerElementIdentity === b.ownerElementIdentity &&
+    a.frameUrl === b.frameUrl &&
+    a.container === b.container &&
     a.title === b.title &&
     a.thumbnailUrl === b.thumbnailUrl &&
     a.duration === b.duration &&

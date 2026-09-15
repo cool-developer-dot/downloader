@@ -1,6 +1,7 @@
 import type { HlsPlaylistType, MediaQualityVariant } from '../types';
 import { buildMediaId } from '../utils/media-id';
 import { isSafeMediaUrl, normalizeMediaUrl } from '../utils/url';
+import { videoFormatFromMime } from '../resource/video-resource';
 
 export type HlsVariantInfo = {
   uri: string;
@@ -48,7 +49,7 @@ export function parseHlsManifest(
   const hasEndList = lines.some((line) => line.startsWith('#EXT-X-ENDLIST'));
   const isEncrypted = lines.some(
     (line) =>
-      line.startsWith('#EXT-X-KEY:') &&
+      (line.trim().startsWith('#EXT-X-KEY:') || line.trim().startsWith('#EXT-X-SESSION-KEY:')) &&
       /METHOD=(?!NONE\b)/i.test(line),
   );
 
@@ -182,15 +183,7 @@ export function isHlsManifestUrl(url: string): boolean {
 }
 
 export function isHlsMimeType(mime: string | null | undefined): boolean {
-  if (!mime) {
-    return false;
-  }
-  const base = mime.split(';')[0]?.trim().toLowerCase();
-  return (
-    base === 'application/vnd.apple.mpegurl' ||
-    base === 'application/x-mpegurl' ||
-    base === 'audio/mpegurl'
-  );
+  return videoFormatFromMime(mime) === 'hls';
 }
 
 /**

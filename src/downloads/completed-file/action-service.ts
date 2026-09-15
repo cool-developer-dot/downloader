@@ -22,7 +22,7 @@ import {
 import { getLocalRecord } from '@/downloads/engine/persistence';
 import { hardeningLog } from '@/downloads/hardening-diagnostics';
 import { useDownloadsStore } from '@/store/downloads';
-import { playerPath } from '@/navigation/constants/route-paths';
+import { playerPath, type PlayerRoute } from '@/navigation/constants/route-paths';
 
 import {
   resolveCompletedActions,
@@ -47,7 +47,7 @@ import {
 } from './uri-safety';
 
 export type CompletedFileActionResult =
-  | { ok: true; kind: 'play'; route: string }
+  | { ok: true; kind: 'play'; route: PlayerRoute }
   | { ok: true; kind: 'open' | 'share' }
   | { ok: false; error: CompletedFileActionError };
 

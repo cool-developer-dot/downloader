@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react';
 
-import { navigation, playerPath, routePaths } from '@/navigation';
+import { navigation, openPlayer, routePaths } from '@/navigation';
 import { useTranslation } from '@/localization';
 
 import { useHomeRecentDownloads } from '../hooks/useHomeDashboard';
@@ -19,10 +19,6 @@ export const HomeRecentDownloads = memo(function HomeRecentDownloads({
 }: HomeRecentDownloadsProps) {
   const { items, isLoading } = useHomeRecentDownloads(localById, localReady);
   const { t } = useTranslation();
-
-  const openPlayer = useCallback((mediaId: string) => {
-    navigation.push(playerPath(mediaId));
-  }, []);
 
   const openLibrary = useCallback(() => {
     navigation.navigate(routePaths.library);

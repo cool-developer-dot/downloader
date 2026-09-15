@@ -11,8 +11,8 @@ import { DETECTION_TIMING } from '../constants';
 import { MEDIA_BRIDGE_CHANNEL } from '../types';
 
 const VIDEO_EXTS =
-  'mp4|webm|mov|m4v|mkv|avi|mpeg|mpg|m2ts|3gp|3g2|flv|wmv';
-const AUDIO_EXTS = 'mp3|m4a|aac|ogg';
+  'mp4|webm|mov|m4v|mkv|avi|mpeg|mpg|m2ts|3gp|3g2|flv|wmv|ogv';
+const AUDIO_EXTS = 'mp3|m4a|aac|ogg|opus|wav|flac';
 const STREAM_EXTS = 'm3u8|mpd';
 /** .ts excluded from extension-alone matching — segment noise. */
 
@@ -35,6 +35,9 @@ export function buildMediaDetectionInjectedScript(): string {
   var SEGMENT_RE = /(?:^|\\/)(?:seg(?:ment)?s?|chunk|frag(?:ment)?)(?:[_-]|\\.|\\/|$)|\\.(?:ts|m2ts|m4s)(?:[?#]|$)/i;
   var pending = [];
   var seen = Object.create(null);
+  var seenKeys = [];
+  var MAX_SEEN = 320;
+  var disposed = false;
   var batchTimer = null;
   var lastFlushAt = 0;
   var pageUrl = location.href;
@@ -47,13 +50,18 @@ export function buildMediaDetectionInjectedScript(): string {
 
   function post(type, payload) {
     try {
-      if (postCount > MAX_POSTS) return;
+      if (disposed) return;
       var now = Date.now();
       if (now - postWindowStart >= POST_WINDOW_MS) {
         postWindowStart = now;
         postsInWindow = 0;
+        postCount = 0;
       }
-      if (postsInWindow >= MAX_POSTS_PER_WINDOW) return;
+      var priority = type === 'active_video' || type === 'active_iframe_player' ||
+        type === 'blob_indicator' || type === 'page_meta' || type === 'ready' ||
+        type === 'scan_complete';
+      if (postsInWindow >= MAX_POSTS_PER_WINDOW && !priority) return;
+      if (postCount >= MAX_POSTS) return;
       if (!window.ReactNativeWebView || !window.ReactNativeWebView.postMessage) {
         return;
       }
@@ -113,12 +121,59 @@ export function buildMediaDetectionInjectedScript(): string {
     } catch (e) { return false; }
   }
 
+  function looksInstagramCdnMedia(u) {
+    try {
+      var parsed = new URL(u);
+      var h = (parsed.hostname || '').toLowerCase();
+      var p = (parsed.pathname || '').toLowerCase();
+      if (/\\.(jpg|jpeg|png|webp|gif|js|css|json|html|m4s|ts)$/i.test(p)) return false;
+      var ig = h.indexOf('cdninstagram') >= 0 || h.indexOf('fbcdn.net') >= 0 ||
+        h.indexOf('scontent') >= 0;
+      if (!ig) return false;
+      if (p.indexOf('/v/t') >= 0 || /\\.(mp4|m4v|webm|mov)(?:$|[/?])/i.test(p)) return true;
+      return false;
+    } catch (e) { return false; }
+  }
+
+  function looksPlaybackQuery(u) {
+    try {
+      var s = String(u);
+      if (/[?&](?:mime|content[_-]?type)=(video|audio|application(?:%2F|\\/)(?:vnd\\.apple\\.mpegurl|x-mpegurl|dash\\+xml))/i.test(s)) {
+        return true;
+      }
+      if (/[?&](?:ext|format|container|file)=(mp4|webm|m3u8|mpd|mov|m4v|mkv|mp3|m4a|aac)(?:&|$)/i.test(s)) {
+        return true;
+      }
+      if (/[?&]itag=\\d+/i.test(s) && /[?&](?:clen|dur|bitrate|mime)=/i.test(s)) return true;
+      return false;
+    } catch (e) { return false; }
+  }
+
+  function canonicalizePlaybackUrl(u) {
+    try {
+      var parsed = new URL(u);
+      var p = (parsed.pathname || '').toLowerCase();
+      if (p.indexOf('/videoplayback') < 0) return u;
+      var keys = ['range', 'rn', 'rbuf', 'alr', 'ump', 'keepalive'];
+      var changed = false;
+      for (var i = 0; i < keys.length; i++) {
+        if (parsed.searchParams.has(keys[i])) {
+          parsed.searchParams.delete(keys[i]);
+          changed = true;
+        }
+      }
+      return changed ? parsed.toString() : u;
+    } catch (e) { return u; }
+  }
+
   function looksGenericMediaPath(u) {
     try {
       var p = new URL(u).pathname.toLowerCase();
       if (SEGMENT_RE.test(u) && !/\\.m3u8(?:[?#]|$)/i.test(u) && !/\\.mpd(?:[?#]|$)/i.test(u)) {
         return false;
       }
+      if (/(?:^|\\/)(?:videoplayback|dashplaylist)(?:[\\/._-]|$)/i.test(p)) return true;
+      if (/(?:^|\\/)v\\/t\\d{2,}(?:[\\/._-]|$)/i.test(p)) return true;
       return /(?:^|\\/)(?:hls|m3u8|manifest|playlist|stream(?:ing)?|vod)(?:[\\/._-]|$)/i.test(p);
     } catch (e) { return false; }
   }
@@ -130,23 +185,28 @@ export function buildMediaDetectionInjectedScript(): string {
     }
     if (EXT_RE.test(u)) return true;
     if (looksGenericMediaPath(u)) return true;
+    if (looksPlaybackQuery(u)) return true;
     var init = initiator ? String(initiator).toLowerCase() : '';
     if ((init === 'video' || init === 'audio' || init === 'media') &&
         !/\\.(js|css|png|jpe?g|gif|webp|svg|json|html?|xml|woff2?|ttf|ico)(?:[?#]|$)/i.test(u)) {
       return true;
     }
-    return looksTikTokCdnMedia(u);
+    return looksTikTokCdnMedia(u) || looksInstagramCdnMedia(u);
   }
 
   function enqueue(candidate) {
-    if (!candidate || !candidate.url) return;
+    if (disposed || !candidate || !candidate.url) return;
+    candidate.url = canonicalizePlaybackUrl(candidate.url);
     if (isBlobUrl(candidate.url)) {
       post('blob_indicator', { pageUrl: pageUrl, blobUrl: String(candidate.url).slice(0, 512) });
       return;
     }
-    var key = candidate.url + '|' + (candidate.mimeType || '');
+    var key = candidate.url + '|' + (candidate.mimeType || '') + '|' +
+      (candidate.ownerElementIdentity || '') + '|' + String(candidate.width) + '|' + String(candidate.height);
     if (seen[key]) return;
     seen[key] = 1;
+    seenKeys.push(key);
+    if (seenKeys.length > MAX_SEEN) delete seen[seenKeys.shift()];
     pending.push(candidate);
     if (pending.length > ${maxBatch}) {
       flush();
@@ -181,11 +241,15 @@ export function buildMediaDetectionInjectedScript(): string {
       description: meta('meta[name="description"]', 'content'),
       ogImage: meta('meta[property="og:image"]', 'content'),
       ogVideo: meta('meta[property="og:video"]', 'content') ||
-               meta('meta[property="og:video:url"]', 'content'),
+               meta('meta[property="og:video:url"]', 'content') ||
+               meta('meta[property="og:video:secure_url"]', 'content') ||
+               meta('meta[name="twitter:player:stream"]', 'content'),
       canonicalUrl: meta('link[rel="canonical"]', 'href')
     });
     var ogVideo = meta('meta[property="og:video"]', 'content') ||
-                  meta('meta[property="og:video:url"]', 'content');
+                  meta('meta[property="og:video:url"]', 'content') ||
+                  meta('meta[property="og:video:secure_url"]', 'content') ||
+                  meta('meta[name="twitter:player:stream"]', 'content');
     if (isBlobUrl(ogVideo)) {
       post('blob_indicator', { pageUrl: pageUrl, blobUrl: String(ogVideo).slice(0, 512) });
     } else {
@@ -210,6 +274,113 @@ export function buildMediaDetectionInjectedScript(): string {
         });
       }
     }
+    try {
+      var preloads = document.querySelectorAll('link[rel="preload"][as="video"],link[rel="preload"][as="fetch"]');
+      for (var pi = 0; pi < preloads.length && pi < 12; pi++) {
+        var href = preloads[pi].getAttribute('href');
+        var pAbs = safeUrl(href);
+        var pType = preloads[pi].getAttribute('type');
+        if (pAbs && looksMedia(pAbs, pType)) {
+          enqueue({
+            url: pAbs,
+            pageUrl: pageUrl,
+            mimeType: pType || null,
+            extension: extOf(pAbs),
+            title: document.title || null,
+            thumbnailUrl: null,
+            duration: null,
+            width: null,
+            height: null,
+            estimatedFileSize: null,
+            isLive: false,
+            isDrm: false,
+            playlistType: null,
+            detectionSource: 'og_meta',
+            tagName: 'link'
+          });
+        }
+      }
+    } catch (ePre) {}
+  }
+
+  function unescapeMediaUrl(raw) {
+    if (!raw || typeof raw !== 'string') return raw;
+    return raw.replace(/\\u0026/gi, '&').replace(/\\\//g, '/').replace(/&amp;/g, '&');
+  }
+
+  function harvestJsonLd() {
+    try {
+      var nodes = document.querySelectorAll('script[type="application/ld+json"]');
+      var limit = Math.min(nodes.length, 12);
+      for (var i = 0; i < limit; i++) {
+        var txt = nodes[i].textContent || '';
+        if (txt.length < 20 || txt.length > 200000) continue;
+        var data = null;
+        try { data = JSON.parse(txt); } catch (eParse) { continue; }
+        var stack = Array.isArray(data) ? data.slice() : [data];
+        var guard = 0;
+        while (stack.length && guard < 40) {
+          guard += 1;
+          var node = stack.pop();
+          if (!node || typeof node !== 'object') continue;
+          if (Array.isArray(node)) {
+            for (var ai = 0; ai < node.length && ai < 20; ai++) stack.push(node[ai]);
+            continue;
+          }
+          var type = String(node['@type'] || node.type || '');
+          var content = node.contentUrl || node.contentURL || node.embedUrl || node.embedURL;
+          if (content && (type.toLowerCase().indexOf('video') >= 0 || looksMedia(String(content), node.encodingFormat || null))) {
+            var abs = safeUrl(unescapeMediaUrl(String(content)));
+            if (abs && looksMedia(abs, node.encodingFormat || null)) {
+              enqueue({
+                url: abs,
+                pageUrl: pageUrl,
+                mimeType: node.encodingFormat || null,
+                extension: extOf(abs),
+                title: node.name || document.title || null,
+                thumbnailUrl: safeUrl(node.thumbnailUrl || (node.thumbnail && node.thumbnail.url) || null),
+                duration: null,
+                width: null,
+                height: null,
+                estimatedFileSize: null,
+                isLive: false,
+                isDrm: false,
+                playlistType: null,
+                detectionSource: 'og_meta',
+                tagName: 'script'
+              });
+            }
+          }
+          if (node['@graph']) stack.push(node['@graph']);
+        }
+      }
+    } catch (eLd) {}
+  }
+
+  function harvestEmbeddedJsonUrls() {
+    try {
+      var keyRe = /"(contentUrl|playable_url(?:_quality_hd)?|browser_native_(?:hd|sd)_url|hd_src(?:_no_ratelimit)?|sd_src(?:_no_ratelimit)?|playbackUrl|hls_url|dash_url|fallback_url|video_url|file)"\\s*:\\s*"(https:[^"]+)"/gi;
+      var scripts = document.getElementsByTagName('script');
+      var limit = Math.min(scripts.length, 28);
+      var found = 0;
+      for (var i = 0; i < limit && found < 12; i++) {
+        var t = scripts[i].textContent || '';
+        if (t.length < 40 || t.length > 350000) continue;
+        if (t.indexOf('http') < 0) continue;
+        keyRe.lastIndex = 0;
+        var m;
+        while ((m = keyRe.exec(t)) && found < 12) {
+          var raw = unescapeMediaUrl(m[2]);
+          observeNetworkUrl(raw, null, 'og_meta');
+          found += 1;
+        }
+      }
+    } catch (eJson) {}
+  }
+
+  function harvestEmbeddedMedia() {
+    harvestJsonLd();
+    harvestEmbeddedJsonUrls();
   }
 
   function mediaFromElement(el, source) {
@@ -223,7 +394,9 @@ export function buildMediaDetectionInjectedScript(): string {
     var url = safeUrl(rawSrc);
     var mime = el.getAttribute('type') || null;
     if (!url) return;
-    if (!looksMedia(url, mime)) return;
+    var owner = tag === 'source' ? el.parentElement : el;
+    var ownerTag = owner && (owner.tagName || '').toLowerCase();
+    if (!looksMedia(url, mime, ownerTag)) return;
 
     var width = null;
     var height = null;
@@ -238,7 +411,7 @@ export function buildMediaDetectionInjectedScript(): string {
 
     var drm = false;
     try {
-      drm = !!(el.mediaKeys || (window.navigator && navigator.requestMediaKeySystemAccess && el.hasAttribute('encrypted')));
+      drm = !!(owner && (owner.mediaKeys || owner.__vidoraxEncrypted));
     } catch (e) {}
 
     enqueue({
@@ -256,7 +429,9 @@ export function buildMediaDetectionInjectedScript(): string {
       isDrm: drm,
       playlistType: null,
       detectionSource: source,
-      tagName: tag
+      tagName: tag,
+      ownerElementIdentity: ownerTag === 'video' ? ensureVideoIdentity(owner) : null,
+      frameUrl: el.ownerDocument && el.ownerDocument.URL || pageUrl
     });
   }
 
@@ -300,7 +475,7 @@ export function buildMediaDetectionInjectedScript(): string {
         duration: null,
         width: null,
         height: null,
-        estimatedFileSize: typeof e.transferSize === 'number' && e.transferSize > 0 ? e.transferSize : null,
+        estimatedFileSize: null,
         isLive: false,
         isDrm: false,
         playlistType: null,
@@ -380,7 +555,7 @@ export function buildMediaDetectionInjectedScript(): string {
             try { ct = xhr.getResponseHeader('content-type'); } catch (e) {}
             observeNetworkUrl(xhr.responseURL || xhr.__vidoraxUrl, ct, 'js_xhr');
           } catch (e2) {}
-        });
+        }, { once: true });
       } catch (e3) {}
       return XS.apply(this, arguments);
     };
@@ -404,7 +579,7 @@ export function buildMediaDetectionInjectedScript(): string {
 
   var scanTimer = null;
   function scheduleScanDom() {
-    if (scanTimer) return;
+    if (disposed || scanTimer) return;
     scanTimer = setTimeout(function() {
       scanTimer = null;
       scanDom();
@@ -902,7 +1077,7 @@ export function buildMediaDetectionInjectedScript(): string {
   }
 
   function scheduleActiveVideo() {
-    if (activeVideoTimer) return;
+    if (disposed || activeVideoTimer) return;
     activeVideoTimer = setTimeout(flushActiveVideo, Math.max(${batchMs}, ${throttleMs}));
   }
 
@@ -933,20 +1108,33 @@ export function buildMediaDetectionInjectedScript(): string {
   document.addEventListener('play', markRecentPlay, true);
   document.addEventListener('playing', markRecentPlay, true);
   document.addEventListener('loadeddata', markRecentPlay, true);
-  document.addEventListener('pause', function(ev) {
+  function onPause(ev) {
     try {
       var t = ev && ev.target;
       if (!t || (t.tagName || '').toLowerCase() !== 'video') return;
       scheduleActiveVideo();
     } catch (e) {}
-  }, true);
+  }
+  function onEncrypted(ev) {
+    if (ev.target) ev.target.__vidoraxEncrypted = true;
+    seen = Object.create(null);
+    seenKeys = [];
+    scheduleScanDom();
+    scheduleActiveVideo();
+  }
+  document.addEventListener('pause', onPause, true);
+  document.addEventListener('encrypted', onEncrypted, true);
 
   function onPopState() {
+    // Pending candidates belong to the previous document content.
+    pending = [];
     pageUrl = location.href;
     seen = Object.create(null);
+    seenKeys = [];
     postCount = 0;
     lastActiveVideoKey = '';
     readMeta();
+    harvestEmbeddedMedia();
     scheduleScanDom();
     scheduleActiveVideo();
   }
@@ -956,26 +1144,22 @@ export function buildMediaDetectionInjectedScript(): string {
     var _replace = history.replaceState;
     history.pushState = function() {
       var r = _push.apply(this, arguments);
-      pageUrl = location.href;
-      seen = Object.create(null);
-      postCount = 0;
-      lastActiveVideoKey = '';
-      readMeta();
-      scheduleScanDom();
-      scheduleActiveVideo();
+      onPopState();
       return r;
     };
     history.replaceState = function() {
       var r = _replace.apply(this, arguments);
-      pageUrl = location.href;
-      scheduleScanDom();
-      scheduleActiveVideo();
+      onPopState();
       return r;
     };
     window.addEventListener('popstate', onPopState);
   } catch (e) {}
 
   function cleanup() {
+    disposed = true;
+    pending = [];
+    seen = Object.create(null);
+    seenKeys = [];
     try {
       if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
       if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
@@ -987,6 +1171,8 @@ export function buildMediaDetectionInjectedScript(): string {
       document.removeEventListener('play', markRecentPlay, true);
       document.removeEventListener('playing', markRecentPlay, true);
       document.removeEventListener('loadeddata', markRecentPlay, true);
+      document.removeEventListener('pause', onPause, true);
+      document.removeEventListener('encrypted', onEncrypted, true);
       window.removeEventListener('popstate', onPopState);
       window.removeEventListener('pagehide', cleanup);
     } catch (e) {}
@@ -1031,11 +1217,12 @@ export function buildMediaDetectionInjectedScript(): string {
 
   readMeta();
   scanDom();
+  harvestEmbeddedMedia();
   flushActiveVideo();
   scheduleActiveVideo();
 
   try {
-    if (!window.PerformanceObserver && window.performance && performance.getEntriesByType) {
+    if (window.performance && performance.getEntriesByType) {
       try {
         var entries = performance.getEntriesByType('resource');
         var start = Math.max(0, entries.length - 80);

@@ -8,6 +8,7 @@ import {
 import { isSafeMediaUrl, normalizeMediaUrl } from '../utils';
 import { mergeDownloadHeaders } from '@/downloads/engine/download-headers';
 import type { MediaRequestContext } from '@/downloads/types/request-context';
+import { readBoundedResponseText } from '@/downloads/network/bounded-response-reader';
 
 /**
  * Rich outcome of a bounded manifest fetch — retains transport evidence so
@@ -87,6 +88,7 @@ export async function fetchManifestResource(
 
   const onAbort = () => controller.abort();
   signal?.addEventListener('abort', onAbort);
+  if (signal?.aborted) controller.abort();
 
   try {
     const headers = mergeDownloadHeaders(
@@ -119,7 +121,7 @@ export async function fetchManifestResource(
       // Peek at the body (bounded) to detect login-like HTML even on 4xx.
       let htmlLike = false;
       try {
-        const preview = (await response.text()).slice(0, 512);
+        const { text: preview } = await readBoundedResponseText(response, 512, controller.signal);
         htmlLike = bodyLooksLikeHtml(preview, contentType);
       } catch {
         /* ignore body read failure */
@@ -154,8 +156,8 @@ export async function fetchManifestResource(
       };
     }
 
-    const text = await response.text();
-    if (!text || text.length > DETECTION_TIMING.manifestMaxBytes) {
+    const { text, abortedAtByteLimit } = await readBoundedResponseText(response, DETECTION_TIMING.manifestMaxBytes, controller.signal);
+    if (!text || abortedAtByteLimit) {
       return {
         ok: false,
         status,

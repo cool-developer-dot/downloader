@@ -450,12 +450,13 @@ test('55. No duplicate watch-history database in overflow layer', () => {
   mustNotInclude(menuActions, ['listLocalPlaybackSummaries', 'PlaybackSummary'], 'no copy');
 });
 
-test('56. Library local media actions still open player path', () => {
-  mustInclude(libraryHook, ['playerPath', 'openItemActions'], 'actions');
+test('56. Library local media taps still open player path', () => {
+  mustInclude(libraryHook, ['openPlayer', 'openItemActions'], 'actions');
+  mustNotInclude(libraryHook, ['playCompletedFile'], 'no duplicate play path');
 });
 
 test('57. ContinueWatchingSection still navigates to player', () => {
-  mustInclude(continueSection, ['playerPath', 'navigation.push'], 'play');
+  mustInclude(continueSection, ['openPlayer'], 'play');
 });
 
 test('58. Library recently_watched empty state preserved', () => {
@@ -625,8 +626,9 @@ test('86. Actionable CTA shell remains READY / HANDOFF only', () => {
   mustInclude(ctaShell, ['isActionableCtaShell', 'READY', 'HANDOFF'], 'shell');
 });
 
-test('87. Play handler preserved on media action hook', () => {
-  mustInclude(mediaAction, ['const play = useCallback', 'HANDOFF_IN_PROGRESS'], 'play');
+test('87. Media action hook has no fake in-page Play handler', () => {
+  mustNotInclude(mediaAction, ['const play = useCallback'], 'no play handler');
+  mustInclude(mediaAction, ['HANDOFF_IN_PROGRESS'], 'handoff state kept');
 });
 
 test('88. Quality options helper preserved', () => {

@@ -270,6 +270,8 @@ export type MediaAnalysisContainer =
   | 'webm'
   | 'mov'
   | 'm4v'
+  | 'avi'
+  | 'wmv'
   | 'mp3'
   | 'm4a'
   | 'aac'

@@ -17,6 +17,7 @@ import {
   classifyGeneralNetworkResource,
   isPlayerDocumentResource,
 } from '../general-media/general-network-resource';
+import { canonicalizeObservedMediaUrl } from '../general-media/playback-media-evidence';
 
 /**
  * Classify a progressive (or stream URL by extension/MIME) network resource.
@@ -37,8 +38,9 @@ export function parseProgressiveMediaUrl(input: {
   requiredHeaders?: MediaCandidate['requiredHeaders'];
   hasRange?: boolean;
   isForMainFrame?: boolean;
+  videoElementEvidence?: boolean;
 }): MediaCandidate | null {
-  const url = normalizeMediaUrl(input.url);
+  const url = normalizeMediaUrl(canonicalizeObservedMediaUrl(input.url));
   const pageUrl = normalizeMediaUrl(input.pageUrl);
 
   if (!url || !pageUrl || !isSafeMediaUrl(url) || !isSafeMediaUrl(pageUrl)) {
@@ -74,7 +76,8 @@ export function parseProgressiveMediaUrl(input: {
     return null;
   }
 
-  const mimeOk = isMediaMimeType(input.mimeType) || tiktokProgressive || genericMedia;
+  const observedVideo = input.videoElementEvidence === true;
+  const mimeOk = isMediaMimeType(input.mimeType) || tiktokProgressive || genericMedia || observedVideo;
   if (!isSupportedMediaUrl(url, input.mimeType) && !mimeOk) {
     return null;
   }
@@ -84,12 +87,9 @@ export function parseProgressiveMediaUrl(input: {
     (tiktokProgressive ? 'mp4' : null) ??
     (classified.family === 'hls' ? 'm3u8' : null) ??
     (classified.family === 'dash' ? 'mpd' : null) ??
-    (classified.family === 'progressive' && genericMedia ? 'mp4' : null);
+    null;
   let container = resolveContainer(extension);
   if (tiktokProgressive && (!container || container === 'unknown')) {
-    container = 'mp4';
-  }
-  if (genericMedia && classified.family === 'progressive' && (!container || container === 'unknown')) {
     container = 'mp4';
   }
 
@@ -106,7 +106,7 @@ export function parseProgressiveMediaUrl(input: {
 
   const resolvedCategory =
     category ??
-    (tiktokProgressive || (genericMedia && classified.family === 'progressive')
+    (observedVideo || tiktokProgressive || (genericMedia && classified.family === 'progressive')
       ? 'video'
       : input.mimeType?.startsWith('audio/')
         ? 'audio'
@@ -130,6 +130,7 @@ export function parseProgressiveMediaUrl(input: {
 
   return {
     url,
+    videoElementEvidence: observedVideo || (genericMedia && classified.family === 'progressive'),
     pageUrl,
     sourceUrl: input.sourceUrl ?? url,
     finalUrl: input.finalUrl ?? url,

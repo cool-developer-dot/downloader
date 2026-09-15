@@ -6,8 +6,6 @@ import {
   type MediaSignatureResult,
 } from './media-signature';
 
-const HEAD_READ_BYTES = 512;
-
 export { MIN_VALID_MEDIA_BYTES, sniffMediaSignature } from './media-signature';
 export type { MediaSignatureResult } from './media-signature';
 
@@ -32,7 +30,7 @@ export async function verifyDownloadedMediaContent(
   const reader = file.open(FileMode.ReadOnly);
   try {
     // Small files: scan entire body so init segments without trailing mdat are caught.
-    // Large files: scan a bounded prefix; large totals without mdat still classify as progressive.
+    // Large files: scan a bounded prefix; absent mdat stays unproven.
     const readBytes =
       size <= 1024 * 1024 ? size : Math.min(size, 256 * 1024);
     const chunk = reader.readBytes(readBytes);

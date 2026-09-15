@@ -59,6 +59,13 @@ export {
 } from './general-network-resource';
 
 export {
+  canonicalizeObservedMediaUrl,
+  urlHasMediaQueryEvidence,
+  urlHasPlaybackMediaEvidence,
+  urlHasPlaybackPathEvidence,
+} from './playback-media-evidence';
+
+export {
   canonicalizeGeneralContentKey,
   classifyGeneralContentNavigation,
   isSameGeneralContentNavigation,

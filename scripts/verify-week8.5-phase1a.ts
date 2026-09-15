@@ -112,7 +112,7 @@ function summary(
 
 function fakeStore(
   items: DownloadItem[],
-): Pick<DownloadsStore, 'orderedIds' | 'itemsById'> {
+): Pick<DownloadsStore, 'orderedIds' | 'itemsById' | 'transferById'> {
   const itemsById: Record<string, DownloadItem> = {};
   for (const item of items) {
     itemsById[item.id] = item;
@@ -120,6 +120,7 @@ function fakeStore(
   return {
     orderedIds: items.map((item) => item.id),
     itemsById,
+    transferById: {},
   };
 }
 
@@ -151,7 +152,7 @@ await test('Home reuses production download + playback + navigation contracts', 
     'Paste link must use existing quality selection',
   );
   const recent = readSrc('src/screens/home/components/HomeRecentDownloads.tsx');
-  assert(recent.includes('playerPath'), 'Recent downloads must open Player');
+  assert(recent.includes('openPlayer'), 'Recent downloads must open Player');
   assert(recent.includes('routePaths.library'), 'View All must go to Library');
   const browser = readSrc('src/screens/home/components/HomePrimaryActions.tsx');
   assert(browser.includes('routePaths.browser'), 'Open Browser must use routePaths');
@@ -161,13 +162,13 @@ await test('Home reuses production download + playback + navigation contracts', 
   assert(header.includes('routePaths.settings'), 'Header must open Settings');
   assert(!header.includes('routePaths.profile'), 'Header must not open Profile');
   const watching = readSrc('src/screens/home/components/HomeContinueWatching.tsx');
-  assert(watching.includes('playerPath'), 'Continue Watching must open Player');
+  assert(watching.includes('openPlayer'), 'Continue Watching must open Player');
   const history = readSrc('src/screens/home/components/HomeRecentlyWatched.tsx');
-  assert(history.includes('playerPath'), 'Recently Watched must open Player');
+  assert(history.includes('openPlayer'), 'Recently Watched must open Player');
   const storage = readSrc('src/screens/home/components/HomeStorageSummary.tsx');
   assert(
-    storage.includes('routePaths.downloadSettings'),
-    'Storage must open download settings',
+    storage.includes('routePaths.storage'),
+    'Storage must open the existing Storage screen',
   );
 });
 
@@ -292,7 +293,18 @@ await test('download activity uses status fields, not transfer ticks', () => {
     download('done'),
   ]);
   const next = selectDownloadActivitySignature(progressed as DownloadsStore);
-  assert(signed !== next, 'activity signature should move with integer progress');
+  assert(signed === next, 'activity signature must ignore progress within the same 5% bucket');
+  const crossedBucket = fakeStore([
+    download('run', { status: 'DOWNLOADING', progress: 50 }),
+    download('run2', { status: 'DOWNLOADING', progress: 80 }),
+    download('pause', { status: 'PAUSED', progress: 10 }),
+    download('queue', { status: 'QUEUED', progress: 0 }),
+    download('done'),
+  ]);
+  assert(
+    signed !== selectDownloadActivitySignature(crossedBucket as DownloadsStore),
+    'activity signature must update when average progress crosses a 5% bucket',
+  );
 
   const catalogBefore = selectCompletedCatalogSignature(state as DownloadsStore);
   const catalogAfter = selectCompletedCatalogSignature(progressed as DownloadsStore);

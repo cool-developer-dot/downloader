@@ -6,6 +6,7 @@
 import type { MediaAnalysisResult } from '@/api/types';
 import type { MediaRequestContext } from '@/downloads/types/request-context';
 import { sniffMediaSignature } from '@/downloads/engine/media-signature';
+import { resolveVideoResource } from '../resource/video-resource';
 import { readBoundedResponseBody } from '@/downloads/network/bounded-response-reader';
 import { TRANSFER_TIMEOUTS } from '@/downloads/engine/transfer-timeouts';
 import { mergeDownloadHeaders } from '@/downloads/engine/download-headers';
@@ -195,6 +196,8 @@ export async function verifySocialSourceCandidate(
   if (!verification.ok) {
     const status = verification.status;
     const reason: SocialSourceRejectionReason =
+      verification.rejectionReason === 'html_response' ? 'HTML_RESPONSE' :
+      verification.rejectionReason === 'json_response' ? 'JSON_RESPONSE' :
       status === 401 || status === 403
         ? 'AUTH_RESPONSE'
         : status === 404
@@ -232,6 +235,7 @@ export async function verifySocialSourceCandidate(
       input.requestContext,
       input.signal,
       totalHint,
+      verification.mimeType,
     );
     if (!sig.ok) {
       if (sig.kind === 'html') {
@@ -257,15 +261,19 @@ export async function verifySocialSourceCandidate(
       if (sig.kind === 'ts') {
         return { ok: false, reason: 'SEGMENT_RESOURCE', verification };
       }
-      if (!mimeOk || sig.reason === 'mp4_structure_unproven') {
+      if (sig.reason === 'drm_protected') return { ok: false, reason: 'DRM_UNSUPPORTED', verification };
+      if (!sig.ok) {
         logSocialSource('source_container_unknown', {
           reason: sig.reason ?? 'NOT_MEDIA',
           containerKind: sig.mp4Kind ?? null,
         });
-        return { ok: false, reason: 'NOT_MEDIA', verification };
+        return { ok: false, reason: sig.provenUnsupported ? 'NOT_MEDIA' : 'PROBE_FAILED', verification };
       }
     } else {
       signatureKind = sig.kind;
+      verification.finalUrl = sig.finalUrl ?? verification.finalUrl;
+      verification.mimeType = sig.mimeType ?? verification.mimeType;
+      verification.contentLength = sig.totalBytes ?? verification.contentLength;
       if (sig.kind === 'ts') {
         return { ok: false, reason: 'SEGMENT_RESOURCE', verification };
       }
@@ -313,16 +321,22 @@ async function probeBoundedSignature(
   requestContext: MediaRequestContext,
   signal?: AbortSignal,
   resourceTotalBytes?: number | null,
+  mimeType?: string | null,
 ): Promise<{
   ok: boolean;
   kind: string;
   reason?: string | null;
   mp4Kind?: string | null;
+  provenUnsupported?: boolean;
+  finalUrl?: string;
+  mimeType?: string | null;
+  totalBytes?: number | null;
 }> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), TRANSFER_TIMEOUTS.probeTimeoutMs);
   const onAbort = () => controller.abort();
   signal?.addEventListener('abort', onAbort);
+  if (signal?.aborted) controller.abort();
   try {
     const headers = mergeDownloadHeaders(
       { Range: `bytes=0-${MAX_SIGNATURE_BYTES - 1}` },
@@ -341,6 +355,9 @@ async function probeBoundedSignature(
     // Prefer Content-Range total over Content-Length slice size.
     let total = resourceTotalBytes ?? null;
     const contentRange = response.headers.get('Content-Range');
+    if (response.status === 206 && !/^bytes\s+0-\d+\/(?:\d+|\*)$/i.test(contentRange ?? '')) {
+      return { ok: false, kind: 'unknown', reason: 'invalid_content_range' };
+    }
     if (contentRange) {
       const match = /bytes\s+\d+-\d+\/(\d+|\*)/i.exec(contentRange);
       const raw = match?.[1];
@@ -354,6 +371,10 @@ async function probeBoundedSignature(
         }
       }
     }
+    if (response.status === 200) {
+      const length = Number(response.headers.get('Content-Length'));
+      if (Number.isSafeInteger(length) && length > 0) total = length;
+    }
 
     const { bytes } = await readBoundedResponseBody(
       response,
@@ -365,15 +386,27 @@ async function probeBoundedSignature(
       coversEntireResource: total != null && bytes.length >= total,
       requireStandaloneMp4: true,
     });
+    const finalUrl = response.url || url;
+    const resolved = resolveVideoResource({
+      url, finalUrl, bytes, totalBytes: total,
+      mimeType: response.headers.get('Content-Type') ?? mimeType,
+      contentDisposition: response.headers.get('Content-Disposition'),
+      coversEntireResource: total != null && bytes.length >= total,
+    });
     return {
-      ok: sniff.ok,
+      ok: resolved.state === 'VERIFIED',
       kind: sniff.kind,
-      reason: sniff.reason,
+      reason: sniff.reason ?? resolved.reason,
       mp4Kind: sniff.mp4Kind ?? null,
+      provenUnsupported: resolved.state === 'PROVEN_UNSUPPORTED',
+      finalUrl,
+      mimeType: resolved.mimeType,
+      totalBytes: total,
     };
   } catch {
     return { ok: false, kind: 'unknown' };
   } finally {
+    controller.abort();
     clearTimeout(timeout);
     signal?.removeEventListener('abort', onAbort);
   }

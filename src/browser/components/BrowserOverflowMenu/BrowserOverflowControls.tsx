@@ -78,7 +78,8 @@ export const BrowserOverflowControls = memo(function BrowserOverflowControls({
             borderRadius: theme.radius.md,
             backgroundColor: pressed ? primary.pressed : 'transparent',
           })}>
-          <Icon name="dots-vertical" size="md" color="primary" />
+          {/* headerIcon (onBrandRed) — 'primary' is brand red and vanishes on the LOGO red header. */}
+          <Icon name="dots-vertical" size="md" color="headerIcon" />
         </Pressable>
       </View>
 

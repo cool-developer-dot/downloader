@@ -3,7 +3,6 @@ import { mergeDownloadHeaders } from '@/downloads/engine/download-headers';
 import { isNonMediaDocumentMime } from '@/downloads/analyze/format';
 
 import { probeMediaMime, isVerifiedMediaMime } from './mime-probe.service';
-import { resolveRedirects } from './redirect.resolver';
 import { isFalsePositive } from './false-positive.filter';
 import { logMediaDiagnostic } from './media-diagnostics.service';
 import { isSafeMediaUrl } from '../utils';
@@ -18,6 +17,7 @@ export type CandidateVerification = {
   redirectCount: number;
   confidenceBoost: number;
   rejectionReason: string | null;
+  contentDisposition?: string | null;
 };
 
 export type VerifyCandidateOptions = {
@@ -41,39 +41,27 @@ export async function verifyMediaCandidate(
   const referer = options?.requestContext?.referer ?? options?.referer ?? null;
   const userAgent = options?.requestContext?.userAgent ?? options?.userAgent ?? null;
 
-  const redirect = await resolveRedirects(url, options?.signal, {
+  // One metadata request path; HEAD fallback and redirects preserve the same context.
+  const probe = await probeMediaMime(url, options?.signal, {
     referer,
-    userAgent,
+    headers: mergeDownloadHeaders(userAgent ? { 'User-Agent': userAgent } : {}, options?.requestContext),
   });
+  const redirect = { finalUrl: probe?.finalUrl ?? url, redirectCount: probe?.finalUrl && probe.finalUrl !== url ? 1 : 0 };
 
-  if (!redirect.ok) {
-    logMediaDiagnostic('candidate_rejected', {
-      url: redirect.originalUrl,
-      reason: redirect.loopDetected ? 'redirect_loop' : 'redirect_failed',
-      redirectCount: redirect.redirectCount,
-    });
-    return reject(url, 'redirect_failed', redirect.redirectCount);
-  }
-
-  const probe = await probeMediaMime(redirect.finalUrl, options?.signal, {
-    referer,
-    headers: mergeDownloadHeaders({}, options?.requestContext),
-  });
-
-  if (!probe || !probe.ok || !probe.mimeType) {
+  if (!probe || !probe.ok) {
     logMediaDiagnostic('candidate_rejected', {
       url: redirect.finalUrl,
       reason: 'mime_unverified',
       redirectCount: redirect.redirectCount,
     });
-    return reject(redirect.finalUrl, 'mime_unverified', redirect.redirectCount);
+    return reject(redirect.finalUrl, 'mime_unverified', redirect.redirectCount, probe?.status ?? null);
   }
 
   // Phase 4B: HTTP 200 + HTML/JSON is not media.
   if (isNonMediaDocumentMime(probe.mimeType)) {
-    const reason = probe.mimeType.includes('json')
+    const reason = probe.mimeType?.includes('json')
       ? 'json_response'
-      : probe.mimeType.includes('html')
+      : probe.mimeType?.includes('html')
         ? 'html_response'
         : 'non_media_mime';
     logMediaDiagnostic('candidate_rejected', {
@@ -87,7 +75,7 @@ export async function verifyMediaCandidate(
 
   // Accept verified media MIME or generic octet-stream (signature handled upstream for social).
   if (
-    !isVerifiedMediaMime(probe.mimeType) &&
+    probe.mimeType && !isVerifiedMediaMime(probe.mimeType) &&
     probe.mimeType !== 'application/octet-stream'
   ) {
     logMediaDiagnostic('candidate_rejected', {
@@ -119,6 +107,7 @@ export async function verifyMediaCandidate(
     redirectCount: redirect.redirectCount,
     confidenceBoost: 0.15,
     rejectionReason: null,
+    contentDisposition: probe.contentDisposition,
   };
 }
 

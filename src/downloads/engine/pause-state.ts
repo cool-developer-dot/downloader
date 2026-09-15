@@ -161,11 +161,14 @@ export function mergeRangeValidators(
 }
 
 /**
- * Probe whether the origin honors byte ranges before calling native resume.
+ * Probe whether the media source honors byte ranges before calling native resume.
  * Expo Android restarts from byte 0 when a Range request returns 200 — refuse
  * that path instead of silently wiping the partial file.
+ *
+ * Currently unreferenced. It also issues a bare fetch with no session headers,
+ * so session-bound CDNs would reject it before range support could be observed.
  */
-export async function assertServerSupportsByteRange(
+export async function assertSourceSupportsByteRange(
   sourceUrl: string,
   offset: number,
   signal?: AbortSignal,
@@ -206,7 +209,7 @@ export async function assertServerSupportsByteRange(
       if (!contentRange) {
         throw new DownloadEngineError(
           'RANGE_REJECTED',
-          'This server doesn’t support resumable downloads.',
+          'This media source doesn’t allow resuming a partial download.',
         );
       }
       const match = /^bytes\s+(\d+)-/i.exec(contentRange.trim());
@@ -214,7 +217,7 @@ export async function assertServerSupportsByteRange(
       if (!Number.isFinite(start) || Math.trunc(start) !== Math.trunc(offset)) {
         throw new DownloadEngineError(
           'RANGE_REJECTED',
-          'This server doesn’t support resumable downloads.',
+          'This media source doesn’t allow resuming a partial download.',
         );
       }
       return;
@@ -231,13 +234,13 @@ export async function assertServerSupportsByteRange(
     if (response.status === 200) {
       throw new DownloadEngineError(
         'RESUME_UNSUPPORTED',
-        'This server doesn’t support resumable downloads.',
+        'This media source doesn’t allow resuming a partial download.',
       );
     }
 
     throw new DownloadEngineError(
       'RESUME_UNSUPPORTED',
-      'This server doesn’t support resumable downloads.',
+      'This media source doesn’t allow resuming a partial download.',
     );
   } finally {
     // no-op — body already cancelled

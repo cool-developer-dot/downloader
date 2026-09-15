@@ -230,7 +230,7 @@ async function main(): Promise<void> {
       'src/screens/home/HomeScreen.tsx': 'useTranslation',
       'src/screens/settings/SettingsScreen.tsx': 'useTranslation',
       'src/screens/settings/components/GeneralSection.tsx': 'getEnabledLanguages',
-      'src/app/(app)/(tabs)/_layout.tsx': "t('nav.home')",
+      'src/app/(app)/(tabs)/_layout.tsx': "t('nav.browser')",
       'src/screens/legal/PrivacyScreen.tsx': "t('privacy.title')",
       'src/screens/legal/TermsScreen.tsx': "t('terms.title')",
       'src/screens/player/components/PlayerControls.tsx': 'useTranslation',

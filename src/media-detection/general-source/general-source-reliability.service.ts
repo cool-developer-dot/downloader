@@ -20,6 +20,13 @@ import { isLikelyMediaSegment } from '../services/false-positive.filter';
 import { buildRequestContextFromDetectedMedia } from '../services/request-context.service';
 import { fetchManifestResource } from '../services/manifest.service';
 import { parseHlsManifest } from '../parsers/hls.parser';
+import { parseHlsPlaylist } from '@/downloads/engine/hls/playlist';
+import { DownloadEngineError } from '@/downloads/engine/errors';
+import {
+  isFragmentedDashManifest,
+  parseDashManifest,
+  selectDownloadableStandaloneDash,
+} from '../parsers/dash.parser';
 import type { DetectedMedia } from '../types';
 import { generalPageMediaContextStore } from '../general-media';
 import { isInitOrFragmentMediaPath } from '../general-media/general-network-resource';
@@ -41,6 +48,7 @@ import {
 import {
   buildResourceIdentityKey,
   preserveExecutableUrl,
+  hashIdentity,
 } from '../social-source/resource-identity';
 import {
   verifySocialSourceCandidate,
@@ -205,7 +213,7 @@ function buildProgressiveVariant(input: {
       !input.media.isDrm);
 
   return {
-    variantId: `gvar_${resourceIdentity.slice(0, 48)}`,
+    variantId: `gvar_${hashIdentity(resourceIdentity)}`,
     resourceIdentity,
     executableUrl: input.executableUrl,
     transport,
@@ -297,6 +305,106 @@ async function fetchBoundedHlsManifest(
 }
 
 /**
+ * Some MPD files are just a pack of complete MP4/WebM BaseURLs (no
+ * SegmentTemplate). Treat those as progressive files. Fragmented DASH
+ * remains DASH_UNSUPPORTED — no mux path.
+ */
+async function tryStandaloneDashAsProgressive(
+  media: DetectedMedia,
+  input: {
+    pageUrl: string;
+    requestContext: MediaRequestContext;
+    mediaIdentity: string;
+    sourceGeneration: number;
+    signal?: AbortSignal;
+  },
+): Promise<
+  | { ok: true; variants: VerifiedGeneralMediaVariant[] }
+  | { ok: false; reason: GeneralSourceRejectionReason }
+  | null
+> {
+  const url = preserveExecutableUrl(media.finalUrl || media.url);
+  const outcome = await fetchManifestResource(url, input.signal, {
+    accept: 'application/dash+xml, application/xml, text/xml, */*',
+    referer: input.pageUrl,
+    requestContext: input.requestContext,
+  });
+  if (!outcome.ok) {
+    if (outcome.authLike || outcome.htmlLike) {
+      return { ok: false, reason: 'AUTH_REQUIRED' };
+    }
+    return null;
+  }
+  if (isFragmentedDashManifest(outcome.text)) {
+    return null;
+  }
+  const parsed = parseDashManifest(outcome.text, outcome.finalUrl);
+  if (!parsed || parsed.isEncrypted) {
+    return parsed?.isEncrypted ? { ok: false, reason: 'DRM_UNSUPPORTED' } : null;
+  }
+  const files = selectDownloadableStandaloneDash(parsed, outcome.text);
+  if (files.length === 0) {
+    return null;
+  }
+
+  const variants: VerifiedGeneralMediaVariant[] = [];
+  for (const rep of files.slice(0, 6)) {
+    if (!rep.baseUrl) {
+      continue;
+    }
+    const asProgressive: DetectedMedia = {
+      ...media,
+      url: rep.baseUrl,
+      sourceUrl: media.sourceUrl,
+      finalUrl: rep.baseUrl,
+      mimeType: rep.mimeType ?? media.mimeType,
+      container:
+        (rep.mimeType ?? '').toLowerCase().includes('webm') ? 'webm' : 'mp4',
+      category: rep.contentType === 'audio' ? 'audio' : 'video',
+      streamType: 'DIRECT',
+      streamProtocol: null,
+      width: rep.width ?? media.width,
+      height: rep.height ?? media.height,
+      bitrate: rep.bandwidth ?? media.bitrate,
+      videoOnly: false,
+      hasSeparateAudio: false,
+    };
+    const result = await verifySocialSourceCandidate(asProgressive, {
+      pageUrl: input.pageUrl,
+      requestContext: input.requestContext,
+      signal: input.signal,
+    });
+    if (!result.ok) {
+      continue;
+    }
+    variants.push(
+      buildProgressiveVariant({
+        media: asProgressive,
+        executableUrl: preserveExecutableUrl(result.verification.finalUrl),
+        mimeType: result.verification.mimeType,
+        contentLength: result.verification.contentLength,
+        acceptRanges: result.verification.acceptRanges,
+        status: result.verification.status,
+        redirectCount: result.verification.redirectCount,
+        signatureKind: result.signatureKind,
+        usedRangeProbe: result.usedRangeProbe,
+        requestContext: input.requestContext,
+        mediaIdentity: input.mediaIdentity,
+        sourceGeneration: input.sourceGeneration,
+        width: rep.width,
+        height: rep.height,
+        bitrate: rep.bandwidth,
+      }),
+    );
+  }
+
+  if (variants.length === 0) {
+    return null;
+  }
+  return { ok: true, variants };
+}
+
+/**
  * Verify one owned candidate into zero or more actionable variants.
  * Reuses Phase 4B progressive/WebM/MP4 classification; adds HLS expand.
  */
@@ -328,6 +436,10 @@ export async function verifyGeneralSourceCandidate(
     return { ok: false, reason: 'DRM_UNSUPPORTED' };
   }
   if (media.streamType === 'DASH' || media.container === 'dash') {
+    const standalone = await tryStandaloneDashAsProgressive(media, input);
+    if (standalone) {
+      return standalone;
+    }
     return { ok: false, reason: 'DASH_UNSUPPORTED' };
   }
 
@@ -370,6 +482,12 @@ export async function verifyGeneralSourceCandidate(
     if (!parsed) {
       return { ok: false, reason: 'MANIFEST_INVALID' };
     }
+    // Same transport policy as the downloader: VOD, clear, no byte-range or mux path.
+    try { parseHlsPlaylist(fetched.text, fetched.finalUrl); } catch (error) {
+      const code = error instanceof DownloadEngineError ? error.code : '';
+      return { ok: false, reason: code === 'LIVE_HLS_UNSUPPORTED' ? 'LIVE_HLS_UNSUPPORTED' :
+        /DRM|ENCRYPT/.test(code) ? 'DRM_UNSUPPORTED' : 'MANIFEST_INVALID' };
+    }
     if (parsed.isLive) {
       logGeneralSource('hls_live_rejected', {
         reason: 'LIVE_HLS_UNSUPPORTED',
@@ -387,7 +505,19 @@ export async function verifyGeneralSourceCandidate(
 
     if (parsed.isMaster && parsed.variants.length > 0) {
       const variants: VerifiedGeneralMediaVariant[] = [];
-      for (const stream of parsed.variants) {
+      let rejection: GeneralSourceRejectionReason = 'MANIFEST_INVALID';
+      for (const stream of parsed.variants.slice(0, 6)) {
+        if (input.signal?.aborted) return { ok: false, reason: 'PROBE_FAILED' };
+        const child = await fetchBoundedHlsManifest(stream.uri, input.requestContext, input.pageUrl, input.signal);
+        if (!child.ok) { rejection = child.reason; continue; }
+        try {
+          if (parseHlsPlaylist(child.text, child.finalUrl).kind !== 'media') continue;
+        } catch (error) {
+          const code = error instanceof DownloadEngineError ? error.code : '';
+          rejection = code === 'LIVE_HLS_UNSUPPORTED' ? 'LIVE_HLS_UNSUPPORTED' :
+            /DRM|ENCRYPT/.test(code) ? 'DRM_UNSUPPORTED' : 'MANIFEST_INVALID';
+          continue;
+        }
         const audioState = resolveHlsAudioState({
           codecs: stream.codecs,
           audioGroup: stream.audioGroup,
@@ -395,7 +525,7 @@ export async function verifyGeneralSourceCandidate(
         });
         const variant = buildProgressiveVariant({
           media,
-          executableUrl: preserveExecutableUrl(stream.uri),
+          executableUrl: preserveExecutableUrl(child.finalUrl),
           mimeType: 'application/vnd.apple.mpegurl',
           contentLength: null,
           acceptRanges: false,
@@ -419,6 +549,7 @@ export async function verifyGeneralSourceCandidate(
         });
         variants.push(variant);
       }
+      if (!variants.some((v) => v.downloadable)) return { ok: false, reason: rejection };
       logGeneralSource('hls_master_expanded', {
         mediaIdentityHash: diagHash(input.mediaIdentity),
         transport: 'hls',
@@ -586,6 +717,7 @@ export async function buildVerifiedGeneralMediaOffer(
     const cached = getCachedVerifiedVariant(cacheKey);
     if (cached) {
       variants.push(fromSocialCacheVariant(cached));
+      variants.push(...(cached.alternatives ?? []).map(fromSocialCacheVariant));
       continue;
     }
 
@@ -699,6 +831,7 @@ export async function buildVerifiedGeneralMediaOffer(
       }
 
       if (!result.ok) {
+        lastReject = result.reason;
         logGeneralSource('candidate_verify_rejected', {
           tabId: scope.tabId,
           mediaIdentityHash: diagHash(scope.mediaIdentity),
@@ -714,7 +847,8 @@ export async function buildVerifiedGeneralMediaOffer(
         return null;
       }
 
-      setCachedVerifiedVariant(cacheKey, toSocialCacheVariant(primary));
+      const cachedPrimary = { ...toSocialCacheVariant(primary), alternatives: result.variants.filter((v) => v !== primary).map(toSocialCacheVariant) };
+      setCachedVerifiedVariant(cacheKey, cachedPrimary);
       logGeneralSource('candidate_verify_succeeded', {
         tabId: scope.tabId,
         mediaIdentityHash: diagHash(scope.mediaIdentity),
@@ -730,7 +864,7 @@ export async function buildVerifiedGeneralMediaOffer(
         quality: primary.qualityLabel,
         transport: primary.transport,
       });
-      return toSocialCacheVariant(primary);
+      return cachedPrimary;
     });
 
     if (joined) {
@@ -751,9 +885,10 @@ export async function buildVerifiedGeneralMediaOffer(
         variants.push(...expanded);
       } else {
         variants.push(fromSocialCacheVariant(variant));
+        variants.push(...(variant.alternatives ?? []).map(fromSocialCacheVariant));
       }
     } else {
-      lastReject = 'PROBE_FAILED';
+      if (lastReject === 'NO_FRESH_SOURCE') lastReject = 'PROBE_FAILED';
     }
   }
 
@@ -823,7 +958,7 @@ export function generalOfferToAnalysis(
     const created = createVariant({
       sourceUrl: v.executableUrl,
       streamType,
-      container: container === 'unknown' ? 'mp4' : container,
+      container,
       mimeType: v.mimeType,
       width: v.width,
       height: v.height,

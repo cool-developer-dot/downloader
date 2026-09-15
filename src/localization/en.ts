@@ -187,7 +187,7 @@ export const en = {
     codes: {
       NETWORK_ERROR: 'Network connection was lost.',
       NETWORK_TIMEOUT: 'The connection timed out.',
-      RATE_LIMITED: 'The server is temporarily busy. Try again shortly.',
+      RATE_LIMITED: 'The media source is temporarily busy. Try again shortly.',
       HTTP_ERROR: 'The download source could not be reached.',
       FILE_SYSTEM_ERROR: 'Unable to save this file.',
       FILE_WRITE_FAILED: 'Unable to save this file.',
@@ -203,13 +203,16 @@ export const en = {
       TRANSFER_INTERRUPTED: 'The download was interrupted.',
       PAUSE_FAILED: 'Couldn’t pause this download right now. Try again in a moment.',
       RESUME_FAILED: 'Unable to resume this download.',
-      RESUME_UNSUPPORTED: 'This server doesn’t support resumable downloads.',
+      RESUME_UNSUPPORTED:
+        'This media source doesn’t allow resuming a partial download.',
       RESUME_STATE_MISSING: 'Unable to resume this download.',
       RESUME_STATE_CONFLICT: 'Unable to resume this download.',
       QUEUE_ADMISSION_FAILED: 'Unable to resume this download.',
       PARTIAL_FILE_MISSING: 'The partial download file is no longer available.',
-      RANGE_REJECTED: 'This server doesn’t support resumable downloads.',
-      INVALID_RANGE_RESPONSE: 'The server returned an invalid resume response.',
+      RANGE_REJECTED:
+        'This media source refused to continue from where the download stopped.',
+      INVALID_RANGE_RESPONSE:
+        'The media source returned an invalid resume response.',
       SOURCE_CHANGED: 'The source file changed and can’t be safely resumed.',
       RETRY_EXHAUSTED: 'This download failed after several automatic retries.',
       MERGE_FAILED: 'Unable to assemble the downloaded file.',
@@ -258,7 +261,7 @@ export const en = {
   },
   files: {
     actionsTitle: 'File actions',
-    actionsSubtitle: 'Rename, delete, open, share, or play',
+    actionsSubtitle: 'Rename, delete, open, or share',
     rename: 'Rename',
     renameFile: 'Rename file',
     renameFolder: 'Rename folder',
@@ -532,13 +535,11 @@ export const en = {
     openHistoryA11y: 'Open browsing history',
     media: {
       videoAvailable: 'Video available',
-      play: 'Play',
       download: 'Download',
       preparingDownload: 'Preparing download…',
       cantDownload: "This video can't be downloaded by VidoraX.",
       videoAvailableA11y: 'Video available',
-      videoAvailableHint: 'Opens Play or Download',
-      playA11y: 'Play video on this page',
+      videoAvailableHint: 'Downloads this video',
       downloadA11y: 'Download this video',
       chooseQualityHint: 'Choose a quality to download.',
     },
@@ -810,6 +811,7 @@ export const en = {
     actionsA11y: 'Download actions',
     pauseNamedA11y: 'Pause {title}',
     resumeNamedA11y: 'Resume {title}',
+    pauseUnsupported: 'This source can’t resume, so pausing would restart it',
     cancelNamedA11y: 'Cancel {title}',
     percentA11y: '{percent} percent',
     queuePositionA11y: 'position {position}',
@@ -880,7 +882,7 @@ export const en = {
     searchFilterHint: 'Filters by title, file name, quality, or folder name',
     resetFiltersHint: 'Clears search, filter, and sort',
     actionsTitle: 'Completed file',
-    actionsSubtitle: 'Play, open, share, save, or delete',
+    actionsSubtitle: 'Open, share, save, or delete',
     openWith: 'Open with…',
     share: 'Share',
     play: 'Play',
@@ -888,7 +890,8 @@ export const en = {
     deleteFromVidoraX: 'Delete from VidoraX',
     fileUnavailable: 'File unavailable',
     actionFailed: 'Unable to complete that action.',
-    longPressHint: 'Shows Play, Open, Share, Save, and Delete actions',
+    longPressHint: 'Shows Open, Share, Save, and Delete actions',
+    playHint: 'Opens the video player',
     deleteTitle: 'Delete from VidoraX?',
     deleteMessage:
       'Delete this download from VidoraX? Copies saved outside VidoraX will not be deleted.',
@@ -1453,13 +1456,13 @@ export const en = {
       downloadFailed: {
         question: 'Why did my download fail?',
         answer:
-          'Downloads can fail when the network drops, the source blocks or changes the file, storage is full, the server refuses resume ranges, or the media is DRM/encrypted/unsupported. Open the failed item in Downloads to read the error, then retry if the source is still available. Wi-Fi Only can also delay starts until Wi-Fi returns.',
+          'Downloads can fail when the network drops, the source blocks or changes the file, storage is full, the media source refuses to resume from a partial file, or the media is DRM/encrypted/unsupported. Open the failed item in Downloads to read the error, then retry if the source is still available. Wi-Fi Only can also delay starts until Wi-Fi returns.',
         keywords: 'failed, error, retry, network, storage',
       },
       pauseAndResume: {
         question: 'Can I pause and resume downloads?',
         answer:
-          'Progressive file downloads can usually be paused and resumed from Downloads when the server supports resumable transfers. HLS stream downloads do not support user pause/resume — VidoraX will not fake that behavior. Auto Resume (in Download Settings) can restart eligible paused progressive downloads when conditions allow; it does not unlock unsupported HLS pause.',
+          'Progressive file downloads can usually be paused and resumed from Downloads when the media source allows resuming from a partial file. Some sources — including social CDNs serving temporary signed links — ignore that request, and those downloads have to start over. HLS stream downloads do not support user pause/resume — VidoraX will not fake that behavior. Auto Resume (in Download Settings) can restart eligible paused progressive downloads when conditions allow; it does not unlock unsupported HLS pause.',
         keywords: 'pause, resume, HLS, progressive, auto resume',
       },
       wifiOnlyDownloads: {

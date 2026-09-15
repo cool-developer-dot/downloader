@@ -98,21 +98,9 @@ export async function validateFinalDownloadFile(
     finalUri = input.destination.uri;
   }
 
-  let verification = verifyCompletedFile(input.destination, input.expectedBytes, {
+  const verification = verifyCompletedFile(input.destination, input.expectedBytes, {
     downloadId: input.downloadId,
   });
-
-  if (
-    !verification.ok &&
-    verification.reason === 'corrupt' &&
-    input.expectedBytes != null &&
-    input.expectedBytes > 0 &&
-    committedSize > MIN_VALID_MEDIA_BYTES
-  ) {
-    verification = verifyCompletedFile(input.destination, null, {
-      downloadId: input.downloadId,
-    });
-  }
 
   if (!verification.ok) {
     try {

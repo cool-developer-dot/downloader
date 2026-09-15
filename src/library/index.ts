@@ -26,6 +26,7 @@ export {
 export { isAvailabilityCacheFresh } from './availability-ttl';
 export { libraryLog } from './diagnostics';
 export {
+  canAttemptPlayback,
   isCompletedStatus,
   isExcludedStatus,
   isLibraryCandidate,

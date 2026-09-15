@@ -5,7 +5,7 @@ import { Box } from '@/components/base/Box';
 import { Icon } from '@/components/base/Icon';
 import { Pressable } from '@/components/base/Pressable';
 import { Text } from '@/components/base/Text';
-import type { MediaLibraryItem } from '@/library';
+import { canAttemptPlayback, type MediaLibraryItem } from '@/library';
 
 import { useTranslation } from '@/localization';
 
@@ -29,9 +29,7 @@ export const LibraryCard = memo(function LibraryCard({
   const { t } = useTranslation();
   const [thumbFailed, setThumbFailed] = useState(false);
   const metaLine = buildLibraryMetaLine(item);
-  const canPlay =
-    item.localAvailability === 'available' ||
-    item.localAvailability === 'unverified';
+  const canPlay = canAttemptPlayback(item.localAvailability);
 
   const handlePress = useCallback(() => {
     if (!canPlay) {
@@ -64,7 +62,7 @@ export const LibraryCard = memo(function LibraryCard({
         onPress && canPlay
           ? onLongPress
             ? t('library.longPressHint')
-            : 'Opens video player'
+            : t('library.playHint')
           : item.localAvailability === 'missing'
             ? t('library.fileUnavailable')
             : undefined

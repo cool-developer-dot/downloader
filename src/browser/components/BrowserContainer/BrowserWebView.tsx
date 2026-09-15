@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import type {
@@ -15,6 +15,7 @@ import type {
 } from 'react-native-webview/lib/WebViewTypes';
 
 import { useTheme } from '@/hooks/use-theme';
+import { registerNativeObservationScope } from '@/media-detection/adapters/native-observation-scope';
 import { useMediaDetectionBridge } from '@/media-detection';
 import {
   logBrowserDesktop,
@@ -131,6 +132,22 @@ export const BrowserWebView = memo(function BrowserWebView({
     }
     return state.isLoading;
   });
+
+  const nativeViewTagRef = useRef<number | null>(null);
+  const nativeScopeCleanupRef = useRef<(() => void) | null>(null);
+  const bindNativeScope = useCallback((tag = nativeViewTagRef.current, pageUrl = tabUrl) => {
+    if (tag == null || !tabId) return;
+    nativeViewTagRef.current = tag;
+    const previousCleanup = nativeScopeCleanupRef.current;
+    nativeScopeCleanupRef.current = registerNativeObservationScope(tag, {
+      tabId, navigationEpoch: navigationEpochRef.current, pageUrl, active: isActive,
+    });
+    previousCleanup?.();
+  }, [isActive, navigationEpochRef, tabId, tabUrl]);
+  // WebView exposes imperative commands, not a host ref. Native events carry
+  // the actual wrapper tag, which matches MediaNetworkBridge.parentViewId.
+  useLayoutEffect(() => { bindNativeScope(); });
+  useEffect(() => () => { nativeScopeCleanupRef.current?.(); }, []);
 
   const mountLoggedRef = useRef(false);
   const previousSourceRef = useRef(sourceUri);
@@ -462,8 +479,10 @@ export const BrowserWebView = memo(function BrowserWebView({
   const handleLoadStart = useCallback(
     (event: WebViewNavigationEvent | WebViewErrorEvent) => {
       onLoadStart(event.nativeEvent.url);
+      const target = (event.nativeEvent as { target?: number }).target;
+      bindNativeScope(typeof target === 'number' ? target : nativeViewTagRef.current, event.nativeEvent.url);
     },
-    [onLoadStart],
+    [bindNativeScope, onLoadStart],
   );
 
   const handleLoadEnd = useCallback(
@@ -501,8 +520,9 @@ export const BrowserWebView = memo(function BrowserWebView({
   const handleNavigationStateChange = useCallback(
     (navState: WebViewNavigation) => {
       onNavigationStateChange(navState);
+      bindNativeScope(nativeViewTagRef.current, navState.url);
     },
-    [onNavigationStateChange],
+    [bindNativeScope, onNavigationStateChange],
   );
 
   const handleShouldStartLoadWithRequest = useCallback(
@@ -581,6 +601,10 @@ export const BrowserWebView = memo(function BrowserWebView({
   // Phase 6A: never pass `incognito` — Android setIncognito clears global CookieManager.
   return (
     <WebView
+      onLayout={(event) => {
+        const target = (event.nativeEvent as { target?: number }).target;
+        if (typeof target === 'number') bindNativeScope(target);
+      }}
       ref={webViewRef}
       testID={testID}
       source={webViewSource}

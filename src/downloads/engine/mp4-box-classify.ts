@@ -151,8 +151,12 @@ export function classifyMp4Container(input: Mp4ClassifyInput): Mp4ClassifyResult
     boxesScanned: boxes.length,
   };
 
+  if (total != null && boxes.some((box) => box.offset + box.size > total)) {
+    return { ...base, kind: 'UNKNOWN', reason: 'invalid_box_size' };
+  }
+
   // Media fragment: typically starts with moof; no initialization boxes.
-  if (firstBoxType === 'moof' || (hasMoof && !hasFtyp && !hasMoov)) {
+  if (firstBoxType === 'moof' || (hasMoof && !hasMoov) || types.has('styp')) {
     return {
       ...base,
       kind: 'MEDIA_FRAGMENT',
@@ -161,7 +165,7 @@ export function classifyMp4Container(input: Mp4ClassifyInput): Mp4ClassifyResult
   }
 
   // Complete fragmented file in window.
-  if (hasFtyp && hasMoof && hasMdat) {
+  if (hasFtyp && hasMoov && hasMoof && hasMdat) {
     return {
       ...base,
       kind: 'FRAGMENTED_COMPLETE',
@@ -178,6 +182,11 @@ export function classifyMp4Container(input: Mp4ClassifyInput): Mp4ClassifyResult
     };
   }
 
+  // Legacy QuickTime may have no ftyp. Both metadata and data must be observed.
+  if (!hasFtyp && hasMoov && hasMdat) {
+    return { ...base, kind: 'PROGRESSIVE_OR_COMPLETE', reason: 'quicktime_moov_mdat' };
+  }
+
   // Initialization segment: ftyp + moov, no mdat in scanned bytes.
   if (hasFtyp && hasMoov && !hasMdat) {
     if (coversEntire) {
@@ -187,7 +196,7 @@ export function classifyMp4Container(input: Mp4ClassifyInput): Mp4ClassifyResult
         reason: 'ftyp_moov_no_mdat_entire_resource',
       };
     }
-    if (total != null && total <= INIT_SEGMENT_SIZE_HINT_MAX) {
+    if (total != null && total <= INIT_SEGMENT_SIZE_HINT_MAX && bytes.length >= total) {
       return {
         ...base,
         kind: 'INIT_SEGMENT',
@@ -195,13 +204,7 @@ export function classifyMp4Container(input: Mp4ClassifyInput): Mp4ClassifyResult
       };
     }
     // Large total — mdat likely later; treat as likely progressive.
-    if (total != null && total > INIT_SEGMENT_SIZE_HINT_MAX) {
-      return {
-        ...base,
-        kind: 'PROGRESSIVE_OR_COMPLETE',
-        reason: 'ftyp_moov_large_total_mdat_later',
-      };
-    }
+    // Size is not proof that mdat exists later. A bounded probe stays unresolved.
     return {
       ...base,
       kind: 'UNKNOWN',

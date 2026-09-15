@@ -14,6 +14,7 @@ export {
   routePaths,
   downloadDetailsPath,
   playerPath,
+  type PlayerRoute,
   type RoutePath,
 } from './route-paths';
 export { secondaryStackRoutes } from './secondary-routes';

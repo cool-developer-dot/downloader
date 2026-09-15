@@ -8,6 +8,7 @@ export type MimeProbeResult = {
   mimeType: string | null;
   contentLength: number | null;
   acceptRanges: boolean;
+  contentDisposition?: string | null;
   ok: boolean;
   status: number | null;
 };
@@ -34,13 +35,15 @@ export async function probeMediaMime(
     return null;
   }
 
-  const cacheKey = url;
-  const cached = probeCache.get(cacheKey);
+  if (signal?.aborted) return null;
+  const authenticated = Object.keys(options?.headers ?? {}).some((key) => /^(cookie|authorization)$/i.test(key));
+  const cacheKey = `${url}|${options?.referer ?? ''}|${options?.headers?.['User-Agent'] ?? ''}`;
+  const cached = authenticated ? null : probeCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.result;
   }
 
-  await acquireProbeSlot(signal);
+  try { await acquireProbeSlot(signal); } catch { return null; }
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
@@ -70,7 +73,7 @@ export async function probeMediaMime(
       response = null;
     }
 
-    if (!response || !response.ok || !response.headers.get('content-type')) {
+    if (!response || !response.ok || !response.headers.get('content-type') || /^(text\/html|application\/json)/i.test(response.headers.get('content-type') ?? '')) {
       try {
         response = await fetch(url, {
           method: 'GET',
@@ -139,9 +142,10 @@ export async function probeMediaMime(
       acceptRanges,
       ok: response.ok || response.status === 206,
       status: response.status,
+      contentDisposition: response.headers.get('content-disposition'),
     };
 
-    probeCache.set(cacheKey, {
+    if (result.ok && !authenticated && isVerifiedMediaMime(mimeType)) probeCache.set(cacheKey, {
       result,
       expiresAt: Date.now() + DETECTION_TIMING.probeCacheTtlMs,
     });
@@ -158,6 +162,8 @@ export async function probeMediaMime(
   } catch {
     return null;
   } finally {
+    // HEAD fallback may receive a full 200 body when Range is ignored.
+    controller.abort();
     clearTimeout(timeout);
     signal?.removeEventListener('abort', onAbort);
     releaseProbeSlot();
@@ -173,14 +179,20 @@ export function isVerifiedMediaMime(mime: string | null | undefined): boolean {
 }
 
 async function acquireProbeSlot(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted || waitQueue.length >= 48) throw new Error('probe_unavailable');
   if (activeProbes < DETECTION_TIMING.maxConcurrentProbes) {
     activeProbes += 1;
     return;
   }
 
   await new Promise<void>((resolve, reject) => {
+    const resume = () => {
+      signal?.removeEventListener('abort', onAbort);
+      activeProbes += 1;
+      resolve();
+    };
     const onAbort = () => {
-      const idx = waitQueue.indexOf(resolve);
+      const idx = waitQueue.indexOf(resume);
       if (idx >= 0) {
         waitQueue.splice(idx, 1);
       }
@@ -191,11 +203,7 @@ async function acquireProbeSlot(signal?: AbortSignal): Promise<void> {
       return;
     }
     signal?.addEventListener('abort', onAbort, { once: true });
-    waitQueue.push(() => {
-      signal?.removeEventListener('abort', onAbort);
-      activeProbes += 1;
-      resolve();
-    });
+    waitQueue.push(resume);
   });
 }
 

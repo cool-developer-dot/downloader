@@ -22,6 +22,8 @@ import {
 import { resolveSocialPlatform } from '../social/social-content-identity';
 import { hashSafeId, logGeneralMedia, logGeneralCorrelationTrace } from './general-media-diagnostics';
 import { generalPageMediaContextStore } from './general-page-context';
+import { stableResourcePath } from '../social-source/resource-identity';
+import { isSameGeneralContentNavigation } from './general-content-navigation';
 import type {
   CorrelatedGeneralMediaCandidateSet,
   GeneralCandidateCorrelation,
@@ -53,8 +55,7 @@ function resourcePathKey(url: string): string | null {
     return null;
   }
   try {
-    const u = new URL(url);
-    return `${u.hostname}${u.pathname}`.toLowerCase();
+    return stableResourcePath(url);
   } catch {
     return null;
   }
@@ -175,6 +176,7 @@ function matchesActiveCurrentSrc(
     // Iframe src is the player document, never the executable media URL.
     return null;
   }
+  if (media.ownerElementIdentity && media.ownerElementIdentity === context.activeMediaElementIdentity) return true;
   const active = context.activeVideoCurrentSrc;
   if (!active) {
     return null;
@@ -195,14 +197,15 @@ function buildEvidence(
   input: GeneralCorrelationInput,
   context: GeneralPageMediaContext,
 ): GeneralOwnershipEvidence {
-  const tabMatch = Boolean(input.tabId && input.tabId === context.tabId);
-  const navigationMatch = input.navigationEpoch === context.navigationEpoch;
+  const tabMatch = Boolean(input.tabId && input.tabId === context.tabId) && (!media.observedTabId || media.observedTabId === context.tabId);
+  const navigationMatch = input.navigationEpoch === context.navigationEpoch && (media.observedNavigationEpoch == null || media.observedNavigationEpoch === context.navigationEpoch);
   const pageGenerationMatch =
     input.pageGeneration == null ||
     input.pageGeneration === context.pageGeneration;
+  const candidateGenerationMatch = media.observedPageGeneration == null || media.observedPageGeneration === context.pageGeneration;
 
   const currentPageMatch =
-    Boolean(input.pageUrl) &&
+    Boolean(input.pageUrl) && isSameGeneralContentNavigation(media.pageUrl, context.pageUrl) &&
     (input.pageUrl === context.pageUrl ||
       Boolean(
         input.pageUrl &&
@@ -255,7 +258,7 @@ function buildEvidence(
     hiddenElementPenalty: hidden,
     tinyPreviewPenalty: tinyPreview,
     adPenalty: context.explicitAdMarker,
-    staleContextPenalty: !pageGenerationMatch,
+    staleContextPenalty: !pageGenerationMatch || !candidateGenerationMatch || !currentPageMatch,
     segmentPenalty: isSegmentResource(media),
     imagePenalty: poster,
     posterPenalty: poster,
@@ -386,6 +389,16 @@ export function correlateGeneralCandidate(
 ): GeneralCandidateCorrelation {
   const { context } = input;
   const evidence = buildEvidence(media, { ...input, candidates: [] }, context);
+  // New production observations must prove the frame/element relationship.
+  // Older fixture/legacy records without provenance retain their existing scoring.
+  if (media.observedTabId && context.playerKind === 'iframe' &&
+      (!media.frameUrl || !context.activeVideoCurrentSrc || !urlsShareResourcePath(media.frameUrl, context.activeVideoCurrentSrc))) {
+    return { confidence: 'REJECTED', rejectionReason: 'WEAK_UNCORRELATED_MEDIA', evidence, rank: -500 };
+  }
+  if (media.observedTabId && context.activeVideoIsBlob && !media.ownerElementIdentity &&
+      (!media.frameUrl || !isSameGeneralContentNavigation(media.frameUrl, context.pageUrl) || !evidence.recentObservation)) {
+    return { confidence: 'REJECTED', rejectionReason: 'WEAK_UNCORRELATED_MEDIA', evidence, rank: -500 };
+  }
 
   const legacy = scoreMediaCorrelation(media, {
     pageUrl: input.pageUrl ?? context.pageUrl,

@@ -1,5 +1,5 @@
 /**
- * Phase 2 — Automatic media handoff (Video available → Play / Download).
+ * Phase 2 — Automatic media handoff (Video available → Download).
  *
  * Usage: npm run verify:automatic-media-handoff
  *
@@ -356,11 +356,12 @@ test('13. bar only visible when actionable (TRACKING not shown)', () => {
 test('14. compact browser-owned bar (not a second CTA system)', () => {
   mustInclude(browserScreen, ['BrowserMediaDownloadBar'], 'single bar');
   mustNotInclude(browserScreen, ['MediaDiscoveryOverlay'], 'no overlay CTA');
-  mustInclude(bar, ['Video available', 'ActionSheetModal'], 'compact bar + sheet');
+  mustInclude(bar, ['Video available'], 'compact bar');
+  mustNotInclude(bar, ['ActionSheetModal'], 'no play/download sheet');
 });
 test('15. no automatic modal popup', () => {
-  mustInclude(bar, ['setSheetVisible(true)'], 'sheet opens on press');
-  assert(!bar.includes('setSheetVisible(true);') || bar.includes('handleBarPress'), 'tap gated');
+  mustInclude(bar, ['handleBarPress'], 'tap gated');
+  mustNotInclude(bar, ['setSheetVisible'], 'no sheet auto-open');
   mustNotInclude(bar, ['setInterval'], 'no interval auto-open');
 });
 test('16. bar is theme-aware', () => {
@@ -372,23 +373,20 @@ test('17. bar does not reload WebView', () => {
   mustNotInclude(hook, ['controller.loadUrl', 'reload()'], 'play/download no reload');
 });
 
-// --- PLAY ---
-test('18. Play action exists', () => {
-  mustInclude(bar, ["id: 'play'", 'browser.media.play', 'action.play'], 'play action');
-  mustInclude(hook, ['const play =', "media_action_play"], 'play handler');
+// --- PLAY IS NOT A BROWSER CTA ---
+test('18. Video available bar has no Play option', () => {
+  mustNotInclude(bar, ["id: 'play'", 'browser.media.play', 'action.play'], 'no play action');
+  mustNotInclude(hook, ['const play =', "media_action_play"], 'no play handler');
 });
-test('19. Play uses existing webpage playback', () => {
-  mustInclude(hook, ['Do not reload WebView or enqueue'], 'existing playback');
-  mustNotInclude(hook.split('const play')[1]?.slice(0, 800) ?? '', ['enqueueBrowserMediaDownload'], 'play no enqueue');
+test('19. Bar tap starts download, not in-page playback', () => {
+  mustInclude(bar, ['handleDownload', 'handleBarPress'], 'tap downloads');
+  mustInclude(bar, ["name=\"download\""], 'download icon');
 });
-test('20. Play does not force download', () => {
-  const playBlock = hook.split('const play =')[1]?.split('const viewDownloads')[0] ?? '';
-  mustNotInclude(playBlock, ['enqueueBrowserMediaDownload', 'claimForHandoff'], 'play isolation');
+test('20. Download still does not reload WebView', () => {
+  mustNotInclude(hook, ['controller.loadUrl', 'reload()'], 'download no reload');
 });
-test('21. Play does not reload WebView', () => {
-  const playBlock = hook.split('const play =')[1]?.split('const viewDownloads')[0] ?? '';
-  assert(!playBlock.includes('loadUrl('), 'no loadUrl');
-  assert(!playBlock.includes('.reload('), 'no reload()');
+test('21. In-page playback stays in the WebView', () => {
+  mustInclude(bar, ['In-page playback stays in the WebView'], 'no second player');
 });
 
 // --- DOWNLOAD ---
@@ -607,22 +605,21 @@ test('61. Dark uses same semantic tokens', () => {
 test('62. #DC3C2C unchanged in theme', () => {
   mustInclude(themeColors, ['#DC3C2C'], 'logo red');
 });
-test('63. EN strings for Video available / Play / Download', () => {
-  mustInclude(en, ["videoAvailable: 'Video available'", "play: 'Play'", "download: 'Download'"], 'EN media');
+test('63. EN strings for Video available / Download', () => {
+  mustInclude(en, ["videoAvailable: 'Video available'", "download: 'Download'"], 'EN media');
   mustInclude(en, ["preparingDownload: 'Preparing download…'"], 'EN preparing');
 });
 test('64. UR strings for media handoff', () => {
-  mustInclude(ur, ["videoAvailable: 'ویڈیو دستیاب'", "play: 'چلائیں'", "download: 'ڈاؤن لوڈ'"], 'UR media');
+  mustInclude(ur, ["videoAvailable: 'ویڈیو دستیاب'", "download: 'ڈاؤن لوڈ'"], 'UR media');
 });
 test('65. media bar accessibility', () => {
   mustInclude(bar, ['accessibilityRole="button"', 'videoAvailableA11y', 'accessibilityState'], 'bar a11y');
 });
-test('66. Play accessibility', () => {
-  mustInclude(bar, ["id: 'play'", 'browser.media.play'], 'play labeled');
-  mustInclude(en, ["playA11y: 'Play video on this page'"], 'play a11y copy');
+test('66. Bar download accessibility', () => {
+  mustInclude(bar, ['videoAvailableHint', 'videoAvailableA11y'], 'download labeled');
+  mustInclude(en, ["videoAvailableHint: 'Downloads this video'"], 'download hint copy');
 });
-test('67. Download accessibility', () => {
-  mustInclude(bar, ["id: 'download'", 'browser.media.download'], 'download labeled');
+test('67. Download accessibility copy', () => {
   mustInclude(en, ["downloadA11y: 'Download this video'"], 'download a11y copy');
 });
 
@@ -876,8 +873,9 @@ test('96. busy state announced when preparing', () => {
   mustInclude(bar, ['busy: isPreparing'], 'busy a11y');
   mustInclude(en, ["preparingDownload: 'Preparing download…'"], 'preparing copy');
 });
-test('97. ActionSheet uses existing primitive', () => {
-  mustInclude(bar, ["from '@/components/bottom-sheets/ActionSheetModal'"], 'existing sheet');
+test('97. Bar downloads on tap without an action sheet', () => {
+  mustNotInclude(bar, ['ActionSheetModal'], 'no sheet');
+  mustInclude(bar, ['handleBarPress', 'handleDownload'], 'tap downloads');
 });
 test('98. verified-only AVAILABLE copy not Video detected Download Video', () => {
   mustNotInclude(presentation, ["'Download Video'", "'Video detected'"], 'old copy gone');

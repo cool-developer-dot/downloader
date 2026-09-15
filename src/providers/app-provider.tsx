@@ -82,6 +82,6 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     // Static fallback before first useTheme paint — MMKV-resolved, not forced Light.
-    backgroundColor: resolveStartupBackground('light'),
+    backgroundColor: resolveStartupBackground(),
   },
 });

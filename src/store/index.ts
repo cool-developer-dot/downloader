@@ -170,9 +170,6 @@ export type {
   LocalAvailability,
 } from './library';
 
-export { usePlayerStore, selectCurrentVideo, selectFullscreen, selectPlaybackPosition, selectPlaybackRate } from './player';
-export type { PlayerActions, PlayerState, PlayerStore, VideoItem } from './player';
-
 export {
   useRecentSearchesStore,
   selectRecentSearchItems,

@@ -5,7 +5,7 @@
  */
 
 const PAGE_VIDEO_PATH_RE =
-  /(?:^|\/)(?:video|watch|embed|media)\/([A-Za-z0-9_-]{5,32})(?:[/?#]|$)/i;
+  /(?:^|\/)(?:video|videos|watch|embed|media|clip|clips|shorts|reel|reels|v)\/([A-Za-z0-9_-]{5,32})(?:[/?#]|$)/i;
 
 const QUERY_VIDEO_ID_RE = /[?&#](?:video|v)=([A-Za-z0-9_-]{5,32})(?:[&#]|$)/i;
 

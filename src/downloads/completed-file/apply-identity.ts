@@ -8,6 +8,7 @@ import { File } from 'expo-file-system';
 import {
   assertManagedDownloadPath,
   getDownloadItemDirectory,
+  verifyCompletedFile,
 } from '@/downloads/engine/file-paths';
 import { hardeningLog } from '@/downloads/hardening-diagnostics';
 
@@ -105,14 +106,22 @@ export async function applyCompletedFileIdentity(
     } catch (error) {
       hardeningLog('completed_identity_rename_failed', {
         downloadId: input.downloadId,
-        message: error instanceof Error ? error.message : 'rename_failed',
+        reason: 'rename_failed',
       });
       // Keep validated path — never leave catalog pointing at a missing rename target.
-      localUri = input.finalUri;
+      // File.move may mutate this File's URI before a later check throws.
+      localUri = current.exists ? current.uri : input.finalUri;
       fileName = current.name || input.currentFileName;
       renamed = false;
     }
   }
+
+  const physical = new File(localUri);
+  assertManagedDownloadPath(physical.uri, input.downloadId);
+  if (!verifyCompletedFile(physical, input.fileSize, { downloadId: input.downloadId }).ok) {
+    throw new Error('Completed physical identity unavailable');
+  }
+  fileName = physical.name;
 
   const descriptor =
     resolveCompletedDescriptor({

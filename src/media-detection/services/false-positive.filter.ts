@@ -97,16 +97,8 @@ export function classifyFalsePositive(input: {
     if (base === 'text/vtt' || base === 'application/x-subrip') {
       return 'subtitle';
     }
-    if (REJECT_MIME_EXACT.has(base) && !parseExtensionFromUrl(url)) {
-      // octet-stream alone without extension — not enough
-      if (base === 'application/octet-stream') {
-        if (isLikelyTikTokProgressiveMediaUrl(url)) {
-          // TikTok MSE Range objects often advertise octet-stream.
-        } else {
-          return 'blocked_mime';
-        }
-      }
-    }
+    // Octet-stream is incomplete metadata, not proof of a false positive.
+    // Observation/correlation gates still apply and bytes must verify before offer.
   }
 
   const ext = parseExtensionFromUrl(url);

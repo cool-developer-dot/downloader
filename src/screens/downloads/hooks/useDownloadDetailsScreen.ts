@@ -193,6 +193,7 @@ export function useDownloadDetailsScreen() {
       localState: transfer?.localState ?? null,
       executionState: transfer?.executionState ?? null,
       workerState: item?.workerState ?? transfer?.workerState ?? null,
+      supportsResume: transfer?.supportsResume ?? null,
     }),
     [downloadId, item?.workerState, transfer],
   );

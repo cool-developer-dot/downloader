@@ -88,6 +88,11 @@ export interface MediaDimensions {
  * Unavailable fields are explicitly null — never fabricated.
  */
 export interface DetectedMedia {
+  ownerElementIdentity?: string | null;
+  frameUrl?: string | null;
+  observedTabId?: string | null;
+  observedNavigationEpoch?: number;
+  observedPageGeneration?: number;
   id: string;
   /** Canonical playback/download URL (prefer final after redirects). */
   url: string;
@@ -183,6 +188,10 @@ export interface MediaDetectionError {
 
 /** Lightweight candidate emitted by observers before enrichment. */
 export interface MediaCandidate {
+  ownerElementIdentity?: string | null;
+  frameUrl?: string | null;
+  /** Observation evidence only; never implies a supported or verified container. */
+  videoElementEvidence?: boolean;
   url: string;
   pageUrl: string;
   sourceUrl?: string | null;

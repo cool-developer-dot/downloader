@@ -21,6 +21,8 @@ export type DashParseResult = {
   audioRepresentations: DashRepresentation[];
   hasSeparateAudio: boolean;
   isEncrypted: boolean;
+  /** SegmentTemplate / SegmentList — not a whole-file BaseURL pack. */
+  isFragmented: boolean;
 };
 
 /**
@@ -116,7 +118,75 @@ export function parseDashManifest(
     audioRepresentations,
     hasSeparateAudio,
     isEncrypted,
+    isFragmented: isFragmentedDashManifest(trimmed),
   };
+}
+
+/** Segmented DASH cannot be fetched as a single progressive file. */
+export function isFragmentedDashManifest(xml: string): boolean {
+  return (
+    /<SegmentTemplate\b/i.test(xml) ||
+    /<SegmentList\b/i.test(xml) ||
+    /<SegmentURL\b/i.test(xml) ||
+    /\$Number(?:%[^$]*)?\$/i.test(xml) ||
+    /\$Time\$/i.test(xml)
+  );
+}
+
+export function dashRepresentationLooksCombinedAv(
+  rep: DashRepresentation,
+): boolean {
+  const codecs = rep.codecs ?? '';
+  const hasVideoCodec = /(?:avc1|avc3|hev1|hvc1|vp09|vp9|av01)/i.test(codecs);
+  const hasAudioCodec = /(?:mp4a|opus|ac-3|ec-3|mp3|flac)/i.test(codecs);
+  if (hasVideoCodec && hasAudioCodec) {
+    return true;
+  }
+  return false;
+}
+
+const STANDALONE_MEDIA_PATH_RE = /\.(mp4|m4v|webm|mov|m4a|mp3|aac)(?:$)/i;
+
+/**
+ * Whole-file BaseURL representations (Reddit-style DASH_720.mp4 packs).
+ * Fragmented templates are excluded.
+ */
+export function selectStandaloneDashFiles(
+  parsed: DashParseResult,
+  xml: string,
+): DashRepresentation[] {
+  if (parsed.isFragmented || isFragmentedDashManifest(xml)) {
+    return [];
+  }
+  return parsed.representations.filter((rep) => {
+    if (!rep.baseUrl) {
+      return false;
+    }
+    try {
+      return STANDALONE_MEDIA_PATH_RE.test(new URL(rep.baseUrl).pathname);
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * Standalone files that are already combined A/V (or a video AdaptationSet
+ * with no separate audio). Separate video+audio packs stay unsupported.
+ */
+export function selectDownloadableStandaloneDash(
+  parsed: DashParseResult,
+  xml: string,
+): DashRepresentation[] {
+  const files = selectStandaloneDashFiles(parsed, xml);
+  const muxed = files.filter(dashRepresentationLooksCombinedAv);
+  if (muxed.length > 0) {
+    return muxed;
+  }
+  if (!parsed.hasSeparateAudio) {
+    return files.filter((rep) => rep.contentType !== 'audio');
+  }
+  return [];
 }
 
 export function mapDashRepresentationsToQualities(

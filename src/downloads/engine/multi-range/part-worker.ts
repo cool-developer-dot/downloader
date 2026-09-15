@@ -342,7 +342,7 @@ export async function downloadRangePart(options: {
       }
       throw new DownloadEngineError(
         'INVALID_RANGE_RESPONSE',
-        'The server returned a Content-Range end outside the assigned part.',
+        'The media source returned a Content-Range end outside the assigned part.',
       );
     }
   }

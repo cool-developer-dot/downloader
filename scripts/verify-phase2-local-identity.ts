@@ -90,7 +90,7 @@ function migrateMap(store: Map<string, Row>): {
 
 console.log('Phase 2 local identity verification\n');
 
-test('startup routing is splash → cinematic splash → home', () => {
+test('startup routing is splash → cinematic splash → browser', () => {
   const postSplash = read('src/navigation/helpers/resolve-post-splash-route.ts');
   assert(!postSplash.includes('isAuthenticated'), 'post-splash must not check auth');
   assert(!postSplash.includes('signUp'), 'post-splash must not send users to signup');
@@ -101,7 +101,7 @@ test('startup routing is splash → cinematic splash → home', () => {
     'post-splash must not skip to home via persisted onboarding',
   );
   const onboarding = read('src/screens/onboarding/OnboardingScreen.tsx');
-  assert(onboarding.includes('routePaths.home'), 'cinematic splash finishes at Home');
+  assert(onboarding.includes('replace(routePaths.browser)'), 'cinematic splash finishes at Browser');
   assert(!onboarding.includes('signUp'), 'onboarding must not go to signup');
 });
 

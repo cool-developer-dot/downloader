@@ -34,7 +34,7 @@ export function extractDetectedMedia(candidate: MediaCandidate): DetectedMedia |
 
   const category =
     resolveCategory(container, extension) ??
-    (candidate.mimeType?.startsWith('audio/')
+    (candidate.videoElementEvidence ? 'video' : candidate.mimeType?.startsWith('audio/')
       ? 'audio'
       : candidate.mimeType?.startsWith('video/')
         ? 'video'
@@ -94,6 +94,8 @@ export function extractDetectedMedia(candidate: MediaCandidate): DetectedMedia |
 
   return {
     id,
+    ownerElementIdentity: candidate.ownerElementIdentity,
+    frameUrl: candidate.frameUrl,
     url: finalUrl || candidate.url,
     sourceUrl: sourceUrl || candidate.url,
     finalUrl: finalUrl || candidate.url,

@@ -9,6 +9,7 @@ import {
 } from '@/downloads/quality';
 
 import { isRejectedDownloadTarget } from './browser-download-presentation';
+import { stableResourcePath } from '@/media-detection/social-source/resource-identity';
 
 const MUX_OR_DRM_REASONS = new Set<string>([
   'DRM_PROTECTED',
@@ -19,12 +20,7 @@ const MUX_OR_DRM_REASONS = new Set<string>([
 
 function canonicalSourcePath(url: string): string {
   const trimmed = url.trim();
-  try {
-    const parsed = new URL(trimmed);
-    return `${parsed.origin}${parsed.pathname}`.toLowerCase();
-  } catch {
-    return trimmed.split('?')[0]?.split('#')[0]?.toLowerCase() ?? trimmed.toLowerCase();
-  }
+  return stableResourcePath(trimmed) ?? trimmed;
 }
 
 function qualityDedupeKey(option: DownloadQualityOption): string {

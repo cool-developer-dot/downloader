@@ -212,13 +212,15 @@ async function main(): Promise<void> {
       resourceTotalBytes: total,
       coversEntireResource: false,
     });
-    assert(c.kind === 'INIT_SEGMENT', `expected INIT_SEGMENT got ${c.kind}`);
+    assert(c.kind === 'UNKNOWN', `partial evidence must stay UNKNOWN, got ${c.kind}`);
     assert(total < INIT_SEGMENT_SIZE_HINT_MAX, 'size hint');
     const sig = sniffMediaSignature(bytes, {
       resourceTotalBytes: total,
       requireStandaloneMp4: true,
     });
-    assert(!sig.ok && sig.reason === 'init_segment', sig.reason ?? 'expected reject');
+    assert(!sig.ok && sig.reason === 'mp4_structure_unproven', sig.reason ?? 'expected unresolved');
+    const complete = classifyMp4Container({ bytes, resourceTotalBytes: bytes.length, coversEntireResource: true });
+    assert(complete.kind === 'INIT_SEGMENT', 'complete init-only body must be rejected');
   });
 
   await test('5. media fragment not normal video', () => {
@@ -300,7 +302,7 @@ async function main(): Promise<void> {
     const b = 'https://cdn.instagram.com/v/t51/ABC.mp4?_nc_ht=1&oe=BBB&oh=222';
     assert(sameResourceFamily(a, b));
     assert(preserveExecutableUrl(a) === a);
-    assert(!stableResourcePath(a)?.includes('?'));
+    assert(stableResourcePath(a)?.endsWith('?_nc_ht=1'), 'routing selector retained, credentials removed');
     const idA = buildResourceIdentityKey({
       contentIdentity: 'instagram:instagram_reel:EXAMPLE',
       executableUrl: a,

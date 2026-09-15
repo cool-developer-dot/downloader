@@ -6,6 +6,12 @@
 import { isMediaMimeType, parseExtensionFromUrl } from '../parsers/extension.parser';
 import { isDashMimeType } from '../parsers/dash.parser';
 import { isHlsMimeType } from '../parsers/hls.parser';
+import { VIDEO_FORMATS } from '../resource/video-resource';
+import {
+  urlHasMediaQueryEvidence,
+  urlHasPlaybackMediaEvidence,
+  urlHasPlaybackPathEvidence,
+} from './playback-media-evidence';
 
 export type GeneralCandidateFamily =
   | 'progressive'
@@ -84,6 +90,7 @@ const SKIP_EXT = new Set([
 ]);
 
 const MEDIA_EXT = new Set([
+  ...Object.keys(VIDEO_FORMATS),
   'mp4',
   'webm',
   'mov',
@@ -98,6 +105,10 @@ const MEDIA_EXT = new Set([
   'm4a',
   'aac',
   'ogg',
+  'ogv',
+  'opus',
+  'wav',
+  'flac',
   '3gp',
   '3g2',
 ]);
@@ -105,9 +116,11 @@ const MEDIA_EXT = new Set([
 const SEGMENT_EXT = new Set(['ts', 'm4s', 'm2ts', 'cmfv']);
 
 const MEDIA_FAMILY_PATH_RE =
-  /(?:^|\/)(?:hls|m3u8|manifest|playlist|stream(?:ing)?|vod)(?:[/._-]|$)/i;
+  /(?:^|\/)(?:hls|m3u8|manifest|playlist|stream(?:ing)?|vod|videoplayback|dashplaylist)(?:[/._-]|$)/i;
 
 const VIDEO_MEDIA_PATH_RE = /(?:^|\/)video(?:[/._-]|$)/i;
+
+const VIDEO_OBJECT_PATH_RE = /(?:^|\/)v\/t\d{2,}(?:[/._-]|$)/i;
 
 const API_PATH_RE =
   /(?:^|\/)(?:api|graphql|metadata|beacon|analytics|tracking|telemetry|stats)(?:[/._-]|$)/i;
@@ -206,7 +219,12 @@ export function looksLikeMediaFamilyPath(url: string): boolean {
     return false;
   }
   const path = parsed.pathname;
-  return MEDIA_FAMILY_PATH_RE.test(path) || VIDEO_MEDIA_PATH_RE.test(path);
+  return (
+    MEDIA_FAMILY_PATH_RE.test(path) ||
+    VIDEO_MEDIA_PATH_RE.test(path) ||
+    VIDEO_OBJECT_PATH_RE.test(path) ||
+    urlHasPlaybackPathEvidence(url)
+  );
 }
 
 export function looksLikeHlsPlaylistPath(url: string): boolean {
@@ -407,10 +425,11 @@ export function nativeNetworkPrefilter(input: {
   const acceptLooksMedia = /video\/|audio\/|mpegurl|dash\+xml/.test(accept);
   const pathLooksMedia = Boolean(ext && MEDIA_EXT.has(ext));
   const family = looksLikeMediaFamilyPath(url) || looksLikeHlsPlaylistPath(url) || looksLikeDashManifestPath(url);
-  const iframeHint = input.isForMainFrame === false && (Boolean(input.hasRange) || family || acceptLooksMedia);
+  const playbackEvidence = urlHasPlaybackMediaEvidence(url);
+  const iframeHint = input.isForMainFrame === false && (Boolean(input.hasRange) || family || acceptLooksMedia || playbackEvidence);
   const rangeFamily = Boolean(input.hasRange) && family;
 
-  if (!(pathLooksMedia || acceptLooksMedia || iframeHint || rangeFamily)) {
+  if (!(pathLooksMedia || acceptLooksMedia || iframeHint || rangeFamily || playbackEvidence)) {
     return reject('NO_MEDIA_EVIDENCE');
   }
 
@@ -564,8 +583,20 @@ export function classifyGeneralNetworkResource(input: {
   }
 
   const familyPath = looksLikeMediaFamilyPath(input.url);
+  const playbackQuery = urlHasMediaQueryEvidence(input.url);
+  const playbackPath = urlHasPlaybackPathEvidence(input.url);
   if (input.hasRange && familyPath) {
     return accept('progressive');
+  }
+  // Query mime/format is strong even without a file extension.
+  if (playbackQuery) {
+    return accept('progressive');
+  }
+  if (playbackPath && (input.hasRange || input.isForMainFrame === false)) {
+    return accept('progressive');
+  }
+  if (playbackPath) {
+    return accept('progressive', true);
   }
   // Extensionless CDN progressive: video MIME already accepted above.
   // Child-frame Range is embedded-player media request context.

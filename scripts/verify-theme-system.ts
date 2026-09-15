@@ -17,6 +17,7 @@ import {
   resolveOnboardingSurfaces,
 } from '../src/theme/onboarding-surfaces';
 import {
+  DEFAULT_THEME_PREFERENCE,
   normalizeThemePreference,
   resolveThemeMode,
   THEME_PREFERENCES,
@@ -184,20 +185,23 @@ async function main(): Promise<void> {
   });
 
   // ─── GROUP B — NORMALIZE THEME PREFERENCE ───────────────────────
-  await test('B16 undefined → light', () => {
-    assert(normalizeThemePreference(undefined) === 'light', 'undefined');
+  await test('B15 DEFAULT_THEME_PREFERENCE is logo', () => {
+    assert(DEFAULT_THEME_PREFERENCE === 'logo', 'default');
   });
-  await test('B17 null → light', () => {
-    assert(normalizeThemePreference(null) === 'light', 'null');
+  await test('B16 undefined → logo (default)', () => {
+    assert(normalizeThemePreference(undefined) === 'logo', 'undefined');
   });
-  await test('B18 empty string → light', () => {
-    assert(normalizeThemePreference('') === 'light', 'empty');
+  await test('B17 null → logo (default)', () => {
+    assert(normalizeThemePreference(null) === 'logo', 'null');
   });
-  await test('B19 invalid string → light', () => {
-    assert(normalizeThemePreference('neon') === 'light', 'invalid');
+  await test('B18 empty string → logo (default)', () => {
+    assert(normalizeThemePreference('') === 'logo', 'empty');
   });
-  await test('B20 number → light', () => {
-    assert(normalizeThemePreference(42) === 'light', 'number');
+  await test('B19 invalid string → logo (default)', () => {
+    assert(normalizeThemePreference('neon') === 'logo', 'invalid');
+  });
+  await test('B20 number → logo (default)', () => {
+    assert(normalizeThemePreference(42) === 'logo', 'number');
   });
   await test('B21 system → light (legacy collapse)', () => {
     assert(normalizeThemePreference('system') === 'light', 'system');
@@ -395,21 +399,24 @@ async function main(): Promise<void> {
     assert(colors.light.bottomNavBackground !== colors.logo.bottomNavBackground, 'nav differs');
   });
 
-  // ─── GROUP I — THEME STORE DEFAULT LIGHT ────────────────────────
-  await test('I75 initialThemeState seeds MMKV with light fallback', () => {
+  // ─── GROUP I — THEME STORE DEFAULT LOGO ─────────────────────────
+  await test('I75 initialThemeState seeds MMKV with logo fallback', () => {
     assert(
       initialThemeState.themeMode === 'light' ||
         initialThemeState.themeMode === 'logo' ||
         initialThemeState.themeMode === 'dark',
       'valid seeded mode',
     );
-    assert(read('src/store/theme/state.ts').includes("getThemeMode('light')"), 'mmkv seed');
+    assert(
+      read('src/store/theme/state.ts').includes('getThemeMode(DEFAULT_THEME_PREFERENCE)'),
+      'mmkv seed',
+    );
   });
   await test('I76 initialThemeState never system', () => {
     assert(initialThemeState.themeMode !== 'system', 'no system');
   });
-  await test('I77 state.ts documents light fallback', () => {
-    assert(read('src/store/theme/state.ts').includes('LIGHT'), 'fallback docs');
+  await test('I77 state.ts documents logo fallback', () => {
+    assert(read('src/store/theme/state.ts').includes('LOGO'), 'fallback docs');
   });
   await test('I78 store merge normalizes persisted theme', () => {
     assert(read('src/store/theme/index.ts').includes('normalizeThemePreference'), 'normalize');
@@ -1249,10 +1256,10 @@ async function main(): Promise<void> {
       assert(!read(rel).includes('setInterval'), rel);
     }
   });
-  await test('P2-266 persistence normalize unknown → light', () => {
-    assert(normalizeThemePreference('UNKNOWN_THEME') === 'light', 'unknown');
-    assert(normalizeThemePreference(null) === 'light', 'null');
-    assert(normalizeThemePreference({}) === 'light', 'obj');
+  await test('P2-266 persistence normalize unknown → logo (default)', () => {
+    assert(normalizeThemePreference('UNKNOWN_THEME') === 'logo', 'unknown');
+    assert(normalizeThemePreference(null) === 'logo', 'null');
+    assert(normalizeThemePreference({}) === 'logo', 'obj');
   });
   await test('P2-267 legacy system → light', () => {
     assert(normalizeThemePreference('system') === 'light', 'system');
@@ -2001,8 +2008,13 @@ async function main(): Promise<void> {
   await test('SC17 StatusBar uses theme statusBarStyle', () => {
     assert(read('src/providers/status-bar.tsx').includes('statusBarStyle'), 'status');
   });
-  await test('SC18 Android NavigationBar setStyle by mode', () => {
-    assert(read('src/providers/status-bar.tsx').includes('NavigationBar.setStyle'), 'nav bar');
+  await test('SC18 status-bar does not set Android nav bar style at runtime', () => {
+    // `enforceContrast` defaults to true, which makes setStyle a documented
+    // no-op; the call still threw MissingActivity on reload, and the library
+    // discards that promise, so it surfaced as an uncatchable rejection.
+    const src = read('src/providers/status-bar.tsx');
+    assert(!src.includes("from 'expo-navigation-bar'"), 'no nav bar import');
+    assert(src.includes('enforceContrast'), 'documents why it is omitted');
   });
   await test('SC19 no second theme store', () => {
     assert(read('src/store/theme/index.ts').includes('useThemeStore'), 'one store');

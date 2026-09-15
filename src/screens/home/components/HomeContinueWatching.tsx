@@ -1,6 +1,6 @@
 import { memo, useCallback } from 'react';
 
-import { navigation, playerPath, routePaths } from '@/navigation';
+import { navigation, openPlayer, routePaths } from '@/navigation';
 import { useTranslation } from '@/localization';
 
 import { useHomeContinueWatching } from '../hooks/useHomeDashboard';
@@ -17,10 +17,6 @@ export const HomeContinueWatching = memo(function HomeContinueWatching({
 }: HomeContinueWatchingProps) {
   const { items, isLoading } = useHomeContinueWatching(localById);
   const { t } = useTranslation();
-
-  const openPlayer = useCallback((mediaId: string) => {
-    navigation.push(playerPath(mediaId));
-  }, []);
 
   const openHistory = useCallback(() => {
     navigation.push(routePaths.watchHistory);
