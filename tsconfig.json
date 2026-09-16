@@ -24,6 +24,9 @@
   ],
   "exclude": [
     "scripts",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "src/detection/page/test-harness.ts",
+    "modules/**/android/**",
+    "modules/**/ios/**"
   ]
 }

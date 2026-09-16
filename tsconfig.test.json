@@ -5,7 +5,8 @@
   },
   "include": [
     "src/**/*.test.ts",
-    "modules/**/*.test.ts"
+    "modules/**/*.test.ts",
+    "src/detection/page/test-harness.ts"
   ],
   "exclude": []
 }
