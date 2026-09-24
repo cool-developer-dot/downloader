@@ -54,13 +54,11 @@ export function cinematicPageToSplashStep(pageIndex: number): StartupSplashStep 
   return 'splash_4';
 }
 
-/**
- * Persisted first-launch / onboardingComplete must NEVER suppress cinematic pages.
- */
+/** The cinematic pages are the first-launch introduction; a returning user skips them. */
 export function shouldSkipCinematicSplashForPersistedOnboarding(
-  _onboardingComplete: boolean,
-): false {
-  return false;
+  onboardingComplete: boolean,
+): boolean {
+  return onboardingComplete;
 }
 
 /** Warm AppState resume must not replay the sequence; process start must. */

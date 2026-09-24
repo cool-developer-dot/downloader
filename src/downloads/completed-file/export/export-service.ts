@@ -10,6 +10,7 @@ import { Platform } from 'react-native';
 import { File } from 'expo-file-system';
 
 import { downloadEngine } from '@/downloads/engine/manager';
+import { getV2Engine, isEngineOwned } from '@/downloads/v2';
 import {
   assertManagedDownloadPath,
   verifyCompletedFile,
@@ -76,6 +77,32 @@ export async function saveCompletedFileToDevice(
       ok: false,
       error: new CompletedFileExportError('UNSUPPORTED_EXPORT_DESTINATION'),
     };
+  }
+
+  if (isEngineOwned(useDownloadsStore.getState(), id)) {
+    // The v2 module copies its own library file into the gallery and records the resulting content URI.
+    const engine = getV2Engine();
+    if (!engine) {
+      return { ok: false, error: new CompletedFileExportError('UNSUPPORTED_EXPORT_DESTINATION') };
+    }
+    try {
+      await engine.saveToGallery([id]);
+      const item = await engine.getLibraryItem(id);
+      return {
+        ok: true,
+        kind: 'saved',
+        displayName: item?.fileName ?? useDownloadsStore.getState().engineRowsById[id]?.title ?? '',
+        contentUri: item?.galleryUri ?? '',
+      };
+    } catch (error) {
+      const code = (error as { code?: unknown } | null)?.code;
+      return {
+        ok: false,
+        error: new CompletedFileExportError(
+          code === 'ERR_STORAGE_PERMISSION' ? 'LEGACY_EXPORT_FAILED' : 'MEDIASTORE_INSERT_FAILED',
+        ),
+      };
+    }
   }
 
   try {

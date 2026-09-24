@@ -37,6 +37,13 @@ export interface DownloadsState {
   error: string | null;
   ready: boolean;
   initialized: boolean;
+  /**
+   * Mirror of the v2 native DownloadEngine's downloads and library items (never persisted here). Ids in it are
+   * owned by v2: v1 catalog rows, v1 engine events and v1 reconciliation never write them.
+   */
+  engineRowsById: Record<string, DownloadItem>;
+  /** Engine rows that exist only as library items: Player shows them, Downloads does not. */
+  libraryOnlyIds: Record<string, true>;
 }
 
 export interface DownloadsActions {
@@ -85,6 +92,12 @@ export interface DownloadsActions {
   retry: (id: string) => Promise<DownloadItem | null>;
   remove: (id: string) => Promise<boolean>;
   reset: () => void;
+  /** v2 bridge only: projected records from the native engine (state events, hydration, accepted enqueue). */
+  applyEngineEntries: (entries: import('@/downloads/v2/projection').V2DownloadEntry[]) => void;
+  applyEngineProgress: (
+    event: import('@modules/vidorax-media/src/VidoraMedia.types').DownloadProgressEvent,
+  ) => void;
+  removeEngineEntries: (ids: string[]) => void;
 }
 
 export type DownloadsStore = DownloadsState & DownloadsActions;

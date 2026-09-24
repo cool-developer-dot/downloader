@@ -29,6 +29,8 @@ export const routePaths = {
   watchHistory: '/watch-history',
   bookmarks: '/bookmarks',
   favorites: '/favorites',
+  /** Videos already on the device, played in VidoraX. */
+  deviceVideos: '/device-videos',
 } as const;
 
 export type RoutePath = (typeof routePaths)[keyof typeof routePaths];

@@ -42,6 +42,16 @@ export interface BrowserEngineContextValue extends BrowserEngineCommands {
   publishChromeHistoryFlags: () => void;
   /** Suppress the next ERR_CONNECTION_ABORTED surfaced after user Stop. */
   suppressNextAbortErrorRef: MutableRefObject<boolean>;
+  /**
+   * Armed while a user-initiated native Back is in flight.
+   *
+   * A WebView seeded from Home starts on about:blank, so that blank stays as the
+   * first back-history entry. Back into it committed a blank document that the
+   * transient-blank guard ignored: blank page, stale URL, Back still enabled and
+   * doing nothing. The flag tells the two cases apart — cleared by every
+   * intentional chrome navigation.
+   */
+  pendingNativeBackRef: MutableRefObject<boolean>;
   /** Stable WebView instance generation — increments only on mount. */
   webViewInstanceGenerationRef: MutableRefObject<number>;
 }

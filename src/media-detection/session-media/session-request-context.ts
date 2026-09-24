@@ -8,6 +8,8 @@
  * store barrel (breaks require cycles through social-source).
  */
 
+import { getVidoraWeb, isVidoraWebAvailable } from '@modules/vidorax-web';
+
 import { buildBrowserUserAgent } from '@/browser/constants/user-agent';
 import { readDesktopModeForRequestContext } from '@/browser/session/desktop-mode-snapshot';
 import type {
@@ -36,6 +38,25 @@ export type BuildSessionAwareContextInput = MediaRequestContextInput & {
   tabDesktopMode?: boolean | null;
 };
 
+let stockWebViewUserAgent: string | null | undefined;
+
+/**
+ * The User-Agent a mobile-mode tab really sends: BrowserWebView passes no `userAgent`, so it is the system WebView's
+ * own. A media URL bound to the UA that loaded the page must be fetched with that same string, not a lookalike.
+ */
+function readStockWebViewUserAgent(): string | null {
+  if (stockWebViewUserAgent !== undefined) {
+    return stockWebViewUserAgent;
+  }
+  try {
+    const ua = isVidoraWebAvailable() ? getVidoraWeb().getDefaultUserAgent() : null;
+    stockWebViewUserAgent = typeof ua === 'string' && ua.trim() ? ua.trim() : null;
+  } catch {
+    stockWebViewUserAgent = null;
+  }
+  return stockWebViewUserAgent;
+}
+
 function resolveUserAgent(input: BuildSessionAwareContextInput): string {
   if (input.userAgent?.trim()) {
     return input.userAgent.trim().slice(0, 512);
@@ -44,7 +65,9 @@ function resolveUserAgent(input: BuildSessionAwareContextInput): string {
     input.tabDesktopMode != null
       ? Boolean(input.tabDesktopMode)
       : readDesktopModeForRequestContext(input.scope?.tabId ?? null);
-  return buildBrowserUserAgent({ desktop }).slice(0, 512);
+  // Desktop mode hands the WebView this exact desktop string, so it is already the tab's real UA.
+  const stock = desktop ? null : readStockWebViewUserAgent();
+  return (stock ?? buildBrowserUserAgent({ desktop })).slice(0, 512);
 }
 
 function resolvePageUrls(input: BuildSessionAwareContextInput): {

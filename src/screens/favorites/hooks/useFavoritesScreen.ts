@@ -17,7 +17,15 @@ function findDownloadIdInStore(sourceUrl: string): string | null {
     return null;
   }
 
-  const { itemsById } = useDownloadsStore.getState();
+  const { itemsById, engineRowsById } = useDownloadsStore.getState();
+  // A v2 video from that page: prefer the one the user marked, then any finished one.
+  const engineRows = Object.values(engineRowsById).filter(
+    (item) => item.status === 'COMPLETED' && normalizeFavoriteSourceKey(item.sourceUrl) === key,
+  );
+  const engineMatch = engineRows.find((item) => item.favorite === true) ?? engineRows[0];
+  if (engineMatch) {
+    return engineMatch.id;
+  }
   for (const item of Object.values(itemsById)) {
     if (normalizeFavoriteSourceKey(item.sourceUrl) === key) {
       return item.id;

@@ -1,6 +1,8 @@
 /** Shared video format authority. Hints admit candidates; bytes prove resources. */
 import { sniffMediaSignature } from '@/downloads/engine/media-signature';
 
+import type { Mp4BoxWalkVerdict } from './mp4-box-walk';
+
 export const VIDEO_FORMATS = {
   mp4: { mime: 'video/mp4', aliases: ['video/mp4', 'application/mp4'] },
   m4v: { mime: 'video/x-m4v', aliases: ['video/x-m4v'] },
@@ -66,6 +68,8 @@ export function resolveVideoResource(input: {
   contentDisposition?: string | null; bytes?: Uint8Array;
   totalBytes?: number | null; coversEntireResource?: boolean;
   isDrm?: boolean; isSegment?: boolean;
+  /** Box walk past the probe window, for ISO BMFF windows that end inside metadata (mp4-box-walk.ts). */
+  mp4BoxWalk?: Mp4BoxWalkVerdict | null;
 }): VideoResourceResolution {
   const hint = resolveVideoFormatHint({ ...input, url: input.finalUrl || input.url });
   const result = (state: VideoResourceResolution['state'], reason: string, format = hint, standaloneFragmented = false): VideoResourceResolution => ({
@@ -84,19 +88,33 @@ export function resolveVideoResource(input: {
     coversEntireResource: input.coversEntireResource,
     requireStandaloneMp4: true,
   });
-  if (!sig.ok) {
+  let sigKind = sig.kind;
+  let structureProven = sig.ok;
+  let standaloneFragmented = sig.mp4Kind === 'FRAGMENTED_COMPLETE';
+  if (!sig.ok && sig.reason === 'mp4_structure_unproven' && input.mp4BoxWalk) {
+    const walk = input.mp4BoxWalk;
+    if (walk.state === 'NO_MEDIA_DATA') return result('PROVEN_UNSUPPORTED', 'init_segment');
+    if (walk.state === 'INVALID') return result('PROVEN_UNSUPPORTED', 'invalid_box_size');
+    if (walk.state === 'MEDIA_DATA') {
+      // Same brand rule as the in-window sniff: a QuickTime major brand is MOV.
+      sigKind = String.fromCharCode(...input.bytes.subarray(8, 12)) === 'qt  ' ? 'mov' : 'mp4';
+      standaloneFragmented = walk.boxType === 'moof';
+      structureProven = true;
+    }
+  }
+  if (!structureProven) {
     const proven = ['html', 'json'].includes(sig.kind) || ['init_segment', 'media_fragment', 'drm_protected', 'invalid_box_size'].includes(sig.reason ?? '');
     return result(proven ? 'PROVEN_UNSUPPORTED' : 'TRANSIENT_UNRESOLVED', sig.reason ?? 'BYTES_PENDING');
   }
-  const format = sig.kind === 'mp4'
+  const format = sigKind === 'mp4'
     ? (hint === 'm4v' || hint === 'mov' ? hint : 'mp4')
-    : videoFormatFromExtension(sig.kind);
+    : videoFormatFromExtension(sigKind);
   if (!format || format === 'hls') return result('PROVEN_UNSUPPORTED', 'UNSUPPORTED_FORMAT');
   // A contradictory concrete MIME is evidence of an invalid/changed response.
   const declared = videoFormatFromMime(mime);
   const iso = (f: VideoResourceFormat) => f === 'mp4' || f === 'm4v' || f === 'mov';
   if (declared && declared !== format && !(iso(declared) && iso(format))) return result('PROVEN_UNSUPPORTED', 'MIME_SIGNATURE_MISMATCH');
-  return result('VERIFIED', 'STRUCTURAL_VIDEO_EVIDENCE', format, sig.mp4Kind === 'FRAGMENTED_COMPLETE');
+  return result('VERIFIED', 'STRUCTURAL_VIDEO_EVIDENCE', format, standaloneFragmented);
 }
 
 /** Container support cannot promise decoder availability. All playback may fail by codec. */

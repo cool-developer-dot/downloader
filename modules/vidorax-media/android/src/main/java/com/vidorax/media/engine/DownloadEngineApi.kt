@@ -46,4 +46,13 @@ interface DownloadEngineApi {
 
   /** Deletes work folders no download owns; returns the bytes freed. */
   suspend fun clearTempFiles(): Long
+
+  /**
+   * Downloads that reached COMPLETED with their verified library item and that JavaScript has not acknowledged yet —
+   * including completions that happened while no JavaScript was running. Oldest first.
+   */
+  suspend fun listCompletions(): List<CompletionRecord>
+
+  /** Marks completions as counted, so each is reported once. */
+  suspend fun acknowledgeCompletions(ids: List<String>)
 }

@@ -7,6 +7,7 @@ import {
   DownloadEngineError,
 } from '@/downloads/engine';
 import { completedActionErrorMessageKey } from '@/downloads/completed-file/action-errors';
+import { getV2Engine, pageFavoriteChange, setEngineFavorite } from '@/downloads/v2';
 import { translate, type TranslationKey } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import { useDownloadsStore } from '@/store/downloads';
@@ -78,12 +79,19 @@ export function useDownloadDetailsScreen() {
 
   const sourceUrl = item?.sourceUrl ?? '';
   const sourceKey = sourceUrl ? normalizeFavoriteSourceKey(sourceUrl) : '';
-  const isFavorited = useFavoritesStore((state) =>
+  const pageFavorited = useFavoritesStore((state) =>
     sourceKey ? Boolean(state.urlIndex[sourceKey]) : false,
   );
-  const favoritePending = useFavoritesStore((state) =>
+  const pagePending = useFavoritesStore((state) =>
     sourceKey ? Boolean(state.pendingUrls[sourceKey]) : false,
   );
+  // A finished v2 video has a favorite of its own; a v1 row's favorite is its page's.
+  const ownFavorite = useDownloadsStore((state) =>
+    downloadId ? state.engineRowsById[downloadId]?.favorite : undefined,
+  );
+  const [ownPending, setOwnPending] = useState(false);
+  const isFavorited = typeof ownFavorite === 'boolean' ? ownFavorite : pageFavorited;
+  const favoritePending = pagePending || ownPending;
   const ensureFavoritesReady = useFavoritesStore((state) => state.ensureReady);
   const resolveFavoriteForUrl = useFavoritesStore(
     (state) => state.resolveFavoriteForUrl,
@@ -194,8 +202,9 @@ export function useDownloadDetailsScreen() {
       executionState: transfer?.executionState ?? null,
       workerState: item?.workerState ?? transfer?.workerState ?? null,
       supportsResume: transfer?.supportsResume ?? null,
+      errorCode: item?.errorCode ?? null,
     }),
-    [downloadId, item?.workerState, transfer],
+    [downloadId, item?.workerState, item?.errorCode, transfer],
   );
 
   const primaryAction = useMemo(
@@ -379,18 +388,48 @@ export function useDownloadDetailsScreen() {
 
     setFavoriteError(null);
 
-    const result = await toggleFavorite({
+    const toggleInput = {
       mediaId: downloadId,
       title: item.title || item.fileName || item.sourceUrl,
       platform: item.platform,
       sourceUrl: item.sourceUrl,
       thumbnailUrl: item.thumbnailUrl,
-    });
+    };
+
+    if (typeof ownFavorite === 'boolean') {
+      // Only this video changes; its siblings from the same page keep their own favorites.
+      const favorite = !ownFavorite;
+      setOwnPending(true);
+      try {
+        await setEngineFavorite(getV2Engine(), downloadId, favorite);
+        const rows = Object.values(useDownloadsStore.getState().engineRowsById);
+        const otherFavoritesOnPage = rows.filter(
+          (row) =>
+            row.id !== downloadId &&
+            row.favorite === true &&
+            normalizeFavoriteSourceKey(row.sourceUrl) === sourceKey,
+        ).length;
+        // The Favorites screen lists pages: keep the page there while any of its videos is a favorite.
+        if (pageFavoriteChange({ favorite, pageFavorited, otherFavoritesOnPage })) {
+          const result = await toggleFavorite(toggleInput);
+          if (result.error) {
+            setFavoriteError(result.error);
+          }
+        }
+      } catch {
+        setFavoriteError(translate('downloads.detailsFavoriteErrorTitle' as TranslationKey));
+      } finally {
+        setOwnPending(false);
+      }
+      return;
+    }
+
+    const result = await toggleFavorite(toggleInput);
 
     if (result.error) {
       setFavoriteError(result.error);
     }
-  }, [favoritePending, item, toggleFavorite]);
+  }, [downloadId, favoritePending, item, ownFavorite, pageFavorited, sourceKey, toggleFavorite]);
 
   const dismissFavoriteError = useCallback(() => {
     setFavoriteError(null);

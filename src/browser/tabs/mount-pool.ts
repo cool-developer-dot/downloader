@@ -46,8 +46,15 @@ export function reconcileMountPool(input: {
   activeTabId: string;
   mountedTabIds: string[];
   maxMounted?: number;
-}): { mountedTabIds: string[]; evictedTabId: string | null; tabs: BrowserTab[] } {
-  const max = input.maxMounted ?? MAX_MOUNTED_WEBVIEWS;
+}): {
+  mountedTabIds: string[];
+  /** Last eviction — kept for existing callers. Prefer `evictedTabIds`. */
+  evictedTabId: string | null;
+  /** Every tab unmounted by this reconcile (a budget drop can evict several). */
+  evictedTabIds: string[];
+  tabs: BrowserTab[];
+} {
+  const max = Math.max(1, input.maxMounted ?? MAX_MOUNTED_WEBVIEWS);
   const tabIds = new Set(input.tabs.map((t) => t.id));
   let mounted = input.mountedTabIds.filter((id) => tabIds.has(id));
 
@@ -56,6 +63,7 @@ export function reconcileMountPool(input: {
   }
 
   let evictedTabId: string | null = null;
+  const evictedTabIds: string[] = [];
 
   while (mounted.length > max) {
     const inactive = mounted.filter((id) => id !== input.activeTabId);
@@ -75,22 +83,31 @@ export function reconcileMountPool(input: {
 
     const victim = ranked[0]!;
     evictedTabId = victim.id;
+    evictedTabIds.push(victim.id);
     mounted = mounted.filter((id) => id !== victim.id);
   }
 
   // Cap safety
   if (mounted.length > max) {
-    mounted = [input.activeTabId, ...mounted.filter((id) => id !== input.activeTabId)].slice(
-      0,
-      max,
-    );
+    const capped = [
+      input.activeTabId,
+      ...mounted.filter((id) => id !== input.activeTabId),
+    ].slice(0, max);
+    for (const id of mounted) {
+      if (!capped.includes(id) && !evictedTabIds.includes(id)) {
+        evictedTabIds.push(id);
+        evictedTabId = id;
+      }
+    }
+    mounted = capped;
   }
 
+  const evicted = new Set(evictedTabIds);
   const tabs = applyMountStates(input.tabs, input.activeTabId, mounted).map((tab) => {
     if (mounted.includes(tab.id) && tab.id === input.activeTabId) {
       return { ...tab, lastMountedAt: Date.now() };
     }
-    if (evictedTabId && tab.id === evictedTabId) {
+    if (evicted.has(tab.id)) {
       return {
         ...tab,
         mountState: 'EVICTED' as const,
@@ -102,7 +119,7 @@ export function reconcileMountPool(input: {
     return tab;
   });
 
-  return { mountedTabIds: mounted, evictedTabId, tabs };
+  return { mountedTabIds: mounted, evictedTabId, evictedTabIds, tabs };
 }
 
 /** Cold start: mount only the active tab. */

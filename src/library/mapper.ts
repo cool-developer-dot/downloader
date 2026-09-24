@@ -142,6 +142,8 @@ export function normalizeMimeType(
 /**
  * Remote HTTP(S) thumbnail only. Device paths and content URIs are dropped.
  */
+const OWN_THUMBNAIL = /^file:\/\/\/.*\/files\/thumbs\/[^/]+\.webp$/i;
+
 export function normalizeThumbnailUri(value: unknown): string | null {
   if (typeof value !== 'string') {
     return null;
@@ -150,11 +152,17 @@ export function normalizeThumbnailUri(value: unknown): string | null {
   if (!trimmed) {
     return null;
   }
+  // A thumbnail VidoraX generated for its own library file (`filesDir/thumbs/<id>.webp`): local, private, and
+  // ours to show. Any other local path is still refused below.
+  if (OWN_THUMBNAIL.test(trimmed)) {
+    return trimmed;
+  }
   try {
     const parsed = new URL(trimmed);
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
       return null;
     }
+    // Any other local path is not a thumbnail this app produced.
     if (parsed.pathname.startsWith('/data/')) {
       return null;
     }

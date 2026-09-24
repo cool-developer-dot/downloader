@@ -30,6 +30,7 @@ type SocialSourceDiagEvent =
   | 'source_progressive_verified'
   | 'source_adaptive_video_only'
   | 'source_container_unknown'
+  | 'source_mp4_box_walk'
   | 'source_size_from_content_range'
   | 'source_probe_deduped';
 
@@ -68,7 +69,7 @@ export function logSocialSource(
       tabId: fields.tabId ?? null,
       navigationEpoch: fields.navigationEpoch ?? null,
       contextGeneration: fields.contextGeneration ?? null,
-      contentIdentityHash: hashIdentity(fields.contentIdentity ?? ''),
+      contentIdentityHash: fields.contentIdentity ? hashIdentity(fields.contentIdentity) : null,
       variantIdHash: fields.variantId ? hashIdentity(fields.variantId) : null,
       transport: fields.transport ?? null,
       mime: fields.mime ?? null,

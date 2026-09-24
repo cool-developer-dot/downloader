@@ -25,7 +25,13 @@ export function dedupeUpsert(
   }
 
   // Secondary: same final/source URL + stream family → update.
-  const urlIndex = existing.findIndex((item) => isSameLogicalMedia(item, incoming));
+  // The incoming candidate's identity is the same for every comparison, so it
+  // is built once here instead of once per retained item (this scan runs for
+  // every accepted candidate against every item kept for the page).
+  const incomingKeys = identityKeys(incoming);
+  const urlIndex = existing.findIndex((item) =>
+    isSameLogicalMedia(item, incoming, incomingKeys),
+  );
 
   if (urlIndex >= 0) {
     const prev = existing[urlIndex]!;
@@ -45,7 +51,26 @@ export function dedupeUpsert(
   return { items: next, updated: false, inserted: true };
 }
 
-function isSameLogicalMedia(a: DetectedMedia, b: DetectedMedia): boolean {
+/** The url/finalUrl/sourceUrl of a media item reduced to stable identities. */
+function identityKeys(media: DetectedMedia): string[] {
+  const keys: string[] = [];
+  for (const url of [media.url, media.finalUrl, media.sourceUrl]) {
+    if (!url) {
+      continue;
+    }
+    const key = stripVolatileQuery(url);
+    if (!keys.includes(key)) {
+      keys.push(key);
+    }
+  }
+  return keys;
+}
+
+function isSameLogicalMedia(
+  a: DetectedMedia,
+  b: DetectedMedia,
+  bKeys: string[] = identityKeys(b),
+): boolean {
   if (a.streamType !== b.streamType && a.category === 'stream' && b.category === 'stream') {
     // Different adaptive protocols are different items.
     if (a.container !== b.container) {
@@ -53,12 +78,9 @@ function isSameLogicalMedia(a: DetectedMedia, b: DetectedMedia): boolean {
     }
   }
 
-  const urlsA = new Set(
-    [a.url, a.finalUrl, a.sourceUrl].filter(Boolean).map(stripVolatileQuery),
-  );
-  const urlsB = [b.url, b.finalUrl, b.sourceUrl].filter(Boolean).map(stripVolatileQuery);
+  const aKeys = identityKeys(a);
 
-  if (urlsB.some((u) => urlsA.has(u))) {
+  if (bKeys.some((u) => aKeys.includes(u))) {
     return a.container === b.container || a.category === b.category;
   }
 

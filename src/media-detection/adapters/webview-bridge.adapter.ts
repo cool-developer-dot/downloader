@@ -4,6 +4,7 @@ import {
   type BridgeActiveVideoPayload,
   type BridgeActiveIframePlayerPayload,
   type BridgeBlobIndicatorPayload,
+  type BridgeMediaSourceKind,
   type BridgeErrorPayload,
   type BridgeMediaCandidatePayload,
   type BridgeMutationBatchPayload,
@@ -274,6 +275,10 @@ function sanitizeBatch(raw: unknown): BridgeMutationBatchPayload | null {
   return { pageUrl, candidates };
 }
 
+function sanitizeSourceKind(value: unknown): BridgeMediaSourceKind | null {
+  return value === 'mse' || value === 'blob' ? value : null;
+}
+
 function sanitizeBlobIndicator(raw: unknown): BridgeBlobIndicatorPayload | null {
   const obj = asRecord(raw);
   if (!obj) {
@@ -284,7 +289,13 @@ function sanitizeBlobIndicator(raw: unknown): BridgeBlobIndicatorPayload | null 
   if (!pageUrl || !blobUrl || !blobUrl.toLowerCase().startsWith('blob:')) {
     return null;
   }
-  return { pageUrl, blobUrl };
+  return {
+    pageUrl,
+    blobUrl,
+    elementIdentity: optionalString(obj.elementIdentity, 64),
+    isProtected: obj.isProtected === true,
+    sourceKind: sanitizeSourceKind(obj.sourceKind),
+  };
 }
 
 function sanitizeActiveVideoSrc(value: unknown, pageUrl: string): string | null {
@@ -366,6 +377,8 @@ function sanitizeActiveVideo(raw: unknown): BridgeActiveVideoPayload | null {
     recentlyPlayed: Boolean(obj.recentlyPlayed),
     explicitAdMarker: Boolean(obj.explicitAdMarker),
     associatedContentId: sanitizeAssociatedContentId(obj.associatedContentId),
+    isProtected: obj.isProtected === true,
+    sourceKind: sanitizeSourceKind(obj.sourceKind),
   };
 }
 

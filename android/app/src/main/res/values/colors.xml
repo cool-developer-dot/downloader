@@ -1,6 +1,9 @@
 <resources>
-  <!-- Must match React Splash 1 / cinematic startup background (#1A2517 Deep Olive). -->
-  <color name="splashscreen_background">#1A2517</color>
+  <!-- The launch screen is plain white in every configuration: white background, VidoraX logo, nothing else. -->
+  <color name="splashscreen_background">#FFFFFF</color>
+  <!-- The frame between the splash and the first React paint follows the app's own background, so the app
+       never opens on a colour it is about to replace. -->
+  <color name="window_background">#FFFFFF</color>
   <!-- Adaptive icon plate — current VidoraX brand (not Expo default blue). -->
   <color name="iconBackground">#FF9A3D</color>
   <color name="colorPrimary">#ACC8A2</color>

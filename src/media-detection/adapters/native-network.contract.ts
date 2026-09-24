@@ -1,3 +1,5 @@
+import type { NetworkMediaObservation } from '@modules/vidorax-web/src/VidoraWeb.types';
+
 import { DETECTION_TIMING } from '../constants';
 import {
   classifyGeneralNetworkResource,
@@ -5,7 +7,11 @@ import {
   resourceFingerprintFromUrl,
 } from '../general-media/general-network-resource';
 import { canonicalizeObservedMediaUrl } from '../general-media/playback-media-evidence';
-import { logGeneralNetworkTrace } from '../general-media/general-media-diagnostics';
+import {
+  logGeneralNetworkTrace,
+  requestFrameClass,
+  requestInitiatorClass,
+} from '../general-media/general-media-diagnostics';
 import { extractHostname, isSafeMediaUrl, normalizeMediaUrl } from '../utils';
 import { resolveNativeObservationScope } from './native-observation-scope';
 
@@ -44,61 +50,40 @@ export type NativeMediaCandidateEvent = {
   authorization?: unknown;
 };
 
-export type NativeMediaTraceEvent = {
-  stage?: string;
-  event?: string;
-  reason?: string | null;
-  observationSource?: string | null;
-  method?: string | null;
-  isForMainFrame?: boolean;
-  hasRange?: boolean;
-  acceptClass?: string | null;
-  hostClass?: string | null;
-  pathClass?: string | null;
-  resourceTypeHint?: string | null;
-  resourceFingerprint?: string | null;
-  url?: unknown;
-  pageUrl?: unknown;
-  Cookie?: unknown;
-  Authorization?: unknown;
-};
-
-const FORBIDDEN_NATIVE_KEYS = [
-  'cookie',
-  'authorization',
-  'set-cookie',
-  'token',
-  'query',
-  'signedurl',
-];
-
 let lastKeys = new Map<string, number>();
 
-export function nativeTracePayloadIsSanitized(
-  payload: Record<string, unknown> | null | undefined,
-): boolean {
-  if (!payload || typeof payload !== 'object') {
-    return false;
-  }
-  for (const key of Object.keys(payload)) {
-    const lower = key.toLowerCase();
-    if (FORBIDDEN_NATIVE_KEYS.includes(lower)) {
-      return false;
-    }
-  }
-  const url = payload.url;
-  if (typeof url === 'string' && /https?:\/\//i.test(url)) {
-    return false;
-  }
-  const pageUrl = payload.pageUrl;
-  if (typeof pageUrl === 'string' && /https?:\/\//i.test(pageUrl)) {
-    return false;
-  }
-  const blob = JSON.stringify(payload).toLowerCase();
-  if (blob.includes('cookie=') || blob.includes('authorization') || blob.includes('bearer ')) {
-    return false;
-  }
-  return true;
+const MEDIA_ACCEPT_TOKEN = /video\/|audio\/|mpegurl|dash\+xml/i;
+
+/** First media MIME token of a request Accept header — request metadata, never a response Content-Type. */
+function firstMediaAcceptToken(accept: string | null | undefined): string | null {
+  const token = accept?.split(',')[0]?.split(';')[0]?.trim().slice(0, 128);
+  return token && MEDIA_ACCEPT_TOKEN.test(token) ? token : null;
+}
+
+/**
+ * VidoraWeb (modules/vidorax-web) owns the WebView and ServiceWorker request hooks. Its batched
+ * `onNetworkMedia` observations enter the active detector here, in the event shape the
+ * scope/classification pipeline below consumes. Service worker requests carry viewTag -1.
+ */
+export function nativeCandidateEventFromObservation(
+  observation: NetworkMediaObservation,
+): NativeMediaCandidateEvent {
+  const fromServiceWorker = observation.viewTag < 0;
+  return {
+    webViewId: observation.viewTag,
+    parentViewId: observation.viewTag,
+    observedAt: observation.observedAt,
+    requestReferer: observation.referer,
+    url: observation.url,
+    method: observation.method,
+    mimeHint: firstMediaAcceptToken(observation.accept),
+    isForMainFrame: observation.isMainFrame,
+    hasRange: observation.hasRange || observation.rangeStart != null,
+    hasCookieHeader: false,
+    pageUrl: null,
+    resourceFingerprint: null,
+    observationSource: fromServiceWorker ? 'service-worker' : 'webview',
+  };
 }
 
 export function processNativeMediaCandidateEvent(
@@ -111,7 +96,7 @@ export function processNativeMediaCandidateEvent(
 
   logGeneralNetworkTrace('JS_RECEIVED', {
     candidateFingerprintHash: fingerprint,
-    frameClass: event.isForMainFrame === false ? 'child-frame' : 'main',
+    frameClass: requestFrameClass(event.isForMainFrame),
     hasRange: Boolean(event.hasRange),
     observationSource: event.observationSource ?? 'webview',
     method: typeof event.method === 'string' ? event.method.slice(0, 16) : null,
@@ -131,7 +116,7 @@ export function processNativeMediaCandidateEvent(
       candidateFingerprintHash: fingerprint,
       rejectionReason: 'unsafe_or_missing_url',
       acceptedIntoIngest: false,
-      frameClass: event.isForMainFrame === false ? 'child-frame' : 'main',
+      frameClass: requestFrameClass(event.isForMainFrame),
     });
     return null;
   }
@@ -178,16 +163,20 @@ export function processNativeMediaCandidateEvent(
   const pageHost = pageUrl ? extractHostname(pageUrl) : null;
   const requestHost = extractHostname(url);
   const acceptedIntoIngest = classified.acceptForIngest || classified.acceptForProbe;
+  const initiatorClass = requestInitiatorClass(
+    typeof event.requestReferer === 'string' ? event.requestReferer : null,
+    pageUrl,
+  );
 
   logGeneralNetworkTrace('RESOURCE_CLASSIFIED', {
     candidateFingerprintHash: fingerprint,
-    frameClass: isForMainFrame ? 'main' : 'child-frame',
+    frameClass: requestFrameClass(isForMainFrame),
     mainPageHostClass: pageHost ? 'page-host' : 'unknown',
     requestHostClass: requestHost
       ? classifyHostRelation(pageHost ?? '', requestHost)
       : 'unknown',
     requestPathShape: classified.pathShape,
-    initiatorClass: isForMainFrame ? 'main-frame' : 'iframe',
+    initiatorClass,
     hasRange,
     mimeHintClass: classified.mimeHintClass,
     candidateFamily: classified.candidateFamily,
@@ -201,7 +190,7 @@ export function processNativeMediaCandidateEvent(
       candidateFingerprintHash: fingerprint,
       rejectionReason: classified.rejectionReason ?? 'non_media',
       acceptedIntoIngest: false,
-      frameClass: isForMainFrame ? 'main' : 'child-frame',
+      frameClass: requestFrameClass(isForMainFrame),
       hasRange,
       observationSource: event.observationSource ?? 'webview',
     });
@@ -210,13 +199,13 @@ export function processNativeMediaCandidateEvent(
 
   logGeneralNetworkTrace('RESOURCE_OBSERVED', {
     candidateFingerprintHash: fingerprint,
-    frameClass: isForMainFrame ? 'main' : 'child-frame',
+    frameClass: requestFrameClass(isForMainFrame),
     mainPageHostClass: pageHost ? 'page-host' : 'unknown',
     requestHostClass: requestHost
       ? classifyHostRelation(pageHost ?? '', requestHost)
       : 'unknown',
     requestPathShape: classified.pathShape,
-    initiatorClass: isForMainFrame ? 'main-frame' : 'iframe',
+    initiatorClass,
     hasRange,
     mimeHintClass: classified.mimeHintClass,
     candidateFamily: classified.candidateFamily,
@@ -239,45 +228,6 @@ export function processNativeMediaCandidateEvent(
     resourceFingerprint: fingerprint,
     observationSource: event.observationSource ?? 'webview',
   };
-}
-
-export function applyNativeMediaTraceEvent(event: NativeMediaTraceEvent): boolean {
-  const payload = event as unknown as Record<string, unknown>;
-  if (!nativeTracePayloadIsSanitized(payload)) {
-    logGeneralNetworkTrace('RESOURCE_REJECTED', {
-      rejectionReason: 'trace_payload_not_sanitized',
-      candidateFingerprintHash:
-        typeof event.resourceFingerprint === 'string' ? event.resourceFingerprint : null,
-    });
-    return false;
-  }
-  const stage =
-    event.stage === 'RESOURCE_SEEN' ||
-    event.stage === 'NATIVE_EMITTED' ||
-    event.stage === 'RESOURCE_REJECTED' ||
-    event.stage === 'RESOURCE_PREFILTER_CLASSIFIED' ||
-    event.stage === 'RESOURCE_PREFILTERED'
-      ? event.stage === 'RESOURCE_PREFILTERED'
-        ? 'RESOURCE_PREFILTER_CLASSIFIED'
-        : event.stage
-      : event.event === 'RESOURCE_SEEN'
-        ? 'RESOURCE_SEEN'
-        : 'RESOURCE_CLASSIFIED';
-  logGeneralNetworkTrace(stage, {
-    candidateFingerprintHash:
-      typeof event.resourceFingerprint === 'string' ? event.resourceFingerprint : null,
-    reason: event.reason ?? null,
-    rejectionReason: event.reason ?? null,
-    observationSource: event.observationSource ?? null,
-    method: typeof event.method === 'string' ? event.method : null,
-    frameClass: event.isForMainFrame === false ? 'child-frame' : 'main',
-    hasRange: Boolean(event.hasRange),
-    acceptClass: event.acceptClass ?? null,
-    pathClass: event.pathClass ?? null,
-    resourceTypeHint: event.resourceTypeHint ?? null,
-    requestHostClass: event.hostClass ?? null,
-  });
-  return true;
 }
 
 export function resetNativeNetworkContractForTests(): void {

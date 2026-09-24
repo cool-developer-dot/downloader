@@ -210,6 +210,7 @@ export function buildBrowserChromeInjectedScript(): string {
       document.removeEventListener('touchcancel', onPullTouchEnd, true);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('pagehide', cleanup);
+      if (routeTitleTimer) { clearTimeout(routeTitleTimer); routeTitleTimer = null; }
       window.__VIDORAX_BROWSER_CHROME__ = false;
     } catch (e) {}
   }
@@ -226,6 +227,25 @@ export function buildBrowserChromeInjectedScript(): string {
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('pagehide', cleanup);
 
+  // An SPA names its new route after pushState returns (after rendering, often after a fetch): the title read at the
+  // route change is still the previous route's. Look again for a few seconds and report the name once it changes.
+  var routeTitleTimer = null;
+  function watchRouteTitle(href, previousTitle) {
+    var checks = 0;
+    if (routeTitleTimer) { clearTimeout(routeTitleTimer); routeTitleTimer = null; }
+    function check() {
+      routeTitleTimer = null;
+      if (!window.__VIDORAX_BROWSER_CHROME__ || window.location.href !== href) return;
+      if (document.title !== previousTitle) {
+        if (document.title) post('spa_navigation', { url: href, title: document.title });
+        return;
+      }
+      checks += 1;
+      if (checks < 12) routeTitleTimer = setTimeout(check, 250);
+    }
+    routeTitleTimer = setTimeout(check, 250);
+  }
+
   function emitSpaNavigation() {
     try {
       var href = window.location.href;
@@ -234,6 +254,7 @@ export function buildBrowserChromeInjectedScript(): string {
         url: href,
         title: document.title || ''
       });
+      watchRouteTitle(href, document.title);
     } catch (e) {}
   }
 

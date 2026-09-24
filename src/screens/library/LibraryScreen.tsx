@@ -1,6 +1,8 @@
 import { memo, useCallback, useMemo } from 'react';
 
 import { Box } from '@/components/base/Box';
+import { Icon } from '@/components/base/Icon';
+import { Pressable } from '@/components/base/Pressable';
 import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { ScreenHeader } from '@/components/headers/ScreenHeader';
 import { useTheme } from '@/hooks/use-theme';
@@ -15,6 +17,8 @@ import {
   LibraryList,
   LibrarySkeleton,
 } from './components';
+import { navigation, routePaths } from '@/navigation';
+
 import { useLibraryScreen } from './hooks/useLibraryScreen';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
@@ -185,6 +189,17 @@ export const LibraryScreen = memo(function LibraryScreen() {
       <ScreenHeader
         title={t('library.title')}
         subtitle={subtitle}
+        actions={
+          <Pressable
+            testID="library-device-videos"
+            accessibilityRole="button"
+            accessibilityLabel={t('deviceVideos.open')}
+            onPress={() => navigation.push(routePaths.deviceVideos)}
+            hitSlop={8}
+            style={{ padding: 8 }}>
+            <Icon name="cellphone-play" size="md" color="headerIcon" />
+          </Pressable>
+        }
         testID="library-header"
       />
 

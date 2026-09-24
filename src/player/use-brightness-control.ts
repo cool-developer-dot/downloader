@@ -1,6 +1,5 @@
 import * as Brightness from 'expo-brightness';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Platform } from 'react-native';
 
 import { clampBrightness } from './brightness-state';
 
@@ -23,16 +22,8 @@ export function useBrightnessControl(): BrightnessControl {
 
     (async () => {
       try {
-        if (Platform.OS === 'android') {
-          const permission = await Brightness.requestPermissionsAsync();
-          if (!mounted) {
-            return;
-          }
-          if (permission.status !== 'granted') {
-            setAvailable(false);
-            return;
-          }
-        }
+        // Window brightness needs no permission — only *system* brightness does. Opening a video must never
+        // drop the user on Android's "Modify system settings" screen.
         const current = await Brightness.getBrightnessAsync();
         if (mounted) {
           savedLevelRef.current = clampBrightness(current);

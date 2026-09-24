@@ -123,6 +123,7 @@ function coerceStreamType(
   if (
     value === 'PROGRESSIVE' ||
     value === 'HLS' ||
+    value === 'DASH' ||
     value === 'AUDIO' ||
     value === 'UNKNOWN'
   ) {
@@ -213,7 +214,7 @@ function mapVariantToOption(
       ? 'audio'
       : streamType === 'HLS'
         ? 'stream'
-        : streamType === 'PROGRESSIVE'
+        : streamType === 'PROGRESSIVE' || streamType === 'DASH'
           ? 'video'
           : analysis.mediaType;
 
@@ -280,6 +281,9 @@ function mapVariantToOption(
     unavailableReason: variant.downloadable
       ? null
       : (variant.unsupportedReason ?? analysis.unsupportedReason),
+    ...(streamType === 'DASH' && variant.representationId
+      ? { representationId: variant.representationId }
+      : {}),
   };
 }
 

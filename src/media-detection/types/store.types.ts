@@ -32,6 +32,8 @@ export interface MediaDetectionActions {
   upsertQualities: (variants: MediaQualityVariant[]) => void;
   selectMedia: (id: string | null) => void;
   setPageMetadata: (metadata: PageMediaMetadata | null) => void;
+  /** The page renamed itself: its media that carried the previous name take the new one. */
+  renamePageMedia: (pageUrl: string, fromTitle: string, toTitle: string) => void;
   setScanning: (scanning: boolean, progress?: number) => void;
   setSupported: (supported: boolean) => void;
   setDetectionError: (error: MediaDetectionError | null) => void;

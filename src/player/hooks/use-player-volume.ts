@@ -64,11 +64,20 @@ export function usePlayerVolume(): PlayerVolumeState {
     return clampVolume(snapshot.level) ?? 0;
   }, [applySnapshot]);
 
+  // Follow the device's media volume: read it when the player opens and on every return to the
+  // foreground, and listen for changes made with the hardware keys while it is open.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
+    let cancelled = false;
+    const sync = () => {
+      void readAndroidMediaVolume().then((snapshot) => {
+        if (cancelled) {
+          return;
+        }
+        setAvailable(snapshot.available);
+        applySnapshot(snapshot.level);
+      });
+    };
+    sync();
     const unsubscribe = subscribeAndroidMediaVolume((snapshot) => {
       if (writingRef.current) {
         return;
@@ -76,17 +85,17 @@ export function usePlayerVolume(): PlayerVolumeState {
       setAvailable(snapshot.available);
       applySnapshot(snapshot.level);
     });
-    return unsubscribe;
-  }, [applySnapshot]);
-
-  useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        void refresh();
+        sync();
       }
     });
-    return () => sub.remove();
-  }, [refresh]);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      sub.remove();
+    };
+  }, [applySnapshot]);
 
   const setLevel = useCallback((nextLevel: number) => {
     const clamped = clampVolume(nextLevel);

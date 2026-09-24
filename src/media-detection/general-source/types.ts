@@ -43,7 +43,11 @@ export type GeneralSourceRejectionReason =
   | 'WRONG_TAB'
   | 'CLOSED_TAB'
   | 'DASH_UNSUPPORTED'
-  | 'LIVE_HLS_UNSUPPORTED';
+  | 'LIVE_HLS_UNSUPPORTED'
+  /** A live stream (DASH `type="dynamic"`): there is no whole video to save. */
+  | 'LIVE_UNSUPPORTED'
+  /** The engine's classifier refuses the file itself: audio only, or a container it cannot finish. */
+  | 'UNSUPPORTED_FORMAT';
 
 export type GeneralSourceVerificationEvidence = SocialSourceVerificationEvidence;
 
@@ -67,6 +71,8 @@ export type VerifiedGeneralMediaVariant = {
   requestContext: MediaRequestContext | null;
   verifiedAt: number;
   sourceGeneration: number;
+  /** DASH only: the representation the native classifier found downloadable (its `ProbeVariant.id`). */
+  representationId?: string | null;
 };
 
 export type VerifiedGeneralMediaOffer = {

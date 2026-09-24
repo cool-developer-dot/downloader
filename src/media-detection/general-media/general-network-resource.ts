@@ -366,7 +366,8 @@ export type NativePrefilterDecision = {
 
 /**
  * Native-equivalent gate: should this request be emitted from shouldInterceptRequest?
- * Mirrors MediaNetworkBridge.kt conceptually — keep both in sync via the verifier.
+ * `isForMainFrame === false` means "subresource" (Android sets it only for the top-level document
+ * request), so a ranged or media-shaped subresource counts as media evidence from any frame.
  */
 export function nativeNetworkPrefilter(input: {
   url: string;
@@ -426,10 +427,10 @@ export function nativeNetworkPrefilter(input: {
   const pathLooksMedia = Boolean(ext && MEDIA_EXT.has(ext));
   const family = looksLikeMediaFamilyPath(url) || looksLikeHlsPlaylistPath(url) || looksLikeDashManifestPath(url);
   const playbackEvidence = urlHasPlaybackMediaEvidence(url);
-  const iframeHint = input.isForMainFrame === false && (Boolean(input.hasRange) || family || acceptLooksMedia || playbackEvidence);
+  const subresourceHint = input.isForMainFrame === false && (Boolean(input.hasRange) || family || acceptLooksMedia || playbackEvidence);
   const rangeFamily = Boolean(input.hasRange) && family;
 
-  if (!(pathLooksMedia || acceptLooksMedia || iframeHint || rangeFamily || playbackEvidence)) {
+  if (!(pathLooksMedia || acceptLooksMedia || subresourceHint || rangeFamily || playbackEvidence)) {
     return reject('NO_MEDIA_EVIDENCE');
   }
 
@@ -439,7 +440,7 @@ export function nativeNetworkPrefilter(input: {
     pathClass,
     hostClass,
     acceptClass,
-    resourceTypeHint: iframeHint && !pathLooksMedia ? 'range-child-frame' : pathClass,
+    resourceTypeHint: subresourceHint && !pathLooksMedia ? 'range-subresource' : pathClass,
   };
 }
 
@@ -599,7 +600,7 @@ export function classifyGeneralNetworkResource(input: {
     return accept('progressive', true);
   }
   // Extensionless CDN progressive: video MIME already accepted above.
-  // Child-frame Range is embedded-player media request context.
+  // A ranged subresource request (any frame) is media request context; ownership decides the rest.
   if (!ext && input.hasRange && input.isForMainFrame === false) {
     return accept('progressive');
   }

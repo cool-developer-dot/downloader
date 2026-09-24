@@ -32,6 +32,12 @@ export type GeneralRejectionReason =
   | 'TINY_PREVIEW'
   | 'ADVERTISEMENT'
   | 'WEAK_UNCORRELATED_MEDIA'
+  /** Requested by a frame that is neither the current player frame nor the page. */
+  | 'FOREIGN_FRAME_MEDIA'
+  /** Requested by the page itself while the current player is a separate (iframe) document. */
+  | 'OUTSIDE_CURRENT_PLAYER'
+  /** No initiator evidence (no Referer) to tie a network request to the current player. */
+  | 'UNPROVEN_FRAME_OWNERSHIP'
   | 'NON_VIDEO'
   | 'LOW_CORRELATION';
 
@@ -83,6 +89,8 @@ export type GeneralOwnershipEvidence = {
   userInteractionMatch: boolean;
   preloadPenalty: boolean;
   hiddenElementPenalty: boolean;
+  /** Idle (paused, never played) element whose visibility has not been reported yet. */
+  visibilityUnknownPenalty: boolean;
   tinyPreviewPenalty: boolean;
   adPenalty: boolean;
   staleContextPenalty: boolean;

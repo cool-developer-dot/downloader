@@ -33,11 +33,15 @@ const PROVEN_UNSUPPORTED_REASONS = new Set<string>([
   'JSON_RESPONSE',
   'NOT_MEDIA',
   'PROTECTED_UNSUPPORTED',
+  // A blob/MediaSource player proven to have no single downloadable source behind it.
+  'MSE_UNSUPPORTED',
   'ENCRYPTED_HLS',
   'HLS_ENCRYPTED',
   'UNSUPPORTED_HLS_ENCRYPTION',
   'UNSUPPORTED_DRM',
   'LIVE_HLS_UNSUPPORTED',
+  'LIVE_UNSUPPORTED',
+  'UNSUPPORTED_FORMAT',
 ]);
 
 const SESSION_REASONS = new Set<string>([
@@ -49,6 +53,8 @@ const SESSION_REASONS = new Set<string>([
 ]);
 
 const STALE_REASONS = new Set<string>([
+  // The link died between the offer and the tap; the page can still produce a new one.
+  'SOURCE_EXPIRED',
   'STALE_SOCIAL_CONTEXT',
   'STALE_PAGE_GENERATION',
   'STALE_SOURCE_GENERATION',
@@ -57,6 +63,9 @@ const STALE_REASONS = new Set<string>([
   'CLOSED_TAB',
   'EXPIRED_SOURCE',
 ]);
+
+/** The source may be fine; ownership evidence for the current content has not arrived yet. */
+const OWNERSHIP_PENDING_REASONS = new Set<string>(['WEAK_OWNERSHIP']);
 
 const NETWORK_REASONS = new Set<string>([
   'PROBE_FAILED',
@@ -106,6 +115,9 @@ export function classifyMediaResolutionOutcome(
   }
   if (reason && PROVEN_UNSUPPORTED_REASONS.has(reason)) {
     return { kind: 'PROVEN_UNSUPPORTED', reason };
+  }
+  if (reason && OWNERSHIP_PENDING_REASONS.has(reason)) {
+    return { kind: 'TRANSIENT_UNRESOLVED', reason };
   }
 
   if (input.allBoundedCandidatesRejected) {

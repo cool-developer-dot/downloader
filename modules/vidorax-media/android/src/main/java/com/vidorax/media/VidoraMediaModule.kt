@@ -9,6 +9,7 @@ import com.vidorax.media.bridge.ProbeRequestRecord
 import com.vidorax.media.bridge.toJs
 import com.vidorax.media.engine.DownloadEngineApi
 import com.vidorax.media.engine.DownloadEngineProvider
+import com.vidorax.media.library.DeviceVideos
 import com.vidorax.media.player.Volume
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Coroutine
@@ -28,6 +29,7 @@ class VidoraMediaModule : Module() {
 
   private val services: MediaServices get() = MediaServices.get(context)
   private val engine: DownloadEngineApi get() = DownloadEngineProvider.get(context)
+  private val deviceVideos: DeviceVideos get() = DeviceVideos(context)
 
   private var volume: Volume? = null
 
@@ -41,7 +43,11 @@ class VidoraMediaModule : Module() {
     OnCreate {
       val media = services
       val downloads = engine
-      media.scope.launch { media.legacyImport.run() }
+      media.scope.launch {
+        media.legacyImport.run()
+        // Files removed or moved outside VidoraX since the last run: their rows must not look playable.
+        runCatching { media.library.removeMissingFiles() }
+      }
       // This scope ends with the JavaScript runtime, so a reload never leaves a second set of forwarders behind.
       val events = appContext.backgroundCoroutineScope
       events.launch { media.library.changes.collect { sendEvent(ON_LIBRARY_CHANGE, it.toJs()) } }
@@ -97,6 +103,39 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("clearTempFiles") Coroutine { -> engine.clearTempFiles() }
 
+    // Completions for JavaScript to count once (the in-app review), including ones that happened while it was not running
+
+    AsyncFunction("listCompletedDownloads") Coroutine { ->
+      engine.listCompletions().map { mapOf("id" to it.downloadId, "completedAt" to it.completedAt.toDouble()) }
+    }
+
+    AsyncFunction("acknowledgeCompletedDownloads") Coroutine { ids: List<String> ->
+      engine.acknowledgeCompletions(ids.take(MAX_ACKNOWLEDGE_IDS))
+    }
+
+    // Videos already on the device (read-only; empty until the user grants the media permission)
+
+    AsyncFunction("listDeviceVideos") Coroutine { limit: Int, offset: Int ->
+      val videos = withContext(Dispatchers.IO) { deviceVideos.list(limit.coerceIn(1, 500), maxOf(offset, 0)) }
+      mapOf(
+        "permissionGranted" to deviceVideos.hasPermission(),
+        "access" to deviceVideos.access().name.lowercase(),
+        "items" to videos.map { video ->
+          mapOf(
+            "id" to video.id,
+            "uri" to video.uri,
+            "title" to video.title,
+            "durationMs" to video.durationMs,
+            "sizeBytes" to video.sizeBytes,
+            "width" to video.width,
+            "height" to video.height,
+            "addedAt" to video.addedAt,
+            "mimeType" to video.mimeType,
+          )
+        },
+      )
+    }
+
     // Library
 
     AsyncFunction("listLibrary") Coroutine { query: LibraryQueryRecord ->
@@ -138,6 +177,10 @@ class VidoraMediaModule : Module() {
       services.library.delete(ids)
     }
 
+    AsyncFunction("reconcileLibrary") Coroutine { ids: List<String>? ->
+      services.library.removeMissingFiles(ids)
+    }
+
     AsyncFunction("saveToGallery") Coroutine { ids: List<String> ->
       services.galleryExport.save(ids)
     }
@@ -169,5 +212,6 @@ class VidoraMediaModule : Module() {
     const val ON_DOWNLOAD_STATE_CHANGE = "onDownloadStateChange"
     const val ON_LIBRARY_CHANGE = "onLibraryChange"
     const val ON_VOLUME_CHANGE = "onVolumeChange"
+    const val MAX_ACKNOWLEDGE_IDS = 1_000
   }
 }

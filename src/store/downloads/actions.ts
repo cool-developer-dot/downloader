@@ -9,6 +9,17 @@ import {
 import { downloadEngine, DownloadEngineError } from '@/downloads/engine';
 import { syncStatusImmediate } from '@/downloads/engine/synchronizer';
 import { reconcileDownloadState } from '@/downloads/reconciliation';
+import { removeEngineDownload, retryEngineDownload, runEngineDownloadAction } from '@/downloads/v2/actions';
+import { projectV2LibraryItem } from '@/downloads/v2/projection';
+import { logV2Download } from '@/downloads/v2/diagnostics';
+import { getV2Engine } from '@/downloads/v2/engine-port';
+import {
+  isEngineOwned,
+  mergeEngineRowsIntoPage,
+  reduceEngineEntries,
+  reduceEngineProgress,
+  reduceEngineRemoval,
+} from '@/downloads/v2/store-reducer';
 import { parseDownloadWorkerState } from '@/downloads/worker-state';
 import {
   catalogEntryToDownloadItem,
@@ -322,6 +333,57 @@ export function createDownloadsActions(
     });
   };
 
+  /** v2-owned downloads: the native engine performs the action; its state event updates the row. */
+  const runEngineAction = async (
+    id: string,
+    action: 'pause' | 'resume' | 'retry' | 'cancel',
+    fallback: string,
+  ): Promise<DownloadItem | null> => {
+    setMutating(id, true);
+    set({ error: null });
+    logV2Download('action_requested', {
+      downloadId: id,
+      action,
+      state: get().engineRowsById[id]?.status ?? null,
+      owned: true,
+    });
+    try {
+      if (action === 'retry') {
+        // A link the engine already proved expired must not be probed again unchanged (Phase 11C).
+        const row = get().engineRowsById[id] ?? get().itemsById[id] ?? null;
+        const outcome = await retryEngineDownload(
+          {
+            id,
+            errorCode: (row as { errorCode?: string | null } | null)?.errorCode ?? null,
+            pageUrl: (row as { sourceUrl?: string | null } | null)?.sourceUrl ?? null,
+          },
+          { engine: getV2Engine() },
+        );
+        if (!outcome.ok) {
+          logV2Download('action_failed', { downloadId: id, action, code: outcome.reason });
+          set({ error: outcome.message });
+          return null;
+        }
+        logV2Download('action_accepted', { downloadId: id, action });
+        return get().itemsById[id] ?? get().engineRowsById[id] ?? null;
+      }
+      await runEngineDownloadAction(getV2Engine(), id, action);
+      logV2Download('action_accepted', { downloadId: id, action });
+      return get().itemsById[id] ?? get().engineRowsById[id] ?? null;
+    } catch (error) {
+      logV2Download('action_failed', {
+        downloadId: id,
+        action,
+        code: (error as { code?: string } | null)?.code ?? null,
+        message: error instanceof Error ? error.message : null,
+      });
+      set({ error: getErrorMessage(error, fallback) });
+      return null;
+    } finally {
+      setMutating(id, false);
+    }
+  };
+
   const removeFromStore = (id: string) => {
     set((state) => {
       const itemsById = { ...state.itemsById };
@@ -351,16 +413,18 @@ export function createDownloadsActions(
         return;
       }
 
-      set({
+      set((state) => ({
         statusFilter,
         page: 1,
-        orderedIds: [],
-        itemsById: {},
+        ...mergeEngineRowsIntoPage(
+          { ...state, statusFilter },
+          { itemsById: {}, orderedIds: [], total: 0 },
+          true,
+        ),
         ready: false,
         hasMore: false,
-        total: 0,
         error: null,
-      });
+      }));
     },
     setSort: (sort) => {
       const current = get().sort;
@@ -368,21 +432,26 @@ export function createDownloadsActions(
         return;
       }
 
-      set({
+      set((state) => ({
         sort,
         page: 1,
-        orderedIds: [],
-        itemsById: {},
+        ...mergeEngineRowsIntoPage(
+          { ...state, sort },
+          { itemsById: {}, orderedIds: [], total: 0 },
+          true,
+        ),
         ready: false,
         hasMore: false,
-        total: 0,
         error: null,
-      });
+      }));
     },
     applyPage: (items, meta, append = false) => {
+      const owned = get();
       const normalized = items
         .map(normalizeDownloadItem)
-        .filter((item): item is DownloadItem => item !== null);
+        .filter((item): item is DownloadItem => item !== null)
+        // The v2 engine owns these ids (including v1 files its import moved into the library).
+        .filter((item) => !isEngineOwned(owned, item.id));
 
       const corrective: DownloadItem[] = [];
 
@@ -409,7 +478,7 @@ export function createDownloadsActions(
         // Preserve in-flight local-only rows not on this catalog page.
         if (!append) {
           for (const id of state.orderedIds) {
-            if (itemsById[id]) {
+            if (itemsById[id] || isEngineOwned(state, id)) {
               continue;
             }
             const local = state.itemsById[id];
@@ -430,10 +499,19 @@ export function createDownloadsActions(
           }
         }
 
+        const view = append
+          ? {
+              itemsById,
+              orderedIds,
+              total:
+                meta.total + orderedIds.filter((id) => isEngineOwned(state, id)).length,
+            }
+          : mergeEngineRowsIntoPage(state, { itemsById, orderedIds, total: meta.total }, true);
+
         return {
-          itemsById,
-          orderedIds,
-          total: meta.total,
+          itemsById: view.itemsById,
+          orderedIds: view.orderedIds,
+          total: view.total,
           page: meta.page,
           pageSize: meta.pageSize,
           hasMore: meta.hasMore,
@@ -452,7 +530,7 @@ export function createDownloadsActions(
     },
     upsertItem: (item) => {
       const normalized = normalizeDownloadItem(item);
-      if (!normalized) {
+      if (!normalized || isEngineOwned(get(), normalized.id)) {
         return;
       }
 
@@ -500,6 +578,26 @@ export function createDownloadsActions(
       }
     },
     patchItem: (id, updates) => {
+      if (isEngineOwned(get(), id)) {
+        // Engine state is never patched from v1; only the organization folder is app-side metadata.
+        if (updates.folderId === undefined) {
+          return;
+        }
+        set((state) => {
+          const row = state.engineRowsById[id];
+          if (!row) {
+            return state;
+          }
+          const next = { ...row, folderId: updates.folderId ?? null };
+          return {
+            engineRowsById: { ...state.engineRowsById, [id]: next },
+            itemsById: state.itemsById[id]
+              ? { ...state.itemsById, [id]: next }
+              : state.itemsById,
+          };
+        });
+        return;
+      }
       let persistedItem: DownloadItem | null = null;
 
       set((state) => {
@@ -596,6 +694,9 @@ export function createDownloadsActions(
       }
     },
     setTransferSnapshot: (snapshot) => {
+      if (isEngineOwned(get(), snapshot.downloadId)) {
+        return;
+      }
       set((state) => {
         const previous = state.transferById[snapshot.downloadId];
         const next =
@@ -634,6 +735,9 @@ export function createDownloadsActions(
       });
     },
     clearTransferSnapshot: (id) => {
+      if (isEngineOwned(get(), id)) {
+        return;
+      }
       set((state) => {
         if (!state.transferById[id]) {
           return state;
@@ -857,6 +961,10 @@ export function createDownloadsActions(
       }
     },
     pause: async (id) => {
+      if (isEngineOwned(get(), id)) {
+        return runEngineAction(id, 'pause', 'Failed to pause download');
+      }
+      logV2Download('action_requested', { downloadId: id, action: 'pause', owned: false });
       setMutating(id, true);
       set({ error: null });
       try {
@@ -880,6 +988,10 @@ export function createDownloadsActions(
       }
     },
     resume: async (id) => {
+      if (isEngineOwned(get(), id)) {
+        return runEngineAction(id, 'resume', 'Unable to resume this download.');
+      }
+      logV2Download('action_requested', { downloadId: id, action: 'resume', owned: false });
       setMutating(id, true);
       set({ error: null });
       try {
@@ -897,6 +1009,10 @@ export function createDownloadsActions(
       }
     },
     cancel: async (id) => {
+      if (isEngineOwned(get(), id)) {
+        return runEngineAction(id, 'cancel', 'Failed to cancel download');
+      }
+      logV2Download('action_requested', { downloadId: id, action: 'cancel', owned: false });
       setMutating(id, true);
       set({ error: null });
       try {
@@ -914,6 +1030,10 @@ export function createDownloadsActions(
       }
     },
     retry: async (id) => {
+      if (isEngineOwned(get(), id)) {
+        return runEngineAction(id, 'retry', 'Unable to retry this download.');
+      }
+      logV2Download('action_requested', { downloadId: id, action: 'retry', owned: false });
       setMutating(id, true);
       set({ error: null });
       try {
@@ -952,6 +1072,29 @@ export function createDownloadsActions(
       }
     },
     remove: async (id) => {
+      if (isEngineOwned(get(), id)) {
+        setMutating(id, true);
+        set({ error: null });
+        try {
+          const engine = getV2Engine();
+          await removeEngineDownload(engine, id, get().engineRowsById[id]?.status ?? null);
+          // The download row goes; a finished video stays in the library, so it keeps its place in Player.
+          const libraryItem = engine ? await engine.getLibraryItem(id).catch(() => null) : null;
+          if (libraryItem) {
+            get().applyEngineEntries([projectV2LibraryItem(libraryItem)]);
+          } else {
+            get().removeEngineEntries([id]);
+          }
+          return true;
+        } catch (error) {
+          set({ error: getErrorMessage(error, 'Failed to remove download') });
+          return false;
+        } finally {
+          if (get().itemsById[id]) {
+            setMutating(id, false);
+          }
+        }
+      }
       setMutating(id, true);
       set({ error: null });
 
@@ -974,6 +1117,22 @@ export function createDownloadsActions(
           setMutating(id, false);
         }
       }
+    },
+    applyEngineEntries: (entries) => {
+      if (entries.length === 0) {
+        return;
+      }
+      set((state) => ({
+        ...reduceEngineEntries(state, entries),
+        ready: true,
+        initialized: true,
+      }));
+    },
+    applyEngineProgress: (event) => {
+      set((state) => reduceEngineProgress(state, event) ?? state);
+    },
+    removeEngineEntries: (ids) => {
+      set((state) => reduceEngineRemoval(state, ids));
     },
     reset: () => {
       loadRequestId += 1;

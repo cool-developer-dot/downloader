@@ -11,6 +11,7 @@ import {
   createStackHeaderOptions,
   ProtectedRouteGuard,
 } from '@/navigation';
+import { ReviewPromptHost } from '@/review';
 import { AppLockGate } from '@/security/app-lock';
 
 export default function AppLayout() {
@@ -77,6 +78,7 @@ export default function AppLayout() {
   return (
     <ProtectedRouteGuard>
       <AppLockGate>
+        <ReviewPromptHost />
         <Stack screenOptions={screenOptions}>
           <Stack.Screen
             name={appStackRouteNames.tabs}

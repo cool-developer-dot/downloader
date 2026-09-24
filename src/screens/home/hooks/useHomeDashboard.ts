@@ -63,8 +63,18 @@ export function useHomeLocalFileIndex(): {
   }, []);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    let cancelled = false;
+    void loadHomeLocalFileIndex().then((next) => {
+      if (cancelled) {
+        return;
+      }
+      setLocalById(next);
+      setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return { localById, ready, reload };
 }

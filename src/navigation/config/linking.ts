@@ -42,6 +42,7 @@ export const linkingConfig = {
           'watch-history': 'watch-history',
           bookmarks: 'bookmarks',
           favorites: 'favorites',
+          'device-videos': 'device-videos',
           'download-settings': 'download-settings',
           'downloads/queue': 'downloads/queue',
           'downloads/[id]': 'downloads/:id',

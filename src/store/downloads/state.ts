@@ -20,4 +20,6 @@ export const initialDownloadsState: DownloadsState = {
   error: null,
   ready: false,
   initialized: false,
+  engineRowsById: {},
+  libraryOnlyIds: {},
 };

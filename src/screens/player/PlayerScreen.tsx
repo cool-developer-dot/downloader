@@ -3,8 +3,8 @@
  * Session, resolver, and engine stay in `@/player`.
  */
 
-import { memo, useCallback, useEffect, useState } from 'react';
-import { BackHandler, StyleSheet, View } from 'react-native';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, BackHandler, StyleSheet, View } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { Box } from '@/components/base/Box';
@@ -85,6 +85,20 @@ export const PlayerScreen = memo(function PlayerScreen() {
     controller,
     activeMediaId: session.mediaId ?? mediaId,
   });
+
+  // Opens with autoplay: once per loaded media (a retry or next/previous loads again), after the resume seek
+  // above has been applied, and only with the app in front — coming back from the background never resumes
+  // playback by itself.
+  const autoPlayedGenerationRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!session.isReady || session.error || autoPlayedGenerationRef.current === resolveGeneration) {
+      return;
+    }
+    autoPlayedGenerationRef.current = resolveGeneration;
+    if (AppState.currentState === 'active') {
+      controller.play();
+    }
+  }, [controller, resolveGeneration, session.error, session.isReady]);
 
   const {
     isFullscreen,

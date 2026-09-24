@@ -84,6 +84,15 @@ export interface MediaDimensions {
 }
 
 /**
+ * Where and when an observation was made. Applied to a candidate before dedupe, so a re-observation of a resource
+ * already on record (same resource, rotated signed URL) moves it to the scope it was just seen in.
+ */
+export type MediaObservationStamp = Pick<
+  DetectedMedia,
+  'frameUrl' | 'observedTabId' | 'observedNavigationEpoch' | 'observedPageGeneration'
+>;
+
+/**
  * Fully normalized detected media candidate.
  * Unavailable fields are explicitly null — never fabricated.
  */

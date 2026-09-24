@@ -1,0 +1,317 @@
+import assert from 'node:assert/strict';
+import { beforeEach, describe, test } from 'node:test';
+
+import { mediaDetectionPipeline } from '../services/detection.service';
+import type { DetectedMedia } from '../types';
+import { resolveGeneralRequestProvenance, selectCurrentGeneralMedia } from './general-correlation.service';
+import { generalPageMediaContextStore } from './general-page-context';
+
+const TAB = 'tab-1';
+const PAGE = 'https://news.example.org/story/42';
+const PLAYER_SRC = 'https://player.embedhost.io/embed/zz91?autoplay=0';
+const CDN = 'https://edge7.cdnhost.net/o/9f3a1c';
+
+/** A network candidate exactly as the engine stores it: classified by the real pipeline, then scoped. */
+function networkCandidate(
+  url: string,
+  options: { referer?: string | null; generation?: number; existing?: DetectedMedia[] } = {},
+): DetectedMedia {
+  const result = mediaDetectionPipeline.processNetworkUrl(options.existing ?? [], url, PAGE, [], {
+    detectionSource: 'native_network',
+    hasRange: true,
+    isForMainFrame: false,
+    mimeType: null,
+  });
+  const media = result.media.find((item) => item.url === url) ?? result.media[0];
+  assert.ok(media, `pipeline rejected ${url}`);
+  return {
+    ...media,
+    frameUrl: options.referer === undefined ? 'https://player.embedhost.io/' : options.referer,
+    observedTabId: TAB,
+    observedNavigationEpoch: 0,
+    observedPageGeneration: options.generation ?? generalPageMediaContextStore.get(TAB)?.pageGeneration,
+  };
+}
+
+function iframeOwner(): void {
+  generalPageMediaContextStore.applyActiveIframePlayerEvidence({
+    tabId: TAB,
+    navigationEpoch: 0,
+    evidence: {
+      pageUrl: PAGE,
+      iframeIdentity: 'iframe:0',
+      iframeSrc: PLAYER_SRC,
+      frameClass: 'cross-origin',
+      isDisplayed: true,
+      isVisibleStyle: true,
+      intersectionRatio: 1,
+      width: 347,
+      height: 230,
+      allowFullscreen: true,
+      allow: 'autoplay; fullscreen',
+      looksPlayer: true,
+      sameOriginVideoCount: 0,
+    },
+  });
+}
+
+function videoOwner(input: {
+  src: string;
+  paused: boolean;
+  intersectionRatio: number;
+  element?: string;
+  isBlob?: boolean;
+  width?: number;
+  height?: number;
+  muted?: boolean;
+}): void {
+  generalPageMediaContextStore.applyActiveVideoEvidence({
+    tabId: TAB,
+    navigationEpoch: 0,
+    evidence: {
+      pageUrl: PAGE,
+      elementIdentity: input.element ?? 'video:0',
+      currentSrc: input.src,
+      src: input.src,
+      isBlob: input.isBlob ?? input.src.startsWith('blob:'),
+      paused: input.paused,
+      ended: false,
+      readyState: 4,
+      videoWidth: input.width ?? 640,
+      videoHeight: input.height ?? 360,
+      muted: input.muted ?? false,
+      currentTimeBucket: 1,
+      intersectionRatio: input.intersectionRatio,
+      viewportCenterDistance: 0,
+      isDisplayed: true,
+      isVisibleStyle: true,
+      recentlyPlayed: !input.paused,
+      explicitAdMarker: false,
+      associatedContentId: null,
+      observedAt: Date.now(),
+    },
+  });
+}
+
+function select(candidates: DetectedMedia[]) {
+  const context = generalPageMediaContextStore.get(TAB);
+  return selectCurrentGeneralMedia({
+    candidates,
+    context,
+    tabId: TAB,
+    navigationEpoch: 0,
+    pageGeneration: context?.pageGeneration,
+    pageUrl: PAGE,
+  });
+}
+
+beforeEach(() => {
+  generalPageMediaContextStore.clearAll();
+  generalPageMediaContextStore.setActiveTab(TAB);
+  generalPageMediaContextStore.syncFromPageUrl({ tabId: TAB, pageUrl: PAGE, navigationEpoch: 0 });
+});
+
+describe('cross-origin iframe → unrelated CDN ownership (C/D)', () => {
+  test('page A → iframe B → CDN C with origin-only Referer is owned by the player', () => {
+    iframeOwner();
+    const media = networkCandidate(`${CDN}?token=abc&expires=4102444800`);
+    const picked = select([media]);
+    assert.equal(picked.media?.id, media.id);
+    assert.notEqual(picked.group.confidence, 'REJECTED');
+    assert.ok(picked.group.confidence === 'MEDIUM' || picked.group.confidence === 'STRONG');
+  });
+
+  test('full iframe document Referer is also the player frame', () => {
+    iframeOwner();
+    const media = networkCandidate(`${CDN}?token=abc`, { referer: PLAYER_SRC });
+    assert.equal(select([media]).media?.id, media.id);
+  });
+
+  test('provenance compares initiator origins only, never media host or path', () => {
+    const context = { playerKind: 'iframe' as const, activeVideoCurrentSrc: PLAYER_SRC, pageUrl: PAGE };
+    assert.equal(resolveGeneralRequestProvenance({ frameUrl: 'https://player.embedhost.io/' }, context), 'OWNER_FRAME');
+    assert.equal(resolveGeneralRequestProvenance({ frameUrl: 'https://news.example.org/story/42' }, context), 'TOP_DOCUMENT');
+    assert.equal(resolveGeneralRequestProvenance({ frameUrl: 'https://ads.adnetwork.example/' }, context), 'OTHER_FRAME');
+    assert.equal(resolveGeneralRequestProvenance({ frameUrl: null }, context), 'UNKNOWN');
+  });
+
+  test('media requested by another frame (ad/background iframe) is rejected', () => {
+    iframeOwner();
+    const ad = networkCandidate(`${CDN}?token=abc`, { referer: 'https://ads.adnetwork.example/' });
+    const picked = select([ad]);
+    assert.equal(picked.media, null);
+    assert.equal(picked.group.rejected[0]?.reason, 'FOREIGN_FRAME_MEDIA');
+  });
+
+  test('media requested by the page itself is not the iframe player’s', () => {
+    iframeOwner();
+    const pageMedia = networkCandidate(`${CDN}?token=abc`, { referer: 'https://news.example.org/' });
+    assert.equal(select([pageMedia]).group.rejected[0]?.reason, 'OUTSIDE_CURRENT_PLAYER');
+  });
+
+  test('a request without initiator evidence stays unproven, not owned', () => {
+    iframeOwner();
+    const unknown = networkCandidate(`${CDN}?token=abc`, { referer: null });
+    assert.equal(select([unknown]).group.rejected[0]?.reason, 'UNPROVEN_FRAME_OWNERSHIP');
+  });
+});
+
+describe('top-level players, preload and generations', () => {
+  test('E: another resource requested while a visible player plays different media is an offscreen preload', () => {
+    videoOwner({ src: 'https://media.example.org/v/current-clip?sig=1', paused: false, intersectionRatio: 1 });
+    const preload = networkCandidate('https://media.example.org/v/next-clip?sig=2', { referer: 'https://news.example.org/' });
+    const picked = select([preload]);
+    assert.equal(picked.media, null);
+    assert.equal(picked.group.rejected[0]?.reason, 'OFFSCREEN_PRELOAD');
+  });
+
+  test('F: when the preloaded video becomes the visible playing element it is owned (STRONG)', () => {
+    const preload = networkCandidate('https://media.example.org/v/next-clip?sig=2', { referer: 'https://news.example.org/' });
+    videoOwner({ src: 'https://media.example.org/v/current-clip?sig=1', paused: false, intersectionRatio: 1 });
+    assert.equal(select([preload]).media, null);
+    const generationAtPreload = preload.observedPageGeneration;
+    videoOwner({ src: 'https://media.example.org/v/next-clip?sig=9', paused: false, intersectionRatio: 0.9, element: 'video:1' });
+    // The visible element changed, so the page generation moved on; the fully buffered preload sends no new request.
+    assert.notEqual(generalPageMediaContextStore.get(TAB)?.pageGeneration, generationAtPreload);
+    const upgraded = select([preload]);
+    assert.equal(upgraded.media?.id, preload.id);
+    assert.equal(upgraded.group.confidence, 'STRONG');
+  });
+
+  test('E: the page’s only video, preloaded far offscreen and never played, cannot own current content', () => {
+    const src = 'https://media.example.org/v/below-the-fold?sig=1';
+    videoOwner({ src, paused: true, intersectionRatio: 0 });
+    const preload = networkCandidate(src, { referer: 'https://news.example.org/' });
+    const picked = select([preload]);
+    assert.equal(picked.media, null);
+    assert.equal(picked.group.rejected[0]?.reason, 'OFFSCREEN_PRELOAD');
+  });
+
+  test('E: an idle video whose visibility is not known yet is at most WEAK', () => {
+    const src = 'https://media.example.org/v/unknown-visibility?sig=1';
+    generalPageMediaContextStore.applyActiveVideoEvidence({
+      tabId: TAB,
+      navigationEpoch: 0,
+      evidence: {
+        pageUrl: PAGE, elementIdentity: 'video:0', currentSrc: src, src, isBlob: false, paused: true, ended: false,
+        readyState: 1, videoWidth: 640, videoHeight: 360, muted: false, currentTimeBucket: 0, intersectionRatio: null,
+        viewportCenterDistance: null, isDisplayed: true, isVisibleStyle: true, recentlyPlayed: false,
+        explicitAdMarker: false, associatedContentId: null, observedAt: Date.now(),
+      },
+    });
+    const candidate = networkCandidate(src, { referer: 'https://news.example.org/' });
+    assert.equal(select([candidate]).group.confidence, 'WEAK');
+  });
+
+  test('a video the user was watching stays owned after scrolling it offscreen', () => {
+    const src = 'https://media.example.org/v/watched?sig=1';
+    videoOwner({ src, paused: false, intersectionRatio: 0.05 });
+    const candidate = networkCandidate(src, { referer: 'https://news.example.org/' });
+    const picked = select([candidate]);
+    assert.equal(picked.media?.id, candidate.id);
+    assert.notEqual(picked.group.confidence, 'REJECTED');
+  });
+
+  test('a visible paused video is owned (MEDIUM) before play', () => {
+    const src = 'https://media.example.org/v/visible-paused?sig=1';
+    videoOwner({ src, paused: true, intersectionRatio: 1 });
+    const candidate = networkCandidate(src, { referer: 'https://news.example.org/' });
+    assert.equal(select([candidate]).group.confidence, 'MEDIUM');
+  });
+
+  test('a low-resolution player partly in view (paused, unmuted, controls) is owned, not a tiny preview', () => {
+    // Intrinsic 320×176 and 33% visible under the fold: decoded size and scroll position are not a preview role.
+    const src = 'https://media.example.org/v/small-clip.mp4';
+    videoOwner({ src, paused: true, intersectionRatio: 0.33, width: 320, height: 176 });
+    const candidate = networkCandidate(src, { referer: 'https://news.example.org/' });
+    const picked = select([candidate]);
+    assert.equal(picked.media?.id, candidate.id);
+    assert.equal(picked.group.confidence, 'MEDIUM');
+  });
+
+  test('a tiny muted playing loop stays WEAK (background media) until it is unmuted', () => {
+    const src = 'https://media.example.org/v/a1b2c3.mp4';
+    videoOwner({ src, paused: false, intersectionRatio: 1, width: 200, height: 112, muted: true });
+    const candidate = networkCandidate(src, { referer: 'https://news.example.org/' });
+    assert.equal(select([candidate]).group.confidence, 'WEAK');
+    videoOwner({ src, paused: false, intersectionRatio: 1, width: 200, height: 112, muted: false });
+    assert.equal(select([candidate]).group.confidence, 'STRONG');
+  });
+
+  test('G: a candidate observed in the previous SPA generation cannot be selected for the new content', () => {
+    videoOwner({ src: 'https://media.example.org/v/clip-a?sig=1', paused: false, intersectionRatio: 1 });
+    const late = networkCandidate('https://media.example.org/v/clip-a?sig=1', { referer: 'https://news.example.org/', generation: 1 });
+    generalPageMediaContextStore.syncFromPageUrl({ tabId: TAB, pageUrl: 'https://news.example.org/story/43', navigationEpoch: 0 });
+    const picked = selectCurrentGeneralMedia({
+      candidates: [late],
+      context: generalPageMediaContextStore.get(TAB),
+      tabId: TAB,
+      navigationEpoch: 0,
+      pageGeneration: generalPageMediaContextStore.get(TAB)?.pageGeneration,
+      pageUrl: 'https://news.example.org/story/43',
+    });
+    assert.equal(picked.media, null);
+    assert.equal(picked.group.rejected[0]?.reason, 'STALE_PAGE_GENERATION');
+  });
+
+  test('T: blob (MSE) player + underlying resource fetched by the page is eligible', () => {
+    videoOwner({ src: 'blob:https://news.example.org/5f1c', paused: false, intersectionRatio: 1 });
+    const underlying = networkCandidate(`${CDN}?token=abc`, { referer: 'https://news.example.org/' });
+    const picked = select([underlying]);
+    assert.equal(picked.media?.id, underlying.id);
+    assert.notEqual(picked.group.confidence, 'REJECTED');
+  });
+
+  test('T: blob player does not adopt media requested by a different frame', () => {
+    videoOwner({ src: 'blob:https://news.example.org/5f1c', paused: false, intersectionRatio: 1 });
+    const foreign = networkCandidate(`${CDN}?token=abc`, { referer: 'https://ads.adnetwork.example/' });
+    assert.equal(select([foreign]).group.rejected[0]?.reason, 'FOREIGN_FRAME_MEDIA');
+  });
+
+  test('T: blob player + resource fetched by the page script (js_fetch, no Referer on record) is eligible', () => {
+    videoOwner({ src: 'blob:https://news.example.org/5f1c', paused: false, intersectionRatio: 1 });
+    const fetched = { ...networkCandidate(`${CDN}?token=abc`, { referer: null }), detectionSource: 'js_fetch' as const };
+    const picked = select([fetched]);
+    assert.equal(picked.media?.id, fetched.id);
+    assert.notEqual(picked.group.confidence, 'REJECTED');
+  });
+
+  test('page-script observations are the top document, never the iframe player', () => {
+    iframeOwner();
+    const fetched = { ...networkCandidate(`${CDN}?token=abc`, { referer: null }), detectionSource: 'js_xhr' as const };
+    assert.equal(select([fetched]).group.rejected[0]?.reason, 'OUTSIDE_CURRENT_PLAYER');
+  });
+
+  test('U: blob-only playback with no observable source selects nothing', () => {
+    videoOwner({ src: 'blob:https://news.example.org/5f1c', paused: false, intersectionRatio: 1 });
+    assert.equal(select([]).media, null);
+  });
+});
+
+describe('resource identity (H/I/S)', () => {
+  test('H: signed URL credential rotation collapses into one candidate', () => {
+    const first = networkCandidate(`${CDN}?token=aaa&expires=4102444800`);
+    const second = mediaDetectionPipeline.processNetworkUrl([first], `${CDN}?token=bbb&expires=4102444900`, PAGE, [], {
+      detectionSource: 'native_network', hasRange: true, isForMainFrame: false,
+    });
+    assert.equal(second.media.length, 1);
+    assert.equal(second.inserted, 0);
+  });
+
+  test('I: a meaningful quality selector stays a separate resource', () => {
+    const low = networkCandidate(`${CDN}?q=360&token=aaa`);
+    const high = mediaDetectionPipeline.processNetworkUrl([low], `${CDN}?q=720&token=aaa`, PAGE, [], {
+      detectionSource: 'native_network', hasRange: true, isForMainFrame: false,
+    });
+    assert.equal(high.media.length, 2);
+  });
+
+  test('S: the same resource observed by DOM and native network is one candidate', () => {
+    const url = 'https://media.example.org/clips/intro.mp4';
+    const dom = mediaDetectionPipeline.processNetworkUrl([], url, PAGE, [], { detectionSource: 'dom_video' });
+    const native = mediaDetectionPipeline.processNetworkUrl(dom.media, url, PAGE, [], {
+      detectionSource: 'native_network', hasRange: true, isForMainFrame: false,
+    });
+    assert.equal(native.media.length, 1);
+  });
+});

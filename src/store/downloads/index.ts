@@ -21,4 +21,3 @@ export type {
   DownloadsState,
   DownloadsStore,
 } from './types';
-export type { DownloadActivitySummary } from './selectors';

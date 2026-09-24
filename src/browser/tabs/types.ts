@@ -45,18 +45,29 @@ export type PersistedBrowserTabsEnvelope = {
 };
 
 export type CreateTabResult =
-  | { status: 'CREATED'; tab: BrowserTab }
+  | { status: 'CREATED'; tab: BrowserTab; evictedTabIds: string[] }
   | { status: 'LIMIT_REACHED'; max: number }
   | { status: 'FAILED'; reason: string };
 
 export type CloseTabResult =
-  | { status: 'CLOSED'; closedTabId: string; activeTabId: string }
-  | { status: 'REPLACED_HOME'; tab: BrowserTab }
+  | {
+      status: 'CLOSED';
+      closedTabId: string;
+      activeTabId: string;
+      evictedTabIds: string[];
+    }
+  | { status: 'REPLACED_HOME'; tab: BrowserTab; evictedTabIds: string[] }
   | { status: 'NOT_FOUND' }
   | { status: 'FAILED'; reason: string };
 
 export type SwitchTabResult =
-  | { status: 'SWITCHED'; activeTabId: string; mountedTabIds: string[]; evictedTabId: string | null }
+  | {
+      status: 'SWITCHED';
+      activeTabId: string;
+      mountedTabIds: string[];
+      evictedTabId: string | null;
+      evictedTabIds: string[];
+    }
   | { status: 'NOOP'; activeTabId: string }
   | { status: 'NOT_FOUND' }
   | { status: 'FAILED'; reason: string };

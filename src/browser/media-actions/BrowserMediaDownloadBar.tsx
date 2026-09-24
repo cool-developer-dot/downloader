@@ -5,6 +5,16 @@ import {
   StyleSheet,
   View,
 } from 'react-native';
+import Animated, {
+  Easing,
+  FadeInDown,
+  FadeOutDown,
+  cancelAnimation,
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withTiming,
+} from 'react-native-reanimated';
 
 import { Box } from '@/components/base/Box';
 import { Icon } from '@/components/base/Icon';
@@ -102,7 +112,8 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
     try {
       const result = await action.download();
       if (result.ok) {
-        showToast(t('downloads.successToast'));
+        // A second tap on the same video is not a second download; say so instead of claiming a new one.
+        showToast(result.deduped ? t('detection.sheet.alreadyAdded') : t('downloads.successToast'));
         return;
       }
       const toast = toastForUserTriggeredDownloadOutcome(
@@ -126,6 +137,28 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
     }
     void handleDownload();
   }, [handleDownload, presentation.buttonDisabled]);
+
+  // The icon breathes only while the download is being prepared, so motion always means "working".
+  const pulse = useSharedValue(1);
+  const preparing = presentation.isPreparing;
+
+  useEffect(() => {
+    if (!preparing) {
+      cancelAnimation(pulse);
+      pulse.value = withTiming(1, { duration: 160 });
+      return;
+    }
+    pulse.value = withRepeat(
+      withTiming(0.45, { duration: 620, easing: Easing.inOut(Easing.quad) }),
+      -1,
+      true,
+    );
+    return () => {
+      cancelAnimation(pulse);
+    };
+  }, [preparing, pulse]);
+
+  const iconStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
 
   if (!presentation.showCard && !toastVisible) {
     return null;
@@ -174,7 +207,12 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
       ) : null}
 
       {presentation.showCard ? (
-        <View pointerEvents="auto" style={{ width: '100%', elevation: 8 }}>
+        // Detection is a moment worth noticing: the bar rises into place instead of appearing from nowhere.
+        <Animated.View
+          entering={FadeInDown.duration(220)}
+          exiting={FadeOutDown.duration(160)}
+          pointerEvents="auto"
+          style={{ width: '100%', elevation: 8 }}>
           <Pressable
             testID="browser-media-download-button"
             onPress={handleBarPress}
@@ -211,13 +249,15 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
                 ? t('browser.media.preparingDownload')
                 : t('browser.media.videoAvailable')}
             </Text>
-            <Icon
-              name="download"
-              size={20}
-              color={barEnabled ? 'primary' : 'disabled'}
-            />
+            <Animated.View style={iconStyle}>
+              <Icon
+                name="download"
+                size={20}
+                color={barEnabled ? 'primary' : 'disabled'}
+              />
+            </Animated.View>
           </Pressable>
-        </View>
+        </Animated.View>
       ) : null}
     </Box>
   );

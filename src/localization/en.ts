@@ -1,5 +1,4 @@
 import { detectionEn } from './catalogs/detection.en';
-import { mediaEn } from './catalogs/media.en';
 import { shellEn } from './catalogs/shell.en';
 import { videoPlayerEn } from './catalogs/videoPlayer.en';
 
@@ -57,8 +56,8 @@ export const en = {
     browserTab: 'Browser tab',
     downloads: 'Downloads',
     downloadsTab: 'Downloads tab',
-    library: 'Library',
-    libraryTab: 'Library tab',
+    library: 'Player',
+    libraryTab: 'Player tab',
     settings: 'Settings',
     settingsTab: 'Settings tab',
     about: 'About',
@@ -110,7 +109,7 @@ export const en = {
     appPrivate: 'Private to VidoraX (app storage)',
     createdWhenNeeded: 'Created automatically when first needed',
     openDownloads: 'Open Downloads',
-    openLibrary: 'Open Library',
+    openLibrary: 'Open Player',
     clearCache: 'Clear Cache',
     clearCacheTitle: 'Clear cache?',
     clearCacheMessage:
@@ -451,7 +450,7 @@ export const en = {
     storageUsed: 'Used',
     storageFree: 'Available',
     viewAll: 'View All',
-    viewLibraryA11y: 'View all in Library',
+    viewLibraryA11y: 'View all in Player',
     viewDownloadsA11y: 'Open Downloads',
     viewHistoryA11y: 'Open watch history',
     viewStorageA11y: 'Open storage manager',
@@ -461,7 +460,7 @@ export const en = {
     pausedCount: '{count} paused',
     queuedCount: '{count} queued',
     averageProgressA11y: 'Average download progress {percent} percent',
-    storageUsageA11y: 'Library storage {percent} percent of used plus available',
+    storageUsageA11y: 'Player storage {percent} percent of used plus available',
   },
   browser: {
     title: 'Browser',
@@ -502,9 +501,9 @@ export const en = {
     recentDownloads: 'Recent Downloads',
     recentDownloadsA11y: 'Open recent downloads',
     continueWatching: 'Continue Watching',
-    continueWatchingA11y: 'Open continue watching in Library',
+    continueWatchingA11y: 'Open continue watching in Player',
     recentlyWatched: 'Recently Watched',
-    recentlyWatchedA11y: 'Open recently watched in Library',
+    recentlyWatchedA11y: 'Open recently watched in Player',
     openSettingsA11y: 'Open settings',
     aiAssistant: 'AI assistant',
     settings: 'Settings',
@@ -679,8 +678,12 @@ export const en = {
       'Delete this download from VidoraX? Copies saved outside VidoraX will not be deleted.',
     deleteConfirm: 'Delete',
     deleteCancel: 'Cancel',
+    removeTitle: 'Remove from Downloads?',
+    removeMessage:
+      'This clears the download from this list. The video stays in Player, and any copy you saved to your device is untouched.',
+    removeConfirm: 'Remove',
     deleteFailed: 'Unable to delete this download',
-    deleteMissingConfirm: 'Remove from Library',
+    deleteMissingConfirm: 'Remove from Player',
     notifications: {
       channelName: 'Download updates',
       downloadingTitle: 'Downloading',
@@ -830,8 +833,18 @@ export const en = {
     resetFiltersHint: 'Clears search, filter, and sort',
     analyzeLinkHint: 'Checks the link for downloadable formats',
   },
+  deviceVideos: {
+    title: 'On this device',
+    subtitle: 'Videos already saved on your phone',
+    empty: 'No videos found on this device.',
+    permission: 'Allow VidoraX to read your videos to play them here.',
+    allow: 'Allow access',
+    unavailable: 'Not available in this build.',
+    limited: 'Showing the videos you gave VidoraX access to',
+    open: 'Videos on this device',
+  },
   library: {
-    title: 'Library',
+    title: 'Player',
     searchPlaceholder: 'Search downloaded videos',
     emptyTitle: 'No downloads yet',
     emptyDescription:
@@ -903,7 +916,7 @@ export const en = {
     deleteConfirm: 'Delete',
     deleteCancel: 'Cancel',
     deleteFailed: 'Unable to delete this download',
-    removeFromLibrary: 'Remove from Library',
+    removeFromLibrary: 'Remove from Player',
     saving: 'Saving…',
     savedToDevice: 'Saved to device',
     alreadySavedToDevice: 'Already saved to device',
@@ -986,6 +999,12 @@ export const en = {
     loadingA11y: 'Loading settings',
     appearanceSection: 'Appearance',
     appearanceDescription: 'Look and feel of the app',
+    defaultBrowser: 'Default browser',
+    defaultBrowserHintOn: 'VidoraX opens web links on this device.',
+    defaultBrowserHintOff: 'Open web links from other apps in VidoraX.',
+    defaultBrowserValueOn: 'On',
+    defaultBrowserValueOff: 'Set up',
+    defaultBrowserUnavailable: 'Not available on this device',
     generalSection: 'General',
     generalDescription: 'Language and regional preferences',
     downloadsSection: 'Downloads',
@@ -1017,8 +1036,8 @@ export const en = {
     storageSection: 'Storage',
     storageSectionDescription: 'Manage downloaded media on this device',
     manageStorage: 'Manage Storage',
-    manageStorageHint: 'Open Library to review and remove downloads',
-    manageStorageA11y: 'Opens Library to manage storage',
+    manageStorageHint: 'Open Player to review and remove downloads',
+    manageStorageA11y: 'Opens Player to manage storage',
     reportProblem: 'Report a Problem',
     reportProblemHint: 'Describe an issue so we can investigate',
     reportProblemA11y: 'Opens the Report a Problem form',
@@ -1425,7 +1444,7 @@ export const en = {
     actions: {
       openBrowser: 'Open Browser',
       openDownloads: 'Open Downloads',
-      openLibrary: 'Open Library',
+      openLibrary: 'Open Player',
       openDownloadSettings: 'Open Download Settings',
       openSettings: 'Open Settings',
       openPrivacy: 'Open Privacy Policy',
@@ -1857,6 +1876,5 @@ export const en = {
   },
   shell: shellEn,
   detection: detectionEn,
-  media: mediaEn,
   videoPlayer: videoPlayerEn,
 } as const;

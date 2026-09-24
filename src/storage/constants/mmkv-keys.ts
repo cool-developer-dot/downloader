@@ -30,6 +30,10 @@ export const mmkvKeys = {
   playbackMigratedLocalV1: 'vidorax.mmkv.flags.playbackMigratedLocal.v1',
   /** One-time SecureStore cleanup of obsolete auth/session keys. */
   authSecretsClearedV1: 'vidorax.mmkv.flags.authSecretsCleared.v1',
+  /** Google Play in-app review: successful-download count and last request time (local only). */
+  inAppReview: 'vidorax.mmkv.review.inApp.v1',
+  /** One-time move of legacy page/v1 favorites onto library items' own favorites. */
+  favoritesPerItemMigratedV1: 'vidorax.mmkv.flags.favoritesPerItemMigrated.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

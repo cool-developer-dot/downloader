@@ -4,6 +4,9 @@
  * Not a site-specific parser table.
  */
 
+import { stableResourcePath } from '../social-source/resource-identity';
+import { meaningfulQuery } from '../utils/url';
+
 const PAGE_VIDEO_PATH_RE =
   /(?:^|\/)(?:video|videos|watch|embed|media|clip|clips|shorts|reel|reels|v)\/([A-Za-z0-9_-]{5,32})(?:[/?#]|$)/i;
 
@@ -64,7 +67,9 @@ export function generalPagePathKey(pageUrl: string | null | undefined): string |
     if (path.length > 1 && path.endsWith('/')) {
       path = path.slice(0, -1);
     }
-    return `${stripWww(u.hostname)}${path || '/'}`;
+    // `watch.php?id=2` is another page than `watch.php?id=1`.
+    const query = meaningfulQuery(u);
+    return `${stripWww(u.hostname)}${path || '/'}${query ? `?${query}` : ''}`;
   } catch {
     return null;
   }
@@ -92,7 +97,9 @@ export function sanitizePlayerSrcPath(url: string | null | undefined): string | 
     if (u.protocol !== 'http:' && u.protocol !== 'https:') {
       return null;
     }
-    return `${stripWww(u.hostname)}${u.pathname}`.toLowerCase().slice(0, 160);
+    // The resource, not just its path: `stream.mp4?id=2` is another video than `stream.mp4?id=1`, while a rotated
+    // signature or expiry on the same video keeps its identity.
+    return (stableResourcePath(trimmed) ?? `${stripWww(u.hostname)}${u.pathname}`).slice(0, 160);
   } catch {
     return null;
   }

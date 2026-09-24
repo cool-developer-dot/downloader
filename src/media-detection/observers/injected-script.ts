@@ -16,6 +16,10 @@ const AUDIO_EXTS = 'mp3|m4a|aac|ogg|opus|wav|flac';
 const STREAM_EXTS = 'm3u8|mpd';
 /** .ts excluded from extension-alone matching — segment noise. */
 
+/** After an SPA route change the page title is looked at this often, this many times (3 s), for the route's own name. */
+const ROUTE_TITLE_CHECK_MS = 250;
+const ROUTE_TITLE_CHECKS = 12;
+
 /**
  * Build the injectable observer script.
  * Appended with `true;` so react-native-webview treats it as successful.
@@ -34,10 +38,19 @@ export function buildMediaDetectionInjectedScript(): string {
   var MIME_HINTS = /^(video\\/|audio\\/|application\\/(vnd\\.apple\\.mpegurl|x-mpegurl|dash\\+xml))/i;
   var SEGMENT_RE = /(?:^|\\/)(?:seg(?:ment)?s?|chunk|frag(?:ment)?)(?:[_-]|\\.|\\/|$)|\\.(?:ts|m2ts|m4s)(?:[?#]|$)/i;
   var pending = [];
+  var MAX_PENDING = ${maxBatch * 4};
   var seen = Object.create(null);
   var seenKeys = [];
   var MAX_SEEN = 320;
   var disposed = false;
+  /** True once the page has negotiated encrypted media — protection evidence, never a bypass. */
+  var emeRequested = false;
+  /** blob: url -> 'mse' | 'blob', bounded, so an indicator can say what kind of source it stands for. */
+  var mseObjectUrls = Object.create(null);
+  var mseObjectUrlKeys = [];
+  var MAX_MSE_OBJECT_URLS = 24;
+  /** True while this script's observers and listeners are live. */
+  var attached = false;
   var batchTimer = null;
   var lastFlushAt = 0;
   var pageUrl = location.href;
@@ -48,9 +61,10 @@ export function buildMediaDetectionInjectedScript(): string {
   var postWindowStart = 0;
   var postsInWindow = 0;
 
+  /** Returns false when the caller's payload was NOT delivered, so it can be retried. */
   function post(type, payload) {
     try {
-      if (disposed) return;
+      if (disposed) return false;
       var now = Date.now();
       if (now - postWindowStart >= POST_WINDOW_MS) {
         postWindowStart = now;
@@ -60,10 +74,10 @@ export function buildMediaDetectionInjectedScript(): string {
       var priority = type === 'active_video' || type === 'active_iframe_player' ||
         type === 'blob_indicator' || type === 'page_meta' || type === 'ready' ||
         type === 'scan_complete';
-      if (postsInWindow >= MAX_POSTS_PER_WINDOW && !priority) return;
-      if (postCount >= MAX_POSTS) return;
+      if (postsInWindow >= MAX_POSTS_PER_WINDOW && !priority) return false;
+      if (postCount >= MAX_POSTS) return false;
       if (!window.ReactNativeWebView || !window.ReactNativeWebView.postMessage) {
-        return;
+        return false;
       }
       postsInWindow += 1;
       postCount += 1;
@@ -73,7 +87,8 @@ export function buildMediaDetectionInjectedScript(): string {
         payload: payload,
         ts: Date.now()
       }));
-    } catch (e) {}
+      return true;
+    } catch (e) { return false; }
   }
 
   function safeUrl(u) {
@@ -198,7 +213,7 @@ export function buildMediaDetectionInjectedScript(): string {
     if (disposed || !candidate || !candidate.url) return;
     candidate.url = canonicalizePlaybackUrl(candidate.url);
     if (isBlobUrl(candidate.url)) {
-      post('blob_indicator', { pageUrl: pageUrl, blobUrl: String(candidate.url).slice(0, 512) });
+      postBlobIndicator(candidate.url, null, null);
       return;
     }
     var key = candidate.url + '|' + (candidate.mimeType || '') + '|' +
@@ -208,24 +223,39 @@ export function buildMediaDetectionInjectedScript(): string {
     seenKeys.push(key);
     if (seenKeys.length > MAX_SEEN) delete seen[seenKeys.shift()];
     pending.push(candidate);
-    if (pending.length > ${maxBatch}) {
+    // Bounded backlog: a pathological page can keep producing, but the newest evidence — the video the
+    // user is looking at — must never be dropped for the oldest.
+    while (pending.length > MAX_PENDING) pending.shift();
+    if (pending.length >= ${maxBatch}) {
       flush();
       return;
     }
-    if (batchTimer) return;
+    scheduleFlush();
+  }
+
+  function scheduleFlush() {
+    if (disposed || batchTimer || !pending.length) return;
     var delay = ${batchMs};
     var since = Date.now() - lastFlushAt;
     if (since < ${throttleMs}) delay = Math.max(delay, ${throttleMs} - since);
     batchTimer = setTimeout(flush, delay);
   }
 
+  /**
+   * Sends at most one batch per call, keeping the Phase 10 caps. Whatever does not fit, or is refused by
+   * the post throttle, stays queued and is re-armed — a candidate is deduped by 'seen' and would never be
+   * produced a second time, so dropping it here loses it for the life of the page.
+   */
   function flush() {
     if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
     if (!pending.length) return;
     var batch = pending.slice(0, ${maxBatch});
-    pending = [];
+    var rest = pending.slice(${maxBatch});
     lastFlushAt = Date.now();
-    post('mutation_batch', { candidates: batch, pageUrl: pageUrl });
+    if (post('mutation_batch', { candidates: batch, pageUrl: pageUrl })) {
+      pending = rest;
+    }
+    scheduleFlush();
   }
 
   function readMeta() {
@@ -251,7 +281,7 @@ export function buildMediaDetectionInjectedScript(): string {
                   meta('meta[property="og:video:secure_url"]', 'content') ||
                   meta('meta[name="twitter:player:stream"]', 'content');
     if (isBlobUrl(ogVideo)) {
-      post('blob_indicator', { pageUrl: pageUrl, blobUrl: String(ogVideo).slice(0, 512) });
+      postBlobIndicator(ogVideo, null, null);
     } else {
       var ogAbs = safeUrl(ogVideo);
       if (ogAbs && looksMedia(ogAbs, null)) {
@@ -383,12 +413,36 @@ export function buildMediaDetectionInjectedScript(): string {
     harvestEmbeddedJsonUrls();
   }
 
+  /**
+   * Encrypted-playback evidence, observed only. Never touches a key system, a license or a session —
+   * a page that negotiates EME, an element that has MediaKeys, or an 'encrypted' event is enough to
+   * know the stream is protected and must not be offered.
+   */
+  function isProtectedElement(el) {
+    try {
+      if (el && (el.mediaKeys || el.__vidoraxEncrypted)) return true;
+    } catch (e) {}
+    return emeRequested;
+  }
+
+  function postBlobIndicator(rawUrl, el, sourceKind) {
+    post('blob_indicator', {
+      pageUrl: pageUrl,
+      blobUrl: String(rawUrl).slice(0, 512),
+      elementIdentity: el && (el.tagName || '').toLowerCase() === 'video' ? ensureVideoIdentity(el) : null,
+      isProtected: isProtectedElement(el),
+      sourceKind: sourceKind || (el && mseObjectUrls[String(rawUrl).slice(0, 512)] ? 'mse' : 'blob')
+    });
+  }
+
   function mediaFromElement(el, source) {
     if (!el) return;
     var tag = (el.tagName || '').toLowerCase();
     var rawSrc = el.currentSrc || el.src || el.getAttribute('src');
     if (isBlobUrl(rawSrc)) {
-      post('blob_indicator', { pageUrl: pageUrl, blobUrl: String(rawSrc).slice(0, 512) });
+      // A blob is never downloadable. It is reported as evidence of a player whose real HTTP(S)
+      // source has to be found through network observation instead.
+      postBlobIndicator(rawSrc, el, null);
       return;
     }
     var url = safeUrl(rawSrc);
@@ -435,9 +489,9 @@ export function buildMediaDetectionInjectedScript(): string {
     });
   }
 
-  function scanDom() {
-    pageUrl = location.href;
-    var videos = document.querySelectorAll('video');
+  function scanDocument(doc) {
+    if (!doc || !doc.querySelectorAll) return;
+    var videos = doc.querySelectorAll('video');
     for (var i = 0; i < videos.length; i++) {
       mediaFromElement(videos[i], 'dom_video');
       var sources = videos[i].querySelectorAll('source');
@@ -445,7 +499,7 @@ export function buildMediaDetectionInjectedScript(): string {
         mediaFromElement(sources[s], 'dom_source');
       }
     }
-    var audios = document.querySelectorAll('audio');
+    var audios = doc.querySelectorAll('audio');
     for (var a = 0; a < audios.length; a++) {
       mediaFromElement(audios[a], 'dom_audio');
       var aSources = audios[a].querySelectorAll('source');
@@ -455,11 +509,42 @@ export function buildMediaDetectionInjectedScript(): string {
     }
   }
 
+  /**
+   * Same-origin subframe documents the top document may legally read. A cross-origin frame throws here and
+   * is skipped — its media is only ever seen by native request observation. Bounded by MAX_TRACKED_IFRAMES.
+   */
+  function sameOriginFrameDocuments() {
+    var docs = [];
+    try {
+      var frames = document.querySelectorAll('iframe');
+      var limit = Math.min(frames.length, MAX_TRACKED_IFRAMES);
+      for (var f = 0; f < limit; f++) {
+        try {
+          var doc = frames[f].contentDocument ||
+            (frames[f].contentWindow && frames[f].contentWindow.document);
+          if (doc && doc.querySelectorAll) docs.push(doc);
+        } catch (cross) {}
+      }
+    } catch (e) {}
+    return docs;
+  }
+
+  function scanDom() {
+    pageUrl = location.href;
+    scanDocument(document);
+    var frameDocs = sameOriginFrameDocuments();
+    for (var i = 0; i < frameDocs.length; i++) {
+      // Media events inside a subframe never reach the top document, so each one needs its own listeners.
+      attachMediaListeners(frameDocs[i]);
+      scanDocument(frameDocs[i]);
+    }
+  }
+
   function observePerfEntry(e) {
     try {
       var name = e && e.name ? String(e.name) : '';
       if (isBlobUrl(name)) {
-        post('blob_indicator', { pageUrl: pageUrl, blobUrl: name.slice(0, 512) });
+        postBlobIndicator(name, null, null);
         return;
       }
       var abs = safeUrl(name);
@@ -488,7 +573,7 @@ export function buildMediaDetectionInjectedScript(): string {
   function observeNetworkUrl(rawUrl, mime, source) {
     try {
       if (isBlobUrl(rawUrl)) {
-        post('blob_indicator', { pageUrl: pageUrl, blobUrl: String(rawUrl).slice(0, 512) });
+        postBlobIndicator(rawUrl, null, null);
         return;
       }
       var abs = safeUrl(rawUrl);
@@ -561,18 +646,57 @@ export function buildMediaDetectionInjectedScript(): string {
     };
   } catch (e) {}
 
-  // MediaSource URL observation — blob created from MSE is indicator only.
+  // MediaSource / media Blob URL observation — indicator only, never a download target.
+  // A MediaSource carries no type property, so testing that alone missed every MSE player, which is the
+  // case that matters most: its real media arrives as separate HTTP(S) requests.
+  function objectUrlSourceKind(obj) {
+    try {
+      if (!obj) return null;
+      if (typeof obj.addSourceBuffer === 'function') return 'mse';
+      var ctor = obj.constructor && obj.constructor.name ? String(obj.constructor.name) : '';
+      if (ctor.indexOf('MediaSource') >= 0) return 'mse';
+      var type = obj.type ? String(obj.type).toLowerCase() : '';
+      if (type.indexOf('video') === 0 || type.indexOf('audio') === 0) return 'blob';
+      if (type.indexOf('application/vnd.apple.mpegurl') === 0 || type.indexOf('application/dash+xml') === 0) {
+        return 'blob';
+      }
+    } catch (e) {}
+    return null;
+  }
+
   try {
     if (window.URL && URL.createObjectURL) {
       var _create = URL.createObjectURL;
       URL.createObjectURL = function(obj) {
         var blobUrl = _create.apply(this, arguments);
         try {
-          if (obj && (obj.type || '').indexOf('video') === 0) {
-            post('blob_indicator', { pageUrl: pageUrl, blobUrl: String(blobUrl).slice(0, 512) });
+          var kind = objectUrlSourceKind(obj);
+          if (kind) {
+            var key = String(blobUrl).slice(0, 512);
+            if (mseObjectUrlKeys.length >= MAX_MSE_OBJECT_URLS) {
+              delete mseObjectUrls[mseObjectUrlKeys.shift()];
+            }
+            if (!mseObjectUrls[key]) mseObjectUrlKeys.push(key);
+            mseObjectUrls[key] = kind;
+            postBlobIndicator(blobUrl, null, kind);
           }
         } catch (e) {}
         return blobUrl;
+      };
+    }
+  } catch (e) {}
+
+  // Encrypted-media negotiation is a protection signal. Observation only: the original is always
+  // called and its result returned untouched — no key system is used, created or inspected.
+  try {
+    if (navigator && typeof navigator.requestMediaKeySystemAccess === 'function') {
+      var _rmksa = navigator.requestMediaKeySystemAccess;
+      navigator.requestMediaKeySystemAccess = function() {
+        try {
+          emeRequested = true;
+          scheduleActiveVideo();
+        } catch (e) {}
+        return _rmksa.apply(navigator, arguments);
       };
     }
   } catch (e) {}
@@ -589,31 +713,6 @@ export function buildMediaDetectionInjectedScript(): string {
   var mo = null;
   var po = null;
 
-  try {
-    mo = new MutationObserver(function() {
-      scheduleScanDom();
-      scheduleActiveVideo();
-    });
-    mo.observe(document.documentElement || document.body, {
-      childList: true,
-      subtree: true,
-      attributes: true,
-      attributeFilter: ['src', 'type', 'poster']
-    });
-  } catch (e) {}
-
-  try {
-    if (window.PerformanceObserver) {
-      po = new PerformanceObserver(function(list) {
-        var entries = list.getEntries();
-        for (var i = 0; i < entries.length; i++) {
-          observePerfEntry(entries[i]);
-        }
-      });
-      po.observe({ entryTypes: ['resource'] });
-    }
-  } catch (e) {}
-
   function onLoadedMetadata(ev) {
     var t = ev.target;
     if (!t) return;
@@ -621,7 +720,63 @@ export function buildMediaDetectionInjectedScript(): string {
     if (tag === 'video') mediaFromElement(t, 'dom_video');
     if (tag === 'audio') mediaFromElement(t, 'dom_audio');
   }
-  document.addEventListener('loadedmetadata', onLoadedMetadata, true);
+
+  /**
+   * The rest of the resource-selection lifecycle. A player that swaps its source through <source>
+   * selection or a property assignment produces no attribute mutation and may never re-fire
+   * loadedmetadata — loadstart / durationchange / canplay are then the only notice that the element
+   * now points at a different resource. All of them land in the same deduped, batched enqueue path.
+   */
+  function onMediaResourceEvent(ev) {
+    try {
+      var t = ev && ev.target;
+      if (!t) return;
+      var tag = (t.tagName || '').toLowerCase();
+      if (tag !== 'video' && tag !== 'audio') return;
+      mediaFromElement(t, tag === 'video' ? 'dom_video' : 'dom_audio');
+      if (tag === 'video') scheduleActiveVideo();
+    } catch (e) {}
+  }
+
+  var MEDIA_EVENTS = [
+    ['loadedmetadata', onLoadedMetadata],
+    ['loadstart', onMediaResourceEvent],
+    ['durationchange', onMediaResourceEvent],
+    ['canplay', onMediaResourceEvent],
+    ['play', markRecentPlay],
+    ['playing', markRecentPlay],
+    ['loadeddata', markRecentPlay],
+    ['pause', onPause],
+    ['encrypted', onEncrypted]
+  ];
+  /** Documents already wired, so a rescan never registers a second set of listeners. */
+  var listenerDocs = [];
+  var MAX_LISTENER_DOCS = 12;
+
+  function attachMediaListeners(doc) {
+    try {
+      if (!doc || !doc.addEventListener) return;
+      for (var d = 0; d < listenerDocs.length; d++) {
+        if (listenerDocs[d] === doc) return;
+      }
+      if (listenerDocs.length >= MAX_LISTENER_DOCS) return;
+      for (var i = 0; i < MEDIA_EVENTS.length; i++) {
+        doc.addEventListener(MEDIA_EVENTS[i][0], MEDIA_EVENTS[i][1], true);
+      }
+      listenerDocs.push(doc);
+    } catch (e) {}
+  }
+
+  function detachMediaListeners() {
+    for (var d = 0; d < listenerDocs.length; d++) {
+      for (var i = 0; i < MEDIA_EVENTS.length; i++) {
+        try {
+          listenerDocs[d].removeEventListener(MEDIA_EVENTS[i][0], MEDIA_EVENTS[i][1], true);
+        } catch (e) {}
+      }
+    }
+    listenerDocs = [];
+  }
 
   // --- Phase 4A: bounded active/visible video evidence (no DOM dump, no timeupdate flood) ---
   var videoSeq = 0;
@@ -880,7 +1035,9 @@ export function buildMediaDetectionInjectedScript(): string {
       isVisibleStyle: isVisibleStyle(el),
       recentlyPlayed: recentlyPlayed || (typeof el.paused === 'boolean' && !el.paused),
       explicitAdMarker: readExplicitAdMarker(el),
-      associatedContentId: readAssociatedContentId(el)
+      associatedContentId: readAssociatedContentId(el),
+      isProtected: isProtectedElement(el),
+      sourceKind: isBlob ? (mseObjectUrls[String(rawSrc).slice(0, 512)] || 'blob') : null
     };
   }
 
@@ -1045,7 +1202,8 @@ export function buildMediaDetectionInjectedScript(): string {
         var payload = collectActiveVideoPayload(el);
         var key = payload.elementIdentity + '|' + (payload.currentSrc || '') + '|' +
           String(payload.paused) + '|' + String(payload.intersectionRatio) + '|' +
-          String(payload.recentlyPlayed) + '|' + String(payload.associatedContentId);
+          String(payload.recentlyPlayed) + '|' + String(payload.associatedContentId) + '|' +
+          String(payload.isProtected);
         if (key === lastActiveVideoKey) return;
         lastActiveVideoKey = key;
         post('active_video', payload);
@@ -1068,7 +1226,8 @@ export function buildMediaDetectionInjectedScript(): string {
         var previewPayload = collectActiveVideoPayload(el);
         var previewKey = previewPayload.elementIdentity + '|' + (previewPayload.currentSrc || '') + '|' +
           String(previewPayload.paused) + '|' + String(previewPayload.intersectionRatio) + '|' +
-          String(previewPayload.recentlyPlayed) + '|' + String(previewPayload.associatedContentId);
+          String(previewPayload.recentlyPlayed) + '|' + String(previewPayload.associatedContentId) + '|' +
+          String(previewPayload.isProtected);
         if (previewKey === lastActiveVideoKey) return;
         lastActiveVideoKey = previewKey;
         post('active_video', previewPayload);
@@ -1081,33 +1240,85 @@ export function buildMediaDetectionInjectedScript(): string {
     activeVideoTimer = setTimeout(flushActiveVideo, Math.max(${batchMs}, ${throttleMs}));
   }
 
-  try {
-    if (window.IntersectionObserver) {
-      io = new IntersectionObserver(function(entries) {
-        for (var i = 0; i < entries.length; i++) {
-          try {
-            if (intersectionByEl) {
-              intersectionByEl.set(entries[i].target, entries[i].intersectionRatio);
-            }
-          } catch (e) {}
-        }
+  /**
+   * Every observer and listener this script owns, created in one place so teardown can be undone.
+   * Idempotent: a second call while already attached is a no-op, so a re-injection or a restore can
+   * never leave two observer sets on one document.
+   */
+  function attachObservers() {
+    if (attached) return;
+    attached = true;
+    disposed = false;
+    try {
+      mo = new MutationObserver(function() {
+        scheduleScanDom();
         scheduleActiveVideo();
-      }, { threshold: [0, 0.25, 0.5, 0.75, 1] });
-    }
-  } catch (e) {}
+      });
+      mo.observe(document.documentElement || document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['src', 'type', 'poster']
+      });
+    } catch (e) {}
+
+    try {
+      if (window.PerformanceObserver) {
+        po = new PerformanceObserver(function(list) {
+          var entries = list.getEntries();
+          for (var i = 0; i < entries.length; i++) {
+            observePerfEntry(entries[i]);
+          }
+        });
+        po.observe({ entryTypes: ['resource'] });
+      }
+    } catch (e) {}
+
+    try {
+      if (window.IntersectionObserver) {
+        io = new IntersectionObserver(function(entries) {
+          for (var i = 0; i < entries.length; i++) {
+            try {
+              if (intersectionByEl) {
+                intersectionByEl.set(entries[i].target, entries[i].intersectionRatio);
+              }
+            } catch (e) {}
+          }
+          scheduleActiveVideo();
+        }, { threshold: [0, 0.25, 0.5, 0.75, 1] });
+      }
+    } catch (e) {}
+
+    attachMediaListeners(document);
+    try { window.addEventListener('popstate', onPopState); } catch (e) {}
+  }
+
+  function detachObservers() {
+    attached = false;
+    try {
+      if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
+      if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
+      if (activeVideoTimer) { clearTimeout(activeVideoTimer); activeVideoTimer = null; }
+      if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
+      if (mo) { mo.disconnect(); mo = null; }
+      if (po) { po.disconnect(); po = null; }
+      if (io) { io.disconnect(); io = null; }
+      detachMediaListeners();
+      window.removeEventListener('popstate', onPopState);
+    } catch (e) {}
+  }
 
   function markRecentPlay(ev) {
     try {
       var t = ev && ev.target;
-      if (!t || (t.tagName || '').toLowerCase() !== 'video') return;
+      if (!t) return;
+      var tag = (t.tagName || '').toLowerCase();
+      if (tag !== 'video' && tag !== 'audio') return;
       if (recentPlayUntil) recentPlayUntil.set(t, Date.now() + 12000);
-      scheduleActiveVideo();
-      mediaFromElement(t, 'dom_video');
+      mediaFromElement(t, tag === 'video' ? 'dom_video' : 'dom_audio');
+      if (tag === 'video') scheduleActiveVideo();
     } catch (e) {}
   }
-  document.addEventListener('play', markRecentPlay, true);
-  document.addEventListener('playing', markRecentPlay, true);
-  document.addEventListener('loadeddata', markRecentPlay, true);
   function onPause(ev) {
     try {
       var t = ev && ev.target;
@@ -1119,11 +1330,36 @@ export function buildMediaDetectionInjectedScript(): string {
     if (ev.target) ev.target.__vidoraxEncrypted = true;
     seen = Object.create(null);
     seenKeys = [];
+    lastActiveVideoKey = '';
+    // A blob/MSE player produces no DOM candidate, so the encrypted evidence has to travel on its own.
+    try {
+      var t = ev && ev.target;
+      var encSrc = t && (t.currentSrc || t.src);
+      if (isBlobUrl(encSrc)) postBlobIndicator(encSrc, t, null);
+    } catch (e) {}
     scheduleScanDom();
     scheduleActiveVideo();
   }
-  document.addEventListener('pause', onPause, true);
-  document.addEventListener('encrypted', onEncrypted, true);
+
+  // An SPA names its new route after pushState returns (after rendering, often after a fetch): the title read at the
+  // route change is still the previous route's. Look again for a few seconds and report the name once it changes.
+  var titleTimer = null;
+  function watchRouteTitle() {
+    var previousTitle = document.title;
+    var checks = 0;
+    if (titleTimer) { clearTimeout(titleTimer); titleTimer = null; }
+    function check() {
+      titleTimer = null;
+      if (disposed) return;
+      if (document.title !== previousTitle) {
+        readMeta();
+        return;
+      }
+      checks += 1;
+      if (checks < ${ROUTE_TITLE_CHECKS}) titleTimer = setTimeout(check, ${ROUTE_TITLE_CHECK_MS});
+    }
+    titleTimer = setTimeout(check, ${ROUTE_TITLE_CHECK_MS});
+  }
 
   function onPopState() {
     // Pending candidates belong to the previous document content.
@@ -1134,11 +1370,22 @@ export function buildMediaDetectionInjectedScript(): string {
     postCount = 0;
     lastActiveVideoKey = '';
     readMeta();
+    watchRouteTitle();
     harvestEmbeddedMedia();
     scheduleScanDom();
     scheduleActiveVideo();
   }
 
+  // The app asks for this when the page's earlier reports could not be used — the Browser was hidden, or another
+  // tab was in front while this page posted: report everything the page shows now, exactly as after a route change.
+  window.__VIDORAX_MEDIA_RESCAN__ = function() {
+    if (disposed) return false;
+    onPopState();
+    return true;
+  };
+
+  // History patching is per-document and must not be re-applied on a restore, or each navigation
+  // would run onPopState once per stacked wrapper.
   try {
     var _push = history.pushState;
     var _replace = history.replaceState;
@@ -1152,32 +1399,32 @@ export function buildMediaDetectionInjectedScript(): string {
       onPopState();
       return r;
     };
-    window.addEventListener('popstate', onPopState);
   } catch (e) {}
 
+  /**
+   * Teardown is reversible. Leaving the re-entry guard set while everything is disconnected made a
+   * back/forward restore permanently blind: the WebView re-injects this script, the guard returns
+   * immediately, and the restored document has no observers at all.
+   */
   function cleanup() {
     disposed = true;
     pending = [];
     seen = Object.create(null);
     seenKeys = [];
-    try {
-      if (batchTimer) { clearTimeout(batchTimer); batchTimer = null; }
-      if (scanTimer) { clearTimeout(scanTimer); scanTimer = null; }
-      if (activeVideoTimer) { clearTimeout(activeVideoTimer); activeVideoTimer = null; }
-      if (mo) { mo.disconnect(); mo = null; }
-      if (po) { po.disconnect(); po = null; }
-      if (io) { io.disconnect(); io = null; }
-      document.removeEventListener('loadedmetadata', onLoadedMetadata, true);
-      document.removeEventListener('play', markRecentPlay, true);
-      document.removeEventListener('playing', markRecentPlay, true);
-      document.removeEventListener('loadeddata', markRecentPlay, true);
-      document.removeEventListener('pause', onPause, true);
-      document.removeEventListener('encrypted', onEncrypted, true);
-      window.removeEventListener('popstate', onPopState);
-      window.removeEventListener('pagehide', cleanup);
-    } catch (e) {}
+    detachObservers();
+    try { window.__VIDORAX_MEDIA_DETECTION__ = false; } catch (e) {}
   }
   window.addEventListener('pagehide', cleanup);
+
+  // Restored from the back/forward cache without a fresh injection — rebuild and rescan.
+  window.addEventListener('pageshow', function(ev) {
+    try {
+      if (!ev || !ev.persisted) return;
+      window.__VIDORAX_MEDIA_DETECTION__ = true;
+      attachObservers();
+      onPopState();
+    } catch (e) {}
+  });
 
   try {
     var early = window.__VIDORAX_MEDIA_EARLY_RESOURCES__;
@@ -1215,6 +1462,7 @@ export function buildMediaDetectionInjectedScript(): string {
     }
   } catch (e) {}
 
+  attachObservers();
   readMeta();
   scanDom();
   harvestEmbeddedMedia();
@@ -1257,6 +1505,14 @@ export function buildMediaDetectionInjectedScript(): string {
 }
 
 /** Lightweight early resource capture — drained by the main observer after load. */
+/**
+ * Asks the detector already running in a page to report everything it shows again (see `__VIDORAX_MEDIA_RESCAN__`).
+ * Harmless on a page without the detector.
+ */
+export function buildMediaDetectionRescanScript(): string {
+  return '(function(){try{if(typeof window.__VIDORAX_MEDIA_RESCAN__==="function"){window.__VIDORAX_MEDIA_RESCAN__();}}catch(e){}})();true;';
+}
+
 export function buildMediaDetectionBeforeContentScript(): string {
   return `(function(){
   try {

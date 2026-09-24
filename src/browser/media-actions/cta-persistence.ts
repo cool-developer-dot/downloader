@@ -201,6 +201,26 @@ export function shouldHideStickyOfferForLiveIdentity(input: {
   return isStrongOwner(input.liveOwnershipConfidence);
 }
 
+export type VerifyRerunBudget = { key: string; count: number };
+
+/**
+ * Whether a verification the page overtook (cancelled, or a newer trigger arrived meanwhile) may look at the page
+ * again. At most `max` consecutive re-runs for the same media, owner and page; anything new resets the budget.
+ */
+export function takeVerifyRerun(
+  budget: VerifyRerunBudget,
+  key: string,
+  max: number,
+): { allowed: boolean; budget: VerifyRerunBudget } {
+  if (budget.key !== key) {
+    return { allowed: max > 0, budget: { key, count: max > 0 ? 1 : 0 } };
+  }
+  if (budget.count >= max) {
+    return { allowed: false, budget };
+  }
+  return { allowed: true, budget: { key, count: budget.count + 1 } };
+}
+
 /** Legitimate clear reasons (documentation / diagnostics). */
 export const LEGITIMATE_CTA_CLEAR_REASONS = [
   'CONTENT_CHANGED',

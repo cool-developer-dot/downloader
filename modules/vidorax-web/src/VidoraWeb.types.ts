@@ -2,7 +2,7 @@
  * Contract for the native `VidoraWeb` Expo module (modules/vidorax-web/android).
  *
  * Its Kotlin code is called by hooks that scripts/patch-react-native-webview.js adds to react-native-webview:
- * WebView creation (document-start detector), shouldInterceptRequest (network observer) and the WebView
+ * WebView creation (service-worker request observation), shouldInterceptRequest (network observer) and the WebView
  * DownloadListener (file download handoff). It also reads links shared to the app (ACTION_SEND text/plain).
  * Any change here must be mirrored in Kotlin in the same commit.
  */
@@ -23,6 +23,8 @@ export interface NetworkMediaObservation {
   url: string;
   method: string;
   isMainFrame: boolean;
+  /** True when the request carried a Range header (including suffix ranges, which have no rangeStart). */
+  hasRange: boolean;
   /** Start offset from the Range header, when present. */
   rangeStart: number | null;
   accept: string | null;
@@ -58,13 +60,6 @@ export type VidoraWebEvents = {
 };
 
 export interface VidoraWebModuleApi {
-  /** True when WebViewCompat.addDocumentStartJavaScript is supported by the installed Android System WebView. */
-  isDocumentStartScriptSupported(): boolean;
-  /**
-   * Script added at document start to every frame of every WebView created after this resolves.
-   * Call before the browser mounts. When unsupported, JS falls back to injectedJavaScriptBeforeContentLoaded.
-   */
-  setDetectorScript(script: string): Promise<void>;
   setNetworkObservationEnabled(enabled: boolean): void;
   /** Persist WebView cookies to disk (call when the app goes to background). */
   flushCookies(): Promise<void>;
@@ -80,4 +75,13 @@ export interface VidoraWebModuleApi {
    * Shares that arrive while the app is running are delivered as `onSharedText`.
    */
   consumeSharedText(): string | null;
+
+  /** True when VidoraX is the device's default browser. */
+  isDefaultBrowser(): boolean;
+
+  /** False when this Android version/device offers no way to ask (or VidoraX already holds the role). */
+  canRequestDefaultBrowser(): boolean;
+
+  /** Opens the system's own dialog; never changes the setting by itself. */
+  requestDefaultBrowser(): Promise<boolean>;
 }

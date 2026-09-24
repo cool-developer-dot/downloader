@@ -28,7 +28,7 @@ import { isLikelyExpiredMediaUrl } from './expiring-url.service';
 /** Typical CDN error/challenge body sizes — never valid progressive video. */
 const TINY_ERROR_BODY_MAX = 4096;
 
-export type PreDownloadTransport = 'HLS' | 'PROGRESSIVE' | 'AUDIO';
+export type PreDownloadTransport = 'HLS' | 'DASH' | 'PROGRESSIVE' | 'AUDIO';
 
 export type PreDownloadGateResult =
   | {

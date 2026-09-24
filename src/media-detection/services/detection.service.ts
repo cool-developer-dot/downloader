@@ -16,6 +16,7 @@ import type {
   BridgePageMetaPayload,
   DetectedMedia,
   MediaCandidate,
+  MediaObservationStamp,
   MediaQualityVariant,
   PageMediaMetadata,
 } from '../types';
@@ -25,6 +26,8 @@ import {
   hashHandoffIdentity,
   logAutomaticHandoff,
 } from './automatic-handoff-diagnostics';
+import { clearStableResourcePathCache } from '../social-source/resource-identity';
+
 import { dedupeUpsert } from './deduplication.service';
 import { isFalsePositive } from './false-positive.filter';
 import { classifyGeneralNetworkResource } from '../general-media/general-network-resource';
@@ -60,7 +63,15 @@ export class MediaDetectionPipeline {
   private abortController: AbortController | null = null;
   private enriching = new Set<string>();
   private probedThisPage = 0;
+  /**
+   * Segment URIs already accounted for by a parsed playlist, so they are not
+   * re-evaluated as candidates. A long VOD or a live playlist refetched over
+   * and over yields thousands of these, so it is a bounded FIFO: evicting the
+   * oldest only costs one extra pass through the normal filters, which reject
+   * the segment anyway.
+   */
   private segmentUriBlocklist = new Set<string>();
+  private static readonly MAX_BLOCKED_SEGMENTS = 4_000;
 
   reset(): void {
     this.abortController?.abort();
@@ -69,6 +80,22 @@ export class MediaDetectionPipeline {
     this.probedThisPage = 0;
     this.segmentUriBlocklist.clear();
     clearMimeProbeCache();
+    // Identity memoization is page-scoped: a new document never reuses the old
+    // page's signed URLs, so retaining them is pure memory.
+    clearStableResourcePathCache();
+  }
+
+  private blockSegment(url: string): void {
+    if (this.segmentUriBlocklist.has(url)) {
+      return;
+    }
+    if (this.segmentUriBlocklist.size >= MediaDetectionPipeline.MAX_BLOCKED_SEGMENTS) {
+      const oldest = this.segmentUriBlocklist.values().next().value;
+      if (oldest !== undefined) {
+        this.segmentUriBlocklist.delete(oldest);
+      }
+    }
+    this.segmentUriBlocklist.add(url);
   }
 
   get signal(): AbortSignal | undefined {
@@ -83,6 +110,7 @@ export class MediaDetectionPipeline {
     existing: DetectedMedia[],
     candidates: MediaCandidate[],
     existingQualities: MediaQualityVariant[] = [],
+    observation?: MediaObservationStamp,
   ): PipelineResult {
     const started = Date.now();
     let items = existing;
@@ -115,11 +143,12 @@ export class MediaDetectionPipeline {
         continue;
       }
 
-      const detected = extractDetectedMedia(validated.value);
-      if (!detected) {
+      const extracted = extractDetectedMedia(validated.value);
+      if (!extracted) {
         rejected += 1;
         continue;
       }
+      const detected = observation ? { ...extracted, ...observation } : extracted;
 
       if (!isAcceptableConfidence(detected.confidence)) {
         // Queue extensionless / low-confidence for MIME probe when probeable.
@@ -226,6 +255,7 @@ export class MediaDetectionPipeline {
       requiresCookies?: boolean;
       hasRange?: boolean;
       isForMainFrame?: boolean;
+      observation?: MediaObservationStamp;
     },
   ): PipelineResult {
     if (this.segmentUriBlocklist.has(url)) {
@@ -258,7 +288,7 @@ export class MediaDetectionPipeline {
       };
     }
 
-    return this.processCandidates(existing, [candidate], existingQualities);
+    return this.processCandidates(existing, [candidate], existingQualities, extras?.observation);
   }
 
   /**
@@ -283,7 +313,7 @@ export class MediaDetectionPipeline {
       }
 
       for (const seg of parsed.segmentUris) {
-        this.segmentUriBlocklist.add(seg);
+        this.blockSegment(seg);
       }
 
       if (parsed.isEncrypted) {
@@ -397,6 +427,7 @@ export class MediaDetectionPipeline {
     pageUrl: string,
     existing: DetectedMedia[],
     existingQualities: MediaQualityVariant[] = [],
+    observation?: MediaObservationStamp,
   ): Promise<PipelineResult | null> {
     if (this.probedThisPage >= DETECTION_TIMING.maxProbesPerPage) {
       return null;
@@ -437,7 +468,7 @@ export class MediaDetectionPipeline {
         return null;
       }
 
-      return this.processCandidates(existing, [candidate], existingQualities);
+      return this.processCandidates(existing, [candidate], existingQualities, observation);
     } finally {
       this.enriching.delete(`probe:${url}`);
     }

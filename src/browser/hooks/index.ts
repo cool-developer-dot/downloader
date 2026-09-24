@@ -8,6 +8,7 @@ export { useBrowserLongPressActions } from './useBrowserLongPressActions';
 export type { BrowserLongPressController } from './useBrowserLongPressActions';
 export { useBrowserHardwareBack } from './useBrowserHardwareBack';
 export { useBrowserNavigation } from './useBrowserNavigation';
+export { useBrowserRouteLifecycle } from './useBrowserRouteLifecycle';
 export { useBrowserSessionContinuity } from './useBrowserSessionContinuity';
 export { useBrowserHome } from './useBrowserHome';
 export { useQuickAccessHandoff } from './useQuickAccessHandoff';

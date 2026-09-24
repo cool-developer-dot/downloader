@@ -60,6 +60,7 @@ export const QueueActiveRow = memo(function QueueActiveRow({
     executionState: transfer?.executionState ?? null,
     workerState: item.workerState ?? transfer?.workerState ?? null,
     sourceSupportsResume: transfer?.supportsResume ?? null,
+    errorCode: item.errorCode ?? null,
     hasActiveTransfer:
       transfer?.localState === 'transferring' ||
       transfer?.executionState === 'DOWNLOADING'

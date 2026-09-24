@@ -32,6 +32,7 @@ import {
   buildMediaRequestContextSync,
 } from '@/media-detection/services/request-context.service';
 import { browserMediaActionService } from '@/browser/media-actions/browser-media-action.service';
+import { enqueueVerifiedBrowserVariant } from '@/browser/media-actions/browser-media-download.service';
 import { selectVerifiedStandaloneQualities } from '@/browser/media-actions/verified-quality-options';
 import { buildResourceIdentityKey, sameResourceFamily } from '@/media-detection/social-source/resource-identity';
 import {
@@ -648,6 +649,51 @@ export function useQualitySelection(
       return false;
     }
 
+    // A verified browser offer hands the exact chosen variant to the v2 engine: no re-resolve, no v1 transfer.
+    if (browserMediaActionService.isSelectionLocked()) {
+      creatingRef.current = true;
+      setCreating(true);
+      setCreateError(null);
+      setPhase('creating_download');
+      try {
+        const ctaState = browserMediaActionService.getState();
+        const handoff = await enqueueVerifiedBrowserVariant({
+          selection,
+          option: selectedOption,
+          requestContext: requestContextRef.current,
+          pageUrl: ctaState.pageUrl,
+          contentIdentity: ctaState.contentIdentity,
+          isOfferCurrent: () => isQualityFreezeStillCurrent(tabIdForScope),
+        });
+        if (!mountedRef.current) {
+          return false;
+        }
+        if (!handoff.ok) {
+          setCreateError(handoff.message);
+          setPhase('ready');
+          return false;
+        }
+        setPhase('downloading');
+        AccessibilityInfo.announceForAccessibility(
+          handoff.deduped ? 'Already in your downloads' : 'Download started',
+        );
+        onDownloadCreated?.();
+        close({ consumed: true });
+        return true;
+      } catch {
+        if (mountedRef.current) {
+          setCreateError('Couldn’t start this download.');
+          setPhase('ready');
+        }
+        return false;
+      } finally {
+        creatingRef.current = false;
+        if (mountedRef.current) {
+          setCreating(false);
+        }
+      }
+    }
+
     const isHlsOption =
       selectedOption.streamType === 'HLS' ||
       selectedOption.isHls === true ||
@@ -769,7 +815,14 @@ export function useQualitySelection(
               variantIdentity: buildResourceIdentityKey({
                 contentIdentity: ctaState.contentIdentity,
                 executableUrl: selectedOption.sourceUrl,
-                transport: selectedOption.streamType === 'AUDIO' ? 'audio_only' : isHlsOption ? 'hls' : 'progressive',
+                transport:
+                  selectedOption.streamType === 'AUDIO'
+                    ? 'audio_only'
+                    : isHlsOption
+                      ? 'hls'
+                      : selectedOption.streamType === 'DASH'
+                        ? 'dash'
+                        : 'progressive',
                 width: selectedOption.width,
                 height: selectedOption.height,
                 bitrate: selectedOption.bitrate,

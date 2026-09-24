@@ -25,7 +25,5 @@ export {
   isFragmentedDashManifest,
   mapDashRepresentationsToQualities,
   parseDashManifest,
-  selectDownloadableStandaloneDash,
-  selectStandaloneDashFiles,
 } from './dash.parser';
 export type { DashParseResult, DashRepresentation } from './dash.parser';

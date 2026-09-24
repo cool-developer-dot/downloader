@@ -116,6 +116,9 @@ export function usePlayerSession(
   const lastAssignedUriRef = useRef<string | null>(null);
   const lastAssignedGenerationRef = useRef<number | null>(null);
   const lastPositionEmitRef = useRef(0);
+  const lastEmittedPositionRef = useRef<number | null>(null);
+  /** The current media's last reported position — read on exit instead of the (then released) player. */
+  const lastKnownPositionRef = useRef(0);
   const volumeRef = useRef(createInitialVolumeState(1));
   const sessionRef = useRef(session);
   const watchdogRef = useRef<PreparationWatchdog | null>(null);
@@ -288,6 +291,8 @@ export function usePlayerSession(
     firstFrameAcceptedGenRef.current = 0;
     cancelPendingReveal();
     lastPositionEmitRef.current = 0;
+    lastEmittedPositionRef.current = null;
+    lastKnownPositionRef.current = 0;
     watchdogRef.current?.dispose();
     watchdogRef.current = new PreparationWatchdog({
       onTimeout: () => {
@@ -362,9 +367,9 @@ export function usePlayerSession(
           lastAssignedGenerationRef.current = gen;
         }
         try {
-          player.playbackRate = DEFAULT_PLAYBACK_RATE;
-          player.volume = volumeRef.current.volume;
-          player.muted = volumeRef.current.isMuted;
+          controller.setPlaybackRate(DEFAULT_PLAYBACK_RATE);
+          controller.setVolume(volumeRef.current.volume);
+          controller.setMuted(volumeRef.current.isMuted);
         } catch {
           // ignore
         }
@@ -427,23 +432,20 @@ export function usePlayerSession(
     mediaId,
     loadNonce,
     player,
+    controller,
     safeSetSession,
     applyTerminalError,
     cancelPendingReveal,
   ]);
 
-  // Cleanup on unmount / media exit.
+  // Cleanup on unmount / media exit. The position comes from what the player last reported: by the time this runs
+  // on unmount, useVideoPlayer has already released the player, whose currentTime then reads 0 — and saving that
+  // erased the resume point on every exit.
   useEffect(() => {
     return () => {
       cancelPendingReveal();
       const id = sourceRef.current?.mediaId ?? mediaId;
-      const position = (() => {
-        try {
-          return player.currentTime;
-        } catch {
-          return 0;
-        }
-      })();
+      const position = lastKnownPositionRef.current;
       if (id) {
         emitPlaybackEvent({
           type: 'playerExited',
@@ -645,16 +647,26 @@ export function usePlayerSession(
         ? player.duration
         : null;
     const position = Number.isFinite(currentTime) ? currentTime : 0;
-    safeSetSession((prev) => ({
-      ...prev,
-      positionSeconds: position,
-      durationSeconds: duration ?? prev.durationSeconds,
-    }));
+    lastKnownPositionRef.current = position;
+    // expo-video keeps sending timeUpdate while paused: an unchanged position must not re-render the screen
+    // (~3×/s) or re-save progress.
+    safeSetSession((prev) => {
+      const nextDuration = duration ?? prev.durationSeconds;
+      if (prev.positionSeconds === position && prev.durationSeconds === nextDuration) {
+        return prev;
+      }
+      return { ...prev, positionSeconds: position, durationSeconds: nextDuration };
+    });
 
     const id = sourceRef.current?.mediaId;
     const now = Date.now();
-    if (id && now - lastPositionEmitRef.current >= 1000) {
+    if (
+      id &&
+      now - lastPositionEmitRef.current >= 1000 &&
+      position !== lastEmittedPositionRef.current
+    ) {
       lastPositionEmitRef.current = now;
+      lastEmittedPositionRef.current = position;
       emitPlaybackEvent({
         type: 'positionChanged',
         mediaId: id,

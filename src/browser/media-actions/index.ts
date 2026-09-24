@@ -69,6 +69,7 @@ export {
 } from './browser-download-presentation';
 export {
   enqueueBrowserMediaDownload,
+  enqueueVerifiedBrowserVariant,
   findDownloadForBrowserMedia,
 } from './browser-media-download.service';
 

@@ -16,6 +16,9 @@ import { logOnboardingPersistSnapshot } from './onboarding-persist-debug';
 import { rehydrateAndWait, waitForStoresHydration } from './wait-for-hydration';
 import { syncAppStoreFromDisk } from '@/store/app/persist-sync';
 
+/** The one-time favorites migration waits for startup to settle. */
+const FAVORITES_MIGRATION_DELAY_MS = 4_000;
+
 function syncMmkvFromStores(): void {
   const themeMode = normalizeThemePreference(useThemeStore.getState().themeMode);
   const settings = useSettingsStore.getState();
@@ -40,9 +43,10 @@ function syncMmkvFromStores(): void {
 export async function runAppInitializer(): Promise<RoutePath> {
   const appStore = useAppStore.getState();
 
-  appStore.setLoading(true);
-
   try {
+    // Nothing may change the app store before it is hydrated: zustand's persist writes the *current* slice on
+    // every set, so a pre-hydration write replaces the persisted `onboardingComplete` with the default `false`
+    // and the intro plays again on every launch.
     const [, sqliteResult] = await Promise.all([
       Promise.all([
         rehydrateAndWait(useAppStore),
@@ -52,6 +56,7 @@ export async function runAppInitializer(): Promise<RoutePath> {
     ]);
 
     await syncAppStoreFromDisk();
+    appStore.setLoading(true);
     await logOnboardingPersistSnapshot('bootstrap-after-sync');
 
     await rehydrateAndWait(useSettingsStore);
@@ -164,6 +169,15 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureLibraryCompletionBridge } = await import(
         '@/library/ensure-completion-bridge'
       );
+      const { ensureV2DownloadBridge } = await import('@/downloads/v2/ensure-bridge');
+      // Mirrors the v2 DownloadEngine (its records and library items) into the downloads store.
+      ensureV2DownloadBridge();
+      const { ensureFavoritesMigration } = await import('@/library/ensure-favorites-migration');
+      // One-time: legacy favorites onto the library items they unambiguously name. Off the startup path.
+      setTimeout(ensureFavoritesMigration, FAVORITES_MIGRATION_DELAY_MS);
+      const { ensureIncomingLinkHandling } = await import('@/browser/services/incoming-link.service');
+      // A link shared to VidoraX, or opened through it as the device's browser, lands in the browser tab.
+      ensureIncomingLinkHandling();
       downloadAppLifecycle.ensureAttached();
       bindDownloadEngineToStore();
       ensureDownloadRecoveryListener();

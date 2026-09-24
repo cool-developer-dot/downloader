@@ -3,15 +3,37 @@
  */
 
 import { logSocialSource } from './social-source-diagnostics';
+import { stableResourcePath } from './resource-identity';
 import type { VerifiedSocialMediaVariant } from './types';
+
+/** Same logical media, whatever the signed query looks like now. */
+function isSameResource(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) {
+    return false;
+  }
+  if (a === b) {
+    return true;
+  }
+  const keyA = stableResourcePath(a);
+  const keyB = stableResourcePath(b);
+  return keyA != null && keyA === keyB;
+}
 
 /**
  * Preferred variant: actionable combined A/V first, then quality, then deterministic id.
+ *
+ * `ownedResourceUrl` is the source the ownership pass already chose as the current main video. When it is
+ * given, only that video's variants compete — otherwise a preroll ad or a second video on the page wins this
+ * ranking purely by being larger, and the user is offered something they are not watching. Quality ranking
+ * still decides between the renditions *of that video*, which is the case this ordering exists for.
  */
 export function selectPreferredVariant(
   variants: VerifiedSocialMediaVariant[],
+  ownedResourceUrl?: string | null,
 ): VerifiedSocialMediaVariant | null {
-  const actionable = variants.filter((v) => v.downloadable);
+  const downloadable = variants.filter((v) => v.downloadable);
+  const owned = ownedResourceUrl ? downloadable.filter((v) => isSameResource(v.executableUrl, ownedResourceUrl)) : [];
+  const actionable = owned.length > 0 ? owned : downloadable;
   if (!actionable.length) {
     return null;
   }

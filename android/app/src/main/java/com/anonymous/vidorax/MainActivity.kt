@@ -1,6 +1,7 @@
 package com.anonymous.vidorax
 import expo.modules.splashscreen.SplashScreenManager
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 
@@ -21,6 +22,19 @@ class MainActivity : ReactActivity() {
     SplashScreenManager.registerOnActivity(this)
     // @generated end expo-splashscreen
     super.onCreate(null)
+  }
+
+  /**
+   * A link that reaches the existing task (this activity is singleTask) becomes the activity's intent as well. When
+   * the process had died, Android recreates the activity from the task's original launcher intent and hands the
+   * link over here — before React Native is ready, so React drops it ("onNewIntent while context is not ready").
+   * The app reads its launch link from this intent at startup (Linking.getInitialURL), so without this a tapped
+   * "Download complete" notification reopened VidoraX on Browser instead of Player. Shared/web links are already
+   * marked consumed on the intent itself, so keeping it here never replays one.
+   */
+  override fun onNewIntent(intent: Intent) {
+    setIntent(intent)
+    super.onNewIntent(intent)
   }
 
   /**

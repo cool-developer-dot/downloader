@@ -5,11 +5,10 @@ import com.facebook.react.bridge.NativeModule
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.uimanager.ViewManager
 
+// WebView and ServiceWorker request observation lives in modules/vidorax-web (VidoraWeb.onNetworkMedia).
 class MediaDetectionPackage : ReactPackage {
   override fun createNativeModules(reactContext: ReactApplicationContext): List<NativeModule> {
-    MediaNetworkBridge.attach(reactContext)
     return listOf(
-      VidoraMediaNetworkObserverModule(reactContext),
       VidoraCookieBridgeModule(reactContext),
     )
   }

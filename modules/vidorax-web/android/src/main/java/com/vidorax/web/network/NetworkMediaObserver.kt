@@ -31,6 +31,7 @@ internal class NetworkMediaObserver(private val emit: (List<Map<String, Any?>>) 
     val url: String,
     val method: String,
     val isMainFrame: Boolean,
+    val hasRange: Boolean,
     val rangeStart: Long?,
     val accept: String?,
     val referer: String?,
@@ -84,7 +85,9 @@ internal class NetworkMediaObserver(private val emit: (List<Map<String, Any?>>) 
       return
     }
     val rangeStart = NetworkMediaClassifier.rangeStart(range)
-    pending.add(Observation(view, url, method, isMainFrame, rangeStart, accept, referer, hint, System.currentTimeMillis()))
+    pending.add(
+      Observation(view, url, method, isMainFrame, range != null, rangeStart, accept, referer, hint, System.currentTimeMillis()),
+    )
     scheduleFlush()
   }
 
@@ -119,6 +122,7 @@ internal class NetworkMediaObserver(private val emit: (List<Map<String, Any?>>) 
     "url" to url,
     "method" to method,
     "isMainFrame" to isMainFrame,
+    "hasRange" to hasRange,
     "rangeStart" to rangeStart,
     "accept" to accept,
     "referer" to referer,

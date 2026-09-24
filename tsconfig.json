@@ -25,7 +25,8 @@
   "exclude": [
     "scripts",
     "**/*.test.ts",
-    "src/detection/page/test-harness.ts",
+    "src/media-detection/tests/page-harness.ts",
+    "src/media-detection/tests/dynamic-detection-pipeline.ts",
     "modules/**/android/**",
     "modules/**/ios/**"
   ]

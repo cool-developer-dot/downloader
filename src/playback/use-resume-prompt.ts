@@ -27,6 +27,55 @@ export type UseResumePromptResult = {
   dismiss: () => void;
 };
 
+/** The saved position read for one media id + player resolve generation. */
+type LoadedResume = {
+  mediaId: string | null;
+  generation: number;
+  candidate: PlaybackSummary | null;
+  decision: ResumeDecision;
+};
+
+function canResumeFrom(summary: PlaybackSummary): boolean {
+  return isResumeEligible({
+    positionSeconds: summary.positionSeconds,
+    durationSeconds: summary.durationSeconds,
+    completed: summary.completed,
+  });
+}
+
+function loadResume(
+  mediaId: string | null,
+  resolveGeneration: number | undefined,
+): LoadedResume {
+  const generation = resolveGeneration ?? 0;
+  if (!mediaId) {
+    return { mediaId: null, generation, candidate: null, decision: 'pending' };
+  }
+  const merged = mergePlaybackStates(
+    loadPlaybackState(PLAYBACK_LOCAL_NAMESPACE, mediaId),
+    null,
+  );
+  if (merged && canResumeFrom(merged)) {
+    return { mediaId, generation, candidate: merged, decision: 'pending' };
+  }
+  if (merged?.completed) {
+    return { mediaId, generation, candidate: merged, decision: 'start_over' };
+  }
+  return { mediaId, generation, candidate: null, decision: 'dismissed' };
+}
+
+/** A new media id, or a new resolve generation for the same one, starts a new resume session. */
+function isStaleResume(
+  loaded: LoadedResume,
+  mediaId: string | null,
+  resolveGeneration: number | undefined,
+): boolean {
+  if (loaded.mediaId !== mediaId) {
+    return true;
+  }
+  return mediaId != null && resolveGeneration != null && resolveGeneration !== loaded.generation;
+}
+
 export function useResumePrompt(input: {
   mediaId: string | null;
   isReady: boolean;
@@ -36,78 +85,52 @@ export function useResumePrompt(input: {
   /** Apply seek only when this mediaId still matches. */
   activeMediaId: string | null;
 }): UseResumePromptResult {
-  const [candidate, setCandidate] = useState<PlaybackSummary | null>(null);
-  const [decision, setDecision] = useState<ResumeDecision>('pending');
+  const [loaded, setLoaded] = useState(() =>
+    loadResume(input.mediaId, input.resolveGeneration),
+  );
+  const [decision, setDecision] = useState<ResumeDecision>(() => loaded.decision);
   const appliedRef = useRef(false);
-  const mediaSessionRef = useRef<string | null>(null);
-  const genRef = useRef(input.resolveGeneration ?? 0);
 
+  const candidate = loaded.candidate;
+  // The player is showing this session's media and is ready for a seek.
+  const seekable =
+    input.isReady &&
+    input.mediaId != null &&
+    input.activeMediaId === input.mediaId &&
+    (input.resolveGeneration == null || input.resolveGeneration === loaded.generation);
+
+  if (isStaleResume(loaded, input.mediaId, input.resolveGeneration)) {
+    const next = loadResume(input.mediaId, input.resolveGeneration);
+    setLoaded(next);
+    setDecision(next.decision);
+  } else if (seekable && decision === 'pending' && candidate && canResumeFrom(candidate)) {
+    setDecision('resume');
+  }
+
+  // Each resume session may seek once.
   useEffect(() => {
-    if (!input.mediaId) {
-      setCandidate(null);
-      setDecision('pending');
-      appliedRef.current = false;
-      mediaSessionRef.current = null;
-      return;
+    appliedRef.current = false;
+    if (loaded.mediaId && loaded.candidate && loaded.decision === 'pending') {
+      playbackLog('playback.resume_loaded', {
+        mediaId: loaded.mediaId,
+        revision: loaded.candidate.clientRevision,
+        pending: loaded.candidate.pendingSync,
+      });
     }
-    const genChanged =
-      input.resolveGeneration != null &&
-      input.resolveGeneration !== genRef.current;
-    if (mediaSessionRef.current !== input.mediaId || genChanged) {
-      mediaSessionRef.current = input.mediaId;
-      appliedRef.current = false;
-      setDecision('pending');
-      genRef.current = input.resolveGeneration ?? 0;
-
-      const local = loadPlaybackState(PLAYBACK_LOCAL_NAMESPACE, input.mediaId);
-      const merged = mergePlaybackStates(local, null);
-      if (
-        merged &&
-        isResumeEligible({
-          positionSeconds: merged.positionSeconds,
-          durationSeconds: merged.durationSeconds,
-          completed: merged.completed,
-        })
-      ) {
-        setCandidate(merged);
-        playbackLog('playback.resume_loaded', {
-          mediaId: input.mediaId,
-          revision: merged.clientRevision,
-          pending: merged.pendingSync,
-        });
-      } else if (merged?.completed) {
-        setCandidate(merged);
-        setDecision('start_over');
-      } else {
-        setCandidate(null);
-        setDecision('dismissed');
-      }
-    }
-  }, [input.mediaId, input.resolveGeneration]);
+  }, [loaded]);
 
   const applySeek = useCallback(
     (seconds: number): boolean => {
-      if (
-        !input.mediaId ||
-        input.activeMediaId !== input.mediaId ||
-        !input.isReady ||
-        appliedRef.current
-      ) {
-        return false;
-      }
-      if (
-        input.resolveGeneration != null &&
-        input.resolveGeneration !== genRef.current
-      ) {
+      if (!seekable || appliedRef.current) {
         return false;
       }
       appliedRef.current = true;
       try {
         input.controller.seekTo(seconds);
         playbackLog('playback.resume_seek_applied', {
-          mediaId: input.mediaId,
+          mediaId: input.mediaId ?? undefined,
           position: Math.trunc(seconds),
-          generation: genRef.current,
+          generation: loaded.generation,
         });
         return true;
       } catch {
@@ -115,57 +138,19 @@ export function useResumePrompt(input: {
         return false;
       }
     },
-    [
-      input.mediaId,
-      input.activeMediaId,
-      input.isReady,
-      input.controller,
-      input.resolveGeneration,
-    ],
+    [seekable, input.controller, input.mediaId, loaded.generation],
   );
 
   useEffect(() => {
-    if (
-      !input.isReady ||
-      appliedRef.current ||
-      !input.mediaId ||
-      input.activeMediaId !== input.mediaId
-    ) {
+    if (!seekable || appliedRef.current) {
       return;
     }
-    if (
-      input.resolveGeneration != null &&
-      input.resolveGeneration !== genRef.current
-    ) {
-      return;
-    }
-
     if (decision === 'start_over') {
       applySeek(0);
-      return;
-    }
-
-    if (
-      decision === 'pending' &&
-      candidate &&
-      isResumeEligible({
-        positionSeconds: candidate.positionSeconds,
-        durationSeconds: candidate.durationSeconds,
-        completed: candidate.completed,
-      })
-    ) {
-      setDecision('resume');
+    } else if (decision === 'resume' && candidate) {
       applySeek(candidate.positionSeconds);
     }
-  }, [
-    input.isReady,
-    decision,
-    candidate,
-    input.mediaId,
-    input.activeMediaId,
-    input.resolveGeneration,
-    applySeek,
-  ]);
+  }, [seekable, decision, candidate, applySeek]);
 
   const chooseResume = useCallback(() => {
     if (!candidate || (decision !== 'pending' && decision !== 'resume')) {

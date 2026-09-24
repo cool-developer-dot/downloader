@@ -6,6 +6,7 @@ import { goBackForTab } from '@/browser/services';
 import { selectIsHome, useBrowserStore } from '@/browser/stores';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
 import { routePaths } from '@/navigation/constants/route-paths';
+import { BACK_PRIORITY } from '@/navigation/hooks/back-handler-registry';
 import { useAndroidBackHandler } from '@/navigation/hooks/use-android-back-handler';
 
 /**
@@ -31,12 +32,15 @@ export function useBrowserHardwareBack(enabled = true): void {
     });
 
     // Match toolbar: native history when available, else Home fallback.
-    goBackForTab(targetTabId);
-    return true;
+    // Report the real outcome — swallowing Back when nothing moved is what made
+    // the Browser feel stuck with no way back to Home.
+    return goBackForTab(targetTabId);
   }, []);
 
   useAndroidBackHandler({
     enabled: enabled && isBrowserTab,
     onBackPress: handleBackPress,
+    // Owns Back ahead of the tab-exit guard whenever the page can consume it.
+    priority: BACK_PRIORITY.screen,
   });
 }

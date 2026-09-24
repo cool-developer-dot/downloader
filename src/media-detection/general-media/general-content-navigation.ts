@@ -3,6 +3,7 @@
  * Generation follows public content identity, not player/query/hash noise.
  */
 
+import { meaningfulQuery } from '../utils/url';
 import { extractGeneralPageVideoId } from './general-content-identity';
 
 export type GeneralContentChangeReason =
@@ -21,18 +22,6 @@ export type GeneralContentNavigationDecision = {
   oldPathClass: string;
   newPathClass: string;
 };
-
-const TRACKING_QUERY_PREFIXES = [
-  'utm_',
-  'fbclid',
-  'gclid',
-  'mc_',
-  'ref',
-  'share',
-  'si',
-  'igsh',
-  'igsi',
-] as const;
 
 function stripWww(host: string): string {
   return host.toLowerCase().replace(/^www\./, '');
@@ -76,26 +65,9 @@ function contentQueryId(parsed: URL): string | null {
   return null;
 }
 
-function meaningfulQueryIdentity(parsed: URL): string {
-  const params = [...parsed.searchParams.entries()]
-    .filter(([key]) => {
-      const lower = key.toLowerCase();
-      return !TRACKING_QUERY_PREFIXES.some((prefix) => lower.startsWith(prefix));
-    })
-    .filter(([key]) => {
-      const lower = key.toLowerCase();
-      return lower === 'v' || lower === 'video' || lower === 'id';
-    })
-    .sort(([a], [b]) => a.localeCompare(b));
-  if (params.length === 0) {
-    return '';
-  }
-  return params.map(([k, v]) => `${k.toLowerCase()}=${v}`).join('&');
-}
-
 /**
- * Stable public content key: host-root + video id when present, else canonical path.
- * Ignores fragment and tracking query. Does not ignore content ids in `v`/`video`.
+ * Stable public content key: host-root + video id when present, else canonical path and the query parameters that
+ * can select content. Ignores the fragment, tracking/share parameters and player state.
  */
 export function canonicalizeGeneralContentKey(url: string | null | undefined): string | null {
   if (!url) {
@@ -114,7 +86,7 @@ export function canonicalizeGeneralContentKey(url: string | null | undefined): s
     return `id:${host}:${videoId}`;
   }
   const path = canonicalizePath(parsed.pathname);
-  const q = meaningfulQueryIdentity(parsed);
+  const q = meaningfulQuery(parsed);
   return `path:${host}${path}${q ? `?${q}` : ''}`;
 }
 

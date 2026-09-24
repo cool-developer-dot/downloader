@@ -164,15 +164,44 @@ export function selectCompletedCatalogSignature(state: DownloadsStore): string {
 /**
  * Catalog identity for Library assemble — excludes in-flight progress %.
  */
+/**
+ * Every known download row: the visible v1 catalog page plus every mirrored v2 engine row (the engine wins on id).
+ * Library-side callers use this so a Downloads status filter can never hide a completed v2 item.
+ */
+export function selectAllDownloadItems(state: DownloadsStore): DownloadItem[] {
+  const merged = new Map<string, DownloadItem>();
+  for (const id of state.orderedIds) {
+    const item = state.itemsById[id];
+    if (item) {
+      merged.set(id, item);
+    }
+  }
+  for (const [id, item] of Object.entries(state.engineRowsById)) {
+    merged.set(id, item);
+  }
+  return [...merged.values()];
+}
+
+/**
+ * Downloads that are still being worked on — queued, preparing, transferring, waiting, or finishing up (v2 engine
+ * rows and v1 catalog rows alike). A number, so subscribers re-render only when the count changes.
+ */
+export function selectInFlightDownloadCount(state: DownloadsStore): number {
+  let count = 0;
+  for (const item of selectAllDownloadItems(state)) {
+    if (item.status === 'QUEUED' || item.status === 'DOWNLOADING') {
+      count += 1;
+    }
+  }
+  return count;
+}
+
 export function selectDownloadCatalogIdentitySignature(
   state: DownloadsStore,
 ): string {
   const parts: string[] = [];
-  for (const id of state.orderedIds) {
-    const item = state.itemsById[id];
-    if (!item) {
-      continue;
-    }
+  for (const item of selectAllDownloadItems(state)) {
+    const id = item.id;
     parts.push(
       [
         id,

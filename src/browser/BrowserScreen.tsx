@@ -26,6 +26,7 @@ import { BrowserTabSwitcher } from '@/browser/components/BrowserTabSwitcher';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
 import {
   useBrowserEngine,
+  useBrowserRouteLifecycle,
   useBrowserSessionContinuity,
   useBrowserHardwareBack,
 } from '@/browser/hooks';
@@ -141,6 +142,7 @@ export const BrowserScreen = memo(function BrowserScreen() {
 });
 
 const BrowserScreenBody = memo(function BrowserScreenBody() {
+  useBrowserRouteLifecycle();
   useBrowserSessionContinuity();
   useBrowserHardwareBack();
   const { loadUrl } = useBrowserEngineContext();

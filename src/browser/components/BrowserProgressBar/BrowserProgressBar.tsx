@@ -38,6 +38,14 @@ export const BrowserProgressBar = memo(function BrowserProgressBar({
 
   const animatedProgress = useSharedValue(0);
   const opacity = useSharedValue(0);
+  /**
+   * The store publishes progress ~20x/s during a load. Restarting both timings
+   * on every tick meant cancelAnimation + withTiming crossing to the UI thread
+   * 80 times a second for movement too small to see on a 2px bar. Drive the
+   * animation from a quantized value instead — withTiming still interpolates
+   * between steps, so the bar looks identical.
+   */
+  const progressStep = Math.round(Math.min(Math.max(progress, 0), 1) * 40) / 40;
 
   useEffect(() => {
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
@@ -55,16 +63,16 @@ export const BrowserProgressBar = memo(function BrowserProgressBar({
       };
     }
 
-    if (isLoading || (progress > 0 && progress < BROWSER_PROGRESS_COMPLETE)) {
+    if (isLoading || (progressStep > 0 && progressStep < BROWSER_PROGRESS_COMPLETE)) {
       opacity.value = withTiming(1, {
         duration: 120,
         easing: Easing.out(Easing.quad),
       });
-      animatedProgress.value = withTiming(Math.max(progress, 0.02), {
+      animatedProgress.value = withTiming(Math.max(progressStep, 0.02), {
         duration: 160,
         easing: Easing.out(Easing.cubic),
       });
-    } else if (progress >= BROWSER_PROGRESS_COMPLETE) {
+    } else if (progressStep >= BROWSER_PROGRESS_COMPLETE) {
       animatedProgress.value = withTiming(1, {
         duration: 100,
         easing: Easing.out(Easing.quad),
@@ -96,7 +104,7 @@ export const BrowserProgressBar = memo(function BrowserProgressBar({
       cancelAnimation(animatedProgress);
       cancelAnimation(opacity);
     };
-  }, [animatedProgress, isHome, isLoading, opacity, progress]);
+  }, [animatedProgress, isHome, isLoading, opacity, progressStep]);
 
   const trackStyle = useAnimatedStyle(() => ({
     opacity: opacity.value,

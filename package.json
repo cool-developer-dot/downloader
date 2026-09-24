@@ -33,6 +33,7 @@
     "expo-splash-screen": "~57.0.5",
     "expo-sqlite": "~57.0.1",
     "expo-status-bar": "~57.0.1",
+    "expo-store-review": "~57.0.3",
     "expo-symbols": "~57.0.2",
     "expo-system-ui": "~57.0.2",
     "expo-video": "~57.0.2",
@@ -64,15 +65,14 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "postinstall": "node scripts/patch-react-native-webview.js && node scripts/build-detector.mjs",
+    "postinstall": "node scripts/patch-react-native-webview.js",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
-    "test": "node --test \"src/**/*.test.ts\" \"modules/**/*.test.ts\"",
-    "build:detector": "node scripts/build-detector.mjs",
+    "test": "node --import ./scripts/test/register-app-modules.mjs --test \"src/**/*.test.ts\" \"modules/**/*.test.ts\"",
     "adb:reverse": "adb reverse tcp:8081 tcp:8081"
   },
   "private": true

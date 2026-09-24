@@ -87,11 +87,17 @@ class LibraryStore internal constructor(
     return ids.mapNotNull(byId::get)
   }
 
-  /** Like [getMany], but rejects with ERR_NOT_FOUND unless every item exists with its file on disk. */
+  /**
+   * Like [getMany], but rejects with ERR_NOT_FOUND unless every item exists with its file on disk. An item found
+   * without its file is removed first (see [removeMissingFiles]), so the refused action also repairs the library.
+   */
   suspend fun requireFiles(ids: List<String>): List<LibraryItem> {
     val items = getMany(ids)
     val present = withContext(Dispatchers.IO) { items.filter { it.file.isFile } }
-    if (present.size != ids.size) throw NotFoundException("A library item or its file no longer exists")
+    if (present.size != ids.size) {
+      if (present.size != items.size) runCatching { removeMissingFiles(items.map { it.id }) }
+      throw NotFoundException("A library item or its file no longer exists")
+    }
     return present
   }
 
@@ -149,6 +155,30 @@ class LibraryStore internal constructor(
     announce(LibraryChange(LibraryChangeReason.UPDATED, updated.distinct()))
   }
 
+  /**
+   * Repairs the library after its files changed outside VidoraX: every item whose file is gone (deleted or moved
+   * away) or empty is removed with its thumbnail and announced as deleted, so no screen keeps a row that promises a
+   * video that cannot play. [ids] limits the check to those items; null checks the whole library. Returns the ids
+   * removed. A file the engine is finishing is never affected: an item is inserted only after its file is in place.
+   */
+  suspend fun removeMissingFiles(ids: List<String>? = null): List<String> {
+    val rows: List<Pair<String, File>> = database.read { db ->
+      if (ids == null) {
+        db.rawQuery("SELECT id, file_path FROM $TABLE", null).use { cursor ->
+          buildList { while (cursor.moveToNext()) add(cursor.getString(0) to paths.fromStoredPath(cursor.getString(1))) }
+        }
+      } else {
+        selectByIds(db, ids.distinct()).map { it.id to it.file }
+      }
+    }
+    if (rows.isEmpty()) return emptyList()
+    val missing = withContext(Dispatchers.IO) {
+      rows.filter { (_, file) -> !file.isFile || file.length() == 0L }.map { it.first }
+    }
+    if (missing.isNotEmpty()) delete(missing)
+    return missing
+  }
+
   /** Removes rows, files and thumbnails. Gallery copies belong to the user and stay. Unknown ids are ignored. */
   suspend fun delete(ids: List<String>) {
     if (ids.isEmpty()) return
@@ -189,15 +219,22 @@ class LibraryStore internal constructor(
     while (moveToNext()) add(readItem())
   }
 
-  private fun Cursor.readItem() = LibraryItem(
+  private fun Cursor.readItem(): LibraryItem {
+    val container = wireValueOf<Container>(text("container")) ?: Container.UNKNOWN
+    val storedMime = text("mime_type")
+    return readItem(container, MediaTypes.libraryMimeType(container, storedMime) ?: storedMime)
+  }
+
+  /** [mimeType] follows the file's proven container, so a MOV recorded as `video/mp4` by older builds reads right. */
+  private fun Cursor.readItem(container: Container, mimeType: String) = LibraryItem(
     id = text("id"),
     title = text("title"),
     site = siteOf(text("site")),
     pageUrl = textOrNull("page_url"),
     sourceUrl = textOrNull("source_url"),
     file = paths.fromStoredPath(text("file_path")),
-    mimeType = text("mime_type"),
-    container = wireValueOf<Container>(text("container")) ?: Container.UNKNOWN,
+    mimeType = mimeType,
+    container = container,
     videoCodec = textOrNull("video_codec"),
     audioCodec = textOrNull("audio_codec"),
     hasAudio = long("has_audio") != 0L,

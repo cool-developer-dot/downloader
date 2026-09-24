@@ -5,10 +5,50 @@
  * Every command captures targetTabId at call time and resolves the controller from
  * tabControllerRegistry. Commands never retarget a newly activated tab mid-flight.
  */
+import { BROWSER_HOMEPAGE } from '@/browser/constants';
 import { logBrowserNav } from '@/browser/diagnostics';
+import { browserSyncService } from '@/browser/services/browser-sync.service';
 import { useBrowserStore } from '@/browser/stores';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
 import { isBrowserHomeUrl } from '@/browser/utils';
+
+/**
+ * Chrome-only Home reset for a tab whose WebView controller is not mounted
+ * (evicted, mid-remount, or unregistered).
+ *
+ * Without this, Back / Home silently no-op whenever the controller lookup
+ * fails, and the only way out of the stuck page was opening a new tab.
+ */
+function recoverTabToHome(targetTabId: string): boolean {
+  const store = useBrowserStore.getState();
+  const tab = store.tabs.find((t) => t.id === targetTabId);
+  if (!tab || isBrowserHomeUrl(tab.url)) {
+    return false;
+  }
+
+  logBrowserNav(tab.navigationEpoch, 'home', {
+    strategy: 'chrome_recovery',
+    decisionReason: 'controller_unavailable',
+    tabId: targetTabId,
+  });
+
+  store.updateTab(targetTabId, {
+    url: BROWSER_HOMEPAGE,
+    title: 'Home',
+    loading: false,
+    progress: 0,
+    canGoBack: false,
+    canGoForward: false,
+    error: null,
+  });
+  if (useBrowserStore.getState().activeTabId === targetTabId) {
+    useBrowserStore.getState().syncChromeFromActiveTab();
+    // Home means Home for continuity too — the session must not restore the
+    // page the user just escaped from.
+    browserSyncService.onGoHome();
+  }
+  return true;
+}
 
 function resolveLiveController(targetTabId: string) {
   const controller = tabControllerRegistry.get(targetTabId);
@@ -26,7 +66,8 @@ function resolveLiveController(targetTabId: string) {
 export function goBackForTab(targetTabId: string): boolean {
   const controller = resolveLiveController(targetTabId);
   if (!controller) {
-    return false;
+    // No mounted WebView for this tab — never swallow Back silently.
+    return recoverTabToHome(targetTabId);
   }
 
   const gen = controller.webViewInstanceGenerationRef.current;
@@ -85,7 +126,7 @@ export function goForwardForTab(targetTabId: string): boolean {
 export function goHomeForTab(targetTabId: string): boolean {
   const controller = resolveLiveController(targetTabId);
   if (!controller) {
-    return false;
+    return recoverTabToHome(targetTabId);
   }
 
   const tab = useBrowserStore.getState().tabs.find((t) => t.id === targetTabId);

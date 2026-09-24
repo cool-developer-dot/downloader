@@ -66,6 +66,8 @@ export type DownloadQualityOption = {
   hasVideo: boolean | null;
   downloadable: boolean;
   unavailableReason: AnalysisUnsupportedReason | null;
+  /** DASH only: the manifest representation this option downloads (sent to the engine as `variant.videoId`). */
+  representationId?: string | null;
 };
 
 /** @deprecated Prefer DownloadQualityOption — alias retained for Week 6 callers. */

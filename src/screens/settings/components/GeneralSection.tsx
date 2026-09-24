@@ -1,7 +1,13 @@
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { AppState } from 'react-native';
 
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
+import {
+  readDefaultBrowserState,
+  requestDefaultBrowser,
+  type DefaultBrowserState,
+} from '@/browser/services/default-browser';
 import { getEnabledLanguages } from '@/constants/languages';
 import { resolveLanguage, useTranslation } from '@/localization';
 
@@ -31,6 +37,22 @@ export const GeneralSection = memo(function GeneralSection({
 }: GeneralSectionProps) {
   const { t } = useTranslation();
   const selectedCode = resolveLanguage(languageCode);
+  const [browserState, setBrowserState] = useState<DefaultBrowserState>(() => readDefaultBrowserState());
+
+  // The user grants this in the system dialog, so the state is re-read whenever they come back to the app.
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (status) => {
+      if (status === 'active') {
+        setBrowserState(readDefaultBrowserState());
+      }
+    });
+    return () => subscription.remove();
+  }, []);
+
+  const onDefaultBrowserPress = useCallback(async () => {
+    await requestDefaultBrowser();
+    setBrowserState(readDefaultBrowserState());
+  }, []);
 
   const actions = useMemo<ActionSheetItem[]>(
     () =>
@@ -61,9 +83,33 @@ export const GeneralSection = memo(function GeneralSection({
           icon="translate"
           value={languageLabel}
           onPress={disabled ? undefined : onOpenSheet}
-          showDivider={false}
           accessibilityHint={t('settings.languageOpenHint')}
           testID={`${testID}-language`}
+        />
+        <SettingsRow
+          title={t('settings.defaultBrowser')}
+          description={
+            browserState.isDefault
+              ? t('settings.defaultBrowserHintOn')
+              : t('settings.defaultBrowserHintOff')
+          }
+          icon="web"
+          value={
+            browserState.isDefault
+              ? t('settings.defaultBrowserValueOn')
+              : browserState.canRequest
+                ? t('settings.defaultBrowserValueOff')
+                : t('settings.defaultBrowserUnavailable')
+          }
+          onPress={
+            disabled || browserState.isDefault || !browserState.canRequest
+              ? undefined
+              : () => {
+                  void onDefaultBrowserPress();
+                }
+          }
+          showDivider={false}
+          testID={`${testID}-default-browser`}
         />
       </SettingsSection>
 

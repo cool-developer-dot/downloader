@@ -15,6 +15,8 @@ data class ProbeRequest(
   val kind: SourceKind?,
   val manifestText: String?,
   val request: RequestContext,
+  /** HLS: classify the variant an enqueue with this choice would download (see [EnqueueRequest.variant]). */
+  val variant: VariantChoice? = null,
 )
 
 sealed interface ProbeResult {
@@ -64,6 +66,12 @@ data class VariantChoice(
   val maxHeight: Int?,
 )
 
+/**
+ * [variant] chooses the HLS variant when [url] is a multivariant playlist (`videoId` exact, else `maxHeight`, else
+ * the best decodable single-track variant); `audioId` is ignored because separate audio is never muxed.
+ * `manifestText` and `audioUrl` are legacy/out-of-contract (DASH, split-A/V mux) and remain only for wire
+ * compatibility.
+ */
 data class EnqueueRequest(
   val url: String,
   val kind: SourceKind,

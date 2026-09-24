@@ -2,6 +2,7 @@ import {
   ALLOWED_MEDIA_SCHEMES,
   BLOCKED_MEDIA_SCHEMES,
 } from '../constants';
+import { resolveSocialPlatform } from '../social/social-content-identity';
 
 /**
  * Validates whether a URL is safe to treat as a media resource.
@@ -123,33 +124,42 @@ export function isPrivateOrLocalHostname(hostname: string): boolean {
   return false;
 }
 
-/** Tracking/query params stripped for same-document matching on social pages. */
-const TRACKING_QUERY_PREFIXES = [
-  'utm_',
-  'igsh',
-  'igsi',
-  'fbclid',
-  'gclid',
-  'mc_',
-  'ref',
-  'share',
-  'si',
-] as const;
+/**
+ * Query parameters that never choose what a page shows: ad-click and analytics identifiers, share attribution and
+ * player state (a start time, autoplay). Every other parameter can select content — `watch.php?id=2`, `?v=…`,
+ * `?episode=3` — so it belongs to the page's identity.
+ */
+const NOISE_QUERY_KEYS: ReadonlySet<string> = new Set([
+  // ad-click / analytics identifiers
+  'fbclid', 'gclid', 'gclsrc', 'dclid', 'gbraid', 'wbraid', 'msclkid', 'yclid', 'twclid', 'ttclid', 'li_fat_id',
+  'mkt_tok', '_hsenc', '_hsmi', 'cmpid', 'ncid', 'ocid', 'spm',
+  // share attribution
+  'igsh', 'igshid', 'igsi', 'mibextid', 'rdid', 'si', 'feature', 'ref', 'ref_src', 'ref_url', 'referrer', 'share',
+  'shared', 'share_id', 'share_source', 'share_app_id', 'sharer', 'sr_share', 'is_from_webapp', 'sender_device',
+  '_r', '_t',
+  // player state
+  't', 'start', 'time_continue', 'autoplay', 'muted', 'mute', 'loop', 'playsinline',
+]);
+const NOISE_QUERY_PREFIXES = ['utm_', 'mc_', '_ga', '_gl', 'mtm_', 'pk_', 'hsa_', 'oly_', 'vero_', '__cft__', '__tn__'];
 
-function stripTrackingQueryParams(parsed: URL): void {
-  const keys = [...parsed.searchParams.keys()];
-  for (const key of keys) {
-    const lower = key.toLowerCase();
-    if (TRACKING_QUERY_PREFIXES.some((prefix) => lower.startsWith(prefix))) {
-      parsed.searchParams.delete(key);
-    }
-  }
-  if (parsed.searchParams.size === 0) {
-    parsed.search = '';
-  }
+export function isNoiseQueryKey(key: string): boolean {
+  const lower = key.toLowerCase();
+  return NOISE_QUERY_KEYS.has(lower) || NOISE_QUERY_PREFIXES.some((prefix) => lower.startsWith(prefix));
 }
 
-/** Same-origin-ish page match — origin + path only (ignore hash + tracking query). */
+/** The query parameters that can select page content, in a stable order — '' when there are none. */
+export function meaningfulQuery(parsed: URL): string {
+  const entries = [...parsed.searchParams.entries()]
+    .filter(([key]) => !isNoiseQueryKey(key))
+    .sort(([ak, av], [bk, bv]) => (ak < bk ? -1 : ak > bk ? 1 : av < bv ? -1 : av > bv ? 1 : 0));
+  return entries.length > 0 ? new URLSearchParams(entries).toString() : '';
+}
+
+/**
+ * Whether two URLs show the same page: same host (`www.` ignored), path (trailing slash ignored) and content-selecting
+ * query. A hash, tracking or share parameters and player state do not make another page; `?id=2` instead of `?id=1`
+ * does.
+ */
 export function isSameDocumentUrl(a: string | null, b: string | null): boolean {
   if (!a || !b) {
     return false;
@@ -159,11 +169,28 @@ export function isSameDocumentUrl(a: string | null, b: string | null): boolean {
   return na != null && nb != null && na === nb;
 }
 
+const PAGE_IDENTITY_CACHE_MAX = 256;
+const pageIdentityCache = new Map<string, string | null>();
+
 export function normalizePageIdentity(raw: string): string | null {
+  const cached = pageIdentityCache.get(raw);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const computed = computePageIdentity(raw);
+  if (pageIdentityCache.size >= PAGE_IDENTITY_CACHE_MAX) {
+    const oldest = pageIdentityCache.keys().next().value;
+    if (oldest !== undefined) {
+      pageIdentityCache.delete(oldest);
+    }
+  }
+  pageIdentityCache.set(raw, computed);
+  return computed;
+}
+
+function computePageIdentity(raw: string): string | null {
   try {
     const parsed = new URL(raw.trim());
-    parsed.hash = '';
-    stripTrackingQueryParams(parsed);
 
     let host = parsed.hostname.toLowerCase();
     if (host.startsWith('www.')) {
@@ -175,7 +202,10 @@ export function normalizePageIdentity(raw: string): string | null {
       path = path.slice(0, -1);
     }
 
-    return `${parsed.protocol}//${host}${path || '/'}`;
+    // Social platforms name the content in the path (a reel, a video id) and decorate their URLs with share and
+    // session parameters, so only the path identifies one of their pages. Anywhere else the query can pick the video.
+    const query = resolveSocialPlatform(parsed.href) ? '' : meaningfulQuery(parsed);
+    return `${parsed.protocol}//${host}${path || '/'}${query ? `?${query}` : ''}`;
   } catch {
     return null;
   }

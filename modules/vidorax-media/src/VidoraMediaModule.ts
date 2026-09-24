@@ -1,8 +1,11 @@
-import { requireOptionalNativeModule, type NativeModule } from 'expo';
+import { NativeModule, requireOptionalNativeModule } from 'expo';
 
 import type { VidoraMediaEvents, VidoraMediaModuleApi } from './VidoraMedia.types';
 
-export type VidoraMediaModule = NativeModule<VidoraMediaEvents> & VidoraMediaModuleApi;
+// `NativeModule<Events>` as a type is the constructor; extending it gives the instance event API (addListener).
+declare class VidoraMediaNativeModule extends NativeModule<VidoraMediaEvents> {}
+
+export type VidoraMediaModule = VidoraMediaNativeModule & VidoraMediaModuleApi;
 
 const nativeModule = requireOptionalNativeModule<VidoraMediaModule>('VidoraMedia');
 

@@ -22,12 +22,20 @@ export function resolveNativeObservationScope(input: {
 }): NativeObservationScope | null {
   let scope = scopes.get(input.parentViewId ?? -1) ?? scopes.get(input.webViewId ?? -1);
   if (!scope && input.observationSource === 'service-worker' && input.requestReferer) {
-    // ServiceWorkerClient has no WebView parameter. Require unique document evidence.
-    const matches = [...scopes.values()].filter((s) => sameDocument(s.pageUrl, input.requestReferer!));
+    // ServiceWorkerClient has no WebView parameter. Require unique document evidence: the page itself, or —
+    // since a worker's passthrough fetch to another origin (a CDN) keeps only its page's origin as Referer —
+    // the only mounted page of that origin. Anything ambiguous stays unowned.
+    const all = [...scopes.values()];
+    const documents = all.filter((s) => sameDocument(s.pageUrl, input.requestReferer!));
+    const matches = documents.length > 0 ? documents : all.filter((s) => sameOrigin(s.pageUrl, input.requestReferer!));
     if (matches.length === 1) scope = matches[0];
   }
   if (!scope?.active || input.observedAt == null || input.observedAt < scope.boundAt) return null;
   return scope;
+}
+
+function sameOrigin(a: string, b: string): boolean {
+  try { return new URL(a).origin === new URL(b).origin; } catch { return false; }
 }
 
 function sameDocument(a: string, b: string): boolean {

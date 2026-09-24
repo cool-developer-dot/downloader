@@ -1,30 +1,21 @@
-import { DeviceEventEmitter, NativeEventEmitter, NativeModules, Platform } from 'react-native';
+import { Platform } from 'react-native';
+
+import { getVidoraWeb, isVidoraWebAvailable } from '@modules/vidorax-web';
+import type { NetworkMediaBatchEvent } from '@modules/vidorax-web';
 
 import { logGeneralNetworkTrace } from '../general-media/general-media-diagnostics';
 import {
-  applyNativeMediaTraceEvent,
+  nativeCandidateEventFromObservation,
   processNativeMediaCandidateEvent,
   resetNativeNetworkContractForTests,
   type NativeMediaCandidate,
   type NativeMediaCandidateEvent,
-  type NativeMediaTraceEvent,
 } from './native-network.contract';
 
-export type { NativeMediaCandidate, NativeMediaCandidateEvent, NativeMediaTraceEvent };
-export {
-  nativeTracePayloadIsSanitized,
-  processNativeMediaCandidateEvent,
-} from './native-network.contract';
+export type { NativeMediaCandidate, NativeMediaCandidateEvent };
+export { processNativeMediaCandidateEvent } from './native-network.contract';
 
-type MediaNetworkModuleShape = {
-  setEnabled?: (enabled: boolean) => void;
-};
-
-const MODULE_NAME = 'VidoraMediaNetworkObserver';
-const CANDIDATE_EVENT = 'VidoraMediaNetworkCandidate';
-const TRACE_EVENT = 'VidoraMediaNetworkTrace';
-
-let subscriptions: Array<{ remove: () => void }> = [];
+let subscription: { remove: () => void } | null = null;
 let candidateHandler: ((candidate: NativeMediaCandidate) => void) | null =
   null;
 
@@ -34,17 +25,9 @@ export function setNativeCandidateHandler(
   candidateHandler = handler;
 }
 
-function getNativeModule(): MediaNetworkModuleShape | null {
-  if (Platform.OS !== 'android') {
-    return null;
-  }
-  const mod = NativeModules[MODULE_NAME] as MediaNetworkModuleShape | undefined;
-  return mod ?? null;
-}
-
 /**
- * Subscribe to Android WebView shouldInterceptRequest observations.
- * Passive-only, non-blocking — never alters response bodies.
+ * Subscribe to VidoraWeb's passive WebView / ServiceWorker request observations
+ * (patched react-native-webview shouldInterceptRequest). Never alters responses.
  */
 export function startNativeNetworkObservation(): void {
   if (Platform.OS !== 'android') {
@@ -53,75 +36,51 @@ export function startNativeNetworkObservation(): void {
 
   stopNativeNetworkObservation();
 
-  const mod = getNativeModule();
+  const available = isVidoraWebAvailable();
   logGeneralNetworkTrace('OBSERVER_STARTED', {
-    modulePresent: Boolean(mod),
-    observationSource: 'js-adapter',
+    modulePresent: available,
+    observationSource: 'vidora-web',
   });
-
-  try {
-    mod?.setEnabled?.(true);
-  } catch {
-    // Module optional until native linked — DeviceEventEmitter still listens.
+  if (!available) {
+    return;
   }
 
-  const onCandidate = (event: NativeMediaCandidateEvent) => {
-    handleNativeCandidate(event);
-  };
-  const onTrace = (event: NativeMediaTraceEvent) => {
-    applyNativeMediaTraceEvent(event);
-  };
-
-  let attached = false;
   try {
-    subscriptions.push(DeviceEventEmitter.addListener(CANDIDATE_EVENT, onCandidate));
-    subscriptions.push(DeviceEventEmitter.addListener(TRACE_EVENT, onTrace));
-    attached = true;
+    const web = getVidoraWeb();
+    // The first listener makes the native observer start emitting.
+    subscription = web.addListener('onNetworkMedia', handleNativeBatch);
+    web.setNetworkObservationEnabled(true);
   } catch {
-    // DeviceEventEmitter may be unavailable in some test hosts.
-  }
-
-  if (!attached && mod) {
-    try {
-      const emitter = new NativeEventEmitter(
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        mod as any,
-      );
-      subscriptions.push(emitter.addListener(CANDIDATE_EVENT, onCandidate));
-      subscriptions.push(emitter.addListener(TRACE_EVENT, onTrace));
-    } catch {
-      // Native emitter unavailable — observation still enabled for a later attach.
-    }
+    subscription = null;
   }
 }
 
 export function stopNativeNetworkObservation(): void {
-  try {
-    getNativeModule()?.setEnabled?.(false);
-  } catch {
-    // ignore
-  }
-  for (const sub of subscriptions) {
+  subscription?.remove();
+  subscription = null;
+  if (isVidoraWebAvailable()) {
     try {
-      sub.remove();
+      getVidoraWeb().setNetworkObservationEnabled(false);
     } catch {
       // ignore
     }
   }
-  subscriptions = [];
   resetNativeNetworkContractForTests();
 }
 
-function handleNativeCandidate(event: NativeMediaCandidateEvent): void {
-  const candidate = processNativeMediaCandidateEvent(event);
-  if (!candidate || !candidateHandler) {
-    return;
+function handleNativeBatch(event: NetworkMediaBatchEvent): void {
+  for (const observation of event?.observations ?? []) {
+    const candidate = processNativeMediaCandidateEvent(
+      nativeCandidateEventFromObservation(observation),
+    );
+    if (candidate && candidateHandler) {
+      candidateHandler(candidate);
+    }
   }
-  candidateHandler(candidate);
 }
 
 export function resetNativeNetworkAdapterForTests(): void {
   resetNativeNetworkContractForTests();
   candidateHandler = null;
-  subscriptions = [];
+  subscription = null;
 }

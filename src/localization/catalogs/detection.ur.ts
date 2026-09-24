@@ -24,6 +24,7 @@ export const detectionUr: CatalogStrings<typeof detectionEn> = {
     downloadQualityLabel: '{quality} ڈاؤن لوڈ کریں، {detail}',
     resolving: 'کوالٹیز تلاش کی جا رہی ہیں…',
     added: 'ڈاؤن لوڈز میں شامل کر دیا گیا',
+    alreadyAdded: 'یہ پہلے ہی آپ کے ڈاؤن لوڈز میں ہے',
     addedShort: 'شامل ہو گیا',
     viewDownloads: 'دیکھیں',
     retry: 'دوبارہ کوشش کریں',

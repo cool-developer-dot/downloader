@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 
 import { selectIsHome, useBrowserStore } from '@/browser/stores';
@@ -12,22 +12,17 @@ import type { DetectedMedia } from '../types';
 import { isDownloadAffordable, resolveDiscoveryBadges, type DiscoveryBadge } from '../ui';
 import { getMsePlaybackContext } from '../engine/mse-playback-context';
 import { describePlatformPage } from '../platform';
-import {
-  filterCorrelatedCandidates,
-  pickBestCorrelatedMedia,
-} from '../services/media-correlation.service';
+import { filterCorrelatedCandidates } from '../services/media-correlation.service';
 import { logIgRuntime } from '../services/ig-runtime-diagnostics.service';
-import {
-  resolveSocialPlatform,
-  selectCurrentMediaForActiveSocialTab,
-  socialPageContextStore,
-} from '../social';
-import { selectCurrentMediaForActiveGeneralTab } from '../general-media';
+import { socialPageContextStore } from '../social';
 import { mediaDetectionEngine } from '../engine';
+import { buildOwnershipKey, selectDiscoveryMedia, subscribeOwnership } from './discovery-selection';
 
 export type MediaDiscoveryViewModel = {
   visible: boolean;
   media: DetectedMedia | null;
+  /** Changes on material ownership transitions (owner strength, visible/playing player, generation). */
+  ownershipKey: string;
   candidates: DetectedMedia[];
   /** All detected ids on the page (including dismissed) — used for session dismiss. */
   allDetectedIds: string[];
@@ -144,96 +139,21 @@ export function useMediaDiscovery(): MediaDiscoveryViewModel {
     [detectedMedia],
   );
 
+  const ownershipKey = useSyncExternalStore(subscribeOwnership, () => buildOwnershipKey(activeTabId));
+
   const media = useMemo(() => {
-    if (candidates.length === 0) {
-      return null;
-    }
-    if (focusedMediaId) {
-      const focused = candidates.find((m) => m.id === focusedMediaId);
-      if (focused) {
-        return focused;
-      }
-    }
-
     const mse = getMsePlaybackContext(lastNavigation);
-    const socialPlatform = lastNavigation
-      ? resolveSocialPlatform(lastNavigation)
-      : null;
-
-    if (socialPlatform && activeTabId) {
-      const social = selectCurrentMediaForActiveSocialTab({
-        candidates,
-        tabId: activeTabId,
-        navigationEpoch,
-        pageUrl: lastNavigation,
-        msePlaybackActive: mse.msePlaybackActive,
-        msePlaybackAgeMs: mse.msePlaybackAgeMs,
-      });
-      if (social.usedSocialCorrelation) {
-        return social.media;
-      }
-    }
-
-    // Phase 5A — ordinary websites: ownership evidence over latest/largest score.
-    if (!socialPlatform && activeTabId) {
-      const general = selectCurrentMediaForActiveGeneralTab({
-        candidates,
-        tabId: activeTabId,
-        navigationEpoch,
-        pageUrl: lastNavigation,
-        msePlaybackActive: mse.msePlaybackActive,
-        msePlaybackAgeMs: mse.msePlaybackAgeMs,
-      });
-      if (general.usedGeneralCorrelation) {
-        if (general.media) {
-          return general.media;
-        }
-        // Ownership found no current player, but HTTP media still exists on
-        // the page (extensionless CDN, JSON-LD, preload). Offer that rather
-        // than hiding a working download.
-        const http = candidates.filter((m) => {
-          const url = (m.finalUrl || m.url).toLowerCase();
-          return url.startsWith('http://') || url.startsWith('https://');
-        });
-        if (http.length > 0) {
-          return (
-            pickBestCorrelatedMedia(http, {
-              pageUrl: lastNavigation,
-              msePlaybackActive: mse.msePlaybackActive,
-              msePlaybackAgeMs: mse.msePlaybackAgeMs,
-            }) ??
-            http.find((m) => m.category === 'video') ??
-            http.find((m) => m.category === 'stream') ??
-            http[0] ??
-            null
-          );
-        }
-        return null;
-      }
-    }
-
-    const correlated = pickBestCorrelatedMedia(candidates, {
-      pageUrl: lastNavigation,
+    return selectDiscoveryMedia({
+      candidates,
+      focusedMediaId,
+      lastNavigation,
+      activeTabId,
+      navigationEpoch,
+      ownershipKey,
       msePlaybackActive: mse.msePlaybackActive,
       msePlaybackAgeMs: mse.msePlaybackAgeMs,
     });
-    if (correlated) {
-      return correlated;
-    }
-
-    return (
-      candidates.find((m) => m.category === 'video') ??
-      candidates.find((m) => m.category === 'stream') ??
-      candidates[0] ??
-      null
-    );
-  }, [
-    candidates,
-    focusedMediaId,
-    lastNavigation,
-    activeTabId,
-    navigationEpoch,
-  ]);
+  }, [candidates, focusedMediaId, lastNavigation, activeTabId, navigationEpoch, ownershipKey]);
 
   const qualities = useMemo(
     () => (media ? resolveQualities({ media, variants }) : []),
@@ -289,7 +209,7 @@ export function useMediaDiscovery(): MediaDiscoveryViewModel {
 
   useEffect(() => {
     if (visible && media) {
-      logIgRuntime('overlay_visible', {
+      logIgRuntime('discovery_media_selected', {
         hostname: safeHostname(media.url),
         mimeType: media.mimeType,
         confidence: media.confidence,
@@ -314,6 +234,7 @@ export function useMediaDiscovery(): MediaDiscoveryViewModel {
   return {
     visible,
     media,
+    ownershipKey,
     candidates,
     allDetectedIds,
     qualities,

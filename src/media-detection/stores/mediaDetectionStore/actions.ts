@@ -6,6 +6,7 @@ import { observeCandidateInWindow } from '../../observation/candidate-observatio
 import { socialPageContextStore } from '../../social/social-page-context';
 import { generalPageMediaContextStore } from '../../general-media/general-page-context';
 import { resolveSocialPlatform } from '../../social/social-content-identity';
+import { isSameDocumentUrl } from '../../utils/url';
 
 type SetState = StoreApi<MediaDetectionStore>['setState'];
 type GetState = StoreApi<MediaDetectionStore>['getState'];
@@ -142,6 +143,18 @@ export function createMediaDetectionActions(
 
     setPageMetadata: (metadata) => {
       set({ pageMetadata: metadata });
+    },
+
+    renamePageMedia: (pageUrl, fromTitle, toTitle) => {
+      const { detectedMedia } = get();
+      if (!detectedMedia.some((m) => m.title === fromTitle && isSameDocumentUrl(m.pageUrl, pageUrl))) {
+        return;
+      }
+      set({
+        detectedMedia: detectedMedia.map((m) =>
+          m.title === fromTitle && isSameDocumentUrl(m.pageUrl, pageUrl) ? { ...m, title: toTitle } : m,
+        ),
+      });
     },
 
     setScanning: (scanning, progress) => {

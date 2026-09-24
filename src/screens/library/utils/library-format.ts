@@ -1,5 +1,5 @@
 import type { MediaLibraryItem } from '@/library';
-import { formatContainerLabel } from '@/downloads/completed-file';
+import { libraryFormatLabel } from '@/library/format-label';
 import {
   formatDownloadDate,
   formatDownloadFileSize,
@@ -25,23 +25,7 @@ export function formatLibraryResolution(
 }
 
 function formatLibraryContainer(mimeType: string | null): string | null {
-  if (!mimeType) {
-    return null;
-  }
-  const key = mimeType.trim().toLowerCase();
-  if (key === 'video/mp4') {
-    return formatContainerLabel('mp4');
-  }
-  if (key === 'video/webm') {
-    return formatContainerLabel('webm');
-  }
-  if (key === 'video/mp2t' || key === 'application/mp2t') {
-    return formatContainerLabel('ts');
-  }
-  if (key === 'audio/mp4') {
-    return formatContainerLabel('m4a');
-  }
-  return null;
+  return libraryFormatLabel(mimeType);
 }
 
 export function buildLibraryMetaLine(item: MediaLibraryItem): string {

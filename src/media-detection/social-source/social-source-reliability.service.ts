@@ -7,6 +7,12 @@ import type { MediaAnalysisResult } from '@/api/types';
 import type { MediaRequestContext } from '@/downloads/types/request-context';
 import { sniffMediaSignature } from '@/downloads/engine/media-signature';
 import { resolveVideoResource } from '../resource/video-resource';
+import {
+  MP4_BOX_HEADER_BYTES,
+  nextTopLevelBoxOffset,
+  walkMp4TopLevelBoxes,
+  type Mp4BoxWalkVerdict,
+} from '../resource/mp4-box-walk';
 import { readBoundedResponseBody } from '@/downloads/network/bounded-response-reader';
 import { TRANSFER_TIMEOUTS } from '@/downloads/engine/transfer-timeouts';
 import { mergeDownloadHeaders } from '@/downloads/engine/download-headers';
@@ -65,6 +71,8 @@ const MAX_SIGNATURE_BYTES = Math.min(
 );
 
 export type BuildSocialOfferInput = {
+  /** The source the ownership pass chose as the current media; its variants win the ranking. */
+  ownedResourceUrl?: string | null;
   scope: SocialSourceVerifyScope;
   candidates: DetectedMedia[];
   pageUrl: string;
@@ -387,17 +395,40 @@ async function probeBoundedSignature(
       requireStandaloneMp4: true,
     });
     const finalUrl = response.url || url;
+    // A faststart moov larger than the window hides mdat; prove what follows it from box headers.
+    let mp4BoxWalk: Mp4BoxWalkVerdict | null = null;
+    const walkFrom =
+      sniff.reason === 'mp4_structure_unproven' && response.status === 206 && total != null && bytes.length < total
+        ? nextTopLevelBoxOffset(bytes)
+        : null;
+    if (walkFrom != null) {
+      mp4BoxWalk = await walkMp4TopLevelBoxes({
+        startOffset: walkFrom,
+        totalBytes: total,
+        readHeader: (offset) => readBoxHeaderAt(finalUrl, offset, requestContext, controller.signal),
+      });
+      logSocialSource('source_mp4_box_walk', {
+        containerKind: mp4BoxWalk.state,
+        reason: mp4BoxWalk.state === 'MEDIA_DATA' ? mp4BoxWalk.boxType : mp4BoxWalk.reason,
+        sizeCategory: sizeCategory(total),
+      });
+    }
     const resolved = resolveVideoResource({
       url, finalUrl, bytes, totalBytes: total,
       mimeType: response.headers.get('Content-Type') ?? mimeType,
       contentDisposition: response.headers.get('Content-Disposition'),
       coversEntireResource: total != null && bytes.length >= total,
+      mp4BoxWalk,
     });
+    const walkDecided = mp4BoxWalk != null && mp4BoxWalk.state !== 'UNRESOLVED';
     return {
       ok: resolved.state === 'VERIFIED',
       kind: sniff.kind,
-      reason: sniff.reason ?? resolved.reason,
-      mp4Kind: sniff.mp4Kind ?? null,
+      reason: resolved.state === 'VERIFIED' ? null : walkDecided ? resolved.reason : sniff.reason ?? resolved.reason,
+      mp4Kind:
+        mp4BoxWalk?.state === 'MEDIA_DATA'
+          ? mp4BoxWalk.boxType === 'moof' ? 'FRAGMENTED_COMPLETE' : 'PROGRESSIVE_OR_COMPLETE'
+          : mp4BoxWalk?.state === 'NO_MEDIA_DATA' ? 'INIT_SEGMENT' : sniff.mp4Kind ?? null,
       provenUnsupported: resolved.state === 'PROVEN_UNSUPPORTED',
       finalUrl,
       mimeType: resolved.mimeType,
@@ -409,6 +440,35 @@ async function probeBoundedSignature(
     controller.abort();
     clearTimeout(timeout);
     signal?.removeEventListener('abort', onAbort);
+  }
+}
+
+/** Exactly MP4_BOX_HEADER_BYTES at `offset` via Range, or null when the server does not answer that range. */
+async function readBoxHeaderAt(
+  url: string,
+  offset: number,
+  requestContext: MediaRequestContext,
+  signal: AbortSignal,
+): Promise<Uint8Array | null> {
+  try {
+    const response = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+      signal,
+      headers: mergeDownloadHeaders(
+        { Range: `bytes=${offset}-${offset + MP4_BOX_HEADER_BYTES - 1}` },
+        requestContext,
+      ),
+    });
+    const start = /^bytes\s+(\d+)-\d+\/(?:\d+|\*)$/i.exec(response.headers.get('Content-Range') ?? '')?.[1];
+    if (response.status !== 206 || start == null || Number(start) !== offset) {
+      await response.body?.cancel().catch(() => undefined);
+      return null;
+    }
+    const { bytes } = await readBoundedResponseBody(response, MP4_BOX_HEADER_BYTES, signal);
+    return bytes;
+  } catch {
+    return null;
   }
 }
 
@@ -522,7 +582,17 @@ export async function buildVerifiedSocialMediaOffer(
 ): Promise<BuildSocialOfferResult> {
   const { scope } = input;
 
-  if (scope.ownershipConfidence === 'REJECTED') {
+  // Same rule as general pages: only current-content owners publish. WEAK is network media on the page with no
+  // player evidence (an adjacent reel's preload looks exactly like this); player evidence changes the ownership
+  // key and re-runs verification, so nothing is probed or offered before it.
+  if (scope.ownershipConfidence !== 'STRONG' && scope.ownershipConfidence !== 'MEDIUM') {
+    logSocialSource('candidate_verify_rejected', {
+      tabId: scope.tabId,
+      navigationEpoch: scope.navigationEpoch,
+      contextGeneration: scope.socialContextGeneration,
+      contentIdentity: scope.contentIdentity,
+      reason: 'WEAK_OWNERSHIP',
+    });
     return { ok: false, reason: 'WEAK_OWNERSHIP' };
   }
 
@@ -552,12 +622,7 @@ export async function buildVerifiedSocialMediaOffer(
     return true;
   });
 
-  // WEAK ownership: avoid expensive multi-candidate storms — verify at most one.
-  if (scope.ownershipConfidence === 'WEAK') {
-    candidates = candidates.slice(0, 1);
-  } else {
-    candidates = candidates.slice(0, 6);
-  }
+  candidates = candidates.slice(0, 6);
 
   const variants: VerifiedSocialMediaVariant[] = [];
   let lastReject: SocialSourceRejectionReason = 'NO_FRESH_SOURCE';
@@ -590,7 +655,7 @@ export async function buildVerifiedSocialMediaOffer(
       continue;
     }
 
-    const { joined, promise } = joinOrStartVerification(cacheKey, async () => {
+    const { joined, promise } = joinOrStartVerification(cacheKey, async (jobSignal) => {
       logSocialSource(joined ? 'candidate_verify_joined' : 'candidate_verify_started', {
         tabId: scope.tabId,
         navigationEpoch: scope.navigationEpoch,
@@ -614,14 +679,14 @@ export async function buildVerifiedSocialMediaOffer(
         mediaIdentity: scope.contentIdentity,
       });
 
-      if (input.signal?.aborted || !isScopeCurrent(scope)) {
+      if (jobSignal.aborted || !isScopeCurrent(scope)) {
         return null;
       }
 
       const result = await verifySocialSourceCandidate(media, {
         pageUrl: input.pageUrl,
         requestContext,
-        signal: input.signal,
+        signal: jobSignal,
       });
 
       if (!result.ok) {
@@ -665,7 +730,7 @@ export async function buildVerifiedSocialMediaOffer(
         quality: variant.qualityLabel,
       });
       return variant;
-    });
+    }, input.signal);
 
     if (joined) {
       logSocialSource('candidate_verify_joined', {
@@ -687,7 +752,7 @@ export async function buildVerifiedSocialMediaOffer(
   }
 
   const deduped = dedupeVariants(variants);
-  const preferred = selectPreferredVariant(deduped);
+  const preferred = selectPreferredVariant(deduped, input.ownedResourceUrl);
   const actionable = deduped.filter((v) => v.downloadable);
 
   if (!preferred || actionable.length === 0) {

@@ -9,6 +9,11 @@ export {
 } from './browser-engine.service';
 export { browserSyncService } from './browser-sync.service';
 export {
+  ensureIncomingLinkHandling,
+  resetIncomingLinksForTests,
+  urlFromSharedText,
+} from './incoming-link.service';
+export {
   historyRecordingService,
   isRecordableHistoryUrl,
   recordSuccessfulVisit,

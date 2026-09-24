@@ -77,6 +77,7 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
     filterSheetVisible,
     sortSheetVisible,
     deleteTargetId,
+    deleteMode,
     deleting,
     controlsDirty,
     onChangeSearch,
@@ -313,6 +314,7 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
 
       <DownloadDeleteDialog
         visible={Boolean(deleteTargetId)}
+        mode={deleteMode}
         loading={deleting}
         onConfirm={handleConfirmDelete}
         onCancel={cancelDelete}

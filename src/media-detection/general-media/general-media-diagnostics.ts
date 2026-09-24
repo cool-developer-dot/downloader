@@ -78,7 +78,37 @@ type GeneralDiagFields = {
   newIdentity?: string | null;
   didVideoIdentityChange?: boolean;
   stage?: string | null;
+  /** Navigation epoch the detection engine is on, when it differs from the observation's. */
+  engineNavigationEpoch?: number | null;
 };
+
+/**
+ * Android reports `WebResourceRequest.isForMainFrame` true only for the top-level document request;
+ * every subresource (of the top document or of any iframe) reports false. It never names the frame.
+ */
+export function requestFrameClass(
+  isForMainFrame: boolean | null | undefined,
+): 'main-document' | 'subresource' | 'unknown' {
+  if (isForMainFrame === true) {
+    return 'main-document';
+  }
+  return isForMainFrame === false ? 'subresource' : 'unknown';
+}
+
+/** Initiator relation from the request Referer origin — the only frame evidence a network request carries. */
+export function requestInitiatorClass(
+  referer: string | null | undefined,
+  pageUrl: string | null | undefined,
+): 'page-origin' | 'other-origin' | 'no-referer' | 'unknown' {
+  if (!referer) {
+    return 'no-referer';
+  }
+  try {
+    return new URL(referer).origin === new URL(pageUrl ?? '').origin ? 'page-origin' : 'other-origin';
+  } catch {
+    return 'unknown';
+  }
+}
 
 export function hashSafeId(value: string | null | undefined): string | null {
   if (!value) {
@@ -175,6 +205,9 @@ export function logGeneralMedia(
     }
     if (fields.stage) {
       payload.stage = fields.stage;
+    }
+    if (fields.engineNavigationEpoch != null) {
+      payload.engineNavigationEpoch = fields.engineNavigationEpoch;
     }
     if (fields.mainPageHostClass) {
       payload.mainPageHostClass = fields.mainPageHostClass;

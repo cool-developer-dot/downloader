@@ -4,6 +4,7 @@ import { useFocusEffect } from 'expo-router';
 import { downloadEngine } from '@/downloads/engine';
 import { DownloadEngineError } from '@/downloads/engine/errors';
 import { completedActionErrorMessageKey } from '@/downloads/completed-file/action-errors';
+import { isEngineOwned, refreshV2Downloads } from '@/downloads/v2';
 import { translate, type TranslationKey } from '@/localization';
 import {
   consumeSecondaryDestinationIntent,
@@ -156,6 +157,10 @@ export function useDownloadsScreen() {
         return;
       }
       void refresh();
+      // The v2 engine's own persisted records and library items (its rows are never in the v1 catalog).
+      void refreshV2Downloads().catch(() => {
+        // Live state events keep the rows current; a failed re-read is not fatal.
+      });
       // Lightweight local-file refresh for visible completed rows (Open/Share truth).
       const state = useDownloadsStore.getState();
       let probed = 0;
@@ -164,7 +169,7 @@ export function useDownloadsScreen() {
           break;
         }
         const item = state.itemsById[id];
-        if (item?.status !== 'COMPLETED') {
+        if (item?.status !== 'COMPLETED' || isEngineOwned(state, id)) {
           continue;
         }
         probed += 1;
@@ -255,6 +260,19 @@ export function useDownloadsScreen() {
     setDeleteTargetId(id);
     setActionError(null);
   }, []);
+
+  /**
+   * A finished v2 download is only unlinked from this list — the engine keeps the library item and the file —
+   * so the confirmation has to say that rather than promise a delete.
+   */
+  const deleteMode: 'delete' | 'remove' = useMemo(() => {
+    if (!deleteTargetId) {
+      return 'delete';
+    }
+    const state = useDownloadsStore.getState();
+    const row = state.engineRowsById[deleteTargetId];
+    return row && row.status === 'COMPLETED' ? 'remove' : 'delete';
+  }, [deleteTargetId]);
 
   const cancelDelete = useCallback(() => {
     if (deleting) {
@@ -401,6 +419,7 @@ export function useDownloadsScreen() {
     filterSheetVisible,
     sortSheetVisible,
     deleteTargetId,
+    deleteMode,
     deleting,
     controlsDirty,
     onChangeSearch,

@@ -9,6 +9,8 @@ import type { SocialPlatform } from '../social/types';
 export type SocialSourceTransport =
   | 'progressive'
   | 'hls'
+  /** A DASH manifest the native classifier resolved to one complete representation file. */
+  | 'dash'
   | 'adaptive_video_only'
   | 'audio_only'
   | 'unknown';

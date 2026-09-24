@@ -11,6 +11,6 @@ export function resolveFallbackRoute(): RoutePath {
     return routePaths.splash;
   }
 
-  // Cold-start continuation — never skip cinematic splash via persisted flags.
-  return resolvePostSplashRoute();
+  // Cold-start continuation: a returning user goes to Browser, a first launch to the intro.
+  return resolvePostSplashRoute({ onboardingComplete: appState.onboardingComplete });
 }

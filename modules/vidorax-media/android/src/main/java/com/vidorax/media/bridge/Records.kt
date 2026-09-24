@@ -44,13 +44,14 @@ data class ProbeRequestRecord(
   @Field val kind: String? = null,
   @Field val manifestText: String? = null,
   @Field val request: RequestContextRecord = RequestContextRecord(),
+  @Field val variant: VariantChoiceRecord? = null,
 ) : Record {
   fun toModel(): ProbeRequest {
     val sourceKind = kind?.let { parseWire<SourceKind>(it, "kind") }
     if (manifestText != null && sourceKind != null && sourceKind != SourceKind.DASH) {
       invalid("manifestText is only valid for DASH")
     }
-    return ProbeRequest(httpUrl(url, "url"), sourceKind, manifestText, request.toModel())
+    return ProbeRequest(httpUrl(url, "url"), sourceKind, manifestText, request.toModel(), variant?.toModel())
   }
 }
 

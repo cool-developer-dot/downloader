@@ -5,9 +5,16 @@ import { createStore } from '@/store/shared/create-store';
 import { createPersistStorage } from '@/store/shared/persist-storage';
 
 import { createAppActions } from './actions';
+import { hydrationGuardedStorage } from './persist-guard';
 import { unwrapPersistedAppState } from './persist';
 import { initialAppState } from './state';
 import type { AppState, AppStore } from './types';
+
+type PersistedAppFields = Pick<AppState, 'firstLaunch' | 'onboardingComplete'>;
+
+const guarded = hydrationGuardedStorage<PersistedAppFields>(
+  createPersistStorage<PersistedAppFields>(),
+);
 
 export const useAppStore = createStore<AppStore>()(
   persist(
@@ -17,8 +24,11 @@ export const useAppStore = createStore<AppStore>()(
     }),
     {
       name: storageKeys.app,
-      storage: createPersistStorage(),
+      // Zustand persists the slice on every set, so an early `setLoading` would write the defaults over the
+      // user's real `onboardingComplete` before it has been read back. Writes wait for hydration.
+      storage: guarded.storage,
       skipHydration: true,
+      onRehydrateStorage: () => guarded.onHydrated,
       partialize: (state): Pick<AppState, 'firstLaunch' | 'onboardingComplete'> => ({
         firstLaunch: state.firstLaunch,
         onboardingComplete: state.onboardingComplete,

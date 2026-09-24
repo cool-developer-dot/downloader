@@ -73,6 +73,7 @@ export function createNoopTabController(tabId: string): TabWebViewController {
   const nativeCanGoBackRef = { current: false } as MutableRefObject<boolean>;
   const nativeCanGoForwardRef = { current: false } as MutableRefObject<boolean>;
   const suppressNextAbortErrorRef = { current: false } as MutableRefObject<boolean>;
+  const pendingNativeBackRef = { current: false } as MutableRefObject<boolean>;
   const webViewInstanceGenerationRef = { current: 1 } as MutableRefObject<number>;
 
   return {
@@ -86,6 +87,7 @@ export function createNoopTabController(tabId: string): TabWebViewController {
     nativeCanGoBackRef,
     nativeCanGoForwardRef,
     suppressNextAbortErrorRef,
+    pendingNativeBackRef,
     webViewInstanceGenerationRef,
     publishChromeHistoryFlags: () => undefined,
     goBack: () => undefined,

@@ -5,6 +5,14 @@
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
   <uses-permission android:name="android.permission.RUN_USER_INITIATED_JOBS" />
+  <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+  <!-- Reading the device's own videos so they can be played in VidoraX. Never written to. -->
+  <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
+  <!-- Android 14's "Select photos and videos": VidoraX lists exactly what the user picked, nothing more. -->
+  <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+  <uses-permission
+    android:name="android.permission.READ_EXTERNAL_STORAGE"
+    android:maxSdkVersion="32" />
 
   <!-- Android 11+ package visibility for "Open with": FileActions checks that some app can view the file. -->
   <queries>
@@ -19,8 +27,41 @@
   </queries>
 
   <application>
-    <!-- Open with / share for library files. The job service, foreground service and notification receiver are
-         declared by the download engine. -->
+    <!-- Keeps user-started transfers running while VidoraX is backgrounded. Android 14+ uses the
+         user-initiated data transfer job; older versions use the dataSync foreground service. Neither
+         performs a transfer: both only keep the download engine's process alive. -->
+    <service
+      android:name="com.vidorax.media.runner.DownloadForegroundService"
+      android:exported="false"
+      android:foregroundServiceType="dataSync"
+      android:stopWithTask="false" />
+    <service
+      android:name="com.vidorax.media.runner.DownloadTransferJobService"
+      android:exported="false"
+      android:permission="android.permission.BIND_JOB_SERVICE" />
+    <service
+      android:name="com.vidorax.media.runner.DownloadBootJobService"
+      android:exported="false"
+      android:permission="android.permission.BIND_JOB_SERVICE" />
+
+    <!-- Pause / Resume / Retry / Cancel from the notification; internal only. -->
+    <receiver
+      android:name="com.vidorax.media.runner.DownloadActionReceiver"
+      android:exported="false" />
+
+    <!-- A reboot kills every download job; this picks up what was still running (never what was paused). -->
+    <receiver
+      android:name="com.vidorax.media.runner.DownloadBootReceiver"
+      android:exported="true"
+      android:enabled="true">
+      <intent-filter>
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+        <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+        <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
+
+    <!-- Open with / share for library files. -->
     <provider
       android:name="com.vidorax.media.files.VidoraFileProvider"
       android:authorities="${applicationId}.vidorax.files"

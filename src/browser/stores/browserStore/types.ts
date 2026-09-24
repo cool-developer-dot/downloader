@@ -29,6 +29,11 @@ export interface BrowserActions {
   closeTab: (tabId: string) => CloseTabResult;
   switchTab: (tabId: string) => SwitchTabResult;
   updateTab: (tabId: string, patch: Partial<BrowserTab>) => void;
+  /**
+   * Clamp the WebView mount pool (1 = active tab only). Used when the Browser
+   * route is not visible so parked WebViews stop consuming the JS/UI thread.
+   */
+  setMountBudget: (maxMounted: number) => void;
   /** Sync active-tab chrome mirrors after external tab mutation. */
   syncChromeFromActiveTab: () => void;
 }

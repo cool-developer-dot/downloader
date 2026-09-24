@@ -406,6 +406,8 @@ export type LocalMediaActionOptions = {
   workerState?: string | null;
   /** Engine-owned resume capability — omit when unknown (keeps Pause). */
   supportsResume?: boolean | null;
+  /** A FAILED row's error code: protected/unsupported sources get no Retry. */
+  errorCode?: string | null;
 };
 
 /** Canonical Open/Share gate — Card and Details must share this. */
@@ -430,6 +432,7 @@ export function resolveTransferRuntime(
     executionState: localMedia?.executionState ?? null,
     workerState: localMedia?.workerState ?? null,
     sourceSupportsResume: localMedia?.supportsResume ?? null,
+    errorCode: localMedia?.errorCode ?? null,
     hasActiveTransfer:
       localMedia?.localState === 'transferring' ||
       localMedia?.executionState === 'DOWNLOADING'

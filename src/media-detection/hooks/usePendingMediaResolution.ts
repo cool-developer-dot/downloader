@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
 import { pendingNavigationService } from '@/browser/services';
 import { useBrowserStore } from '@/browser/stores';
@@ -39,8 +39,11 @@ export function usePendingMediaResolution(
 ): void {
   const currentUrl = useBrowserStore((s) => s.currentUrl);
   const isLoading = useBrowserStore((s) => s.isLoading);
+  // Timers and store callbacks call the latest handlers; the ref follows them after each commit.
   const handlersRef = useRef(handlers);
-  handlersRef.current = handlers;
+  useLayoutEffect(() => {
+    handlersRef.current = handlers;
+  }, [handlers]);
 
   const completingRef = useRef(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);

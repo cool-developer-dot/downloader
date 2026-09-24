@@ -1,0 +1,5 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- Test-only: the on-device MockWebServer used by ProgressiveE2EAndroidTest serves plain HTTP on 127.0.0.1.
+       This flag applies to the instrumentation test APK, never the production app. -->
+  <application android:usesCleartextTraffic="true" />
+</manifest>

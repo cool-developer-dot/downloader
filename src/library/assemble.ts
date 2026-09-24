@@ -262,13 +262,16 @@ export function assembleCanonicalItems(input: {
       input.transfers[id] ?? null,
       local,
     );
+    // A v2 video carries its own favorite; the page-URL favorite would also mark its siblings from that page.
     const favorite =
-      (input.favoriteMediaIds?.has(id) ?? false) ||
-      isFavoriteSource(
-        download?.sourceUrl ?? local?.sourceUrl,
-        input.favoriteKeys,
-      ) ||
-      remote?.favorite === true;
+      typeof download?.favorite === 'boolean'
+        ? download.favorite
+        : (input.favoriteMediaIds?.has(id) ?? false) ||
+          isFavoriteSource(
+            download?.sourceUrl ?? local?.sourceUrl,
+            input.favoriteKeys,
+          ) ||
+          remote?.favorite === true;
     sources.push(
       mergeSource({
         downloadId: id,

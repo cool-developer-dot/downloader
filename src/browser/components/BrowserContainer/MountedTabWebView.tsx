@@ -20,6 +20,14 @@ export type MountedTabWebViewProps = {
   testID?: string;
 };
 
+/**
+ * Stable no-op for parked tabs. An inline `() => undefined` gave the chrome
+ * bridge (and therefore BrowserWebView's props) a new identity on every parent
+ * render, defeating the memo and re-running the WebView's effects on every
+ * progress tick.
+ */
+const noopLongPress = (): void => undefined;
+
 const MountedTabWebViewBody = memo(function MountedTabWebViewBody({
   tabId,
   isActive,
@@ -45,7 +53,7 @@ const MountedTabWebViewBody = memo(function MountedTabWebViewBody({
   }, [isActive, reload, stopLoading]);
 
   const chromeBridge = useBrowserChromeBridge({
-    onLinkLongPress: isActive ? longPress.present : () => undefined,
+    onLinkLongPress: isActive ? longPress.present : noopLongPress,
     onPullToRefresh,
     tabId,
     isActive,

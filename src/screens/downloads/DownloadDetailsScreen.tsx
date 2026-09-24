@@ -32,6 +32,7 @@ import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
 import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 import { renameMediaFileOnDevice } from '@/downloads/engine';
+import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads/v2';
 
 import { DownloadDeleteDialog } from './components/DownloadDeleteDialog';
 import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
@@ -771,7 +772,13 @@ export const DownloadDetailsScreen = memo(function DownloadDetailsScreen() {
   const startRenameFile = useCallback(() => {
     if (!downloadId || !item) return;
     setRenameFileError(null);
-    setRenameFileDraft(item.fileName?.trim() || item.title?.trim() || '');
+    // A v2 library item is renamed by its title (its private file keeps a stable name).
+    const engineOwned = isEngineOwned(useDownloadsStore.getState(), downloadId);
+    setRenameFileDraft(
+      engineOwned
+        ? item.title?.trim() || ''
+        : item.fileName?.trim() || item.title?.trim() || '',
+    );
     setRenameFileVisible(true);
   }, [downloadId, item]);
 
@@ -793,11 +800,16 @@ export const DownloadDetailsScreen = memo(function DownloadDetailsScreen() {
     setRenameFileError(null);
     try {
       const nextName = renameFileDraft.trim();
-      await renameMediaFileOnDevice(downloadId, nextName);
-      useDownloadsStore.getState().patchItem(downloadId, {
-        fileName: nextName,
-        title: nextName,
-      });
+      if (isEngineOwned(useDownloadsStore.getState(), downloadId)) {
+        // The engine's library item: its change event updates this screen, Downloads and Player alike.
+        await renameEngineLibraryItem(getV2Engine(), downloadId, nextName);
+      } else {
+        await renameMediaFileOnDevice(downloadId, nextName);
+        useDownloadsStore.getState().patchItem(downloadId, {
+          fileName: nextName,
+          title: nextName,
+        });
+      }
 
       setRenameFileVisible(false);
       setRenameFileDraft('');

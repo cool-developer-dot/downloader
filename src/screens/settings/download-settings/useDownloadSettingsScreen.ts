@@ -98,36 +98,40 @@ export function useDownloadSettingsScreen(): UseDownloadSettingsScreenResult {
     [wifiOnly, autoResume, maxConcurrentDownloads, notifications],
   );
 
-  const refreshNotificationPermission = useCallback(async () => {
-    try {
-      const state = await getDownloadNotificationService().refreshPermissionState();
-      if (mountedRef.current) {
-        setNotificationEffective(state);
-      }
-    } catch {
-      if (!mountedRef.current) {
-        return;
-      }
-      setNotificationEffective((previous) => {
-        if (previous) {
-          return previous;
-        }
-        return fallbackNotificationState(
-          useSettingsStore.getState().notifications,
-        );
-      });
-    }
-  }, []);
-
+  // The OS permission can change in system settings: read it on open and on every return to the app.
   useEffect(() => {
     mountedRef.current = true;
-    void refreshNotificationPermission();
+    const refreshNotificationPermission = () => {
+      void Promise.resolve()
+        .then(() => getDownloadNotificationService().refreshPermissionState())
+        .then(
+          (state) => {
+            if (mountedRef.current) {
+              setNotificationEffective(state);
+            }
+          },
+          () => {
+            if (!mountedRef.current) {
+              return;
+            }
+            setNotificationEffective((previous) => {
+              if (previous) {
+                return previous;
+              }
+              return fallbackNotificationState(
+                useSettingsStore.getState().notifications,
+              );
+            });
+          },
+        );
+    };
+    refreshNotificationPermission();
 
     const subscription = AppState.addEventListener(
       'change',
       (status: AppStateStatus) => {
         if (status === 'active') {
-          void refreshNotificationPermission();
+          refreshNotificationPermission();
         }
       },
     );
@@ -139,7 +143,7 @@ export function useDownloadSettingsScreen(): UseDownloadSettingsScreenResult {
         clearTimeout(feedbackTimerRef.current);
       }
     };
-  }, [refreshNotificationPermission]);
+  }, []);
 
   const showFeedback = useCallback((next: DownloadSettingsFeedback) => {
     if (!mountedRef.current) {

@@ -24,7 +24,6 @@ private const val ON_SHARED_TEXT = "onSharedText"
 
 /** Contract: modules/vidorax-web/src/VidoraWeb.types.ts. */
 class VidoraWebModule : Module() {
-  private val documentStartScripts = DocumentStartScripts()
   private val networkObserver = NetworkMediaObserver { observations ->
     sendEvent(ON_NETWORK_MEDIA, mapOf("observations" to observations))
   }
@@ -40,7 +39,6 @@ class VidoraWebModule : Module() {
 
   private val webViewHooks = object : RNCWebViewHooks.Listener {
     override fun onWebViewCreated(webView: RNCWebView) {
-      documentStartScripts.attach(webView)
       ServiceWorkerRequests.install()
     }
 
@@ -95,14 +93,6 @@ class VidoraWebModule : Module() {
     OnStartObserving(ON_SHARED_TEXT) { hasSharedTextListeners = true }
     OnStopObserving(ON_SHARED_TEXT) { hasSharedTextListeners = false }
 
-    Function("isDocumentStartScriptSupported") {
-      documentStartScripts.isSupported
-    }
-
-    AsyncFunction("setDetectorScript") { script: String ->
-      documentStartScripts.setScript(script)
-    }.runOnQueue(Queues.MAIN)
-
     Function("setNetworkObservationEnabled") { enabled: Boolean ->
       networkObserver.setEnabled(enabled)
     }
@@ -122,6 +112,18 @@ class VidoraWebModule : Module() {
     Function("consumeSharedText") {
       unclaimedSharedText.getAndSet(null) ?: takeSharedText(appContext.currentActivity?.intent)
     }
+
+    Function("isDefaultBrowser") {
+      DefaultBrowser.isHeld(context)
+    }
+
+    Function("canRequestDefaultBrowser") {
+      DefaultBrowser.canRequest(context)
+    }
+
+    AsyncFunction("requestDefaultBrowser") {
+      DefaultBrowser.request(appContext.currentActivity, context)
+    }.runOnQueue(Queues.MAIN)
 
     OnNewIntent { intent ->
       val text = takeSharedText(intent) ?: return@OnNewIntent

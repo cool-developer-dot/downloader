@@ -11,8 +11,9 @@ import {
   fingerprintDiagHash,
   logBrowserCta,
 } from './browser-cta-diagnostics';
-import { shouldInvalidateCurrentMedia } from './cta-persistence';
+import { isSameContentIdentity, shouldInvalidateCurrentMedia } from './cta-persistence';
 import { buildBrowserMediaFingerprint } from './media-fingerprint';
+import { isSameDocumentUrl } from '@/media-detection/utils';
 import { stripRequestContextSecrets } from '@/media-detection/session-media/strip-secrets';
 import type { MediaRequestContext } from '@/downloads/types/request-context';
 
@@ -52,18 +53,27 @@ type TabMediaSlice = {
   state: BrowserMediaActionState;
   verifiedCandidateId: string | null;
   verificationAbort: AbortController | null;
+  /** Content identity the in-flight verification belongs to (null when unscoped or idle). */
+  verificationContentIdentity: string | null;
   /**
    * Consumed media fingerprints for this tab's current navigation window.
    * Cleared on navigation (bounded). Identity is media fingerprint
    * (platform|pageKey|mediaKey) — not raw signed URL.
    */
   consumedFingerprints: Set<string>;
+  /** Which consumption each download recorded, so a download that fails for want of a fresh link can give it back. */
+  consumedDownloads: Map<string, { fingerprint: string; contentIdentity: string | null }>;
   handoffGeneration: number;
   /** In-flight handoffs keyed by generation — supports nav during enqueue. */
   pendingHandoffs: Map<number, ActiveHandoff>;
   selectionGeneration: number;
   /** Frozen identities at quality-sheet lock — stale SPA/nav must no-op confirm. */
   qualityFreeze: import('./browser-media-action.types').BrowserMediaQualityFreeze | null;
+  /**
+   * The page this tab's offer belonged to when the tab was last brought to the front. The navigation reported right
+   * after a tab switch names the page the tab already shows — not a navigation inside the tab.
+   */
+  activationPageUrl: string | null;
 };
 
 const slices = new Map<string, TabMediaSlice>();
@@ -79,11 +89,14 @@ function emptySlice(): TabMediaSlice {
     state: { ...initialBrowserMediaActionState },
     verifiedCandidateId: null,
     verificationAbort: null,
+    verificationContentIdentity: null,
     consumedFingerprints: new Set(),
+    consumedDownloads: new Map(),
     handoffGeneration: 0,
     pendingHandoffs: new Map(),
     selectionGeneration: 0,
     qualityFreeze: null,
+    activationPageUrl: null,
   };
 }
 
@@ -169,6 +182,24 @@ function addConsumed(
   }
 }
 
+function rememberConsumedDownload(
+  slice: TabMediaSlice,
+  downloadId: string | null | undefined,
+  fingerprint: string,
+  contentIdentity: string | null | undefined,
+): void {
+  if (!downloadId) {
+    return;
+  }
+  slice.consumedDownloads.set(downloadId, { fingerprint, contentIdentity: contentIdentity ?? null });
+  if (slice.consumedDownloads.size > MAX_CONSUMED_PER_TAB) {
+    const oldest = slice.consumedDownloads.keys().next().value;
+    if (oldest !== undefined) {
+      slice.consumedDownloads.delete(oldest);
+    }
+  }
+}
+
 function isConsumedInSlice(
   slice: TabMediaSlice,
   tabId: string,
@@ -242,8 +273,12 @@ export function buildTabScopedConsumptionKey(
  */
 export const browserMediaActionService = {
   setActiveTab(tabId: string): void {
+    const switched = activeTabId !== tabId;
     activeTabId = tabId;
-    ensureSlice(tabId);
+    const slice = ensureSlice(tabId);
+    if (switched) {
+      slice.activationPageUrl = slice.state.pageUrl;
+    }
     emit();
   },
 
@@ -355,6 +390,13 @@ export const browserMediaActionService = {
   resetForNavigation(pageUrl: string | null): void {
     const slice = requireActiveSlice();
     const tabKey = activeTabId ?? '__default__';
+    const activationPageUrl = slice.activationPageUrl;
+    slice.activationPageUrl = null;
+    if (isSameDocumentUrl(activationPageUrl, pageUrl)) {
+      // Back on a tab: its page, its offer and what it already downloaded are all still there.
+      logBrowserCta('navigation_invalidated', { tabId: tabKey, pageUrl, result: 'tab_switch_kept' });
+      return;
+    }
     slice.verificationAbort?.abort();
     slice.verificationAbort = null;
     slice.verifiedCandidateId = null;
@@ -362,6 +404,7 @@ export const browserMediaActionService = {
     // Bound memory: prune consumed set on navigation. In-flight handoffs may still
     // commit their fingerprint later without mutating a different media offer.
     slice.consumedFingerprints.clear();
+    slice.consumedDownloads.clear();
     const pending = firstPending(slice);
     slice.state = {
       ...initialBrowserMediaActionState,
@@ -371,7 +414,7 @@ export const browserMediaActionService = {
     };
     logBrowserCta('navigation_invalidated', {
       tabId: tabKey,
-      navigationEpoch: pageUrl,
+      pageUrl,
       handoffGeneration: pending?.generation ?? null,
       fingerprintHash: fingerprintDiagHash(pending?.fingerprint),
     });
@@ -421,6 +464,15 @@ export const browserMediaActionService = {
     ) {
       return false;
     }
+    // First verification for this very content still running (no offer yet): candidate enrichment or an
+    // ownership upgrade must not abort it — only verification of different content is stale.
+    if (
+      !prior &&
+      slice.verificationAbort &&
+      isSameContentIdentity(slice.verificationContentIdentity, nextContentIdentity)
+    ) {
+      return false;
+    }
     slice.verificationAbort?.abort();
     slice.verificationAbort = null;
     slice.verifiedCandidateId = null;
@@ -441,6 +493,47 @@ export const browserMediaActionService = {
       tabId: tabKey,
       result: 'social_content_changed',
       fingerprintHash: fingerprintDiagHash(priorFp ?? prior),
+    });
+    emit();
+    return true;
+  },
+
+  /**
+   * Encrypted playback was proven for the player on screen. Any offer standing for it must go away —
+   * a protected stream is never downloadable, whatever was published before the evidence arrived.
+   * A handoff already in flight is left alone; the enqueue path has its own staleness checks.
+   */
+  invalidateProtectedOffer(): boolean {
+    const slice = requireActiveSlice();
+    if (slice.state.selectionLocked || slice.state.status === 'preparing') {
+      return false;
+    }
+    if (
+      slice.state.status === 'idle' &&
+      !slice.verifiedCandidateId &&
+      !slice.state.mediaFingerprint
+    ) {
+      return false;
+    }
+    slice.verificationAbort?.abort();
+    slice.verificationAbort = null;
+    slice.verifiedCandidateId = null;
+    slice.qualityFreeze = null;
+    const priorFp = slice.state.mediaFingerprint;
+    slice.state = {
+      ...slice.state,
+      status: 'idle',
+      ...clearOfferFields(),
+      contentIdentity: null,
+      variantIdentity: null,
+      errorMessage: null,
+      selectionLocked: false,
+      dismissed: false,
+    };
+    logBrowserCta('navigation_invalidated', {
+      tabId: activeTabId ?? '__default__',
+      result: 'protected_playback',
+      fingerprintHash: fingerprintDiagHash(priorFp),
     });
     emit();
     return true;
@@ -501,7 +594,7 @@ export const browserMediaActionService = {
         tabId: tabKey,
         state: 'CONSUMED',
         fingerprintHash: fingerprintDiagHash(fingerprint),
-        navigationEpoch: handoff.pageUrl,
+        pageUrl: handoff.pageUrl,
       });
       if (slice.state.status !== 'consumed') {
         patchActive({
@@ -552,13 +645,13 @@ export const browserMediaActionService = {
 
     logBrowserCta('available', {
       tabId: tabKey,
-      navigationEpoch: handoff.pageUrl,
+      pageUrl: handoff.pageUrl,
       fingerprintHash: fingerprintDiagHash(fingerprint),
       state: 'AVAILABLE',
     });
     logBrowserCta('media_available', {
       tabId: tabKey,
-      navigationEpoch: handoff.pageUrl,
+      pageUrl: handoff.pageUrl,
       fingerprintHash: fingerprintDiagHash(fingerprint),
       state: 'AVAILABLE',
     });
@@ -649,7 +742,7 @@ export const browserMediaActionService = {
 
     logBrowserCta('handoff_claimed', {
       tabId,
-      navigationEpoch: state.pageUrl,
+      pageUrl: state.pageUrl,
       fingerprintHash: fingerprintDiagHash(fingerprint),
       handoffGeneration: generation,
       state: 'HANDOFF_IN_PROGRESS',
@@ -798,6 +891,41 @@ export const browserMediaActionService = {
   },
 
   /**
+   * A download this browser started failed because its link must be fetched fresh from the page (expired, refused,
+   * gone). Its video is no longer "already in your downloads": the page may offer it again with the link it has now,
+   * which is exactly what the failure message tells the user to do. Returns whether anything was released.
+   */
+  releaseConsumedDownload(downloadId: string): boolean {
+    let released = false;
+    for (const [tabId, slice] of slices) {
+      const consumed = slice.consumedDownloads.get(downloadId);
+      if (!consumed) {
+        continue;
+      }
+      slice.consumedDownloads.delete(downloadId);
+      slice.consumedFingerprints.delete(consumed.fingerprint);
+      slice.consumedFingerprints.delete(buildTabScopedConsumptionKey(tabId, consumed.fingerprint));
+      if (consumed.contentIdentity) {
+        slice.consumedFingerprints.delete(buildContentConsumptionKey(tabId, consumed.contentIdentity));
+      }
+      if (slice.state.status === 'consumed' && slice.state.downloadId === downloadId) {
+        slice.verifiedCandidateId = null;
+        slice.state = { ...slice.state, status: 'idle', downloadId: null };
+      }
+      logBrowserCta('consumed_released', {
+        tabId,
+        fingerprintHash: fingerprintDiagHash(consumed.fingerprint),
+        result: 'source_needs_refresh',
+      });
+      released = true;
+      if (activeTabId === tabId) {
+        emit();
+      }
+    }
+    return released;
+  },
+
+  /**
    * Phase 1 accepted the job — CONSUMED for this tab/page/media identity.
    * Only matching handoff generation may commit (stale async ignored).
    */
@@ -825,6 +953,7 @@ export const browserMediaActionService = {
       if (slice.state.selectionLocked && slice.state.mediaFingerprint === fingerprint) {
         const contentIdentity = slice.state.contentIdentity;
         addConsumed(slice, fingerprint, tabId, contentIdentity);
+        rememberConsumedDownload(slice, downloadId, fingerprint, contentIdentity);
         slice.verifiedCandidateId = null;
         slice.verificationAbort?.abort();
         slice.verificationAbort = null;
@@ -871,6 +1000,7 @@ export const browserMediaActionService = {
     slice.pendingHandoffs.delete(handoffGeneration);
     const contentIdentity = slice.state.contentIdentity;
     addConsumed(slice, fingerprint, tabId, contentIdentity);
+    rememberConsumedDownload(slice, downloadId, fingerprint, contentIdentity);
     slice.verifiedCandidateId = null;
     slice.verificationAbort?.abort();
     slice.verificationAbort = null;
@@ -1065,10 +1195,11 @@ export const browserMediaActionService = {
     });
   },
 
-  beginVerification(): AbortSignal {
+  beginVerification(contentIdentity: string | null = null): AbortSignal {
     const slice = requireActiveSlice();
     slice.verificationAbort?.abort();
     slice.verificationAbort = new AbortController();
+    slice.verificationContentIdentity = contentIdentity;
     return slice.verificationAbort.signal;
   },
 
@@ -1076,6 +1207,7 @@ export const browserMediaActionService = {
     const slice = requireActiveSlice();
     slice.verificationAbort?.abort();
     slice.verificationAbort = null;
+    slice.verificationContentIdentity = null;
   },
 
   handoffVerified(handoff: BrowserMediaVerifiedHandoff): void {

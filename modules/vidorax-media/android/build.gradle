@@ -11,6 +11,8 @@ android {
   defaultConfig {
     versionCode 1
     versionName '1.0.0'
+    // On-device instrumented E2E of the real engine (src/androidTest); JVM unit tests are unaffected.
+    testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
 }
 
@@ -36,4 +38,9 @@ dependencies {
   testImplementation "org.robolectric:robolectric:4.16.1"
   // android.jar only ships throwing org.json stubs; JVM tests need the real implementation.
   testImplementation "org.json:json:20250517"
+
+  // Instrumented on-device E2E of the real download engine against an on-device MockWebServer.
+  androidTestImplementation "androidx.test.ext:junit:1.2.1"
+  androidTestImplementation "androidx.test:runner:1.6.2"
+  androidTestImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
 }

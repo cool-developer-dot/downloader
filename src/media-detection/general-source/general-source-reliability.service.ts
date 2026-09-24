@@ -6,8 +6,12 @@
  * Does NOT reopen ownership selection.
  */
 
-import type { MediaAnalysisResult } from '@/api/types';
+import type { ProbeFailure, ProbeResult } from '@modules/vidorax-media/src/VidoraMedia.types';
+
+import type { MediaAnalysisContainer, MediaAnalysisResult } from '@/api/types';
 import type { MediaRequestContext } from '@/downloads/types/request-context';
+import { getV2Engine } from '@/downloads/v2/engine-port';
+import { toV2RequestContext } from '@/downloads/v2/enqueue-request';
 import {
   applyPrimarySummary,
   createVariant,
@@ -22,11 +26,7 @@ import { fetchManifestResource } from '../services/manifest.service';
 import { parseHlsManifest } from '../parsers/hls.parser';
 import { parseHlsPlaylist } from '@/downloads/engine/hls/playlist';
 import { DownloadEngineError } from '@/downloads/engine/errors';
-import {
-  isFragmentedDashManifest,
-  parseDashManifest,
-  selectDownloadableStandaloneDash,
-} from '../parsers/dash.parser';
+import { isDashMimeType, parseDashManifest } from '../parsers/dash.parser';
 import type { DetectedMedia } from '../types';
 import { generalPageMediaContextStore } from '../general-media';
 import { isInitOrFragmentMediaPath } from '../general-media/general-network-resource';
@@ -87,6 +87,11 @@ export type BuildGeneralOfferInput = {
   pageUrl: string;
   signal?: AbortSignal;
   activeCandidateIds?: string[];
+  /**
+   * The source the ownership pass chose as the current main video. Variants of that video win the
+   * preferred-variant ranking, so an ad or a second player on the page can never be offered instead.
+   */
+  ownedResourceUrl?: string | null;
 };
 
 export type BuildGeneralOfferResult =
@@ -304,12 +309,189 @@ async function fetchBoundedHlsManifest(
   };
 }
 
+/** The native classifier's DASH verdict in this layer's terms: protected, live, unsupported, transient or stale. */
+export function dashRejectionFor(reason: ProbeFailure): GeneralSourceRejectionReason {
+  switch (reason) {
+    case 'DRM_PROTECTED':
+      return 'DRM_UNSUPPORTED';
+    case 'LIVE_UNSUPPORTED':
+      return 'LIVE_UNSUPPORTED';
+    case 'NETWORK':
+    case 'HTTP_ERROR':
+      return 'PROBE_FAILED';
+    case 'HTTP_403':
+      return 'AUTH_REQUIRED';
+    case 'HTTP_404':
+      return 'EXPIRED_SOURCE';
+    case 'UNSUPPORTED_FORMAT':
+    case 'NOT_MEDIA':
+    case 'POLICY_BLOCKED':
+    default:
+      return 'DASH_UNSUPPORTED';
+  }
+}
+
 /**
- * Some MPD files are just a pack of complete MP4/WebM BaseURLs (no
- * SegmentTemplate). Treat those as progressive files. Fragmented DASH
- * remains DASH_UNSUPPORTED — no mux path.
+ * The native classifier's refusal of a single file in this layer's terms, or null when the answer is about the
+ * moment (network, server error, an expired or session-bound link): the engine retries and renews those itself.
  */
-async function tryStandaloneDashAsProgressive(
+export function progressiveRefusalFor(reason: ProbeFailure): GeneralSourceRejectionReason | null {
+  switch (reason) {
+    case 'DRM_PROTECTED':
+      return 'DRM_UNSUPPORTED';
+    case 'LIVE_UNSUPPORTED':
+      return 'LIVE_UNSUPPORTED';
+    case 'UNSUPPORTED_FORMAT':
+      return 'UNSUPPORTED_FORMAT';
+    case 'NOT_MEDIA':
+      return 'NOT_MEDIA';
+    case 'POLICY_BLOCKED':
+      return 'UNSUPPORTED_TRANSPORT';
+    default:
+      return null;
+  }
+}
+
+/** `claimedFiles`: a DASH manifest's representation files (see {@link dashRepresentationFiles}). */
+type CandidateVerification =
+  | { ok: true; variants: VerifiedGeneralMediaVariant[]; claimedFiles?: string[] }
+  | { ok: false; reason: GeneralSourceRejectionReason; claimedFiles?: string[] };
+
+function isDashSource(media: DetectedMedia): boolean {
+  return media.streamType === 'DASH' || media.container === 'dash' || isDashMimeType(media.mimeType);
+}
+
+/** A file's identity whatever query it is requested with (a signature, a byte range): scheme://host/path. */
+function mediaFileKey(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.protocol}//${parsed.host.toLowerCase()}${parsed.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+const MAX_CLAIMED_FILES = 64;
+
+/**
+ * The files a DASH manifest names as whole-file representations. A page's player fetches them directly, so they are
+ * also observed as ordinary files — but each belongs to this manifest's stream and shares its verdict: the qualities
+ * of a downloadable manifest already offer them, and the pieces of a refused one (the audio or the video half of a
+ * split stream) are not videos of their own. Read with the detection parser from one bounded fetch; empty when the
+ * manifest cannot be read.
+ */
+async function dashRepresentationFiles(
+  manifestUrl: string,
+  input: { pageUrl: string; requestContext: MediaRequestContext; signal?: AbortSignal },
+): Promise<string[]> {
+  const fetched = await fetchManifestResource(manifestUrl, input.signal, {
+    accept: 'application/dash+xml, application/xml, text/xml, */*',
+    referer: input.pageUrl,
+    requestContext: input.requestContext,
+  });
+  if (!fetched.ok) {
+    return [];
+  }
+  const files = new Set<string>();
+  for (const representation of parseDashManifest(fetched.text, fetched.finalUrl)?.representations ?? []) {
+    const key = representation.baseUrl ? mediaFileKey(representation.baseUrl) : null;
+    if (key) {
+      files.add(key);
+    }
+    if (files.size >= MAX_CLAIMED_FILES) {
+      break;
+    }
+  }
+  return [...files];
+}
+
+/** A classified manifest's files, and its refusal reason — null when the manifest itself is offered. */
+type ManifestFiles = { reason: GeneralSourceRejectionReason | null; files: string[] };
+
+const MAX_CLASSIFIED_MANIFESTS = 32;
+
+/**
+ * Per classified DASH candidate (its verification cache key). Shared across offer builds: a build that joins an
+ * in-flight verification, or reuses a cached one, never runs the classification itself.
+ */
+const classifiedManifests = new Map<string, ManifestFiles>();
+
+function rememberManifestFiles(cacheKey: string, manifest: ManifestFiles): void {
+  classifiedManifests.delete(cacheKey);
+  classifiedManifests.set(cacheKey, manifest);
+  while (classifiedManifests.size > MAX_CLASSIFIED_MANIFESTS) {
+    const oldest = classifiedManifests.keys().next().value;
+    if (oldest === undefined) {
+      break;
+    }
+    classifiedManifests.delete(oldest);
+  }
+}
+
+/**
+ * A native classification that has not answered after this long is no verdict. The engine's own timeouts are sized
+ * for downloads (20 s connect, 30 s read per request, several requests for a manifest); the "Video available" offer
+ * must not wait on them, and a verification left waiting would hold up every later one.
+ */
+const NATIVE_PROBE_TIMEOUT_MS = 25_000;
+
+function probeWithTimeout(
+  engine: NonNullable<ReturnType<typeof getV2Engine>>,
+  request: Parameters<NonNullable<ReturnType<typeof getV2Engine>>['probe']>[0],
+): Promise<ProbeResult | null> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<null>((resolve) => {
+    timer = setTimeout(() => resolve(null), NATIVE_PROBE_TIMEOUT_MS);
+  });
+  return Promise.race([engine.probe(request), timeout]).finally(() => clearTimeout(timer));
+}
+
+/**
+ * The engine's own classifier has the last word before a file is offered: one it would refuse — audio only, a
+ * container it cannot finish, encrypted, live, not media — never gets a CTA. A transient answer leaves the offer to
+ * the checks already made (null), as does a build without the engine or a classification that does not answer.
+ */
+async function nativeProgressiveRefusal(
+  url: string,
+  input: { pageUrl: string; requestContext: MediaRequestContext },
+): Promise<GeneralSourceRejectionReason | null> {
+  const engine = getV2Engine();
+  if (!engine) {
+    return null;
+  }
+  try {
+    const result = await probeWithTimeout(engine, {
+      url,
+      kind: 'progressive',
+      request: toV2RequestContext(input.requestContext, input.pageUrl),
+    });
+    if (!result) {
+      return null;
+    }
+    return result.ok ? null : progressiveRefusalFor(result.reason);
+  } catch {
+    return null;
+  }
+}
+
+function dashMimeType(container: string): string {
+  switch (container) {
+    case 'webm':
+      return 'video/webm';
+    case 'mov':
+      return 'video/quicktime';
+    default:
+      return 'video/mp4';
+  }
+}
+
+/**
+ * A DASH manifest is classified by the native engine — the classifier the download itself uses — never by a second
+ * parser here. It is DOWNLOADABLE only when a representation is one complete video file (audio and video muxed, or
+ * a manifest that carries no audio), whose own bytes the engine has checked; separate audio/video, segmented,
+ * live and protected manifests come back with their own reason, and a temporary failure stays temporary.
+ */
+async function classifyDashSource(
   media: DetectedMedia,
   input: {
     pageUrl: string;
@@ -318,90 +500,81 @@ async function tryStandaloneDashAsProgressive(
     sourceGeneration: number;
     signal?: AbortSignal;
   },
-): Promise<
-  | { ok: true; variants: VerifiedGeneralMediaVariant[] }
-  | { ok: false; reason: GeneralSourceRejectionReason }
-  | null
-> {
-  const url = preserveExecutableUrl(media.finalUrl || media.url);
-  const outcome = await fetchManifestResource(url, input.signal, {
-    accept: 'application/dash+xml, application/xml, text/xml, */*',
-    referer: input.pageUrl,
-    requestContext: input.requestContext,
-  });
-  if (!outcome.ok) {
-    if (outcome.authLike || outcome.htmlLike) {
-      return { ok: false, reason: 'AUTH_REQUIRED' };
-    }
-    return null;
+): Promise<CandidateVerification> {
+  const engine = getV2Engine();
+  if (!engine) {
+    return { ok: false, reason: 'DASH_UNSUPPORTED' };
   }
-  if (isFragmentedDashManifest(outcome.text)) {
-    return null;
+  const manifestUrl = preserveExecutableUrl(media.finalUrl || media.url);
+  let result: ProbeResult | null;
+  try {
+    result = await probeWithTimeout(engine, {
+      url: manifestUrl,
+      kind: 'dash',
+      request: toV2RequestContext(input.requestContext, input.pageUrl),
+    });
+  } catch {
+    return { ok: false, reason: 'PROBE_FAILED' };
   }
-  const parsed = parseDashManifest(outcome.text, outcome.finalUrl);
-  if (!parsed || parsed.isEncrypted) {
-    return parsed?.isEncrypted ? { ok: false, reason: 'DRM_UNSUPPORTED' } : null;
+  if (!result) {
+    return { ok: false, reason: 'PROBE_FAILED' };
   }
-  const files = selectDownloadableStandaloneDash(parsed, outcome.text);
-  if (files.length === 0) {
-    return null;
+  if (!result.ok) {
+    const reason = dashRejectionFor(result.reason);
+    logGeneralSource('dash_rejected', { mediaIdentityHash: diagHash(input.mediaIdentity), reason });
+    // Refused for what the stream is (not for a moment's trouble): the files it names share the verdict.
+    const refused = progressiveRefusalFor(result.reason) !== null;
+    return { ok: false, reason, claimedFiles: refused ? await dashRepresentationFiles(manifestUrl, input) : [] };
   }
 
-  const variants: VerifiedGeneralMediaVariant[] = [];
-  for (const rep of files.slice(0, 6)) {
-    if (!rep.baseUrl) {
-      continue;
-    }
-    const asProgressive: DetectedMedia = {
-      ...media,
-      url: rep.baseUrl,
-      sourceUrl: media.sourceUrl,
-      finalUrl: rep.baseUrl,
-      mimeType: rep.mimeType ?? media.mimeType,
-      container:
-        (rep.mimeType ?? '').toLowerCase().includes('webm') ? 'webm' : 'mp4',
-      category: rep.contentType === 'audio' ? 'audio' : 'video',
-      streamType: 'DIRECT',
-      streamProtocol: null,
-      width: rep.width ?? media.width,
-      height: rep.height ?? media.height,
-      bitrate: rep.bandwidth ?? media.bitrate,
-      videoOnly: false,
-      hasSeparateAudio: false,
-    };
-    const result = await verifySocialSourceCandidate(asProgressive, {
-      pageUrl: input.pageUrl,
-      requestContext: input.requestContext,
-      signal: input.signal,
-    });
-    if (!result.ok) {
-      continue;
-    }
-    variants.push(
-      buildProgressiveVariant({
-        media: asProgressive,
-        executableUrl: preserveExecutableUrl(result.verification.finalUrl),
-        mimeType: result.verification.mimeType,
-        contentLength: result.verification.contentLength,
-        acceptRanges: result.verification.acceptRanges,
-        status: result.verification.status,
-        redirectCount: result.verification.redirectCount,
-        signatureKind: result.signatureKind,
-        usedRangeProbe: result.usedRangeProbe,
+  const audioState = result.audioTracks.length > 0 ? 'INCLUDED' : 'UNKNOWN';
+  // The probe classified (and measured) the representation enqueue would pick; with one quality that is exact.
+  const exactSize = result.variants.length === 1 ? result.sizeBytes : null;
+  const variants = result.variants
+    .filter((rep) => !rep.needsAudioMux)
+    .map((rep) => {
+      const built = buildProgressiveVariant({
+        media,
+        executableUrl: result.finalUrl,
+        mimeType: dashMimeType(result.container),
+        contentLength: exactSize,
+        acceptRanges: result.resumable,
+        status: 200,
+        redirectCount: 0,
+        signatureKind: 'dash_manifest',
+        usedRangeProbe: true,
         requestContext: input.requestContext,
         mediaIdentity: input.mediaIdentity,
         sourceGeneration: input.sourceGeneration,
+        audioStateOverride: audioState,
         width: rep.width,
         height: rep.height,
-        bitrate: rep.bandwidth,
-      }),
-    );
-  }
-
+        bitrate: rep.bitrate,
+        qualityLabel: rep.height ? `${rep.height}p` : null,
+        transport: 'dash',
+        container: result.container,
+        sizeBytes: exactSize ?? rep.estimatedBytes,
+        downloadableOverride: true,
+      });
+      // Every quality shares the manifest URL: the representation is what makes each one a distinct download.
+      const resourceIdentity = `${built.resourceIdentity}#rep:${rep.id}`;
+      return {
+        ...built,
+        resourceIdentity,
+        variantId: `gvar_${hashIdentity(resourceIdentity)}`,
+        representationId: rep.id,
+      };
+    });
   if (variants.length === 0) {
-    return null;
+    return { ok: false, reason: 'DASH_UNSUPPORTED' };
   }
-  return { ok: true, variants };
+  logGeneralSource('dash_classified', {
+    mediaIdentityHash: diagHash(input.mediaIdentity),
+    transport: 'dash',
+    quality: String(variants.length),
+  });
+  // Its qualities offer its files: the same files seen on their own are not offered a second time.
+  return { ok: true, variants, claimedFiles: await dashRepresentationFiles(manifestUrl, input) };
 }
 
 /**
@@ -417,10 +590,7 @@ export async function verifyGeneralSourceCandidate(
     sourceGeneration: number;
     signal?: AbortSignal;
   },
-): Promise<
-  | { ok: true; variants: VerifiedGeneralMediaVariant[] }
-  | { ok: false; reason: GeneralSourceRejectionReason }
-> {
+): Promise<CandidateVerification> {
   const url = preserveExecutableUrl(media.finalUrl || media.url);
 
   if (url.toLowerCase().startsWith('blob:')) {
@@ -435,12 +605,8 @@ export async function verifyGeneralSourceCandidate(
   if (media.isDrm) {
     return { ok: false, reason: 'DRM_UNSUPPORTED' };
   }
-  if (media.streamType === 'DASH' || media.container === 'dash') {
-    const standalone = await tryStandaloneDashAsProgressive(media, input);
-    if (standalone) {
-      return standalone;
-    }
-    return { ok: false, reason: 'DASH_UNSUPPORTED' };
+  if (isDashSource(media)) {
+    return classifyDashSource(media, input);
   }
 
   const hlsLikely = looksLikeHlsCandidate({
@@ -604,6 +770,12 @@ export async function verifyGeneralSourceCandidate(
     return { ok: false, reason: result.reason as GeneralSourceRejectionReason };
   }
 
+  const refusal = await nativeProgressiveRefusal(preserveExecutableUrl(result.verification.finalUrl), input);
+  if (refusal) {
+    logGeneralSource('native_refused', { mediaIdentityHash: diagHash(input.mediaIdentity), reason: refusal });
+    return { ok: false, reason: refusal };
+  }
+
   if (result.signatureKind === 'webm') {
     logGeneralSource('source_webm_verified', {
       mediaIdentityHash: diagHash(input.mediaIdentity),
@@ -643,7 +815,9 @@ export async function buildVerifiedGeneralMediaOffer(
 ): Promise<BuildGeneralOfferResult> {
   const { scope } = input;
 
-  if (scope.ownershipConfidence === 'REJECTED') {
+  // Only current-content owners publish. WEAK (page-level, no player evidence yet) waits: player evidence
+  // changes the ownership key and re-runs verification, so nothing is probed or offered before it.
+  if (scope.ownershipConfidence !== 'STRONG' && scope.ownershipConfidence !== 'MEDIUM') {
     logGeneralSource('ownership_rejected_not_resurrected', {
       tabId: scope.tabId,
       pageGeneration: scope.pageGeneration,
@@ -679,17 +853,23 @@ export async function buildVerifiedGeneralMediaOffer(
     return true;
   });
 
-  // WEAK ownership: avoid expensive multi-candidate storms — verify at most one.
-  if (scope.ownershipConfidence === 'WEAK') {
-    candidates = candidates.slice(0, 1);
-  } else {
-    candidates = candidates.slice(0, 6);
-  }
+  // Manifests first, so the files a manifest names are claimed before any of them could be offered on its own.
+  candidates = [...candidates.filter(isDashSource), ...candidates.filter((c) => !isDashSource(c))].slice(0, 6);
 
   const variants: VerifiedGeneralMediaVariant[] = [];
   let lastReject: GeneralSourceRejectionReason = 'NO_FRESH_SOURCE';
   /** HLS expand may yield multiple variants per cache key. */
   const expandedByKey = new Map<string, VerifiedGeneralMediaVariant[]>();
+  /** Files named by a manifest classified in this build → its refusal reason, or null when it is offered. */
+  const claimedFiles = new Map<string, GeneralSourceRejectionReason | null>();
+  const adoptManifest = (manifest: ManifestFiles) => {
+    if (manifest.reason) {
+      lastReject = manifest.reason;
+    }
+    for (const file of manifest.files) {
+      claimedFiles.set(file, manifest.reason);
+    }
+  };
 
   for (const media of candidates) {
     if (input.signal?.aborted) {
@@ -700,6 +880,20 @@ export async function buildVerifiedGeneralMediaOffer(
     }
 
     const executableUrl = preserveExecutableUrl(media.finalUrl || media.url);
+    // A file of a classified stream follows it, even when an earlier build verified the file on its own.
+    const fileKey = mediaFileKey(executableUrl);
+    if (fileKey && claimedFiles.has(fileKey)) {
+      const reason = claimedFiles.get(fileKey) ?? null;
+      if (reason) {
+        lastReject = reason;
+      }
+      logGeneralSource('claimed_by_manifest', {
+        tabId: scope.tabId,
+        mediaIdentityHash: diagHash(scope.mediaIdentity),
+        reason,
+      });
+      continue;
+    }
     const cacheKey = buildVerificationCacheKey({
       tabId: scope.tabId,
       navigationEpoch: scope.navigationEpoch,
@@ -707,6 +901,15 @@ export async function buildVerifiedGeneralMediaOffer(
       contentIdentity: scope.mediaIdentity,
       executableUrl,
     });
+
+    // A manifest classified earlier in this scope claims its files again; a refused one is not fetched again.
+    const known = classifiedManifests.get(cacheKey);
+    if (known) {
+      adoptManifest(known);
+      if (known.reason) {
+        continue;
+      }
+    }
 
     const priorExpand = expandedByKey.get(cacheKey);
     if (priorExpand) {
@@ -721,7 +924,7 @@ export async function buildVerifiedGeneralMediaOffer(
       continue;
     }
 
-    const { joined, promise } = joinOrStartVerification(cacheKey, async () => {
+    const { joined, promise } = joinOrStartVerification(cacheKey, async (jobSignal) => {
       logGeneralSource('candidate_verify_started', {
         tabId: scope.tabId,
         navigationEpoch: scope.navigationEpoch,
@@ -753,7 +956,7 @@ export async function buildVerifiedGeneralMediaOffer(
         authMode: media.requiresCookies ? undefined : 'PUBLIC',
       });
 
-      if (input.signal?.aborted || !isGeneralScopeCurrent(scope)) {
+      if (jobSignal.aborted || !isGeneralScopeCurrent(scope)) {
         return null;
       }
 
@@ -762,7 +965,7 @@ export async function buildVerifiedGeneralMediaOffer(
         requestContext,
         mediaIdentity: scope.mediaIdentity,
         sourceGeneration: scope.pageGeneration,
-        signal: input.signal,
+        signal: jobSignal,
       });
 
       let usedSession = requestContext.authMode !== 'PUBLIC' && requestContext.hasCookies;
@@ -787,7 +990,7 @@ export async function buildVerifiedGeneralMediaOffer(
         if (retry && retry.hasCookies) {
           usedSession = true;
           requestContext = retry;
-          if (input.signal?.aborted || !isGeneralScopeCurrent(scope)) {
+          if (jobSignal.aborted || !isGeneralScopeCurrent(scope)) {
             return null;
           }
           result = await verifyGeneralSourceCandidate(media, {
@@ -795,7 +998,7 @@ export async function buildVerifiedGeneralMediaOffer(
             requestContext,
             mediaIdentity: scope.mediaIdentity,
             sourceGeneration: scope.pageGeneration,
-            signal: input.signal,
+            signal: jobSignal,
           });
           if (result.ok) {
             logSessionMedia('session_verify_success', {
@@ -828,6 +1031,10 @@ export async function buildVerifiedGeneralMediaOffer(
           pageGeneration: scope.pageGeneration,
           cookiePresent: false,
         });
+      }
+
+      if (result.claimedFiles?.length) {
+        rememberManifestFiles(cacheKey, { reason: result.ok ? null : result.reason, files: result.claimedFiles });
       }
 
       if (!result.ok) {
@@ -865,7 +1072,7 @@ export async function buildVerifiedGeneralMediaOffer(
         transport: primary.transport,
       });
       return cachedPrimary;
-    });
+    }, input.signal);
 
     if (joined) {
       logGeneralSource('candidate_verify_joined', {
@@ -879,6 +1086,11 @@ export async function buildVerifiedGeneralMediaOffer(
     }
 
     const variant = await promise;
+    // Also reached by a build that joined a verification another build ran.
+    const classified = classifiedManifests.get(cacheKey);
+    if (classified) {
+      adoptManifest(classified);
+    }
     if (variant) {
       const expanded = expandedByKey.get(cacheKey);
       if (expanded?.length) {
@@ -899,7 +1111,10 @@ export async function buildVerifiedGeneralMediaOffer(
   const deduped = dedupeVariants(
     variants.map(toSocialCacheVariant),
   ).map(fromSocialCacheVariant);
-  const preferredSocial = selectPreferredVariant(deduped.map(toSocialCacheVariant));
+  const preferredSocial = selectPreferredVariant(
+    deduped.map(toSocialCacheVariant),
+    input.ownedResourceUrl,
+  );
   const preferred = preferredSocial
     ? fromSocialCacheVariant(preferredSocial)
     : null;
@@ -947,14 +1162,19 @@ export function generalOfferToAnalysis(
 ): MediaAnalysisResult {
   const actionable = offer.variants.filter((v) => v.downloadable);
   const variants = actionable.map((v, index) => {
-    const extension = resolveExtension(v.executableUrl, v.mimeType);
-    const container = resolveContainer(extension, v.mimeType);
+    const isDash = v.transport === 'dash';
+    // A DASH option's URL is the manifest; its container is that of the representation file it downloads.
+    const container = isDash
+      ? ((v.container ?? 'mp4') as MediaAnalysisContainer)
+      : resolveContainer(resolveExtension(v.executableUrl, v.mimeType), v.mimeType);
     const streamType =
       v.transport === 'hls'
         ? ('HLS' as const)
-        : v.transport === 'audio_only'
-          ? ('AUDIO' as const)
-          : ('PROGRESSIVE' as const);
+        : isDash
+          ? ('DASH' as const)
+          : v.transport === 'audio_only'
+            ? ('AUDIO' as const)
+            : ('PROGRESSIVE' as const);
     const created = createVariant({
       sourceUrl: v.executableUrl,
       streamType,
@@ -968,6 +1188,7 @@ export function generalOfferToAnalysis(
       downloadable: v.downloadable,
       unsupportedReason: null,
       originalIndex: index,
+      representationId: v.representationId ?? null,
     });
     if (v.audioState !== 'INCLUDED') {
       return { ...created, codecs: null, audioCodec: null };

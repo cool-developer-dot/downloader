@@ -47,6 +47,15 @@ class RecordsTest {
   }
 
   @Test
+  fun probeCarriesTheHlsVariantChoice() {
+    val probe = ProbeRequestRecord(url = "https://cdn.example.com/m.m3u8", kind = "hls", variant = VariantChoiceRecord(maxHeight = 480))
+
+    assertEquals(480, probe.toModel().variant?.maxHeight)
+    assertNull(probe.copy(variant = null).toModel().variant)
+    assertInvalid { probe.copy(variant = VariantChoiceRecord(maxHeight = -1)).toModel() }
+  }
+
+  @Test
   fun enqueueRejectsMalformedSources() {
     val valid = EnqueueRequestRecord(url = "https://cdn.example.com/v.mp4", kind = "progressive", title = "Clip", site = "web")
     assertEquals(SourceKind.PROGRESSIVE, valid.toModel().kind)

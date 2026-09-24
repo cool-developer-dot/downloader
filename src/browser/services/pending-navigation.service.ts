@@ -15,10 +15,31 @@ export type PendingNavigation = {
   targetTabId: string;
   /** Monotonic id so a superseded intent cannot be double-consumed. */
   requestId: number;
+  /** Wall clock at set() time — bounds how long an intent stays live. */
+  createdAt: number;
 };
+
+/**
+ * An intent is a "go there now" request. Not every caller navigates to the
+ * Browser immediately (the paste-link watcher queues one and waits), so an
+ * abandoned intent used to sit in this module forever and then hijack the next
+ * Browser focus — minutes later, yanking the user off the page they opened.
+ */
+const PENDING_NAVIGATION_TTL_MS = 120_000;
 
 let pending: PendingNavigation | null = null;
 let nextRequestId = 1;
+
+function readFresh(): PendingNavigation | null {
+  if (!pending) {
+    return null;
+  }
+  if (Date.now() - pending.createdAt > PENDING_NAVIGATION_TTL_MS) {
+    pending = null;
+    return null;
+  }
+  return pending;
+}
 
 export const pendingNavigationService = {
   set(url: string, options?: { targetTabId?: string }): void {
@@ -43,11 +64,12 @@ export const pendingNavigationService = {
       url: trimmed,
       targetTabId,
       requestId: nextRequestId++,
+      createdAt: Date.now(),
     };
   },
 
   peek(): PendingNavigation | null {
-    return pending;
+    return readFresh();
   },
 
   /**
@@ -55,20 +77,20 @@ export const pendingNavigationService = {
    * Returns null if already consumed or superseded.
    */
   consume(requestId?: number): PendingNavigation | null {
-    if (!pending) {
+    const value = readFresh();
+    if (!value) {
       return null;
     }
-    if (requestId != null && pending.requestId !== requestId) {
+    if (requestId != null && value.requestId !== requestId) {
       return null;
     }
-    const value = pending;
     pending = null;
     return value;
   },
 
   /** @deprecated Prefer peek() + consume(requestId). */
   take(): string | null {
-    const value = pending?.url ?? null;
+    const value = readFresh()?.url ?? null;
     pending = null;
     return value;
   },

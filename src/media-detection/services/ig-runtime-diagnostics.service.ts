@@ -13,7 +13,8 @@ export type IgRuntimeStage =
   | 'correlated_candidate'
   | 'verified_candidate'
   | 'store_insert'
-  | 'overlay_visible'
+  /** Discovery selected a current candidate; the CTA itself is gated by verification. */
+  | 'discovery_media_selected'
   | 'quality_open'
   | 'download_handoff';
 

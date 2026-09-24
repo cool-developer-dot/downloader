@@ -21,6 +21,12 @@ import {
 } from '@/downloads/engine/file-paths';
 import { getLocalRecord } from '@/downloads/engine/persistence';
 import { hardeningLog } from '@/downloads/hardening-diagnostics';
+import {
+  getV2Engine,
+  isEngineOwned,
+  v2CompletedLibraryFile,
+  verifyV2LibraryFile,
+} from '@/downloads/v2';
 import { useDownloadsStore } from '@/store/downloads';
 import { playerPath, type PlayerRoute } from '@/navigation/constants/route-paths';
 
@@ -129,12 +135,53 @@ function buildDescriptorFromStores(downloadId: string): {
   };
 }
 
+function isV2Download(downloadId: string): boolean {
+  return isEngineOwned(useDownloadsStore.getState(), downloadId);
+}
+
+/** The v2 engine verified and finalized this file into its library; v1's managed-path rules describe v1 folders. */
+function resolveV2LocalFile(downloadId: string): {
+  localUri: string;
+  file: File;
+  descriptor: CompletedFileDescriptor;
+  size: number;
+} {
+  const completed = v2CompletedLibraryFile(downloadId);
+  if (!completed) {
+    throw new CompletedFileActionError('NOT_COMPLETED', 'This download is not completed.');
+  }
+  const verified = verifyV2LibraryFile(completed.localUri);
+  if (!verified.ok) {
+    throw new CompletedFileActionError(
+      verified.reason === 'missing' ? 'FILE_MISSING' : 'FILE_UNREADABLE',
+      verified.reason === 'missing'
+        ? "Downloaded file couldn't be found."
+        : "VidoraX couldn't open this downloaded file.",
+    );
+  }
+  const { descriptor } = buildDescriptorFromStores(downloadId);
+  return {
+    localUri: completed.localUri,
+    file: new File(completed.localUri),
+    descriptor: {
+      ...descriptor,
+      canonicalPath: completed.localUri,
+      physicalFilePresent: true,
+      fileSize: String(verified.size),
+    },
+    size: verified.size,
+  };
+}
+
 async function resolveUsableLocalFile(downloadId: string): Promise<{
   localUri: string;
   file: File;
   descriptor: CompletedFileDescriptor;
   size: number;
 }> {
+  if (isV2Download(downloadId)) {
+    return resolveV2LocalFile(downloadId);
+  }
   const refreshed = await downloadEngine.refreshCompletedLocalFile(downloadId);
   if (!refreshed.usable || !refreshed.localUri) {
     throw new CompletedFileActionError(
@@ -296,6 +343,17 @@ export async function openCompletedFile(
     hardeningLog('EXTERNAL_OPEN_REQUESTED', {
       downloadId: downloadId.trim(),
     });
+    if (isV2Download(downloadId.trim())) {
+      // The v2 module owns these files and shares them through its own FileProvider.
+      resolveV2LocalFile(downloadId.trim());
+      const engine = getV2Engine();
+      if (!engine) {
+        throw new CompletedFileActionError('UNSUPPORTED', 'Downloads are unavailable in this build.');
+      }
+      await engine.openWith(downloadId.trim());
+      hardeningLog('EXTERNAL_OPEN_LAUNCHED', { downloadId: downloadId.trim() });
+      return { ok: true, kind: 'open' };
+    }
     const media = await resolveCompletedMedia(downloadId.trim());
 
     if (Platform.OS === 'android' && isAndroidFileActionsNativeAvailable()) {
@@ -372,6 +430,16 @@ export async function shareCompletedFile(
   const run = (async (): Promise<CompletedFileActionResult> => {
     try {
       hardeningLog('COMPLETED_MEDIA_SHARE_REQUESTED', { downloadId: id });
+
+      if (isV2Download(id)) {
+        resolveV2LocalFile(id);
+        const engine = getV2Engine();
+        if (!engine) {
+          throw new CompletedFileActionError('UNSUPPORTED', 'Downloads are unavailable in this build.');
+        }
+        await engine.share([id]);
+        return { ok: true, kind: 'share' };
+      }
 
       const media = await resolveCompletedMedia(id);
       hardeningLog('COMPLETED_MEDIA_SHARE_RESOLVED', {

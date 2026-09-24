@@ -16,13 +16,26 @@ const MAX_PREVIOUS_PER_TAB = 1;
 
 const ownerListeners = new Set<() => void>();
 
+let notifyScheduled = false;
+
+/**
+ * Owner state can change while a component renders (selection syncs a missing context), and a React
+ * subscriber must never update inside another component's render. Deliver once, after the current task.
+ */
 function notifyOwnerListeners(): void {
-  ownerListeners.forEach((listener) => {
-    try {
-      listener();
-    } catch {
-      // presentation subscribers must not break detection
-    }
+  if (notifyScheduled) {
+    return;
+  }
+  notifyScheduled = true;
+  queueMicrotask(() => {
+    notifyScheduled = false;
+    ownerListeners.forEach((listener) => {
+      try {
+        listener();
+      } catch {
+        // presentation subscribers must not break detection
+      }
+    });
   });
 }
 
@@ -311,9 +324,10 @@ export const socialPageContextStore = {
       prevElement !== input.evidence.elementIdentity;
     const srcPathChanged = didMediaResourceOwnershipChange(prevSrc, nextSrc);
 
-    // Recycled DOM node: same element, different media → ownership change.
+    // Recycled DOM node: same element, different media → ownership change. An element getting its first source
+    // (it had none before) is not recycled — nothing else was showing in it.
     const recycledOwnershipChange =
-      prevElement === input.evidence.elementIdentity && srcPathChanged;
+      prevElement === input.evidence.elementIdentity && Boolean(prevSrc) && srcPathChanged;
 
     // Element change requires visibility threshold. Recycled same-element src
     // change must bump even mid-swipe (ratio < 0.35) — otherwise the first

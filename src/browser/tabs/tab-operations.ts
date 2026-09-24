@@ -51,7 +51,14 @@ export function createTabOperation(
       mountedTabIds: reconciled.mountedTabIds,
     };
 
-    return { result: { status: 'CREATED', tab: selectActiveTab(next)! }, next };
+    return {
+      result: {
+        status: 'CREATED',
+        tab: selectActiveTab(next)!,
+        evictedTabIds: reconciled.evictedTabIds,
+      },
+      next,
+    };
   } catch (error) {
     return {
       result: {
@@ -83,7 +90,10 @@ export function closeTabOperation(
       activeTabId: home.id,
       mountedTabIds: [home.id],
     };
-    return { result: { status: 'REPLACED_HOME', tab: home }, next };
+    return {
+      result: { status: 'REPLACED_HOME', tab: home, evictedTabIds: [] },
+      next,
+    };
   }
 
   const closingActive = snapshot.activeTabId === tabId;
@@ -115,7 +125,12 @@ export function closeTabOperation(
   };
 
   return {
-    result: { status: 'CLOSED', closedTabId: tabId, activeTabId },
+    result: {
+      status: 'CLOSED',
+      closedTabId: tabId,
+      activeTabId,
+      evictedTabIds: reconciled.evictedTabIds,
+    },
     next,
   };
 }
@@ -164,6 +179,7 @@ export function switchTabOperation(
       activeTabId: tabId,
       mountedTabIds: next.mountedTabIds,
       evictedTabId: reconciled.evictedTabId,
+      evictedTabIds: reconciled.evictedTabIds,
     },
     next,
   };

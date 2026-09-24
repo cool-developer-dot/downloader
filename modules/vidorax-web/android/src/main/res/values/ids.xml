@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
-  <!-- View tag holding the document-start script installed in a WebView (DocumentStartScripts). -->
-  <item name="vidorax_web_document_start_script" type="id" />
-</resources>

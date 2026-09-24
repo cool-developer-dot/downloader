@@ -14,6 +14,11 @@ inline fun <reified T> wireValueOf(wire: String): T? where T : Enum<T>, T : Wire
 enum class SourceKind(override val wire: String) : WireEnum {
   PROGRESSIVE("progressive"),
   HLS("hls"),
+
+  /**
+   * An MPD. Downloadable only when the chosen representation is one complete file (muxed audio and video, or video
+   * in a manifest without audio); it is then fetched as that progressive file. Everything else is refused.
+   */
   DASH("dash"),
 }
 
@@ -36,6 +41,8 @@ enum class Container(override val wire: String) : WireEnum {
   MP4("mp4"),
   WEBM("webm"),
   MOV("mov"),
+  AVI("avi"),
+  WMV("wmv"),
   MKV("mkv"),
   TS("ts"),
   FLV("flv"),

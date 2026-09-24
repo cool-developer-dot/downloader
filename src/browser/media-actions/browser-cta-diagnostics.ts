@@ -25,12 +25,13 @@ export type BrowserCtaDiagnosticEvent =
   | 'media_action_download'
   | 'media_handoff_success'
   | 'media_handoff_failure'
-  | 'media_cta_consumed';
+  | 'media_cta_consumed'
+  | 'consumed_released';
 
 export type BrowserCtaDiagnosticFields = {
   tabId?: string | null;
-  /** Page URL may be passed; logging reduces to hostname only. */
-  navigationEpoch?: string | null;
+  /** Page URL; logging reduces it to the hostname only. */
+  pageUrl?: string | null;
   fingerprintHash?: string | null;
   state?: string | null;
   handoffGeneration?: number | null;
@@ -71,7 +72,7 @@ export function logBrowserCta(
   const safe: Record<string, string | number | null | undefined> = {
     event,
     tabId: fields.tabId ?? undefined,
-    navigationEpoch: safeNavigationHost(fields.navigationEpoch) ?? undefined,
+    pageHost: safeNavigationHost(fields.pageUrl) ?? undefined,
     fingerprintHash: fields.fingerprintHash ?? undefined,
     state: fields.state ?? undefined,
     handoffGeneration: fields.handoffGeneration ?? undefined,

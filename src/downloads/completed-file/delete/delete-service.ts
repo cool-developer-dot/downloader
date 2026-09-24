@@ -14,6 +14,7 @@ import {
   deleteDownloadFiles,
   getDownloadItemDirectory,
 } from '@/downloads/engine/file-paths';
+import { getV2Engine, isEngineOwned } from '@/downloads/v2';
 import { useDownloadsStore } from '@/store/downloads';
 import { removeDownloadCatalogItem } from '@/storage/services/catalog-persist';
 
@@ -88,6 +89,26 @@ export async function deleteCompletedFileFromVidoraX(
 
   try {
     return await withCompletedFileOperation(id, 'deleting', async () => {
+      if (isEngineOwned(useDownloadsStore.getState(), id)) {
+        // The v2 module owns the file and the library row; JavaScript never unlinks its files.
+        const engine = getV2Engine();
+        if (!engine) {
+          throw new CompletedFileExportError('NATIVE_UNAVAILABLE');
+        }
+        await engine.deleteLibraryItems([id]);
+        try {
+          await engine.removeDownload(id);
+        } catch (error) {
+          // Library-only rows (older completions, imported v1 files) have no download record left.
+          if ((error as { code?: unknown } | null)?.code !== 'ERR_NOT_FOUND') {
+            throw error;
+          }
+        }
+        useDownloadsStore.getState().removeEngineEntries([id]);
+        clearExportReceipt(id);
+        await dismissTerminalNotifications(id);
+        return { ok: true as const, kind: 'deleted' as const };
+      }
       const item = useDownloadsStore.getState().itemsById[id];
       const transfer = useDownloadsStore.getState().transferById[id];
       const status = item?.status ?? null;

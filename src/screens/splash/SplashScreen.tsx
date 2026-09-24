@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import { AccessibilityInfo, StatusBar, View } from 'react-native';
+import * as Linking from 'expo-linking';
 import { router, type Href } from 'expo-router';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -48,8 +49,13 @@ export function SplashScreen() {
       return;
     }
     hasNavigatedRef.current = true;
-    void logOnboardingPersistSnapshot('splash-exit').finally(() => {
-      router.replace(resolvePostSplashRoute() as Href);
+    const { onboardingComplete } = useAppStore.getState();
+    // A cold start from a download notification carries the screen it points at; land there, not on Browser.
+    void Promise.all([
+      logOnboardingPersistSnapshot('splash-exit').catch(() => undefined),
+      Linking.getInitialURL().catch(() => null),
+    ]).then(([, launchUrl]) => {
+      router.replace(resolvePostSplashRoute({ onboardingComplete, launchUrl }) as Href);
     });
   }, []);
 

@@ -8,7 +8,7 @@
  * Does NOT verify downloadability (Phase 5B).
  */
 
-import type { DetectedMedia } from '../types';
+import type { DetectedMedia, DetectionSource } from '../types';
 import { isLikelyMediaSegment } from '../services/false-positive.filter';
 import {
   isLikelySocialProfileAsset,
@@ -153,19 +153,12 @@ export function isTinyPreviewContext(context: GeneralPageMediaContext): boolean 
     return false;
   }
 
-  const mutedAuto =
+  // Small dims alone are insufficient. The preview role is tiny muted playback; unmuting lifts it.
+  // Partial visibility is scroll position, not role: the visibility rules own it.
+  return (
     context.activeVideoMuted === true &&
-    (context.activeVideoPaused === false || context.activeVideoRecentlyPlayed);
-
-  const lowInteraction =
-    !context.userInteractionSignal || context.activeVideoMuted === true;
-
-  const weakVisibility =
-    context.activeVideoIntersectionRatio != null &&
-    context.activeVideoIntersectionRatio < 0.5;
-
-  // Small dims alone are insufficient — need supporting weak-role signals.
-  return mutedAuto || (lowInteraction && weakVisibility);
+    (context.activeVideoPaused === false || context.activeVideoRecentlyPlayed)
+  );
 }
 
 function matchesActiveCurrentSrc(
@@ -190,6 +183,55 @@ function matchesActiveCurrentSrc(
     urlsShareResourcePath(media.finalUrl || media.url, active) ||
     urlsShareResourcePath(media.sourceUrl || media.url, active)
   );
+}
+
+export type GeneralRequestProvenance = 'OWNER_FRAME' | 'TOP_DOCUMENT' | 'OTHER_FRAME' | 'UNKNOWN';
+
+// The page detector script runs in the top document only (react-native-webview injects into the main frame),
+// so whatever it observes — DOM elements, fetch/XHR, resource timing — was requested by the top document.
+const TOP_DOCUMENT_SCRIPT_SOURCES: ReadonlySet<DetectionSource> = new Set([
+  'dom_video',
+  'dom_audio',
+  'dom_source',
+  'performance_resource',
+  'og_meta',
+  'js_fetch',
+  'js_xhr',
+]);
+
+function originOf(url: string | null | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Which document initiated a candidate, by origin. Network candidates carry the request Referer, which
+ * browsers reduce to the initiator's origin for cross-origin requests (strict-origin-when-cross-origin), so
+ * paths can never be compared. DOM candidates carry their element's document URL; other page-script
+ * observations are the top document. Media/CDN hosts are deliberately not compared: page A → player
+ * iframe B → CDN C share nothing but the initiator origin.
+ */
+export function resolveGeneralRequestProvenance(
+  media: { frameUrl?: string | null; detectionSource?: DetectionSource },
+  context: Pick<GeneralPageMediaContext, 'playerKind' | 'activeVideoCurrentSrc' | 'pageUrl'>,
+): GeneralRequestProvenance {
+  const initiator =
+    originOf(media.frameUrl) ??
+    (media.detectionSource && TOP_DOCUMENT_SCRIPT_SOURCES.has(media.detectionSource) ? originOf(context.pageUrl) : null);
+  if (!initiator) {
+    return 'UNKNOWN';
+  }
+  if (context.playerKind === 'iframe' && initiator === originOf(context.activeVideoCurrentSrc)) {
+    return 'OWNER_FRAME';
+  }
+  return initiator === originOf(context.pageUrl) ? 'TOP_DOCUMENT' : 'OTHER_FRAME';
 }
 
 function buildEvidence(
@@ -221,12 +263,16 @@ function buildEvidence(
       : intersection >= 0.35 &&
         (context.activeVideoRecentlyPlayed || context.activeVideoPaused === false);
 
-  const hidden =
+  // A paused, never-played element proves nothing about current content until it is visible — whatever its
+  // src is. Its own preload is exactly the offscreen media that must not be offered.
+  const idleElement =
     context.playerKind !== 'iframe' &&
-    intersection != null &&
-    intersection < 0.15 &&
+    Boolean(context.activeMediaElementIdentity) &&
     context.activeVideoPaused !== false &&
-    srcMatch !== true;
+    !context.activeVideoRecentlyPlayed &&
+    !context.userInteractionSignal;
+  const hidden = idleElement && intersection != null && intersection < 0.15;
+  const visibilityUnknown = idleElement && intersection == null;
 
   const preload =
     Boolean(context.activeMediaElementIdentity) &&
@@ -236,10 +282,8 @@ function buildEvidence(
     srcMatch === false &&
     (intersection == null || intersection >= 0.35);
 
-  const tinyPreview =
-    isTinyPreviewContext(context) &&
-    srcMatch === true &&
-    !context.userInteractionSignal;
+  // userInteractionSignal is raised by any playback, so it cannot lift a penalty that requires playback; unmuting does.
+  const tinyPreview = isTinyPreviewContext(context) && srcMatch === true;
 
   const poster = isPosterOrImageResource(media);
   const thumbnail = isThumbnailResource(media);
@@ -256,9 +300,11 @@ function buildEvidence(
     userInteractionMatch: context.userInteractionSignal && srcMatch === true,
     preloadPenalty: preload,
     hiddenElementPenalty: hidden,
+    visibilityUnknownPenalty: visibilityUnknown,
     tinyPreviewPenalty: tinyPreview,
     adPenalty: context.explicitAdMarker,
-    staleContextPenalty: !pageGenerationMatch || !candidateGenerationMatch || !currentPageMatch,
+    // A resource first seen in an earlier generation (preloaded) is current once the active element plays it.
+    staleContextPenalty: !pageGenerationMatch || (!candidateGenerationMatch && srcMatch !== true) || !currentPageMatch,
     segmentPenalty: isSegmentResource(media),
     imagePenalty: poster,
     posterPenalty: poster,
@@ -322,8 +368,12 @@ function confidenceFromEvidence(
     };
   }
 
-  if (evidence.hiddenElementPenalty && evidence.currentSrcMatch !== true) {
-    return { confidence: 'REJECTED', reason: 'HIDDEN_VIDEO', rank: -700 };
+  if (evidence.hiddenElementPenalty) {
+    return {
+      confidence: 'REJECTED',
+      reason: evidence.currentSrcMatch === true ? 'OFFSCREEN_PRELOAD' : 'HIDDEN_VIDEO',
+      rank: -700,
+    };
   }
 
   if (evidence.preloadPenalty && evidence.currentSrcMatch !== true) {
@@ -333,6 +383,11 @@ function confidenceFromEvidence(
   // Tiny muted loops: never STRONG — keep WEAK so a meaningful player can win.
   if (evidence.tinyPreviewPenalty) {
     return { confidence: 'WEAK', reason: 'TINY_PREVIEW', rank: 80 };
+  }
+
+  // Idle element not yet reported visible: WEAK until visibility evidence arrives (it re-runs selection).
+  if (evidence.visibilityUnknownPenalty) {
+    return { confidence: 'WEAK', reason: null, rank: 150 };
   }
 
   // STRONG: active visible currentSrc match + user-facing playback evidence
@@ -389,15 +444,24 @@ export function correlateGeneralCandidate(
 ): GeneralCandidateCorrelation {
   const { context } = input;
   const evidence = buildEvidence(media, { ...input, candidates: [] }, context);
-  // New production observations must prove the frame/element relationship.
+  // New production observations must prove which document requested them.
   // Older fixture/legacy records without provenance retain their existing scoring.
-  if (media.observedTabId && context.playerKind === 'iframe' &&
-      (!media.frameUrl || !context.activeVideoCurrentSrc || !urlsShareResourcePath(media.frameUrl, context.activeVideoCurrentSrc))) {
-    return { confidence: 'REJECTED', rejectionReason: 'WEAK_UNCORRELATED_MEDIA', evidence, rank: -500 };
-  }
-  if (media.observedTabId && context.activeVideoIsBlob && !media.ownerElementIdentity &&
-      (!media.frameUrl || !isSameGeneralContentNavigation(media.frameUrl, context.pageUrl) || !evidence.recentObservation)) {
-    return { confidence: 'REJECTED', rejectionReason: 'WEAK_UNCORRELATED_MEDIA', evidence, rank: -500 };
+  if (media.observedTabId && (context.playerKind === 'iframe' || (context.activeVideoIsBlob && !media.ownerElementIdentity))) {
+    const provenance = resolveGeneralRequestProvenance(media, context);
+    const expected = context.playerKind === 'iframe' ? 'OWNER_FRAME' : 'TOP_DOCUMENT';
+    const rejectionReason: GeneralRejectionReason | null =
+      provenance === expected
+        ? context.playerKind === 'iframe' || evidence.recentObservation
+          ? null
+          : 'WEAK_UNCORRELATED_MEDIA'
+        : provenance === 'UNKNOWN'
+          ? 'UNPROVEN_FRAME_OWNERSHIP'
+          : provenance === 'TOP_DOCUMENT'
+            ? 'OUTSIDE_CURRENT_PLAYER'
+            : 'FOREIGN_FRAME_MEDIA';
+    if (rejectionReason) {
+      return { confidence: 'REJECTED', rejectionReason, evidence, rank: -500 };
+    }
   }
 
   const legacy = scoreMediaCorrelation(media, {
@@ -415,6 +479,7 @@ export function correlateGeneralCandidate(
   // Active blob player + underlying http(s) candidate on same page → MEDIUM floor.
   if (
     context.activeVideoIsBlob &&
+    !evidence.visibilityUnknownPenalty &&
     !isBlobOnlyResource(media) &&
     evidence.tabMatch &&
     evidence.navigationMatch &&

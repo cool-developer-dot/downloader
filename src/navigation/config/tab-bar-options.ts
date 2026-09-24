@@ -24,10 +24,12 @@ export const tabItems = {
   },
   library: {
     routeName: 'library',
-    title: 'Library',
-    icon: 'book-open-variant',
-    iconFocused: 'book-open-variant',
-    accessibilityLabel: 'Library tab',
+    // The route keeps its name — deep links and the notification targets point at it — but the tab the user
+    // sees is the Player.
+    title: 'Player',
+    icon: 'play-circle-outline',
+    iconFocused: 'play-circle',
+    accessibilityLabel: 'Player tab',
   },
   settings: {
     routeName: 'settings',

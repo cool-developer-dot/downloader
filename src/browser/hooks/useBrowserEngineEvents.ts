@@ -86,6 +86,7 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
     nativeCanGoBackRef,
     nativeCanGoForwardRef,
     suppressNextAbortErrorRef,
+    pendingNativeBackRef,
     webViewInstanceGenerationRef,
   } = useBrowserEngineContext();
   /** Bounded render-process recovery attempts per navigation generation. */
@@ -315,6 +316,24 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
           return;
         }
 
+        // User Back walked off the front of page history into the about:blank
+        // the WebView was seeded with. Treating that as a transient blank left
+        // a blank document under a stale URL with Back still armed and inert —
+        // the tab could only be recovered by opening a new one.
+        if (pendingNativeBackRef.current) {
+          pendingNativeBackRef.current = false;
+          logBrowserNav(navId, 'back', {
+            decisionReason: 'back_reached_blank_seed',
+            strategy: 'home_fallback',
+            tabId,
+          });
+          nativeCanGoBackRef.current = false;
+          nativeCanGoForwardRef.current = false;
+          goHome();
+          browserSyncService.onGoHome();
+          return;
+        }
+
         // Transient blank during UA/source transitions while a real page is committed.
         // Must NOT goHome — that aborted TikTok loads after platform Desktop flip.
         if (
@@ -346,6 +365,9 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
         browserSyncService.onGoHome();
         return;
       }
+
+      // A real document committed — the Back that was in flight landed on a page.
+      pendingNativeBackRef.current = false;
 
       const owning = getOwningTabChrome();
       if (isBrowserHomeUrl(owning.url)) {
@@ -416,6 +438,7 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
       isStaleEvent,
       nativeCanGoBackRef,
       nativeCanGoForwardRef,
+      pendingNativeBackRef,
       setPageTitle,
       sourceUri,
       tabId,
@@ -451,10 +474,17 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
       setLoading(true);
       lastProgressWriteAtRef.current = 0;
       lastProgressValueRef.current = 0;
-      scrollPositionService.resetRestoreGuard();
+      scrollPositionService.resetRestoreGuard(tabId);
       // URL commits come from navigation state / chrome loadUrl — avoid racing setCurrentUrl here.
     },
-    [getOwningTabChrome, loadStartEpochRef, loadStartUrlRef, navigationEpochRef, setLoading],
+    [
+      getOwningTabChrome,
+      loadStartEpochRef,
+      loadStartUrlRef,
+      navigationEpochRef,
+      setLoading,
+      tabId,
+    ],
   );
 
   const clearTopLevelLoading = useCallback(
@@ -566,6 +596,7 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
             webView: webViewRef.current,
             url: committedUrl,
             epoch: navigationEpochRef.current,
+            tabId,
           });
         }
       }

@@ -1,5 +1,4 @@
 import { detectionUr } from './catalogs/detection.ur';
-import { mediaUr } from './catalogs/media.ur';
 import { shellUr } from './catalogs/shell.ur';
 import { videoPlayerUr } from './catalogs/videoPlayer.ur';
 import type { CatalogStrings } from './types';
@@ -59,8 +58,8 @@ export const ur: CatalogStrings<typeof en> = {
     browserTab: 'براؤزر ٹیب',
     downloads: 'ڈاؤن لوڈز',
     downloadsTab: 'ڈاؤن لوڈز ٹیب',
-    library: 'لائبریری',
-    libraryTab: 'لائبریری ٹیب',
+    library: 'پلیئر',
+    libraryTab: 'پلیئر ٹیب',
     settings: 'سیٹنگز',
     settingsTab: 'سیٹنگز ٹیب',
     about: 'تعارف',
@@ -681,6 +680,10 @@ export const ur: CatalogStrings<typeof en> = {
       'اس ڈاؤن لوڈ کو VidoraX سے حذف کریں؟ VidoraX کے باہر محفوظ کاپیاں حذف نہیں ہوں گی۔',
     deleteConfirm: 'حذف کریں',
     deleteCancel: 'منسوخ',
+    removeTitle: 'ڈاؤن لوڈز سے ہٹائیں؟',
+    removeMessage:
+      'یہ صرف اس فہرست سے ہٹے گا۔ ویڈیو آپ کی لائبریری میں رہے گی، اور ڈیوائس پر محفوظ کی گئی کوئی کاپی بھی محفوظ رہے گی۔',
+    removeConfirm: 'ہٹائیں',
     deleteFailed: 'یہ ڈاؤن لوڈ حذف نہیں ہو سکا',
     deleteMissingConfirm: 'لائبریری سے ہٹائیں',
     notifications: {
@@ -833,8 +836,18 @@ export const ur: CatalogStrings<typeof en> = {
     resetFiltersHint: 'تلاش، فلٹر، اور ترتیب صاف کرتا ہے',
     analyzeLinkHint: 'ڈاؤن لوڈ کے قابل فارمیٹس کے لیے لنک چیک کرتا ہے',
   },
+  deviceVideos: {
+    title: 'اس ڈیوائس پر',
+    subtitle: 'آپ کے فون پر پہلے سے محفوظ ویڈیوز',
+    empty: 'اس ڈیوائس پر کوئی ویڈیو نہیں ملی۔',
+    permission: 'یہاں چلانے کے لیے VidoraX کو اپنی ویڈیوز پڑھنے کی اجازت دیں۔',
+    allow: 'اجازت دیں',
+    unavailable: 'اس بلڈ میں دستیاب نہیں۔',
+    limited: 'صرف وہ ویڈیوز جن تک آپ نے VidoraX کو رسائی دی',
+    open: 'اس ڈیوائس کی ویڈیوز',
+  },
   library: {
-    title: 'لائبریری',
+    title: 'پلیئر',
     searchPlaceholder: 'ڈاؤن لوڈ شدہ ویڈیوز تلاش کریں',
     emptyTitle: 'ابھی کوئی ڈاؤن لوڈ نہیں',
     emptyDescription:
@@ -989,6 +1002,12 @@ export const ur: CatalogStrings<typeof en> = {
     loadingA11y: 'سیٹنگز لوڈ ہو رہی ہیں',
     appearanceSection: 'ظاہری شکل',
     appearanceDescription: 'ایپ کی شکل اور احساس',
+    defaultBrowser: 'ڈیفالٹ براؤزر',
+    defaultBrowserHintOn: 'اس ڈیوائس پر ویب لنکس VidoraX میں کھلتے ہیں۔',
+    defaultBrowserHintOff: 'دوسری ایپس کے ویب لنکس VidoraX میں کھولیں۔',
+    defaultBrowserValueOn: 'آن',
+    defaultBrowserValueOff: 'سیٹ کریں',
+    defaultBrowserUnavailable: 'اس ڈیوائس پر دستیاب نہیں',
     generalSection: 'جنرل',
     generalDescription: 'زبان اور علاقائی ترجیحات',
     downloadsSection: 'ڈاؤن لوڈز',
@@ -1859,6 +1878,5 @@ export const ur: CatalogStrings<typeof en> = {
   },
   shell: shellUr,
   detection: detectionUr,
-  media: mediaUr,
   videoPlayer: videoPlayerUr,
 };

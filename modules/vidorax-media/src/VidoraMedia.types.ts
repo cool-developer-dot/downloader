@@ -15,6 +15,15 @@
  *   ERR_NO_APP             `openWith`: no installed app can open the file
  */
 
+/**
+ * `progressive`: one complete file. `hls`: an unencrypted VOD HLS stream (multivariant or media playlist); the
+ * engine downloads one single-track variant's segments into one file (MPEG-TS or fMP4). Encrypted/DRM HLS is
+ * refused as `DRM_PROTECTED`, live HLS as `LIVE_UNSUPPORTED`, separate-audio or audio-only variants as
+ * `UNSUPPORTED_FORMAT`. `dash`: an MPD whose chosen representation is one complete file (muxed audio+video, or video
+ * in a manifest without audio) — downloaded as that file. `ContentProtection`/DRM is `DRM_PROTECTED`, `type="dynamic"`
+ * is `LIVE_UNSUPPORTED`; separate audio/video, segmented (SegmentTemplate/SegmentList), multi-period and audio-only
+ * manifests are `UNSUPPORTED_FORMAT` — the engine never muxes or reassembles fragments.
+ */
 export type SourceKind = 'progressive' | 'hls' | 'dash';
 
 export type SiteId =
@@ -43,13 +52,24 @@ export interface RequestContext {
   useCookies: boolean;
 }
 
+/**
+ * Classifies a source without downloading it: `ok: true` is DOWNLOADABLE; `DRM_PROTECTED` is PROTECTED;
+ * `UNSUPPORTED_FORMAT`/`LIVE_UNSUPPORTED`/`NOT_MEDIA`/`POLICY_BLOCKED` are UNSUPPORTED; `NETWORK`/`HTTP_ERROR`
+ * (5xx, 408, 429) are transient and `HTTP_403`/`HTTP_404` mean the link must be refreshed from its page. Redirects
+ * are followed (never into a private network); cookies, Referer, Origin and User-Agent are sent on every hop.
+ */
 export interface ProbeRequest {
   url: string;
-  /** Omit to let native sniff Content-Type, extension and first bytes. */
+  /** Omit to let native sniff Content-Type, extension and first bytes (a playlist or an MPD is classified as such). */
   kind?: SourceKind;
-  /** DASH manifest XML delivered inline by a page; `url` is then its base URL. */
+  /** Inline DASH manifest XML: always refused (`UNSUPPORTED_FORMAT`) — a download is re-resolved from a URL. */
   manifestText?: string;
   request: RequestContext;
+  /**
+   * HLS/DASH: the same choice as `EnqueueRequest.variant`, so the verdict is about the variant that enqueue would
+   * download (omitted = the best decodable variant capped by `DownloadSettings.preferredMaxHeight`).
+   */
+  variant?: { videoId?: string; audioId?: string; maxHeight?: number };
 }
 
 export type ProbeFailure =
@@ -63,7 +83,7 @@ export type ProbeFailure =
   | 'NETWORK'
   | 'POLICY_BLOCKED';
 
-export type Container = 'mp4' | 'webm' | 'mov' | 'mkv' | 'ts' | 'flv' | '3gp' | 'unknown';
+export type Container = 'mp4' | 'webm' | 'mov' | 'avi' | 'wmv' | 'mkv' | 'ts' | 'flv' | '3gp' | 'unknown';
 
 export interface ProbeVariant {
   /** Opaque id to pass back as `EnqueueRequest.variant.videoId` (HLS variant URI or DASH representation id). */
@@ -75,7 +95,11 @@ export interface ProbeVariant {
   frameRate: number | null;
   /** RFC 6381 codecs string or MIME type. */
   videoCodec: string | null;
-  /** True when a separate audio track will be muxed in (DASH, HLS EXT-X-MEDIA with URI). */
+  /**
+   * True when a separate audio track would need muxing in (HLS `EXT-X-MEDIA TYPE=AUDIO` with its own URI, or a
+   * video-only DASH representation next to an audio adaptation set). The engine never muxes: such a variant is
+   * refused if chosen (DASH lists only downloadable representations).
+   */
   needsAudioMux: boolean;
   /** Estimated total bytes including the default audio track, null when unknown. */
   estimatedBytes: number | null;
@@ -111,13 +135,22 @@ export type ProbeResult =
   | { ok: false; reason: ProbeFailure; httpStatus: number | null; message: string | null };
 
 export interface EnqueueRequest {
-  /** Progressive file, HLS playlist, or DASH manifest URL (base URL when `manifestText` is set). */
+  /**
+   * A progressive file URL; for `hls` a multivariant or media playlist URL; for `dash` an MPD URL, downloaded only
+   * when its chosen representation is one complete file (muxed audio+video, or video in a manifest without audio).
+   */
   url: string;
   kind: SourceKind;
+  /** @deprecated DASH manifest text — not supported; the v2 engine ignores this field. */
   manifestText?: string;
-  /** Separate progressive audio file to mux with a video-only progressive `url` (split A/V). */
+  /** @deprecated Separate audio for split A/V muxing — not supported; the v2 engine ignores this field. */
   audioUrl?: string;
-  /** HLS/DASH choice from `probe`. Omitted: best decodable video within `maxHeight` + default audio. */
+  /**
+   * HLS (multivariant playlist) and DASH: `videoId` (a `ProbeVariant.id` — HLS variant URI, DASH representation id)
+   * picks that exact variant, `maxHeight` the best one up to that height; neither = the best decodable variant
+   * (capped by `DownloadSettings.preferredMaxHeight`). A chosen variant that needs separate audio is refused, never
+   * substituted. `audioId` is ignored: separate audio is never muxed.
+   */
   variant?: { videoId?: string; audioId?: string; maxHeight?: number };
   request: RequestContext;
   title: string;
@@ -140,7 +173,7 @@ export type DownloadState =
   | 'paused'
   | 'waiting_network'
   | 'waiting_retry'
-  /** Muxing, remuxing, metadata, thumbnail, optional gallery export. */
+  /** Verifying the downloaded file, finalizing it into the library, and reading metadata. */
   | 'processing'
   | 'completed'
   | 'failed'
@@ -245,6 +278,27 @@ export interface LibraryQuery {
   offset?: number;
 }
 
+export interface DeviceVideo {
+  /** MediaStore id, unique on this device. */
+  id: string;
+  /** `content://` URI to play; VidoraX never copies or modifies the file. */
+  uri: string;
+  title: string;
+  durationMs: number | null;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  addedAt: number;
+  mimeType: string | null;
+}
+
+export interface DeviceVideoPage {
+  permissionGranted: boolean;
+  /** `full` — all videos; `selected` — only the ones the user picked (Android 14+); `none` — no access. */
+  access: 'none' | 'selected' | 'full';
+  items: DeviceVideo[];
+}
+
 export interface LibraryPage {
   items: LibraryItem[];
   total: number;
@@ -274,6 +328,13 @@ export type VidoraMediaEvents = {
   onDownloadStateChange: (event: DownloadStateEvent) => void;
   onLibraryChange: (event: LibraryChangeEvent) => void;
   onVolumeChange: (event: { volume: number }) => void;
+};
+
+/** A genuine completion the engine recorded for JavaScript to count once (see `listCompletedDownloads`). */
+export type CompletedDownload = {
+  id: string;
+  /** Epoch ms of the `completed` commit. */
+  completedAt: number;
 };
 
 export interface VidoraMediaModuleApi {
@@ -320,7 +381,19 @@ export interface VidoraMediaModuleApi {
   getLibrarySiteCounts(): Promise<{ site: SiteId; count: number }[]>;
   renameLibraryItem(id: string, title: string): Promise<LibraryItem>;
   setFavorite(id: string, favorite: boolean): Promise<void>;
+
+  /**
+   * Videos already on the device (MediaStore), newest first. Read-only. `permissionGranted` is false until the
+   * user allows access to their media, and `items` is then empty rather than an error.
+   */
+  listDeviceVideos(limit: number, offset: number): Promise<DeviceVideoPage>;
   deleteLibraryItems(ids: string[]): Promise<void>;
+  /**
+   * Repairs the library after files changed outside VidoraX: items whose file is gone or empty are removed (row and
+   * thumbnail) and announced with `onLibraryChange` `deleted`. `ids` limits the check; omitted/null checks every
+   * item. Resolves with the removed ids. Also runs once whenever the module starts.
+   */
+  reconcileLibrary(ids?: string[] | null): Promise<string[]>;
   saveToGallery(ids: string[]): Promise<void>;
   /** System chooser to play the file in another app. */
   openWith(id: string): Promise<void>;
@@ -328,6 +401,16 @@ export interface VidoraMediaModuleApi {
   getStorageStats(): Promise<StorageStats>;
   /** Deletes orphaned temp work folders; resolves with bytes freed. */
   clearTempFiles(): Promise<number>;
+
+  // Completions
+  /**
+   * Downloads that reached `completed` with their verified library item and were not acknowledged yet, oldest
+   * first — including ones that completed while no JavaScript ran (app closed, boot job). Recorded natively in the
+   * same transaction as the `completed` state. Missing on older native builds.
+   */
+  listCompletedDownloads(): Promise<CompletedDownload[]>;
+  /** Forgets completions JavaScript has counted, so each is reported once. */
+  acknowledgeCompletedDownloads(ids: string[]): Promise<void>;
 
   // Player helpers (synchronous)
   /** Media stream volume 0..1. */

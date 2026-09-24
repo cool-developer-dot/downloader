@@ -18,7 +18,11 @@ import {
 } from '@/media-detection/services/page-media-resolution.service';
 import { pendingMediaResolutionService } from '@/media-detection/services/pending-media-resolution.service';
 import { buildRequestContextFromDetectedMedia } from '@/media-detection/services/request-context.service';
-import { getMsePlaybackContext } from '@/media-detection/engine/mse-playback-context';
+import {
+  classifyMsePlayback,
+  getMsePlaybackContext,
+  getMsePlaybackState,
+} from '@/media-detection/engine/mse-playback-context';
 import { useMediaDiscovery } from '@/media-detection/hooks/useMediaDiscovery';
 import { useMediaDetectionStore } from '@/media-detection/stores';
 import { isSafeMediaUrl, isSameDocumentUrl } from '@/media-detection/utils';
@@ -44,11 +48,13 @@ import {
   registerQualitySelectionDownloadListener,
 } from '@/screens/downloads/quality/download-created-bus';
 
+import type { VerifyRerunBudget } from './cta-persistence';
 import {
   shouldAcceptVerificationResult,
   shouldInvalidateCurrentMedia,
   shouldRetainAvailableCta,
   shouldStartVerification,
+  takeVerifyRerun,
 } from './cta-persistence';
 import { browserMediaActionService } from './browser-media-action.service';
 import type { BrowserMediaActionState } from './browser-media-action.types';
@@ -63,6 +69,7 @@ import {
   fingerprintDiagHash,
   logBrowserCta,
 } from './browser-cta-diagnostics';
+import { ensureConsumedReleaseOnFailure } from './consumed-release';
 import { buildBrowserMediaFingerprint } from './media-fingerprint';
 import {
   classifyMediaResolutionOutcome,
@@ -75,6 +82,9 @@ import { mergeEligibleWindowCandidates } from '@/media-detection/observation/can
 import {
   selectVerifiedStandaloneQualities,
 } from './verified-quality-options';
+
+/** Consecutive re-runs allowed for the same media, owner and page after a verification the page overtook. */
+const MAX_VERIFY_RERUNS = 3;
 
 export type UseBrowserMediaActionOptions = {
   onOpenQualitySheet?: (
@@ -110,6 +120,8 @@ export type BrowserMediaActionViewModel = BrowserMediaActionState & {
   download: () => Promise<{
     ok: boolean;
     downloadId?: string;
+    /** True when the tap landed on a download this session already accepted, so nothing new was started. */
+    deduped?: boolean;
     outcome?: MediaResolutionOutcome;
   }>;
   viewDownloads: () => void;
@@ -135,6 +147,22 @@ export function useBrowserMediaAction(
   );
 
   const verifyingRef = useRef(false);
+  /** A verification trigger arrived while another verification was running. */
+  const rerunRequestedRef = useRef(false);
+  const rerunBudgetRef = useRef<VerifyRerunBudget>({ key: '', count: 0 });
+  const [verifyRevision, setVerifyRevision] = useState(0);
+
+  /**
+   * Looks at the page again after a verification that the page overtook. Bounded per media/owner/page, so a page
+   * whose state keeps cancelling verification cannot keep one running forever.
+   */
+  const scheduleVerifyRerun = useCallback((key: string) => {
+    const next = takeVerifyRerun(rerunBudgetRef.current, key, MAX_VERIFY_RERUNS);
+    rerunBudgetRef.current = next.budget;
+    if (next.allowed) {
+      setVerifyRevision((n) => n + 1);
+    }
+  }, []);
   const prevNavRef = useRef<string | null>(null);
   const qualityHandoffRef = useRef<{
     tabId: string;
@@ -145,6 +173,11 @@ export function useBrowserMediaAction(
     return browserMediaActionService.subscribe(() => {
       setActionState(browserMediaActionService.getState());
     });
+  }, []);
+
+  // A download that failed for want of a fresh link gives its video back to the page's offer.
+  useEffect(() => {
+    ensureConsumedReleaseOnFailure();
   }, []);
 
   const [ownerRevision, setOwnerRevision] = useState(0);
@@ -205,6 +238,7 @@ export function useBrowserMediaAction(
   const verifyCandidate = useCallback(
     async (
       media: NonNullable<typeof discovery.media>,
+      ownershipKey: string,
     ): Promise<MediaResolutionOutcome> => {
       if (
         browserMediaActionService.getVerifiedCandidateId() === media.id &&
@@ -213,6 +247,8 @@ export function useBrowserMediaAction(
         return classifyMediaResolutionOutcome({ resolvedSupported: true });
       }
       if (verifyingRef.current) {
+        // Not dropped: the running verification looks at the page again when it ends (see its finally).
+        rerunRequestedRef.current = true;
         logGeneralDownloadTrace('RESOLUTION_JOINED', {
           reason: 'VERIFYING',
         });
@@ -274,8 +310,45 @@ export function useBrowserMediaAction(
       const mediaUrl = executable.finalUrl?.trim() || executable.url?.trim() || '';
       const executableIsBlob =
         !mediaUrl || mediaUrl.toLowerCase().startsWith('blob:');
+
+      // Phase 11B — what the blob/MediaSource player on this page amounts to. Protection is decided
+      // before anything is verified or offered, so an encrypted player can never borrow an unrelated
+      // HTTP(S) request from the same page and be published as downloadable.
+      const mseState = getMsePlaybackState(tabIdEarly);
+      const mseResolution = classifyMsePlayback({
+        state: mseState,
+        hasWholeSourceCandidate: !executableIsBlob || httpCandidates.length > 0,
+      });
+      if (mseResolution.kind === 'PROTECTED') {
+        logMediaResolveTrace({
+          tabId: tabIdEarly,
+          platform: resolveSocialPlatform(pageUrlEarly ?? '') ?? 'general',
+          generation:
+            socialCtxEarly?.contextGeneration ?? generalCtxEarly?.pageGeneration ?? 0,
+          event: 'PROVEN_UNSUPPORTED',
+          candidateType: 'blob',
+          rejectionReason: mseResolution.reason,
+        });
+        logAutomaticHandoff('MEDIA_VERIFY_UNSUPPORTED', {
+          tabId: tabIdEarly,
+          rejectionReason: mseResolution.reason,
+          scope: 'mse',
+        });
+        browserMediaActionService.invalidateProtectedOffer();
+        return classifyMediaResolutionOutcome({
+          rejectionReason: mseResolution.reason,
+          allBoundedCandidatesRejected: true,
+        });
+      }
+
       if (executableIsBlob && httpCandidates.length === 0) {
+        const unresolvable = mseResolution.kind === 'UNSUPPORTED';
         const mse = getMsePlaybackContext(pageUrlEarly);
+        const rejectionReason = unresolvable
+          ? mseResolution.reason
+          : mse.msePlaybackActive
+            ? 'PLATFORM_UNOBSERVABLE'
+            : 'NO_FRESH_SOURCE';
         logMediaResolveTrace({
           tabId: tabIdEarly,
           platform: resolveSocialPlatform(pageUrlEarly ?? '') ?? 'general',
@@ -283,17 +356,15 @@ export function useBrowserMediaAction(
             socialCtxEarly?.contextGeneration ??
             generalCtxEarly?.pageGeneration ??
             0,
-          event: 'TRANSIENT_UNRESOLVED',
+          event: unresolvable ? 'PROVEN_UNSUPPORTED' : 'TRANSIENT_UNRESOLVED',
           candidateType: 'blob',
-          rejectionReason: mse.msePlaybackActive
-            ? 'PLATFORM_UNOBSERVABLE'
-            : 'NO_FRESH_SOURCE',
+          rejectionReason,
         });
         return classifyMediaResolutionOutcome({
           hasCandidates: false,
-          rejectionReason: mse.msePlaybackActive
-            ? 'PLATFORM_UNOBSERVABLE'
-            : 'NO_FRESH_SOURCE',
+          rejectionReason,
+          // Only proven evidence may say "can't be downloaded"; still-looking stays transient.
+          allBoundedCandidatesRejected: unresolvable,
         });
       }
 
@@ -459,6 +530,7 @@ export function useBrowserMediaAction(
       logAutomaticHandoff('MEDIA_VERIFY_AUTO_STARTED', {
         tabId: tabIdEarly,
         contentIdentityHash: hashHandoffIdentity(nextIdentity),
+        ownershipKeyHash: hashHandoffIdentity(ownershipKey),
         candidateIdHash: hashHandoffIdentity(executable.id),
         ownershipConfidence:
           socialScope?.ownershipConfidence ??
@@ -481,7 +553,7 @@ export function useBrowserMediaAction(
       ) {
         browserMediaActionService.setDetecting(pageUrl);
       }
-      const signal = browserMediaActionService.beginVerification();
+      const signal = browserMediaActionService.beginVerification(nextIdentity);
 
       const retainOnTransientFailure = (): boolean => {
         const live = browserMediaActionService.getState();
@@ -542,6 +614,8 @@ export function useBrowserMediaAction(
         // Phase 4B social path — verify only 4A-owned candidates.
         if (socialScope) {
           const offerResult = await buildVerifiedSocialMediaOffer({
+            // The ownership pass already chose the current media; its variants win the ranking.
+            ownedResourceUrl: executable.finalUrl || executable.url || null,
             scope: {
               tabId,
               navigationEpoch,
@@ -700,6 +774,7 @@ export function useBrowserMediaAction(
             mediaIdentityHash: hashSafeId(generalScope.mediaIdentity),
           });
           const offerResult = await buildVerifiedGeneralMediaOffer({
+            ownedResourceUrl: executable.finalUrl || executable.url || null,
             scope: {
               tabId,
               navigationEpoch,
@@ -763,6 +838,8 @@ export function useBrowserMediaAction(
               offerResult.reason === 'DRM_UNSUPPORTED' ||
               offerResult.reason === 'DASH_UNSUPPORTED' ||
               offerResult.reason === 'LIVE_HLS_UNSUPPORTED' ||
+              offerResult.reason === 'LIVE_UNSUPPORTED' ||
+              offerResult.reason === 'UNSUPPORTED_FORMAT' ||
               offerResult.reason === 'VIDEO_ONLY_UNSUPPORTED' ||
               offerResult.reason === 'UNSUPPORTED_TRANSPORT';
             logAutomaticHandoff(
@@ -953,12 +1030,40 @@ export function useBrowserMediaAction(
           hasCandidates: true,
         });
       } finally {
+        // The page moved on while this ran — a trigger arrived meanwhile, or a navigation or a new owner cancelled
+        // it. The page reports each video only once, so waiting for its next event could mean waiting forever:
+        // look at the current page again instead.
+        const lookAgain = rerunRequestedRef.current || signal.aborted;
+        rerunRequestedRef.current = false;
         verifyingRef.current = false;
         browserMediaActionService.cancelVerification();
+        if (lookAgain) {
+          scheduleVerifyRerun(`${executable.id}|${ownershipKey}|${pageUrlEarly ?? ''}`);
+        }
       }
     },
-    [lastNavigation, discovery.candidates],
+    [lastNavigation, discovery.candidates, scheduleVerifyRerun],
   );
+
+  // Protection can be proven after an offer was already published (a player that negotiates EME, or
+  // hits its first encrypted sample, mid-playback). It is checked before anything else in this effect,
+  // including the "already verified this candidate" shortcut, so a standing offer is always withdrawn.
+  useEffect(() => {
+    if (isHome) {
+      return;
+    }
+    const protectedTabId =
+      browserMediaActionService.getActiveTabId() ??
+      useBrowserStore.getState().activeTabId ??
+      '__default__';
+    const protection = classifyMsePlayback({
+      state: getMsePlaybackState(protectedTabId),
+      hasWholeSourceCandidate: discovery.candidates.length > 0,
+    });
+    if (protection.kind === 'PROTECTED') {
+      browserMediaActionService.invalidateProtectedOffer();
+    }
+  }, [discovery.ownershipKey, discovery.candidates.length, isHome, ownerRevision]);
 
   useEffect(() => {
     if (isHome || !discovery.media) {
@@ -1062,14 +1167,18 @@ export function useBrowserMediaAction(
       return;
     }
 
-    void verifyCandidate(discovery.media);
+    // Ownership transitions (MEDIUM → STRONG, player switch, preload becoming current) re-run
+    // verification without waiting for a new network request.
+    void verifyCandidate(discovery.media, discovery.ownershipKey);
   }, [
     discovery.media,
     discovery.candidates,
     discovery.downloadable,
+    discovery.ownershipKey,
     isHome,
     lastNavigation,
     verifyCandidate,
+    verifyRevision,
   ]);
 
   const selection = useMemo(
@@ -1205,6 +1314,7 @@ export function useBrowserMediaAction(
   const download = useCallback(async (): Promise<{
     ok: boolean;
     downloadId?: string;
+    deduped?: boolean;
     outcome?: MediaResolutionOutcome;
   }> => {
     const captureToken = (): DownloadResolutionToken => {
@@ -1342,29 +1452,15 @@ export function useBrowserMediaAction(
       const defaultOption = selectDefaultQualityOption(
         normalizeAnalysisToSelection(claim.analysis).options,
       );
-      // Phase 5C — only wire Phase 4C social refresh identity on social pages.
-      // General media must not invent socialContextGeneration.
-      const socialPlatform = claim.pageUrl
-        ? resolveSocialPlatform(claim.pageUrl)
-        : null;
-      const socialSourceIdentity =
-        socialPlatform && claim.contentIdentity && claim.variantIdentity
-          ? {
-              contentIdentity: claim.contentIdentity,
-              variantIdentity: claim.variantIdentity,
-              tabId: claim.tabId,
-              pageUrl: claim.pageUrl,
-              navigationEpoch: useMediaDetectionStore.getState().navigationEpoch,
-              socialContextGeneration:
-                socialPageContextStore.get(claim.tabId)?.contextGeneration ?? null,
-            }
-          : null;
       const result = await enqueueBrowserMediaDownload({
         analysis: claim.analysis,
         requestContext: claim.requestContext,
         selectedOptionId: defaultOption?.id ?? null,
         fingerprint: claim.fingerprint,
-        socialSourceIdentity,
+        pageUrl: claim.pageUrl,
+        contentIdentity: claim.contentIdentity,
+        // The offer must still be the current tab's current content when the engine accepts it.
+        isOfferCurrent: () => isDownloadResolutionTokenCurrent(token, captureToken()),
       });
 
       if (!result.ok) {
@@ -1393,7 +1489,8 @@ export function useBrowserMediaAction(
         return {
           ok: false,
           outcome: classifyMediaResolutionOutcome({
-            rejectionReason: 'PROBE_FAILED',
+            // Carry the handoff's own reason: an expired link must not read as a network blip.
+            rejectionReason: result.reason ?? 'PROBE_FAILED',
             hasCandidates: true,
           }),
         };
@@ -1427,7 +1524,7 @@ export function useBrowserMediaAction(
         tabId: claim.tabId,
       });
       options.onDownloadStarted?.(result.downloadId);
-      return { ok: true, downloadId: result.downloadId };
+      return { ok: true, downloadId: result.downloadId, deduped: result.deduped };
     } catch {
       logBrowserCta('enqueue_failed', {
         tabId: claim.tabId,

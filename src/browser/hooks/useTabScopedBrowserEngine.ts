@@ -41,6 +41,8 @@ export function useTabScopedBrowserEngine(tabId: string): BrowserEngineContextVa
   const nativeCanGoBackRef = useRef(false);
   const nativeCanGoForwardRef = useRef(false);
   const suppressNextAbortErrorRef = useRef(false);
+  /** Armed only while a user Back is walking native history — see the context type. */
+  const pendingNativeBackRef = useRef(false);
   const webViewInstanceGenerationRef = useRef(1);
 
   const [sourceUri, setSourceUri] = useState(() => {
@@ -72,6 +74,7 @@ export function useTabScopedBrowserEngine(tabId: string): BrowserEngineContextVa
   }, [tabId, updateTab]);
 
   const goHome = useCallback(() => {
+    pendingNativeBackRef.current = false;
     const navId = bumpNavigationEpoch();
     seedActiveDocumentLoad(navId, null);
     logBrowserNav(navId, 'home', { decisionReason: 'chrome_go_home', tabId });
@@ -105,6 +108,9 @@ export function useTabScopedBrowserEngine(tabId: string): BrowserEngineContextVa
         canGoBack: true,
         tabId,
       });
+      // Landing on the seeded about:blank means there is no page behind this
+      // one — the event handler turns that into Home instead of a blank tab.
+      pendingNativeBackRef.current = true;
       goBackWebView(webViewRef.current);
       return;
     }
@@ -142,6 +148,7 @@ export function useTabScopedBrowserEngine(tabId: string): BrowserEngineContextVa
       return;
     }
     const current = tab.url;
+    pendingNativeBackRef.current = false;
     const navId = bumpNavigationEpoch();
     seedActiveDocumentLoad(navId, current);
     logBrowserNav(navId, 'reload', {
@@ -177,6 +184,8 @@ export function useTabScopedBrowserEngine(tabId: string): BrowserEngineContextVa
       if (!trimmed) {
         return;
       }
+
+      pendingNativeBackRef.current = false;
 
       if (isBrowserHomeUrl(trimmed)) {
         goHome();
@@ -279,6 +288,7 @@ export function useTabScopedBrowserEngine(tabId: string): BrowserEngineContextVa
       nativeCanGoBackRef,
       nativeCanGoForwardRef,
       suppressNextAbortErrorRef,
+      pendingNativeBackRef,
       webViewInstanceGenerationRef,
       publishChromeHistoryFlags,
       goBack,

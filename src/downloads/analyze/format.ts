@@ -387,6 +387,8 @@ export function createVariant(input: {
   downloadable: boolean;
   unsupportedReason?: AnalysisUnsupportedReason | null;
   originalIndex: number;
+  /** DASH only: the representation this variant downloads. */
+  representationId?: string | null;
 }): MediaAnalysisVariant {
   const width =
     typeof input.width === 'number' && input.width > 0
@@ -413,6 +415,7 @@ export function createVariant(input: {
       resolution ?? '',
       String(input.bitrate ?? ''),
       String(input.originalIndex),
+      input.representationId ?? '',
     ]),
     sourceUrl: input.sourceUrl,
     streamType: input.streamType,
@@ -433,6 +436,7 @@ export function createVariant(input: {
     frameRate: input.frameRate ?? null,
     downloadable: input.downloadable,
     unsupportedReason: input.unsupportedReason ?? null,
+    ...(input.representationId ? { representationId: input.representationId } : {}),
   };
 }
 

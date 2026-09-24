@@ -8,7 +8,7 @@ import { deletePlaybackState } from '@/playback/persistence';
 import { PLAYBACK_LOCAL_NAMESPACE } from '@/playback/constants';
 import { invalidatePlaybackUiQueries } from '@/playback/query-keys';
 import { getCachedFavoriteMediaIds } from '@/storage/services/catalog-persist';
-import { useDownloadsStore } from '@/store/downloads';
+import { selectAllDownloadItems, useDownloadsStore } from '@/store/downloads';
 import { useFavoritesStore } from '@/store/favorites';
 import { useLibraryStore } from '@/store/library';
 
@@ -25,7 +25,7 @@ const removeInFlight = new Set<string>();
 
 function ensureLibraryRepositoryDeps(): void {
   configureLibraryRepository({
-    getDownloadItems: () => Object.values(useDownloadsStore.getState().itemsById),
+    getDownloadItems: () => selectAllDownloadItems(useDownloadsStore.getState()),
     getTransfers: () => useDownloadsStore.getState().transferById,
     getFavoriteSourceKeys: () =>
       new Set(Object.keys(useFavoritesStore.getState().urlIndex)),

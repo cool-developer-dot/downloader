@@ -48,18 +48,31 @@ export function usePlayerBrightness(): PlayerBrightnessState {
     return next;
   }, [control, level]);
 
+  // Follow the window's real brightness when the player opens and whenever the app returns to the
+  // foreground — not on every level change, which re-read the system mid-gesture.
   useEffect(() => {
-    void refresh();
-  }, [refresh]);
-
-  useEffect(() => {
+    if (!control.available) {
+      return undefined;
+    }
+    let cancelled = false;
+    const sync = () => {
+      void control.readLevel().then((next) => {
+        if (!cancelled) {
+          setLevelState(next);
+        }
+      });
+    };
+    sync();
     const sub = AppState.addEventListener('change', (state) => {
       if (state === 'active') {
-        void refresh();
+        sync();
       }
     });
-    return () => sub.remove();
-  }, [refresh]);
+    return () => {
+      cancelled = true;
+      sub.remove();
+    };
+  }, [control]);
 
   const setLevel = useCallback(
     (nextLevel: number) => {

@@ -207,6 +207,11 @@ export interface DownloadItem {
   downloadedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  /**
+   * A finished v2 video's own favorite flag (the native library item's). Absent on v1 catalog rows, whose favorite
+   * is the page-URL favorite — which would mark every video downloaded from the same page.
+   */
+  favorite?: boolean;
 }
 
 export interface DownloadListResponse {
@@ -282,6 +287,8 @@ export type MediaAnalysisContainer =
 export type MediaAnalysisStreamType =
   | 'PROGRESSIVE'
   | 'HLS'
+  /** An MPD whose chosen representation is one complete video file (classified by the native DASH planner). */
+  | 'DASH'
   | 'AUDIO'
   | 'UNKNOWN';
 
@@ -317,6 +324,8 @@ export interface MediaAnalysisVariant {
   frameRate: number | null;
   downloadable: boolean;
   unsupportedReason: AnalysisUnsupportedReason | null;
+  /** DASH only: the manifest representation this variant downloads (the engine's `variant.videoId`). */
+  representationId?: string | null;
 }
 
 /** Response from POST /downloads/analyze — does not create DownloadHistory. */

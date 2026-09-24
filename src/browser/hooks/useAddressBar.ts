@@ -40,11 +40,17 @@ export function useAddressBar() {
       query: draft,
     });
 
-  // Discard unfinished draft when switching tabs.
-  useEffect(() => {
+  // Discard unfinished draft when switching tabs: the editing state is reset while rendering the new tab
+  // (React's "adjust state when a prop changes"), the keyboard and suggestions below.
+  const [draftTabId, setDraftTabId] = useState(activeTabId);
+  if (draftTabId !== activeTabId) {
+    setDraftTabId(activeTabId);
     setDraft('');
     setValidationMessage(null);
     setIsFocused(false);
+  }
+
+  useEffect(() => {
     clearSuggestions();
     Keyboard.dismiss();
     inputRef.current?.blur();

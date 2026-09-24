@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useEffect, useEffectEvent, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { useBrowserEngineContext } from '@/browser/engine';
@@ -87,33 +87,29 @@ export function useBrowserSessionContinuity(): void {
     };
   }, [loadUrl]);
 
-  const handleAppState = useCallback(
-    (next: AppStateStatus) => {
-      const previous = appStateRef.current;
-      appStateRef.current = next;
+  // An Effect Event reads the latest `isHome`: depending on it re-subscribed AppState on every
+  // Home <-> page transition, churning listeners for no behavioural gain.
+  const handleAppState = useEffectEvent((next: AppStateStatus) => {
+    const previous = appStateRef.current;
+    appStateRef.current = next;
 
-      if (next === 'background' || next === 'inactive') {
+    if (next === 'background' || next === 'inactive') {
+      browserSyncService.onAppBackground();
+      mediaDetectionEngine.setAppActive(false);
+      return;
+    }
+
+    if (next === 'active' && (previous === 'background' || previous === 'inactive')) {
+      mediaDetectionEngine.setAppActive(true);
+      if (!isHome) {
+        // Continuity without flicker: flush only — do not remount or reload.
         browserSyncService.onAppBackground();
-        mediaDetectionEngine.setAppActive(false);
-        return;
       }
-
-      if (
-        next === 'active' &&
-        (previous === 'background' || previous === 'inactive')
-      ) {
-        mediaDetectionEngine.setAppActive(true);
-        if (!isHome) {
-          // Continuity without flicker: flush only — do not remount or reload.
-          browserSyncService.onAppBackground();
-        }
-      }
-    },
-    [isHome],
-  );
+    }
+  });
 
   useEffect(() => {
-    const sub = AppState.addEventListener('change', handleAppState);
+    const sub = AppState.addEventListener('change', (next) => handleAppState(next));
     return () => sub.remove();
-  }, [handleAppState]);
+  }, []);
 }

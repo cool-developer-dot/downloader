@@ -5,6 +5,7 @@ import type { DownloadItem } from '@/api';
 import type { LocalDownloadRecord } from '@/downloads/engine/types';
 import { listLocalRecords } from '@/downloads/engine/persistence';
 import { completedActionErrorMessageKey } from '@/downloads/completed-file/action-errors';
+import { reconcileV2Library } from '@/downloads/v2';
 import {
   applyLibraryQuery,
   assembleCanonicalItems,
@@ -28,6 +29,7 @@ import { enrichLibraryWithPlayback } from '@/playback/enrich-library';
 import { isContinueWatchingEligible } from '@/playback/domain/continue-watching';
 import { getCachedFavoriteMediaIds } from '@/storage/services/catalog-persist';
 import {
+  selectAllDownloadItems,
   selectDownloadCatalogIdentitySignature,
   selectLibraryTransferSignature,
   useDownloadsStore,
@@ -56,6 +58,7 @@ export function useLibraryScreen() {
   const refreshing = useLibraryStore((state) => state.refreshing);
   const error = useLibraryStore((state) => state.error);
   const initialized = useLibraryStore((state) => state.initialized);
+  const lastReconciledAt = useLibraryStore((state) => state.lastReconciledAt);
 
   const setSearchQuery = useLibraryStore((state) => state.setSearchQuery);
   const setFilter = useLibraryStore((state) => state.setFilter);
@@ -88,7 +91,7 @@ export function useLibraryScreen() {
 
   useEffect(() => {
     configureLibraryRepository({
-      getDownloadItems: () => Object.values(useDownloadsStore.getState().itemsById),
+      getDownloadItems: () => selectAllDownloadItems(useDownloadsStore.getState()),
       getTransfers: () => useDownloadsStore.getState().transferById,
       getFavoriteSourceKeys: () =>
         new Set(Object.keys(useFavoritesStore.getState().urlIndex)),
@@ -105,7 +108,7 @@ export function useLibraryScreen() {
 
   const downloads = useMemo<DownloadItem[]>(() => {
     void catalogIdentity;
-    return Object.values(useDownloadsStore.getState().itemsById);
+    return selectAllDownloadItems(useDownloadsStore.getState());
   }, [catalogIdentity]);
 
   const favoriteKeys = useMemo(
@@ -174,6 +177,8 @@ export function useLibraryScreen() {
     [canonicalItems, playbackById],
   );
 
+  // "Recently downloaded" is judged at the library's last refresh (every focus and every completion
+  // refreshes it), so rendering stays pure.
   const queryResult = useMemo(
     () =>
       applyLibraryQuery(enrichedCanonical, {
@@ -183,9 +188,9 @@ export function useLibraryScreen() {
         quality,
         folderId,
         recentDownloadWindowMs: LIBRARY_RECENT_DOWNLOAD_WINDOW_MS,
-        nowMs: Date.now(),
+        nowMs: lastReconciledAt ?? 0,
       }),
-    [enrichedCanonical, filter, folderId, quality, searchQuery, sort],
+    [enrichedCanonical, filter, folderId, lastReconciledAt, quality, searchQuery, sort],
   );
 
   const continueWatchingItems = useMemo(() => {
@@ -269,18 +274,23 @@ export function useLibraryScreen() {
         setLoading(true);
       }
       void loadLocalAndReconcile(false);
+      // A video deleted or moved outside VidoraX must not stay listed as playable.
+      void reconcileV2Library();
     }, [initialized, loadLocalAndReconcile, setFilter, setLoading, setSearchQuery]),
   );
 
   // Download COMPLETED bumps sourceRevision (completion bridge) so a mounted
   // Library reloads local records. Completions already invalidate that id's
-  // availability cache; TTL covers the rest.
-  useEffect(() => {
-    if (sourceRevision <= 0 || !initialized) {
-      return;
-    }
-    void loadLocalAndReconcile(false);
-  }, [initialized, loadLocalAndReconcile, sourceRevision]);
+  // availability cache; TTL covers the rest. Focus covers the initial load.
+  useEffect(
+    () =>
+      useLibraryStore.subscribe((state, previous) => {
+        if (state.sourceRevision !== previous.sourceRevision && state.initialized) {
+          void loadLocalAndReconcile(false);
+        }
+      }),
+    [loadLocalAndReconcile],
+  );
 
   const visibleItems: MediaLibraryItem[] = queryResult.items;
   const searchActive = searchQuery.trim().length > 0;
@@ -393,7 +403,7 @@ export function useLibraryScreen() {
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
-    await Promise.all([continueQuery.refetch(), recentQuery.refetch()]);
+    await Promise.all([continueQuery.refetch(), recentQuery.refetch(), reconcileV2Library({ force: true })]);
     await loadLocalAndReconcile(true);
   }, [continueQuery, loadLocalAndReconcile, recentQuery, setRefreshing]);
 

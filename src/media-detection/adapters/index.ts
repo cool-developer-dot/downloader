@@ -7,8 +7,8 @@ export {
   stopNativeNetworkObservation,
 } from './native-network.adapter';
 export {
+  nativeCandidateEventFromObservation,
   processNativeMediaCandidateEvent,
-  nativeTracePayloadIsSanitized,
   resetNativeNetworkContractForTests,
 } from './native-network.contract';
 export type {

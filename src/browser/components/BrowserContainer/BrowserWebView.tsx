@@ -25,6 +25,7 @@ import {
   safeBrowserHost,
 } from '@/browser/diagnostics';
 import { resolvePopupNavigation } from '@/browser/navigation/popup-navigation.service';
+import { scrollPositionService } from '@/browser/scroll';
 import { openIntentOrExternal } from '@/browser/navigation/external-navigation.service';
 import { useTranslation } from '@/localization';
 
@@ -145,9 +146,26 @@ export const BrowserWebView = memo(function BrowserWebView({
     previousCleanup?.();
   }, [isActive, navigationEpochRef, tabId, tabUrl]);
   // WebView exposes imperative commands, not a host ref. Native events carry
-  // the actual wrapper tag, which matches MediaNetworkBridge.parentViewId.
-  useLayoutEffect(() => { bindNativeScope(); });
-  useEffect(() => () => { nativeScopeCleanupRef.current?.(); }, []);
+  // the actual wrapper tag, which matches VidoraWeb's NetworkMediaObservation.viewTag.
+  //
+  // Bind on the inputs that define the scope (tab, page, active) — not on every
+  // render. The dependency-free version re-registered the native observation
+  // scope on each parent re-render (progress ticks included), which is pure
+  // churn on the JS thread. Loads re-bind explicitly from onLoadStart, so a
+  // same-URL reload still moves the scope to the new navigation epoch.
+  useLayoutEffect(() => {
+    bindNativeScope();
+  }, [bindNativeScope]);
+
+  useEffect(
+    () => () => {
+      nativeScopeCleanupRef.current?.();
+      nativeScopeCleanupRef.current = null;
+      // A queued scroll inject must never reach a WebView that is going away.
+      scrollPositionService.cancelRestore(tabId);
+    },
+    [tabId],
+  );
 
   const mountLoggedRef = useRef(false);
   const previousSourceRef = useRef(sourceUri);

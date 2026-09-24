@@ -171,6 +171,7 @@ export const DownloadCard = memo(function DownloadCard({
     executionState: transfer?.executionState ?? null,
     workerState: item.workerState ?? transfer?.workerState ?? null,
     supportsResume: transfer?.supportsResume ?? null,
+    errorCode: item.errorCode ?? null,
   };
   const actions = getSupportedActions(item.status, item.sourceUrl, runtimeOptions);
   const pauseBlocked =

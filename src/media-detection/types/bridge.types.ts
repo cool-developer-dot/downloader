@@ -66,9 +66,17 @@ export interface BridgeErrorPayload {
   message: string;
 }
 
+/** What a blob: URL stands for. `mse` means the real media arrives as separate HTTP(S) requests. */
+export type BridgeMediaSourceKind = 'mse' | 'blob';
+
 export interface BridgeBlobIndicatorPayload {
   pageUrl: string;
   blobUrl: string;
+  /** The <video> the blob is attached to, when the sighting came from an element. */
+  elementIdentity: string | null;
+  /** Encrypted-playback evidence (MediaKeys / 'encrypted' event / EME negotiation). Observed only. */
+  isProtected: boolean;
+  sourceKind: BridgeMediaSourceKind | null;
 }
 
 /**
@@ -96,6 +104,9 @@ export interface BridgeActiveVideoPayload {
   recentlyPlayed: boolean;
   explicitAdMarker: boolean;
   associatedContentId: string | null;
+  /** Encrypted-playback evidence for this player. Observed only — never a bypass. */
+  isProtected: boolean;
+  sourceKind: BridgeMediaSourceKind | null;
 }
 
 export interface BridgeActiveIframePlayerPayload {

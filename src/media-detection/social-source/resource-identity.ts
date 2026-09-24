@@ -37,11 +37,42 @@ export function buildResourceIdentityKey(input: {
 }
 
 /**
+ * Signed CDN URLs repeat constantly — the same candidate is re-observed by the
+ * DOM scan, the performance observer and the native network stream, and the
+ * deduper compares each incoming candidate against every retained one. Parsing
+ * is the expensive part (URL + searchParams + sort + re-serialize), so results
+ * are memoized by raw URL. Bounded: identity strings are small and the map is
+ * cleared whenever detection resets for a new page.
+ */
+const STABLE_PATH_CACHE_MAX = 512;
+const stablePathCache = new Map<string, string | null>();
+
+export function clearStableResourcePathCache(): void {
+  stablePathCache.clear();
+}
+
+/**
  * Host, case-sensitive path and resource selectors — for internal identity.
  * Hash this value before diagnostics; unknown query fields can contain secrets.
  * NEVER use the result as the download URL.
  */
 export function stableResourcePath(url: string): string | null {
+  const cached = stablePathCache.get(url);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const computed = computeStableResourcePath(url);
+  if (stablePathCache.size >= STABLE_PATH_CACHE_MAX) {
+    const oldest = stablePathCache.keys().next().value;
+    if (oldest !== undefined) {
+      stablePathCache.delete(oldest);
+    }
+  }
+  stablePathCache.set(url, computed);
+  return computed;
+}
+
+function computeStableResourcePath(url: string): string | null {
   try {
     const parsed = new URL(url.trim());
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {

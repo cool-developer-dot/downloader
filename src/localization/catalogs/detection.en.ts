@@ -25,6 +25,7 @@ export const detectionEn = {
     downloadQualityLabel: 'Download {quality}, {detail}',
     resolving: 'Finding qualities…',
     added: 'Added to Downloads',
+    alreadyAdded: 'Already in your downloads',
     addedShort: 'Added',
     viewDownloads: 'View',
     retry: 'Try again',

@@ -38,7 +38,27 @@ export type ResolveDownloadRuntimeActionsInput = {
    * discards the bytes already downloaded.
    */
   sourceSupportsResume?: boolean | null;
+  /** Why a FAILED row failed. A protected or unsupported source is final: retrying cannot change it. */
+  errorCode?: string | null;
 };
+
+/**
+ * Failures that are a verdict on the source itself (PROTECTED / UNSUPPORTED), not on this attempt. Expired links
+ * are not here: their Retry asks the live page for a fresh link.
+ */
+const FINAL_FAILURE_CODES: ReadonlySet<string> = new Set([
+  'DRM_PROTECTED',
+  'LIVE_UNSUPPORTED',
+  'UNSUPPORTED_FORMAT',
+  'ENCRYPTED_MEDIA',
+  'HLS_ENCRYPTED',
+  'UNSUPPORTED_DRM',
+  'UNSUPPORTED_HLS_ENCRYPTION',
+]);
+
+export function isFinalFailure(errorCode: string | null | undefined): boolean {
+  return typeof errorCode === 'string' && FINAL_FAILURE_CODES.has(errorCode.trim().toUpperCase());
+}
 
 function normalizeStatus(value: string | null | undefined): string {
   return typeof value === 'string' ? value.trim().toUpperCase() : '';
@@ -86,7 +106,7 @@ function resolveStateActions(
   }
 
   if (status === 'FAILED' || execution === 'FAILED') {
-    return { ...none, canRetry: true };
+    return { ...none, canRetry: !isFinalFailure(input.errorCode) };
   }
 
   if (status === 'CANCELLED' || execution === 'CANCELLED') {
