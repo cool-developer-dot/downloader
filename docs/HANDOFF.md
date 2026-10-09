@@ -200,11 +200,11 @@ top of it.
 
 ## 4. Exact current state
 
-> **Current (2026-10-03):** branch `phase14-cloud-sync` at `ba825ea` (pushed to `origin/phase14-cloud-sync`), with
-> everything from §4.17 to §4.31 and the 2026-10-01 Play release prep **uncommitted** on top of it (≈490 changed
-> paths). Play package id is `com.vidorax.fast.videodownloader` (§6). The newest section is §4.31 (feature checklist
-> audit and the Phase 16–22 plan in `docs/ROADMAP.md`). The text right below describes the original `38dcf8b`
-> snapshot on branch `overhaul` and is kept for history.
+> **Current (2026-10-09):** everything up to §4.31 is committed as `a2c89d9` and tagged `v1.0.0-test1` — the code of
+> the 1.0.0 (versionCode 1) Play test build. `release/1.0` = that build plus tester fixes only; `main` = new work
+> (Phase 16 and the downloader plan). Read `docs/RELEASING.md` before shipping anything. Play package id is
+> `com.vidorax.fast.videodownloader` (§6). `phase14-cloud-sync` and `overhaul` are history. The text right below
+> describes the original `38dcf8b` snapshot and is kept for history.
 
 Git (at `38dcf8b`): `main` is untouched at the original v1 commit (`bfe38ea`). All v2 work is on branch
 `overhaul`. Not pushed to `origin` (a real GitHub remote exists:
