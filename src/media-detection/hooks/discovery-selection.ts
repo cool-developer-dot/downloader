@@ -8,7 +8,11 @@
  * or intersection noise.
  */
 import { generalPageMediaContextStore } from '../general-media/general-page-context';
-import { getMsePlaybackState } from '../engine/mse-playback-context';
+import {
+  getMsePlaybackState,
+  msePlaybackVerdictKey,
+  subscribeMsePlayback,
+} from '../engine/mse-playback-context';
 import { selectCurrentMediaForActiveGeneralTab } from '../general-media/general-correlation.service';
 import { pickBestCorrelatedMedia } from '../services/media-correlation.service';
 import { selectCurrentMediaForActiveSocialTab } from '../social/social-correlation.service';
@@ -46,7 +50,7 @@ export function buildOwnershipKey(tabId: string | null): string {
   // replaced, changes what may be offered and must re-run selection and verification.
   const mse = getMsePlaybackState(tabId);
   const mseKey = mse
-    ? [mse.navigationEpoch, mse.pageGeneration ?? '', mse.elementIdentity ?? '', mse.sourceKind ?? '', mse.protection].join('|')
+    ? [mse.navigationEpoch, mse.pageGeneration ?? '', mse.elementIdentity ?? '', mse.sourceKind ?? '', msePlaybackVerdictKey(mse)].join('|')
     : '';
   const generalKey = general
     ? [
@@ -78,9 +82,11 @@ export function buildOwnershipKey(tabId: string | null): string {
 export function subscribeOwnership(listener: () => void): () => void {
   const unsubscribeGeneral = generalPageMediaContextStore.subscribe(listener);
   const unsubscribeSocial = socialPageContextStore.subscribe(listener);
+  const unsubscribeMse = subscribeMsePlayback(listener);
   return () => {
     unsubscribeGeneral();
     unsubscribeSocial();
+    unsubscribeMse();
   };
 }
 

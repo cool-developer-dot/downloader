@@ -1,6 +1,7 @@
 import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Check, Link2 } from 'lucide-react-native';
+import Check from 'lucide-react-native/icons/check';
+import Link2 from 'lucide-react-native/icons/link-2';
 import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 
 import { fontFamilies } from '@/theme/typography';

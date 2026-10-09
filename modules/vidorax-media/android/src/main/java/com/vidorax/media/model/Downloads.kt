@@ -17,6 +17,8 @@ data class ProbeRequest(
   val request: RequestContext,
   /** HLS: classify the variant an enqueue with this choice would download (see [EnqueueRequest.variant]). */
   val variant: VariantChoice? = null,
+  /** [SourceKind.SPLIT] only: the audio file that goes with the video file [url]. */
+  val audioUrl: String? = null,
 )
 
 sealed interface ProbeResult {
@@ -30,6 +32,8 @@ sealed interface ProbeResult {
     val variants: List<ProbeVariant>,
     val audioTracks: List<ProbeAudioTrack>,
     val durationMs: Long?,
+    /** The download will merge a separate audio track into the video (split files, HLS/DASH separate audio). */
+    val mergesAudio: Boolean = false,
   ) : ProbeResult
 
   data class Failure(
@@ -67,10 +71,9 @@ data class VariantChoice(
 )
 
 /**
- * [variant] chooses the HLS variant when [url] is a multivariant playlist (`videoId` exact, else `maxHeight`, else
- * the best decodable single-track variant); `audioId` is ignored because separate audio is never muxed.
- * `manifestText` and `audioUrl` are legacy/out-of-contract (DASH, split-A/V mux) and remain only for wire
- * compatibility.
+ * [variant] chooses the HLS/DASH variant (`videoId` exact, else `maxHeight`, else the best decodable variant); the
+ * stream's audio (a separate rendition or adaptation set) is chosen by the engine. [audioUrl] is the audio file of a
+ * [SourceKind.SPLIT] download. `manifestText` is legacy and remains only for wire compatibility.
  */
 data class EnqueueRequest(
   val url: String,
@@ -88,7 +91,26 @@ data class EnqueueRequest(
   val qualityLabel: String?,
   /** Null follows [DownloadSettings.autoSaveToGallery]. */
   val saveToGallery: Boolean?,
+  /**
+   * The source as the page offered it, before any refresh or redirect: the video's identity is derived from it (see
+   * `engine/DownloadIdentity`), so a re-signed or redirected link is still the same video. Null uses [url].
+   */
+  val identityUrl: String? = null,
 )
+
+/**
+ * What an enqueue did. A video is downloaded once: when the same video is already downloading, or already saved (in
+ * the library, or as the gallery copy VidoraX made), the engine says so instead of starting a second copy.
+ */
+sealed interface EnqueueResult {
+  data class Enqueued(val record: DownloadRecord) : EnqueueResult
+
+  /** The download of this video that already exists (queued, running, waiting or paused). */
+  data class AlreadyDownloading(val record: DownloadRecord) : EnqueueResult
+
+  /** The library item that holds this video, or null when only VidoraX's gallery copy of it is left. */
+  data class AlreadyDownloaded(val libraryItemId: String?, val galleryUri: String?) : EnqueueResult
+}
 
 data class DownloadRecord(
   val id: String,
@@ -118,6 +140,8 @@ data class DownloadProgress(
   val fraction: Double?,
   val speedBps: Long,
   val etaSeconds: Long?,
+  /** [ProgressPhase.PROCESSING] only: what the engine is doing with the downloaded tracks. */
+  val stage: ProcessingStage? = null,
 )
 
 data class DownloadSettings(
@@ -130,6 +154,7 @@ data class DownloadSettings(
   companion object {
     const val MIN_CONCURRENT = 1
     const val MAX_CONCURRENT = 4
-    val DEFAULT = DownloadSettings(maxConcurrent = 2, wifiOnly = false, autoSaveToGallery = false, preferredMaxHeight = null)
+    // A finished video also appears in the device gallery unless the user turned that off.
+    val DEFAULT = DownloadSettings(maxConcurrent = 2, wifiOnly = false, autoSaveToGallery = true, preferredMaxHeight = null)
   }
 }

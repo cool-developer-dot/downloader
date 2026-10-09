@@ -11,6 +11,7 @@ import type { ProbeFailure, ProbeResult } from '@modules/vidorax-media/src/Vidor
 import type { MediaAnalysisContainer, MediaAnalysisResult } from '@/api/types';
 import type { MediaRequestContext } from '@/downloads/types/request-context';
 import { getV2Engine } from '@/downloads/v2/engine-port';
+import { stableResourcePath } from '../social-source/resource-identity';
 import { toV2RequestContext } from '@/downloads/v2/enqueue-request';
 import {
   applyPrimarySummary,
@@ -250,10 +251,15 @@ type HlsManifestFetch =
   | { ok: true; text: string; finalUrl: string; status: number }
   | {
       ok: false;
-      reason: 'AUTH_REQUIRED' | 'MANIFEST_INVALID';
+      reason: 'AUTH_REQUIRED' | 'MANIFEST_INVALID' | 'PROBE_FAILED';
       status: number | null;
       authLike: boolean;
     };
+
+/** No answer (network error, bounded-fetch timeout), a server error or throttling: says nothing about the stream. */
+function isTransientManifestFailure(status: number | null, networkError: boolean): boolean {
+  return networkError || status === 408 || status === 429 || (status != null && status >= 500);
+}
 
 async function fetchBoundedHlsManifest(
   url: string,
@@ -277,6 +283,15 @@ async function fetchBoundedHlsManifest(
         reason: 'AUTH_REQUIRED',
         status: outcome.status,
         authLike: true,
+      };
+    }
+    // Temporary: verification may try again later — never "proven unsupported" (MANIFEST_INVALID).
+    if (isTransientManifestFailure(outcome.status, outcome.networkError)) {
+      return {
+        ok: false,
+        reason: 'PROBE_FAILED',
+        status: outcome.status,
+        authLike: false,
       };
     }
     return {
@@ -577,6 +592,149 @@ async function classifyDashSource(
   return { ok: true, variants, claimedFiles: await dashRepresentationFiles(manifestUrl, input) };
 }
 
+/** The native classifier's HLS verdict in this layer's terms. */
+export function hlsRejectionFor(reason: ProbeFailure): GeneralSourceRejectionReason {
+  switch (reason) {
+    case 'DRM_PROTECTED':
+      return 'DRM_UNSUPPORTED';
+    case 'LIVE_UNSUPPORTED':
+      return 'LIVE_HLS_UNSUPPORTED';
+    case 'NETWORK':
+    case 'HTTP_ERROR':
+      return 'PROBE_FAILED';
+    case 'HTTP_403':
+      return 'AUTH_REQUIRED';
+    case 'HTTP_404':
+      return 'EXPIRED_SOURCE';
+    case 'NOT_MEDIA':
+      return 'NOT_MEDIA';
+    default:
+      return 'UNSUPPORTED_FORMAT';
+  }
+}
+
+/**
+ * The playlists a multivariant HLS playlist names — its variants and its renditions (`EXT-X-MEDIA URI`, alternate
+ * audio and subtitles included). A player fetches them itself, so they are observed on their own too; each belongs
+ * to the master's stream and shares its verdict (an audio or video-only rendition is never "the video" alone).
+ */
+async function hlsPlaylistFiles(
+  masterUrl: string,
+  input: { pageUrl: string; requestContext: MediaRequestContext; signal?: AbortSignal },
+): Promise<string[]> {
+  const fetched = await fetchManifestResource(masterUrl, input.signal, {
+    accept: 'application/vnd.apple.mpegurl, application/x-mpegurl, */*',
+    referer: input.pageUrl,
+    requestContext: input.requestContext,
+  });
+  if (!fetched.ok) {
+    return [];
+  }
+  const files = new Set<string>();
+  const add = (raw: string) => {
+    try {
+      const key = mediaFileKey(new URL(raw.trim(), fetched.finalUrl).toString());
+      if (key && files.size < MAX_CLAIMED_FILES) files.add(key);
+    } catch {
+      // not a URL
+    }
+  };
+  const lines = fetched.text.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i += 1) {
+    const line = lines[i]!.trim();
+    if (line.startsWith('#EXT-X-MEDIA:') || line.startsWith('#EXT-X-I-FRAME-STREAM-INF:')) {
+      const uri = /URI="([^"]+)"/.exec(line)?.[1];
+      if (uri) add(uri);
+    } else if (line.startsWith('#EXT-X-STREAM-INF:')) {
+      const next = lines.slice(i + 1).find((l) => l.trim() && !l.trim().startsWith('#'));
+      if (next) add(next);
+    }
+  }
+  return [...files];
+}
+
+/**
+ * HLS is classified by the native engine — the classifier the download itself uses — never by a second parser here:
+ * VOD, unencrypted, any segment format (MPEG-TS, fMP4, byte ranges), and a variant whose sound is a separate audio
+ * rendition (downloaded and merged in). Every decodable variant becomes a quality; the variant's playlist URL is what
+ * the download names (`representationId` → `variant.videoId`), so the chosen quality is exactly the one fetched.
+ */
+async function classifyHlsSource(
+  media: DetectedMedia,
+  input: {
+    pageUrl: string;
+    requestContext: MediaRequestContext;
+    mediaIdentity: string;
+    sourceGeneration: number;
+    signal?: AbortSignal;
+  },
+): Promise<CandidateVerification | null> {
+  const engine = getV2Engine();
+  if (!engine) {
+    return null;
+  }
+  const playlistUrl = preserveExecutableUrl(media.finalUrl || media.url);
+  let result: ProbeResult | null;
+  try {
+    result = await probeWithTimeout(engine, {
+      url: playlistUrl,
+      kind: 'hls',
+      request: toV2RequestContext(input.requestContext, input.pageUrl),
+    });
+  } catch {
+    return { ok: false, reason: 'PROBE_FAILED' };
+  }
+  if (!result) {
+    return { ok: false, reason: 'PROBE_FAILED' };
+  }
+  if (!result.ok) {
+    const reason = hlsRejectionFor(result.reason);
+    logGeneralSource('hls_rejected', { mediaIdentityHash: diagHash(input.mediaIdentity), reason });
+    const refused = progressiveRefusalFor(result.reason) !== null;
+    return { ok: false, reason, claimedFiles: refused ? await hlsPlaylistFiles(playlistUrl, input) : [] };
+  }
+  const audioState = result.mergesAudio || result.audioTracks.length > 0 ? 'INCLUDED' : 'UNKNOWN';
+  const qualities = result.variants.filter((variant) => variant.decodable);
+  const build = (variant: (typeof qualities)[number] | null) => {
+    const built = buildProgressiveVariant({
+      media,
+      executableUrl: result.finalUrl,
+      mimeType: 'application/vnd.apple.mpegurl',
+      contentLength: null,
+      acceptRanges: false,
+      status: 200,
+      redirectCount: 0,
+      signatureKind: variant ? 'hls_master' : 'hls_media',
+      usedRangeProbe: true,
+      requestContext: input.requestContext,
+      mediaIdentity: input.mediaIdentity,
+      sourceGeneration: input.sourceGeneration,
+      audioStateOverride: audioState,
+      width: variant?.width ?? null,
+      height: variant?.height ?? null,
+      bitrate: variant?.bitrate ?? null,
+      qualityLabel: variant?.height ? `${Math.min(variant.height, variant.width ?? variant.height)}p` : null,
+      transport: 'hls',
+      container: 'hls',
+      sizeBytes: variant?.estimatedBytes ?? hlsSizeBytesAlwaysOmitted(),
+      downloadableOverride: true,
+    });
+    if (!variant) {
+      return built;
+    }
+    // Every quality shares the master URL: the variant is what makes each one a distinct download.
+    const resourceIdentity = `${built.resourceIdentity}#variant:${stableResourcePath(variant.id) ?? variant.id}`;
+    return { ...built, resourceIdentity, variantId: `gvar_${hashIdentity(resourceIdentity)}`, representationId: variant.id };
+  };
+  const variants = qualities.length > 0 ? qualities.map(build) : [build(null)];
+  logGeneralSource('hls_classified', {
+    mediaIdentityHash: diagHash(input.mediaIdentity),
+    transport: 'hls',
+    quality: String(variants.length),
+  });
+  return { ok: true, variants, claimedFiles: result.variants.length > 0 ? await hlsPlaylistFiles(playlistUrl, input) : [] };
+}
+
 /**
  * Verify one owned candidate into zero or more actionable variants.
  * Reuses Phase 4B progressive/WebM/MP4 classification; adds HLS expand.
@@ -617,6 +775,12 @@ export async function verifyGeneralSourceCandidate(
   });
 
   if (hlsLikely) {
+    // The engine's classifier decides (the same one the download uses); the bounded JS parse below only runs where
+    // no engine exists.
+    const native = await classifyHlsSource(media, input);
+    if (native) {
+      return native;
+    }
     const fetched = await fetchBoundedHlsManifest(
       url,
       input.requestContext,
@@ -633,6 +797,7 @@ export async function verifyGeneralSourceCandidate(
         {
           mediaIdentityHash: diagHash(input.mediaIdentity),
           reason: fetched.reason,
+          httpStatus: fetched.status,
         },
       );
       return { ok: false, reason: fetched.reason };
@@ -759,7 +924,9 @@ export async function verifyGeneralSourceCandidate(
     return { ok: false, reason: 'MANIFEST_INVALID' };
   }
 
-  // Progressive / WebM / MP4 — reuse Phase 4B hardened verifier.
+  // Progressive / WebM / MP4 — reuse Phase 4B hardened verifier. The engine's classification (its veto) runs at the
+  // same time rather than after it: each is a round trip to the CDN, and the engine follows redirects itself.
+  const nativeRefusal = nativeProgressiveRefusal(url, input);
   const result = await verifySocialSourceCandidate(media, {
     pageUrl: input.pageUrl,
     requestContext: input.requestContext,
@@ -767,10 +934,11 @@ export async function verifyGeneralSourceCandidate(
   });
 
   if (!result.ok) {
+    void nativeRefusal.catch(() => null);
     return { ok: false, reason: result.reason as GeneralSourceRejectionReason };
   }
 
-  const refusal = await nativeProgressiveRefusal(preserveExecutableUrl(result.verification.finalUrl), input);
+  const refusal = await nativeRefusal;
   if (refusal) {
     logGeneralSource('native_refused', { mediaIdentityHash: diagHash(input.mediaIdentity), reason: refusal });
     return { ok: false, reason: refusal };
@@ -853,10 +1021,25 @@ export async function buildVerifiedGeneralMediaOffer(
     return true;
   });
 
-  // Manifests first, so the files a manifest names are claimed before any of them could be offered on its own.
-  candidates = [...candidates.filter(isDashSource), ...candidates.filter((c) => !isDashSource(c))].slice(0, 6);
+  // Manifests first, so the files a manifest names are claimed before any of them could be offered on its own — and
+  // among them the earliest seen first: a player loads a multivariant playlist before its variant and rendition
+  // playlists, so the master claims them before one (a video-only or audio-only rendition) is classified alone.
+  const isManifest = (c: DetectedMedia) =>
+    isDashSource(c) ||
+    looksLikeHlsCandidate({ url: c.finalUrl || c.url, mimeType: c.mimeType, streamType: c.streamType, container: c.container });
+  const manifests = candidates.filter(isManifest).sort((a, b) => (a.detectedAt ?? 0) - (b.detectedAt ?? 0));
+  candidates = [...manifests, ...candidates.filter((c) => !isManifest(c))].slice(0, 6);
 
   const variants: VerifiedGeneralMediaVariant[] = [];
+  /** Which verified renditions each candidate produced (by resource identity), keyed by the candidate's resource. */
+  const renditionsBySource = new Map<string, Set<string>>();
+  const addVariants = (sourceUrl: string, list: VerifiedGeneralMediaVariant[]) => {
+    variants.push(...list);
+    const key = stableResourcePath(sourceUrl) ?? sourceUrl;
+    const set = renditionsBySource.get(key) ?? new Set<string>();
+    for (const v of list) set.add(v.resourceIdentity);
+    renditionsBySource.set(key, set);
+  };
   let lastReject: GeneralSourceRejectionReason = 'NO_FRESH_SOURCE';
   /** HLS expand may yield multiple variants per cache key. */
   const expandedByKey = new Map<string, VerifiedGeneralMediaVariant[]>();
@@ -913,14 +1096,16 @@ export async function buildVerifiedGeneralMediaOffer(
 
     const priorExpand = expandedByKey.get(cacheKey);
     if (priorExpand) {
-      variants.push(...priorExpand);
+      addVariants(executableUrl, priorExpand);
       continue;
     }
 
     const cached = getCachedVerifiedVariant(cacheKey);
     if (cached) {
-      variants.push(fromSocialCacheVariant(cached));
-      variants.push(...(cached.alternatives ?? []).map(fromSocialCacheVariant));
+      addVariants(executableUrl, [
+        fromSocialCacheVariant(cached),
+        ...(cached.alternatives ?? []).map(fromSocialCacheVariant),
+      ]);
       continue;
     }
 
@@ -1094,10 +1279,12 @@ export async function buildVerifiedGeneralMediaOffer(
     if (variant) {
       const expanded = expandedByKey.get(cacheKey);
       if (expanded?.length) {
-        variants.push(...expanded);
+        addVariants(executableUrl, expanded);
       } else {
-        variants.push(fromSocialCacheVariant(variant));
-        variants.push(...(variant.alternatives ?? []).map(fromSocialCacheVariant));
+        addVariants(executableUrl, [
+          fromSocialCacheVariant(variant),
+          ...(variant.alternatives ?? []).map(fromSocialCacheVariant),
+        ]);
       }
     } else {
       if (lastReject === 'NO_FRESH_SOURCE') lastReject = 'PROBE_FAILED';
@@ -1108,9 +1295,18 @@ export async function buildVerifiedGeneralMediaOffer(
     return { ok: false, reason: 'STALE_PAGE_GENERATION' };
   }
 
-  const deduped = dedupeVariants(
+  const allVerified = dedupeVariants(
     variants.map(toSocialCacheVariant),
   ).map(fromSocialCacheVariant);
+  // When ownership chose the page's current video, the offer holds that video's renditions only. Every other active
+  // source on the page (a preroll, a second player, a link the user did not pick) stays out of it — otherwise the
+  // quality sheet lists another video as a "quality", and a tap that picks the best quality downloads it.
+  const ownedKey = input.ownedResourceUrl ? stableResourcePath(input.ownedResourceUrl) ?? input.ownedResourceUrl : null;
+  const ownedRenditions = ownedKey ? renditionsBySource.get(ownedKey) : undefined;
+  const ownedVerified = ownedRenditions
+    ? allVerified.filter((v) => ownedRenditions.has(v.resourceIdentity))
+    : [];
+  const deduped = ownedVerified.some((v) => v.downloadable) ? ownedVerified : allVerified;
   const preferredSocial = selectPreferredVariant(
     deduped.map(toSocialCacheVariant),
     input.ownedResourceUrl,

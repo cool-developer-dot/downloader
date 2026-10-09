@@ -3,6 +3,7 @@ export type { AboutSectionProps, SupportSectionProps } from './AboutSection';
 export { AppearanceSection } from './AppearanceSection';
 export { DownloadsSection } from './DownloadsSection';
 export { GeneralSection } from './GeneralSection';
+export { HowToUseSection } from './HowToUseSection';
 export { LegalSection } from './LegalSection';
 export { PrivacySection } from './PrivacySection';
 export type { PrivacySectionProps } from './PrivacySection';

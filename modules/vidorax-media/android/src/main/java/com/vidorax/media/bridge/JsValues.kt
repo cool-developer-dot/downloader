@@ -1,9 +1,11 @@
 package com.vidorax.media.bridge
 
 import android.net.Uri
+import com.vidorax.media.analyze.PageFetchResult
 import com.vidorax.media.model.AdjacentItems
 import com.vidorax.media.model.DownloadProgress
 import com.vidorax.media.model.DownloadRecord
+import com.vidorax.media.model.EnqueueResult
 import com.vidorax.media.model.LibraryChange
 import com.vidorax.media.model.LibraryItem
 import com.vidorax.media.model.LibraryPage
@@ -75,6 +77,13 @@ internal fun DownloadRecord.toJs(): Map<String, Any?> = mapOf(
   "updatedAt" to updatedAt,
 )
 
+internal fun EnqueueResult.toJs(): Map<String, Any?> = when (this) {
+  is EnqueueResult.Enqueued -> mapOf("outcome" to "ENQUEUED", "record" to record.toJs(), "libraryItemId" to null)
+  is EnqueueResult.AlreadyDownloading ->
+    mapOf("outcome" to "ALREADY_DOWNLOADING", "record" to record.toJs(), "libraryItemId" to null)
+  is EnqueueResult.AlreadyDownloaded -> mapOf("outcome" to "ALREADY_DOWNLOADED", "record" to null, "libraryItemId" to libraryItemId)
+}
+
 internal fun DownloadProgress.toJs(): Map<String, Any?> = mapOf(
   "id" to id,
   "phase" to phase.wire,
@@ -83,6 +92,7 @@ internal fun DownloadProgress.toJs(): Map<String, Any?> = mapOf(
   "fraction" to fraction,
   "speedBps" to speedBps,
   "etaSeconds" to etaSeconds,
+  "stage" to stage?.wire,
 )
 
 internal fun ProbeResult.toJs(): Map<String, Any?> = when (this) {
@@ -97,12 +107,42 @@ internal fun ProbeResult.toJs(): Map<String, Any?> = when (this) {
     "variants" to variants.map { it.toJs() },
     "audioTracks" to audioTracks.map { it.toJs() },
     "durationMs" to durationMs,
+    "mergesAudio" to mergesAudio,
   )
   is ProbeResult.Failure -> mapOf(
     "ok" to false,
     "reason" to reason.wire,
     "httpStatus" to httpStatus,
     "message" to message,
+  )
+}
+
+internal fun PageFetchResult.toJs(): Map<String, Any?> = when (this) {
+  is PageFetchResult.Document -> mapOf(
+    "kind" to "document",
+    "finalUrl" to finalUrl,
+    "status" to status,
+    "contentType" to contentType,
+    "body" to body,
+    "truncated" to truncated,
+    "redirects" to redirects,
+    "elapsedMs" to elapsedMs,
+  )
+  is PageFetchResult.Media -> mapOf(
+    "kind" to "media",
+    "finalUrl" to finalUrl,
+    "status" to status,
+    "contentType" to contentType,
+    "contentLength" to contentLength,
+    "redirects" to redirects,
+    "elapsedMs" to elapsedMs,
+  )
+  is PageFetchResult.Failure -> mapOf(
+    "kind" to "failure",
+    "code" to code.wire,
+    "status" to status,
+    "redirects" to redirects,
+    "elapsedMs" to elapsedMs,
   )
 }
 

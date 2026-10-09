@@ -1,9 +1,9 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
+  ActivityIndicator,
   Pressable,
   StyleSheet,
-  View,
 } from 'react-native';
 import Animated, {
   Easing,
@@ -12,8 +12,11 @@ import Animated, {
   cancelAnimation,
   useAnimatedStyle,
   useSharedValue,
+  withDelay,
   withRepeat,
+  withSequence,
   withTiming,
+  type SharedValue,
 } from 'react-native-reanimated';
 
 import { Box } from '@/components/base/Box';
@@ -21,12 +24,87 @@ import { Icon } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
 import { BROWSER_TOUCH_TARGET } from '@/browser/constants';
 import { useTheme } from '@/hooks/use-theme';
-import { useTranslation } from '@/localization';
+import { useTranslation, type TranslationKey } from '@/localization';
 
+import type { BrowserMediaStatusNotice } from './browser-download-presentation';
 import { toastForUserTriggeredDownloadOutcome } from './media-resolution-outcome';
 import { useBrowserMediaAction } from './useBrowserMediaAction';
 
 const HORIZONTAL_INSET = 0;
+
+const NOTICE_LABEL_KEYS: Record<BrowserMediaStatusNotice, TranslationKey> = {
+  DETECTING: 'browser.media.detectingVideo',
+  DOWNLOADING: 'browser.media.downloadingVideo',
+  DOWNLOADED: 'browser.media.downloadedVideo',
+  ALREADY_DOWNLOADED: 'browser.media.alreadyDownloaded',
+  PROTECTED: 'browser.media.protectedVideo',
+  UNSUPPORTED: 'browser.media.unsupportedVideo',
+};
+
+/** Notices about the current video's download (shown on the Download bar itself when an offer is up). */
+function isDownloadProgressNotice(notice: BrowserMediaStatusNotice | null): boolean {
+  return notice === 'DOWNLOADING' || notice === 'DOWNLOADED' || notice === 'ALREADY_DOWNLOADED';
+}
+
+/** One dot of the "Detecting video" ellipsis: fades in turn with the others. */
+function DetectingDot({ progress, index, color }: { progress: SharedValue<number>; index: number; color: string }) {
+  const style = useAnimatedStyle(() => {
+    // Each dot peaks a third of the cycle after the previous one.
+    const phase = (progress.value + 1 - index / 3) % 1;
+    const lit = phase < 0.5 ? phase * 2 : (1 - phase) * 2;
+    return { opacity: 0.25 + 0.75 * lit };
+  });
+  return (
+    <Animated.View
+      style={[{ width: 5, height: 5, borderRadius: 2.5, marginLeft: 3, backgroundColor: color }, style]}
+    />
+  );
+}
+
+/**
+ * "Detecting video…": a subtle scanning state for the current video while detection works on it — the label's three
+ * dots light in sequence and a video icon softly breathes. Motion stops as soon as the state is replaced.
+ */
+function DetectingNotice({ label, color }: { label: string; color: string }) {
+  const progress = useSharedValue(0);
+  const breathe = useSharedValue(1);
+  useEffect(() => {
+    progress.value = withRepeat(withTiming(1, { duration: 1200, easing: Easing.linear }), -1, false);
+    breathe.value = withRepeat(
+      withSequence(
+        withTiming(0.4, { duration: 700, easing: Easing.inOut(Easing.quad) }),
+        withDelay(80, withTiming(1, { duration: 700, easing: Easing.inOut(Easing.quad) })),
+      ),
+      -1,
+      false,
+    );
+    return () => {
+      cancelAnimation(progress);
+      cancelAnimation(breathe);
+    };
+  }, [breathe, progress]);
+  const iconStyle = useAnimatedStyle(() => ({
+    opacity: breathe.value,
+    transform: [{ scale: 0.9 + 0.1 * breathe.value }],
+  }));
+  return (
+    <>
+      <Box style={{ flexDirection: 'row', alignItems: 'flex-end', flexShrink: 1 }}>
+        <Text variant="button" color="textPrimary" numberOfLines={1}>
+          {label}
+        </Text>
+        <Box style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6, marginLeft: 1 }}>
+          <DetectingDot progress={progress} index={0} color={color} />
+          <DetectingDot progress={progress} index={1} color={color} />
+          <DetectingDot progress={progress} index={2} color={color} />
+        </Box>
+      </Box>
+      <Animated.View style={iconStyle}>
+        <Icon name="movie-search-outline" size={20} color="primary" />
+      </Animated.View>
+    </>
+  );
+}
 
 export type BrowserMediaDownloadBarProps = {
   testID?: string;
@@ -112,8 +190,14 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
     try {
       const result = await action.download();
       if (result.ok) {
-        // A second tap on the same video is not a second download; say so instead of claiming a new one.
-        showToast(result.deduped ? t('detection.sheet.alreadyAdded') : t('downloads.successToast'));
+        // The same video again is not a second download: say which it is, never "Added" and never a failure.
+        showToast(
+          result.duplicate === 'ALREADY_DOWNLOADED'
+            ? t('downloads.alreadyDownloadedToast')
+            : result.duplicate === 'ALREADY_DOWNLOADING' || result.deduped
+              ? t('downloads.alreadyDownloadingToast')
+              : t('downloads.successToast'),
+        );
         return;
       }
       const toast = toastForUserTriggeredDownloadOutcome(
@@ -160,12 +244,22 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
 
   const iconStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
 
-  if (!presentation.showCard && !toastVisible) {
+  const notice = presentation.statusNotice;
+  if (!presentation.showCard && !toastVisible && !notice) {
     return null;
   }
 
   const isPreparing = presentation.isPreparing;
   const barEnabled = !presentation.buttonDisabled;
+  const noticeLabel = notice ? t(NOTICE_LABEL_KEYS[notice]) : null;
+  const noticeIcon =
+    notice === 'DOWNLOADED' || notice === 'ALREADY_DOWNLOADED'
+      ? 'check-circle'
+      : notice === 'PROTECTED'
+        ? 'lock'
+        : 'close-circle';
+  const noticeIconColor =
+    notice === 'DOWNLOADED' || notice === 'ALREADY_DOWNLOADED' ? 'success' : 'disabled';
 
   // Anchor to the bottom only — never cover the WebView with an elevated
   // full-screen layer. Android elevation + absoluteFill intercepts taps
@@ -247,7 +341,9 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
             <Text variant="button" color="textPrimary" numberOfLines={1}>
               {isPreparing
                 ? t('browser.media.preparingDownload')
-                : t('browser.media.videoAvailable')}
+                : isDownloadProgressNotice(notice) && noticeLabel
+                  ? noticeLabel
+                  : t('browser.media.videoAvailable')}
             </Text>
             <Animated.View style={iconStyle}>
               <Icon
@@ -257,6 +353,49 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
               />
             </Animated.View>
           </Pressable>
+        </Animated.View>
+      ) : notice && noticeLabel ? (
+        // The current video is not (or not yet) a Download: say what it is, never point at a previous video.
+        <Animated.View
+          entering={FadeInDown.duration(220)}
+          exiting={FadeOutDown.duration(160)}
+          pointerEvents="none"
+          style={{ width: '100%', elevation: 8 }}>
+          <Box
+            testID="browser-media-status"
+            accessible
+            accessibilityRole="text"
+            accessibilityLiveRegion="polite"
+            accessibilityLabel={noticeLabel}
+            style={{
+              minHeight: BROWSER_TOUCH_TARGET,
+              width: '100%',
+              paddingHorizontal: theme.spacing[16],
+              backgroundColor: theme.colors.card,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: theme.colors.border,
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexDirection: 'row',
+            }}>
+            {notice === 'DETECTING' ? (
+              <DetectingNotice label={noticeLabel} color={theme.colors.primary} />
+            ) : (
+              <>
+                <Text
+                  variant="button"
+                  color={notice === 'DOWNLOADING' ? 'textPrimary' : 'textSecondary'}
+                  numberOfLines={1}>
+                  {noticeLabel}
+                </Text>
+                {notice === 'DOWNLOADING' ? (
+                  <ActivityIndicator size="small" color={theme.colors.primary} />
+                ) : (
+                  <Icon name={noticeIcon} size={20} color={noticeIconColor} />
+                )}
+              </>
+            )}
+          </Box>
         </Animated.View>
       ) : null}
     </Box>

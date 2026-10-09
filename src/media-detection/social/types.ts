@@ -81,6 +81,9 @@ export type ActiveVideoEvidence = {
   currentTimeBucket: number | null;
   intersectionRatio: number | null;
   viewportCenterDistance: number | null;
+  /** Rendered box in CSS px, when the page reported it. */
+  displayWidth?: number | null;
+  displayHeight?: number | null;
   isDisplayed: boolean;
   isVisibleStyle: boolean;
   recentlyPlayed: boolean;
@@ -88,6 +91,11 @@ export type ActiveVideoEvidence = {
   /** Optional shortcode/video id scraped from nearest legitimate container. */
   associatedContentId: string | null;
   observedAt: number;
+  /**
+   * A MediaSource player's files, as the page named them from its own appends (its video and audio buffers): what a
+   * blob player plays, the way `currentSrc` says it for a plain one. Absent until named.
+   */
+  playingFiles?: string[] | null;
   /** Present for general embedded-player evidence; ignored by Phase 4 social. */
   playerKind?: 'video' | 'iframe';
   frameClass?: 'top' | 'same-origin' | 'cross-origin';

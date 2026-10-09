@@ -36,6 +36,8 @@ export type BrowserCtaDiagnosticFields = {
   state?: string | null;
   handoffGeneration?: number | null;
   result?: string | null;
+  /** A reason code (never a URL or message text). */
+  reason?: string | null;
 };
 
 function hashFingerprint(fingerprint: string | null | undefined): string | null {
@@ -77,6 +79,7 @@ export function logBrowserCta(
     state: fields.state ?? undefined,
     handoffGeneration: fields.handoffGeneration ?? undefined,
     result: fields.result ?? undefined,
+    reason: fields.reason ?? undefined,
   };
   // eslint-disable-next-line no-console
   console.log('[BrowserCTA]', safe);

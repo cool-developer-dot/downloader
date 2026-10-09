@@ -3,17 +3,24 @@ import { describe, test } from 'node:test';
 
 import type { DownloadRecord, LibraryItem, VidoraMediaEvents } from '@modules/vidorax-media/src/VidoraMedia.types';
 
-import { collectV2Entries, hydrateV2Downloads, subscribeV2Downloads, type V2BridgeSink } from './bridge';
+import {
+  collectV2Entries,
+  hydrateV2ActiveDownloads,
+  hydrateV2Downloads,
+  subscribeV2Downloads,
+  type V2BridgeSink,
+} from './bridge';
 import type { V2EnginePort } from './engine-port';
-import type { V2DownloadEntry } from './projection';
+import { projectV2Download, type V2DownloadEntry } from './projection';
 import { downloadRecord, libraryItem } from './test-fixtures';
 
 function fakeEngine(input: {
   downloads?: DownloadRecord[];
   library?: LibraryItem[];
-}): V2EnginePort & { listeners: Partial<VidoraMediaEvents> } {
+}): V2EnginePort & { listeners: Partial<VidoraMediaEvents>; removedDownloads: string[] } {
   const library = input.library ?? [];
   const listeners: Partial<VidoraMediaEvents> = {};
+  const removedDownloads: string[] = [];
   return {
     listeners,
     listDownloads: async () => input.downloads ?? [],
@@ -23,11 +30,15 @@ function fakeEngine(input: {
     }),
     getLibraryItem: async (id: string) => library.find((item) => item.id === id) ?? null,
     getLibraryItems: async (ids: string[]) => library.filter((item) => ids.includes(item.id)),
+    removeDownload: async (id: string) => {
+      removedDownloads.push(id);
+    },
+    removedDownloads,
     addListener: (eventName: keyof VidoraMediaEvents, listener: never) => {
       listeners[eventName] = listener;
       return { remove: () => delete listeners[eventName] };
     },
-  } as unknown as V2EnginePort & { listeners: Partial<VidoraMediaEvents> };
+  } as unknown as V2EnginePort & { listeners: Partial<VidoraMediaEvents>; removedDownloads: string[] };
 }
 
 function recordingSink(): V2BridgeSink & { entries: Map<string, V2DownloadEntry>; removed: string[] } {
@@ -131,6 +142,94 @@ describe('what counts as a successful download', () => {
     engine.listeners.onDownloadStateChange?.({ record: downloadRecord({ id: 'kept', state: 'completed' }) });
     await new Promise((resolve) => setImmediate(resolve));
     assert.equal(sink.entries.get('kept')?.item.status, 'COMPLETED');
+    detach();
+  });
+});
+
+describe('a finished download never leaves the current screen', () => {
+  test('announces "Video downloaded" once, and only while the app is in front', async () => {
+    const engine = fakeEngine({
+      library: [libraryItem({ id: 'a' }), libraryItem({ id: 'b' }), libraryItem({ id: 'c' })],
+    });
+    const announced: string[] = [];
+    let state = 'active';
+    let clock = 10_000;
+    const sink = { ...recordingSink(), announceCompleted: (id: string) => announced.push(id) };
+    const detach = subscribeV2Downloads(engine, sink, { appState: () => state, now: () => clock });
+
+    engine.listeners.onDownloadStateChange?.({ record: downloadRecord({ id: 'a', state: 'completed' }) });
+    await new Promise((resolve) => setImmediate(resolve));
+    // The engine repeating COMPLETED for the same download is not a new notice.
+    engine.listeners.onDownloadStateChange?.({ record: downloadRecord({ id: 'a', state: 'completed' }) });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(announced, ['a']);
+
+    // In the background the system notification speaks instead.
+    state = 'background';
+    clock += 10_000;
+    engine.listeners.onDownloadStateChange?.({ record: downloadRecord({ id: 'b', state: 'completed' }) });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(announced, ['a']);
+
+    state = 'active';
+    clock += 10_000;
+    engine.listeners.onDownloadStateChange?.({ record: downloadRecord({ id: 'c', state: 'completed' }) });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(announced, ['a', 'c']);
+    assert.equal(sink.entries.get('c')?.item.status, 'COMPLETED');
+    detach();
+  });
+
+  test('a finished file that was a video the user already has says "Video already downloaded", once', async () => {
+    const engine = fakeEngine({ library: [] });
+    const duplicates: string[] = [];
+    const completed: string[] = [];
+    let state = 'active';
+    const sink = {
+      ...recordingSink(),
+      announceCompleted: (id: string) => completed.push(id),
+      announceDuplicate: (id: string) => duplicates.push(id),
+    };
+    const detach = subscribeV2Downloads(engine, sink, { appState: () => state, now: () => 50_000 });
+    const duplicate = downloadRecord({ id: 'dup', state: 'failed', errorCode: 'DUPLICATE', errorMessage: 'Video already downloaded' });
+
+    sink.applyEntries([projectV2Download(downloadRecord({ id: 'dup', state: 'processing' }))]);
+    engine.listeners.onDownloadStateChange?.({ record: duplicate });
+    engine.listeners.onDownloadStateChange?.({ record: duplicate });
+    assert.deepEqual(duplicates, ['dup']);
+    assert.deepEqual(completed, [], 'never announced as a new download');
+    assert.equal(sink.entries.has('dup'), false, 'no failed row for a video the user already has');
+    assert.ok(engine.removedDownloads.includes('dup'), 'the discarded record is removed from the engine');
+
+    // Any other failure is not a duplicate; in the background the notification speaks instead.
+    engine.listeners.onDownloadStateChange?.({ record: downloadRecord({ id: 'net', state: 'failed', errorCode: 'NETWORK' }) });
+    state = 'background';
+    engine.listeners.onDownloadStateChange?.({ record: { ...duplicate, id: 'dup-2' } });
+    assert.deepEqual(duplicates, ['dup']);
+    detach();
+  });
+
+  test('a discarded duplicate left from an earlier run gets no row and is cleaned up at hydration', async () => {
+    const engine = fakeEngine({
+      downloads: [
+        downloadRecord({ id: 'dup', state: 'failed', errorCode: 'DUPLICATE' }),
+        downloadRecord({ id: 'net', state: 'failed', errorCode: 'NETWORK' }),
+      ],
+    });
+    const sink = recordingSink();
+    await hydrateV2ActiveDownloads(engine, sink);
+    assert.deepEqual([...sink.entries.keys()], ['net']);
+    assert.deepEqual(engine.removedDownloads, ['dup']);
+  });
+
+  test('a completion without its verified file is not announced', async () => {
+    const engine = fakeEngine({ library: [] });
+    const announced: string[] = [];
+    const sink = { ...recordingSink(), announceCompleted: (id: string) => announced.push(id) };
+    const detach = subscribeV2Downloads(engine, sink, { appState: () => 'active' });
+    engine.listeners.onDownloadStateChange?.({ record: downloadRecord({ id: 'gone', state: 'completed' }) });
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(announced, []);
     detach();
   });
 });

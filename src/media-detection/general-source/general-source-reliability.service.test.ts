@@ -136,6 +136,51 @@ describe('offer publication requires current-content ownership', () => {
   });
 });
 
+describe('an HLS manifest that cannot be read right now is a temporary failure, never proven unsupported', () => {
+  const url = 'https://edge7.cdnhost.net/hls/9f3a1c/master.m3u8?sec=abc';
+  const hls = { ...media, url, finalUrl: url, sourceUrl: url, streamType: 'HLS', container: 'hls', mimeType: 'application/vnd.apple.mpegurl' } as unknown as DetectedMedia;
+  const verify = () =>
+    verifyGeneralSourceCandidate(hls, {
+      pageUrl: media.pageUrl,
+      requestContext: { pageUrl: media.pageUrl, referer: media.pageUrl, userAgent: null, cookiesRequired: false, hasCookies: false, headers: {}, capturedAt: Date.now() },
+      mediaIdentity: 'general:page',
+      sourceGeneration: 1,
+    });
+  const expectTransient = (reason: string) => {
+    const outcome = classifyMediaResolutionOutcome({ rejectionReason: reason, hasCandidates: true, allBoundedCandidatesRejected: true });
+    assert.notEqual(outcome.kind, 'PROVEN_UNSUPPORTED');
+  };
+
+  test('the network failing (or the bounded fetch timing out)', async () => {
+    globalThis.fetch = (async () => {
+      throw new TypeError('Network request failed');
+    }) as typeof fetch;
+    const result = await verify();
+    assert.equal(!result.ok && result.reason, 'PROBE_FAILED');
+    expectTransient('PROBE_FAILED');
+  });
+
+  for (const status of [500, 503, 408, 429]) {
+    test(`an HTTP ${status}`, async () => {
+      globalThis.fetch = (async () => new Response('busy', { status, headers: { 'Content-Type': 'text/plain' } })) as typeof fetch;
+      const result = await verify();
+      assert.equal(!result.ok && result.reason, 'PROBE_FAILED');
+    });
+  }
+
+  test('a body that is not a playlist is still invalid', async () => {
+    serveRoutes({ [url]: { type: 'application/xml', body: '<?xml version="1.0"?><vmap:VMAP xmlns:vmap="http://www.iab.net/videosuite/vmap"/>' } });
+    const result = await verify();
+    assert.equal(!result.ok && result.reason, 'MANIFEST_INVALID');
+  });
+
+  test('a 404 is not treated as temporary', async () => {
+    globalThis.fetch = (async () => new Response('gone', { status: 404, headers: { 'Content-Type': 'text/plain' } })) as typeof fetch;
+    const result = await verify();
+    assert.equal(!result.ok && result.reason, 'MANIFEST_INVALID');
+  });
+});
+
 describe('owned but unsupported media never becomes an offer (10)', () => {
   const requestContext: MediaRequestContext = {
     pageUrl: media.pageUrl,
@@ -487,5 +532,90 @@ describe('Phase 12B — a DASH manifest’s files follow its verdict: never offe
     assert.equal(!result.ok && result.reason, 'PROBE_FAILED');
     assert.deepEqual(!result.ok && result.claimedFiles, []);
     assert.deepEqual(fetched, []);
+  });
+});
+
+describe('HLS is classified by the engine: separate audio renditions are merged, renditions never offered alone', () => {
+  const pageUrl = 'https://video.example.org/watch/hls';
+  const base = 'https://edge7.cdnhost.net/hls/show/';
+  const masterUrl = `${base}master.m3u8?token=t`;
+  const candidate = (url: string, extra: Record<string, unknown> = {}) =>
+    ({ ...media, id: url, url, finalUrl: url, sourceUrl: url, pageUrl, streamType: 'HLS', container: 'hls', mimeType: 'application/vnd.apple.mpegurl', extension: 'm3u8', detectedAt: Date.now(), ...extra }) as unknown as DetectedMedia;
+  // The player loads the master first, then its rendition playlists.
+  const master = candidate(masterUrl, { detectedAt: 1_000 });
+  const audioRendition = candidate(`${base}audio/en/index.m3u8?token=t`, { detectedAt: 2_000 });
+  const masterText = `#EXTM3U
+#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="English",DEFAULT=YES,URI="audio/en/index.m3u8"
+#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="English",URI="subs/en.m3u8"
+#EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720,CODECS="avc1.64001f,mp4a.40.2",AUDIO="aud",SUBTITLES="subs"
+v720/index.m3u8
+#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360,CODECS="avc1.4d401e,mp4a.40.2",AUDIO="aud",SUBTITLES="subs"
+v360/index.m3u8
+`;
+  const context = { pageUrl, referer: pageUrl, userAgent: null, cookiesRequired: false, hasCookies: false, headers: {}, capturedAt: Date.now() };
+
+  function currentScope(tabId: string) {
+    const ctx = generalPageMediaContextStore.syncFromPageUrl({ tabId, pageUrl, navigationEpoch: 0 })!;
+    return { tabId, navigationEpoch: 0, pageGeneration: ctx.pageGeneration, mediaIdentity: 'general:hls', ownershipConfidence: 'STRONG' as const };
+  }
+
+  test('a master whose variants take their sound from a rendition is offered with every quality, named exactly', async () => {
+    const tabId = 'tab-hls-1';
+    const scope = currentScope(tabId);
+    const asked = fakeClassifier(async (request) =>
+      request.kind === 'hls' && request.url === masterUrl
+        ? {
+            ok: true,
+            kind: 'hls',
+            finalUrl: masterUrl,
+            contentType: 'application/vnd.apple.mpegurl',
+            container: 'mp4',
+            sizeBytes: null,
+            resumable: true,
+            variants: [
+              { id: `${base}v720/index.m3u8`, width: 1280, height: 720, bitrate: 2_500_000, frameRate: null, videoCodec: 'avc1.64001f', needsAudioMux: true, estimatedBytes: 18_000_000, decodable: true },
+              { id: `${base}v360/index.m3u8`, width: 640, height: 360, bitrate: 800_000, frameRate: null, videoCodec: 'avc1.4d401e', needsAudioMux: true, estimatedBytes: 6_000_000, decodable: true },
+            ],
+            audioTracks: [{ id: `${base}audio/en/index.m3u8`, language: 'en', label: 'English', bitrate: null, codec: 'mp4a.40.2', isDefault: true }],
+            durationMs: 60_000,
+            mergesAudio: true,
+          }
+        : { ok: false, reason: 'UNSUPPORTED_FORMAT', httpStatus: null, message: 'audio-only HLS stream' },
+    );
+    const fetched = serveRoutes({ [`${base}master.m3u8`]: { type: 'application/vnd.apple.mpegurl', body: masterText } });
+
+    const result = await buildVerifiedGeneralMediaOffer({ scope, candidates: [audioRendition, master], pageUrl });
+
+    assert.equal(result.ok, true);
+    const offered = result.ok ? result.offer.variants : [];
+    assert.deepEqual(
+      offered.map((v) => [v.transport, v.height, v.representationId, v.executableUrl]),
+      [
+        ['hls', 720, `${base}v720/index.m3u8`, masterUrl],
+        ['hls', 360, `${base}v360/index.m3u8`, masterUrl],
+      ],
+    );
+    assert.ok(offered.every((v) => v.audioState === 'INCLUDED' && v.downloadable));
+    assert.deepEqual(asked.map((r) => [r.kind, r.url]), [['hls', masterUrl]], 'the audio rendition is claimed by its master, never probed alone');
+    assert.deepEqual(fetched, [`GET ${masterUrl}`]);
+    // The chosen quality reaches the engine as the exact variant.
+    const analysis = result.ok ? generalOfferToAnalysis(result.offer, result.offer.variants[0]!, master) : null;
+    assert.equal(analysis?.variants?.[1]?.representationId, `${base}v360/index.m3u8`);
+    generalPageMediaContextStore.clearTab(tabId);
+  });
+
+  test('refusals keep their meaning: encrypted, live, transient', async () => {
+    const cases = [
+      ['DRM_PROTECTED', 'DRM_UNSUPPORTED'],
+      ['LIVE_UNSUPPORTED', 'LIVE_HLS_UNSUPPORTED'],
+      ['NETWORK', 'PROBE_FAILED'],
+      ['HTTP_403', 'AUTH_REQUIRED'],
+    ] as const;
+    for (const [reason, expected] of cases) {
+      fakeClassifier({ ok: false, reason, httpStatus: null, message: null });
+      serveRoutes({ [`${base}master.m3u8`]: { type: 'application/vnd.apple.mpegurl', body: masterText } });
+      const result = await verifyGeneralSourceCandidate(master, { pageUrl, requestContext: context, mediaIdentity: 'general:hls', sourceGeneration: 1 });
+      assert.equal(!result.ok && result.reason, expected, reason);
+    }
   });
 });

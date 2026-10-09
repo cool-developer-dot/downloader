@@ -9,6 +9,7 @@ import { createTabBarScreenOptions, createTabBarStyle, tabItems } from '@/naviga
 import { tabRouteNames } from '@/navigation/constants';
 import { useTabExitBackHandler } from '@/navigation/hooks';
 import { QualitySelectionProvider } from '@/screens/downloads/quality';
+import { renderMiniPlayerTabBar } from '@/screens/player/mini';
 
 function createTabIcon(icon: string, iconFocused: string) {
   return function TabIcon({
@@ -52,7 +53,9 @@ export default function TabsLayout() {
     <QualitySelectionProvider>
       <Tabs
         initialRouteName={tabRouteNames.browser}
-        screenOptions={screenOptions}>
+        screenOptions={screenOptions}
+        // The mini player docks on top of the tab bar (above the tabs, never over a screen's content).
+        tabBar={renderMiniPlayerTabBar}>
         {/* Visible tabs — Browser first (default landing). */}
         <Tabs.Screen
           name={tabRouteNames.browser}

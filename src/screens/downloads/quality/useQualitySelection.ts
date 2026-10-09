@@ -1,4 +1,4 @@
-import { AccessibilityInfo } from 'react-native';
+import { AccessibilityInfo, Platform, ToastAndroid } from 'react-native';
 import type { MediaAnalysisResult } from '@/api/types';
 import {
   analyzeFailureCopy,
@@ -9,6 +9,7 @@ import {
   type AnalyzePhase,
 } from '@/downloads/analyze/analyze-state-machine';
 import { analyzeMediaUrl, LocalAnalyzeNetworkError } from '@/downloads/analyze';
+import { isWebPageAnalysis } from '@/downloads/analyze/format';
 import {
   classifyPasteInput,
   startPageMediaResolution,
@@ -24,7 +25,8 @@ import { resolvePastePlatformKind } from '@/media-detection/services/platform-pa
 import { pendingNavigationService } from '@/browser/services';
 import { useBrowserStore } from '@/browser/stores';
 import { navigation, routePaths } from '@/navigation';
-import { notifyQualitySelectionClosed } from './download-created-bus';
+import { notifyQualitySelectionClosed, type QualitySelectionDownloadCreated } from './download-created-bus';
+import { qualityConfirmRoute } from './confirm-route';
 import { runPreDownloadGate } from '@/media-detection/services/pre-download-gate.service';
 import { refreshMediaFromPage } from '@/media-detection/services/media-refresh.service';
 import {
@@ -191,7 +193,7 @@ export type UseQualitySelectionResult = {
  */
 export function useQualitySelection(
   options?: {
-    onDownloadCreated?: () => void;
+    onDownloadCreated?: (created?: QualitySelectionDownloadCreated) => void;
     onPageResolutionHandoff?: (input: {
       originalUrl: string;
       canonicalUrl: string;
@@ -221,6 +223,8 @@ export function useQualitySelection(
   const creatingRef = useRef(false);
   const requestContextRef = useRef<MediaRequestContext | null>(null);
   const browserHandoffActiveRef = useRef(false);
+  /** The sheet on screen was opened for the browser's locked offer (see `qualityConfirmRoute`). */
+  const browserOfferRef = useRef(false);
 
   useEffect(() => {
     mountedRef.current = true;
@@ -264,6 +268,7 @@ export function useQualitySelection(
     creatingRef.current = false;
     requestContextRef.current = null;
     browserHandoffActiveRef.current = false;
+    browserOfferRef.current = false;
     setPhase('idle');
     setFlowKind(null);
     setPlatform(null);
@@ -381,7 +386,11 @@ export function useQualitySelection(
       setUrlError(null);
       setPlatform(detectedPlatform);
 
-      if (classifyPasteInput(trimmed) === 'page') {
+      /**
+       * A page (not a media file): the browser opens it and the detection pipeline finds, verifies and offers the
+       * video playing on it — the same generic route for every site.
+       */
+      const resolveAsPage = async () => {
         setFlowKind('page');
         setPhase('validating_url');
         logPageFlow('classified', { kind: 'page', hostname: safePageHostname(trimmed) });
@@ -443,6 +452,10 @@ export function useQualitySelection(
             analyzingRef.current = false;
           }
         }
+      };
+
+      if (classifyPasteInput(trimmed) === 'page') {
+        await resolveAsPage();
         return;
       }
 
@@ -461,6 +474,13 @@ export function useQualitySelection(
         });
 
         if (!mountedRef.current || requestId !== requestIdRef.current) {
+          return;
+        }
+
+        // The link answered with a web page (any site's video page): find the video on the page instead.
+        if (isWebPageAnalysis(analysis)) {
+          logPageFlow('classified', { kind: 'page', hostname: safePageHostname(trimmed), via: 'html_response' });
+          await resolveAsPage();
           return;
         }
 
@@ -494,6 +514,7 @@ export function useQualitySelection(
       },
     ) => {
       browserHandoffActiveRef.current = false;
+      browserOfferRef.current = browserMediaActionService.isSelectionLocked();
       requestContextRef.current = openOptions?.requestContext ?? null;
       setUrlState(openOptions?.sourceUrl ?? analysis.sourceUrl);
       setVisible(true);
@@ -531,6 +552,7 @@ export function useQualitySelection(
       }
       const trimmed = rawUrl.trim();
       resetTransient();
+      browserOfferRef.current = browserMediaActionService.isSelectionLocked();
       requestContextRef.current = analyzeOptions?.requestContext ?? null;
       setUrlState(trimmed);
       setVisible(true);
@@ -632,12 +654,17 @@ export function useQualitySelection(
 
     const tabIdForScope =
       browserMediaActionService.getActiveTabId() ?? '__default__';
-    // Stale SPA / recycled-player quality confirm must no-op.
-    if (
-      browserMediaActionService.isSelectionLocked() &&
-      !isQualityFreezeStillCurrent(tabIdForScope)
-    ) {
-      browserMediaActionService.endQualitySelection(tabIdForScope);
+    const selectionLocked = browserMediaActionService.isSelectionLocked();
+    const route = qualityConfirmRoute({
+      openedForBrowserOffer: browserOfferRef.current,
+      selectionLocked,
+      offerCurrent: selectionLocked && isQualityFreezeStillCurrent(tabIdForScope),
+    });
+    // Stale SPA / recycled-player / moved-on page quality confirm must no-op.
+    if (route === 'stale') {
+      if (selectionLocked) {
+        browserMediaActionService.endQualitySelection(tabIdForScope);
+      }
       setCreateError(translate('downloads.selectionHint'));
       setPhase('ready');
       return false;
@@ -650,7 +677,7 @@ export function useQualitySelection(
     }
 
     // A verified browser offer hands the exact chosen variant to the v2 engine: no re-resolve, no v1 transfer.
-    if (browserMediaActionService.isSelectionLocked()) {
+    if (route === 'browser_offer') {
       creatingRef.current = true;
       setCreating(true);
       setCreateError(null);
@@ -674,10 +701,21 @@ export function useQualitySelection(
           return false;
         }
         setPhase('downloading');
-        AccessibilityInfo.announceForAccessibility(
-          handoff.deduped ? 'Already in your downloads' : 'Download started',
-        );
-        onDownloadCreated?.();
+        if (handoff.duplicate) {
+          // The same video again: say so over whatever screen is in front, never as a failure.
+          const message = translate(
+            handoff.duplicate === 'ALREADY_DOWNLOADED'
+              ? 'downloads.alreadyDownloadedToast'
+              : 'downloads.alreadyDownloadingToast',
+          );
+          if (Platform.OS === 'android') {
+            ToastAndroid.show(message, ToastAndroid.SHORT);
+          }
+          AccessibilityInfo.announceForAccessibility(message);
+        } else {
+          AccessibilityInfo.announceForAccessibility(handoff.deduped ? 'Already in your downloads' : 'Download started');
+        }
+        onDownloadCreated?.({ downloadId: handoff.downloadId, duplicate: handoff.duplicate });
         close({ consumed: true });
         return true;
       } catch {

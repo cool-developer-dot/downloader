@@ -462,13 +462,13 @@ class DownloadEngineHlsTest {
     assertEquals("one refused try without the session, then everything with it", 1, requests.count { it.getHeader("Cookie") == null })
   }
 
-  @Test fun aSegmentThatIsGoneFailsAsNotFound() = runBlocking {
+  @Test fun aSegmentThatIsGoneFailsAsASegmentFailure() = runBlocking {
     playlist("/g/index.m3u8", mediaPlaylist("s0.ts", "missing.ts"))
     serve("/g/s0.ts", seg0)
     val engine = engine()
     val record = engine.enqueue(request("/g/index.m3u8"))
     engine.awaitIdle()
-    assertEquals(DownloadErrorCode.HTTP_404, store.current(record.id)!!.errorCode)
+    assertEquals(DownloadErrorCode.SEGMENT_FAILED, store.current(record.id)!!.errorCode)
     assertNull(library.items[record.id])
   }
 

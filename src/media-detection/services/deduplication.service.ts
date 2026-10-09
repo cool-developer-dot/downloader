@@ -112,6 +112,7 @@ function mergeMedia(prev: DetectedMedia, incoming: DetectedMedia): DetectedMedia
     observedTabId: incoming.observedTabId ?? prev.observedTabId,
     observedNavigationEpoch: incoming.observedNavigationEpoch ?? prev.observedNavigationEpoch,
     observedPageGeneration: incoming.observedPageGeneration ?? prev.observedPageGeneration,
+    userRequested: incoming.userRequested || prev.userRequested || undefined,
     container: incoming.container !== 'unknown' ? incoming.container : prev.container,
     url: preferIncomingUrl ? incoming.url || prev.url : prev.url,
     sourceUrl: preferNullish(prev.sourceUrl, incoming.sourceUrl) ?? prev.url,
@@ -166,6 +167,7 @@ function shallowEqualMedia(a: DetectedMedia, b: DetectedMedia): boolean {
   return (
     a.ownerElementIdentity === b.ownerElementIdentity &&
     a.frameUrl === b.frameUrl &&
+    a.userRequested === b.userRequested &&
     a.container === b.container &&
     a.title === b.title &&
     a.thumbnailUrl === b.thumbnailUrl &&

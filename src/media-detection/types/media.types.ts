@@ -52,7 +52,9 @@ export type DetectionSource =
   | 'js_fetch'
   | 'js_xhr'
   | 'native_network'
-  | 'mime_probe';
+  | 'mime_probe'
+  /** Found by the direct analyzer in a pasted link's fetched page (declared metadata or embedded data). */
+  | 'page_analysis';
 
 /** Safe session headers for download handoff — never log cookie values. */
 export type RequiredMediaHeaders = {
@@ -89,7 +91,7 @@ export interface MediaDimensions {
  */
 export type MediaObservationStamp = Pick<
   DetectedMedia,
-  'frameUrl' | 'observedTabId' | 'observedNavigationEpoch' | 'observedPageGeneration'
+  'frameUrl' | 'observedTabId' | 'observedNavigationEpoch' | 'observedPageGeneration' | 'userRequested'
 >;
 
 /**
@@ -102,6 +104,12 @@ export interface DetectedMedia {
   observedTabId?: string | null;
   observedNavigationEpoch?: number;
   observedPageGeneration?: number;
+  /**
+   * The user asked the browser for exactly this resource: a navigation or link whose response the WebView could not
+   * render, so it became a download (a pasted `.mpd`, a `.mov`, an attachment). That request is its ownership proof —
+   * no player on the page has to be playing it.
+   */
+  userRequested?: boolean;
   id: string;
   /** Canonical playback/download URL (prefer final after redirects). */
   url: string;

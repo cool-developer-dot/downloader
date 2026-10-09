@@ -1,4 +1,10 @@
-type DownloadCreatedListener = () => void;
+/** What the confirmed quality created: the download it started or found, and whether the video already existed. */
+export type QualitySelectionDownloadCreated = {
+  downloadId: string | null;
+  duplicate: 'ALREADY_DOWNLOADED' | 'ALREADY_DOWNLOADING' | null;
+};
+
+type DownloadCreatedListener = (created?: QualitySelectionDownloadCreated) => void;
 type SheetClosedListener = () => void;
 
 const downloadCreatedListeners = new Set<DownloadCreatedListener>();
@@ -21,10 +27,10 @@ export function registerQualitySelectionDownloadListener(
   };
 }
 
-export function notifyQualitySelectionDownloadCreated(): void {
+export function notifyQualitySelectionDownloadCreated(created?: QualitySelectionDownloadCreated): void {
   downloadCreatedListeners.forEach((listener) => {
     try {
-      listener();
+      listener(created);
     } catch {
       // ignore
     }

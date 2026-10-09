@@ -91,6 +91,9 @@ export function looksLikeGeneralPlayerIframe(input: {
   return mediaAllow && area >= STRONG_IFRAME_AREA;
 }
 
+/** The share of an iframe player that must be in view for it to be the page's current player. */
+export const IFRAME_OWNER_MIN_INTERSECTION = 0.25;
+
 export function shouldAcceptIframeAsCurrentOwner(input: {
   looksPlayer: boolean;
   isDisplayed: boolean;
@@ -112,7 +115,7 @@ export function shouldAcceptIframeAsCurrentOwner(input: {
   if (input.intersectionRatio == null) {
     return true;
   }
-  return input.intersectionRatio >= 0.25;
+  return input.intersectionRatio >= IFRAME_OWNER_MIN_INTERSECTION;
 }
 
 export function resolveIframeOwnerStrength(input: {

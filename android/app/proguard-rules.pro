@@ -11,4 +11,15 @@
 -keep class com.swmansion.reanimated.** { *; }
 -keep class com.facebook.react.turbomodule.** { *; }
 
+# WebView JavaScript bridges: react-native-webview's `window.ReactNativeWebView.postMessage` (page -> app messages,
+# which media detection depends on) is only ever called from JavaScript, so R8 would otherwise drop or rename it.
+-keepclassmembers class * {
+    @android.webkit.JavascriptInterface <methods>;
+}
+-keepattributes JavascriptInterface
+
+# Legacy React Native modules in this app (file actions, notifications, media export, volume, cookies, intents) are
+# invoked through @ReactMethod reflection by name.
+-keep class com.anonymous.vidorax.** extends com.facebook.react.bridge.BaseJavaModule { *; }
+
 # Add any project specific keep options here:

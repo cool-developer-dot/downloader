@@ -1,21 +1,15 @@
-import * as Haptics from 'expo-haptics';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
+import { createAdjustmentHud, type AdjustmentHud } from './adjustment-hud';
 import { brightnessFromSwipe, levelToPercent } from './brightness-state';
 import { levelFromSwipeDelta } from './level-gesture';
 import type { PlayerBrightnessState } from './hooks/use-player-brightness';
 import type { PlayerVolumeState } from './hooks/use-player-volume';
 import { clampVolume } from './volume-state';
 
-export const ADJUSTMENT_HUD_HIDE_MS = 1200;
+export { ADJUSTMENT_HUD_HIDE_MS } from './adjustment-hud';
 
 export type PlayerSideGestureKind = 'brightness' | 'volume';
-
-export type PlayerAdjustmentHudState = {
-  kind: PlayerSideGestureKind | null;
-  percent: number;
-  visible: boolean;
-};
 
 type VolumeFallback = {
   getLevel: () => number;
@@ -29,131 +23,109 @@ type UsePlayerSideGesturesOptions = {
   volumeFallback?: VolumeFallback;
 };
 
-function maybeBoundaryHaptic(level: number, lastHaptic: number | null): number | null {
-  const thresholds = [0, 0.5, 1];
-  for (const threshold of thresholds) {
-    if (lastHaptic === threshold) {
-      continue;
-    }
-    if (Math.abs(level - threshold) <= 0.02) {
-      void Haptics.selectionAsync().catch(() => {});
-      return threshold;
-    }
-  }
-  return lastHaptic;
-}
-
-export function usePlayerSideGestures(
-  options: UsePlayerSideGesturesOptions,
-): {
-  hud: PlayerAdjustmentHudState;
+export type PlayerSideGestures = {
+  /** The indicator's store — read by `PlayerAdjustmentHud` alone, so a swipe never re-renders the screen. */
+  hud: AdjustmentHud;
   brightnessAvailable: boolean;
-  onBrightnessPanBegin: () => void;
+  /** The swipe was recognised (not a tap): the value starts following the finger. */
+  onBrightnessPanStart: () => void;
   onBrightnessPanUpdate: (translationY: number) => void;
-  onBrightnessPanEnd: () => void;
-  onVolumePanBegin: () => void;
+  /** Every gesture that began ends here — recognised or not, finished or cancelled. */
+  onBrightnessPanFinalize: () => void;
+  onVolumePanStart: () => void;
   onVolumePanUpdate: (translationY: number) => void;
-  onVolumePanEnd: () => void;
-} {
-  const { brightness, volume, volumeFallback } = options;
+  onVolumePanFinalize: () => void;
+  /** Pinch zoom reports its level through the same indicator. */
+  onZoomChange: (percent: number) => void;
+  onZoomFinalize: () => void;
+};
 
-  const [hud, setHud] = useState<PlayerAdjustmentHudState>({
-    kind: null,
-    percent: 0,
-    visible: false,
+/**
+ * Brightness (left edge) and volume (right edge) swipes. The indicator appears only once a swipe actually changes a
+ * value, follows it, and hides `ADJUSTMENT_HUD_HIDE_MS` after the finger lifts. Callbacks are stable for the life of
+ * the screen, so the gesture recognisers are not rebuilt on every level change.
+ */
+export function usePlayerSideGestures(options: UsePlayerSideGesturesOptions): PlayerSideGestures {
+  const [hud] = useState(() => createAdjustmentHud());
+  const optionsRef = useRef(options);
+  useLayoutEffect(() => {
+    optionsRef.current = options;
   });
 
   const startLevelRef = useRef(0);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastHapticRef = useRef<number | null>(null);
   const activeKindRef = useRef<PlayerSideGestureKind | null>(null);
 
-  const clearHideTimer = useCallback(() => {
-    if (hideTimerRef.current) {
-      clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = null;
+  useEffect(() => () => hud.dispose(), [hud]);
+
+  const currentVolumeLevel = useCallback((): number => {
+    const { volume, volumeFallback } = optionsRef.current;
+    if (volume.available) {
+      return volume.level;
     }
+    return volumeFallback?.getLevel() ?? volume.level;
   }, []);
 
-  const scheduleHide = useCallback(() => {
-    clearHideTimer();
-    hideTimerRef.current = setTimeout(() => {
-      setHud({ kind: null, percent: 0, visible: false });
-      activeKindRef.current = null;
-      lastHapticRef.current = null;
-      brightness.endInteraction();
-      volume.endInteraction();
-    }, ADJUSTMENT_HUD_HIDE_MS);
-  }, [brightness, clearHideTimer, volume]);
-
-  useEffect(() => clearHideTimer, [clearHideTimer]);
-
-  const showHud = useCallback((kind: PlayerSideGestureKind, level: number) => {
-    setHud({
-      kind,
-      percent: levelToPercent(level),
-      visible: true,
-    });
-    lastHapticRef.current = maybeBoundaryHaptic(level, lastHapticRef.current);
+  const writeVolumeLevel = useCallback((level: number) => {
+    const { volume, volumeFallback } = optionsRef.current;
+    if (volume.available) {
+      volume.setLevel(level);
+      return;
+    }
+    volumeFallback?.setLevel(level);
   }, []);
 
-  const writeVolumeLevel = useCallback(
-    (level: number) => {
-      if (volume.available) {
-        volume.setLevel(level);
+  const finishInteraction = useCallback(
+    (kind: PlayerSideGestureKind) => {
+      if (activeKindRef.current !== kind) {
         return;
       }
-      volumeFallback?.setLevel(level);
+      activeKindRef.current = null;
+      const { brightness, volume } = optionsRef.current;
+      if (kind === 'brightness') {
+        brightness.endInteraction();
+      } else {
+        volume.endInteraction();
+      }
+      hud.release();
     },
-    [volume, volumeFallback],
+    [hud],
   );
 
-  const onBrightnessPanBegin = useCallback(() => {
+  const onBrightnessPanStart = useCallback(() => {
+    const { brightness } = optionsRef.current;
     if (!brightness.available) {
       return;
     }
-    clearHideTimer();
     activeKindRef.current = 'brightness';
     brightness.beginInteraction();
-    void brightness.refresh().then((level) => {
-      startLevelRef.current = level;
-      showHud('brightness', level);
-    });
-  }, [brightness, clearHideTimer, showHud]);
+    // The level the hook already follows (read when the player opened and on every return to the foreground):
+    // reading the system again here would make the first frames of the swipe jump.
+    startLevelRef.current = brightness.level;
+    hud.show('brightness', levelToPercent(brightness.level));
+  }, [hud]);
 
   const onBrightnessPanUpdate = useCallback(
     (translationY: number) => {
+      const { brightness, surfaceHeight } = optionsRef.current;
       if (!brightness.available || activeKindRef.current !== 'brightness') {
         return;
       }
-      const next = brightnessFromSwipe(
-        startLevelRef.current,
-        translationY,
-        options.surfaceHeight,
-      );
+      const next = brightnessFromSwipe(startLevelRef.current, translationY, surfaceHeight);
       brightness.setLevel(next);
-      showHud('brightness', next);
+      hud.show('brightness', levelToPercent(next));
     },
-    [brightness, options.surfaceHeight, showHud],
+    [hud],
   );
 
-  const onBrightnessPanEnd = useCallback(() => {
-    if (activeKindRef.current === 'brightness') {
-      activeKindRef.current = null;
-      brightness.endInteraction();
-      scheduleHide();
-    }
-  }, [brightness, scheduleHide]);
+  const onBrightnessPanFinalize = useCallback(() => finishInteraction('brightness'), [finishInteraction]);
 
-  const onVolumePanBegin = useCallback(() => {
-    clearHideTimer();
+  const onVolumePanStart = useCallback(() => {
+    const { volume } = optionsRef.current;
     activeKindRef.current = 'volume';
     volume.beginInteraction();
-    void volume.refresh().then((level) => {
-      startLevelRef.current = level;
-      showHud('volume', level);
-    });
-  }, [clearHideTimer, showHud, volume]);
+    startLevelRef.current = currentVolumeLevel();
+    hud.show('volume', levelToPercent(startLevelRef.current));
+  }, [currentVolumeLevel, hud]);
 
   const onVolumePanUpdate = useCallback(
     (translationY: number) => {
@@ -163,31 +135,40 @@ export function usePlayerSideGestures(
       const next = levelFromSwipeDelta(
         startLevelRef.current,
         translationY,
-        options.surfaceHeight,
+        optionsRef.current.surfaceHeight,
         (value) => clampVolume(value) ?? 0,
       );
       writeVolumeLevel(next);
-      showHud('volume', next);
+      hud.show('volume', levelToPercent(next));
     },
-    [options.surfaceHeight, showHud, writeVolumeLevel],
+    [hud, writeVolumeLevel],
   );
 
-  const onVolumePanEnd = useCallback(() => {
-    if (activeKindRef.current === 'volume') {
-      activeKindRef.current = null;
-      volume.endInteraction();
-      scheduleHide();
+  const onVolumePanFinalize = useCallback(() => finishInteraction('volume'), [finishInteraction]);
+
+  const onZoomChange = useCallback(
+    (percent: number) => {
+      hud.show('zoom', percent);
+    },
+    [hud],
+  );
+
+  const onZoomFinalize = useCallback(() => {
+    if (hud.getSnapshot().kind === 'zoom') {
+      hud.release();
     }
-  }, [scheduleHide, volume]);
+  }, [hud]);
 
   return {
     hud,
-    brightnessAvailable: brightness.available,
-    onBrightnessPanBegin,
+    brightnessAvailable: options.brightness.available,
+    onBrightnessPanStart,
     onBrightnessPanUpdate,
-    onBrightnessPanEnd,
-    onVolumePanBegin,
+    onBrightnessPanFinalize,
+    onVolumePanStart,
     onVolumePanUpdate,
-    onVolumePanEnd,
+    onVolumePanFinalize,
+    onZoomChange,
+    onZoomFinalize,
   };
 }

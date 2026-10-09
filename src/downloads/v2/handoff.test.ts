@@ -4,6 +4,7 @@ import { beforeEach, describe, test } from 'node:test';
 import type {
   DownloadRecord,
   EnqueueRequest,
+  EnqueueResult,
   ProbeFailure,
   ProbeRequest,
   ProbeResult,
@@ -167,7 +168,7 @@ describe('browser CTA → v2 DownloadEngine', () => {
     // A later tap on the same variant reuses the accepted download instead of starting a second one.
     h.statuses.set('dl-1', 'DOWNLOADING');
     const third = await handOffVerifiedVariant({ ...variant, option, variantKey: 'same' }, h.deps);
-    assert.deepEqual(third, { ok: true, downloadId: 'dl-1', deduped: true });
+    assert.deepEqual(third, { ok: true, downloadId: 'dl-1', deduped: true, duplicate: 'ALREADY_DOWNLOADING' });
     assert.equal(h.enqueued.length, 1);
   });
 
@@ -226,6 +227,113 @@ describe('browser CTA → v2 DownloadEngine', () => {
     assert.equal(result.ok, false);
     assert.equal(!result.ok && result.reason, 'ENQUEUE_REJECTED');
     assert.equal(h.applied.length, 0);
+  });
+});
+
+describe('DUPLICATE — the same video is never downloaded twice', () => {
+  /** An engine with the native one-download-per-video contract: `findDuplicate` + atomic `enqueueUnique`. */
+  function uniqueEngine(options: {
+    existing?: EnqueueResult | null;
+    unique?: (request: EnqueueRequest) => Promise<EnqueueResult>;
+  }) {
+    const calls = { found: [] as EnqueueRequest[], unique: [] as EnqueueRequest[], probed: 0, enqueued: 0 };
+    const applied: V2DownloadEntry[] = [];
+    const engine = {
+      probe: async () => {
+        calls.probed += 1;
+        return DOWNLOADABLE_HLS;
+      },
+      enqueue: async () => {
+        calls.enqueued += 1;
+        return downloadRecord();
+      },
+      findDuplicate: async (request: EnqueueRequest) => {
+        calls.found.push(request);
+        return options.existing ?? null;
+      },
+      enqueueUnique: async (request: EnqueueRequest) => {
+        calls.unique.push(request);
+        return options.unique
+          ? options.unique(request)
+          : ({ outcome: 'ENQUEUED', record: downloadRecord({ id: 'new-1' }), libraryItemId: null } as EnqueueResult);
+      },
+    } as unknown as V2EnginePort;
+    const deps = {
+      engine,
+      applyEntries: (entries: V2DownloadEntry[]) => applied.push(...entries),
+      statusOf: () => null,
+      isOfferCurrent: () => true,
+    };
+    return { calls, applied, deps };
+  }
+
+  test('a video already downloading is answered as ALREADY_DOWNLOADING before any classification', async () => {
+    const running = downloadRecord({ id: 'dl-7', state: 'downloading' });
+    const h = uniqueEngine({ existing: { outcome: 'ALREADY_DOWNLOADING', record: running, libraryItemId: null } });
+    const option = qualityOption({ streamType: 'HLS', isHls: true, container: 'hls', sourceUrl: 'https://cdn.example/v/master.m3u8' });
+    const result = await handOffVerifiedVariant({ ...variant, option, variantKey: 'h' }, h.deps);
+
+    assert.deepEqual(result, { ok: true, downloadId: 'dl-7', deduped: true, duplicate: 'ALREADY_DOWNLOADING' });
+    assert.equal(h.calls.probed, 0, 'no stream classification for a video the user already has');
+    assert.equal(h.calls.unique.length, 0);
+    assert.equal(h.applied[0]?.item.id, 'dl-7', 'the existing download is shown in Downloads');
+  });
+
+  test('a video already saved is ALREADY_DOWNLOADED, never a failure and never a second download', async () => {
+    const h = uniqueEngine({ existing: { outcome: 'ALREADY_DOWNLOADED', record: null, libraryItemId: 'lib-3' } });
+    const result = await handOffVerifiedVariant({ ...variant, option: qualityOption(), variantKey: 'p' }, h.deps);
+
+    assert.deepEqual(result, { ok: true, downloadId: 'lib-3', deduped: true, duplicate: 'ALREADY_DOWNLOADED' });
+    assert.equal(h.calls.unique.length, 0);
+    assert.equal(h.calls.enqueued, 0);
+  });
+
+  test('the atomic enqueue still wins a race the pre-check could not see', async () => {
+    const h = uniqueEngine({
+      unique: async () => ({ outcome: 'ALREADY_DOWNLOADING', record: downloadRecord({ id: 'dl-race' }), libraryItemId: null }),
+    });
+    const result = await handOffVerifiedVariant({ ...variant, option: qualityOption(), variantKey: 'r' }, h.deps);
+
+    assert.deepEqual(result, { ok: true, downloadId: 'dl-race', deduped: true, duplicate: 'ALREADY_DOWNLOADING' });
+    assert.equal(h.calls.enqueued, 0, 'the unguarded enqueue is never used when the engine offers the guarded one');
+  });
+
+  test('a new video is enqueued through the guarded enqueue with the offer source as its identity', async () => {
+    const h = uniqueEngine({});
+    const option = qualityOption({ sourceUrl: 'https://cdn.example/v/clip.mp4?sig=new' });
+    const result = await handOffVerifiedVariant(
+      { ...variant, option, identityUrl: 'https://cdn.example/v/clip.mp4?sig=offered', variantKey: 'n' },
+      h.deps,
+    );
+
+    assert.deepEqual(result, { ok: true, downloadId: 'new-1', deduped: false, duplicate: null });
+    assert.equal(h.calls.unique.length, 1);
+    assert.equal(h.calls.unique[0]?.url, option.sourceUrl, 'the fresh link is what gets downloaded');
+    assert.equal(h.calls.unique[0]?.identityUrl, 'https://cdn.example/v/clip.mp4?sig=offered');
+  });
+
+  test('an older native build that refuses a saved video with a code is still ALREADY_DOWNLOADED', async () => {
+    const h = harness({
+      enqueue: async () => {
+        throw Object.assign(new Error('saved'), { code: 'ERR_ALREADY_DOWNLOADED' });
+      },
+    });
+    const result = await handOffVerifiedVariant({ ...variant, option: qualityOption(), variantKey: 'old' }, h.deps);
+
+    assert.deepEqual(result, { ok: true, downloadId: null, deduped: true, duplicate: 'ALREADY_DOWNLOADED' });
+  });
+
+  test('a completed download of this session is re-checked by the engine: a deleted video can be downloaded again', async () => {
+    const h = uniqueEngine({});
+    const option = qualityOption();
+    await handOffVerifiedVariant({ ...variant, option, variantKey: 'again' }, h.deps);
+    const again = await handOffVerifiedVariant(
+      { ...variant, option, variantKey: 'again' },
+      { ...h.deps, statusOf: () => 'COMPLETED' },
+    );
+
+    assert.equal(again.ok && again.duplicate, null);
+    assert.equal(h.calls.unique.length, 2);
   });
 });
 
@@ -405,5 +513,67 @@ describe('Phase 12B — DASH goes to the engine only when the native classifier 
     const h = harness({ probe: async () => DOWNLOADABLE_DASH });
     await handOffVerifiedVariant({ ...variant, option: dash({ representationId: null }), variantKey: 'noid' }, h.deps);
     assert.deepEqual(h.enqueued[0]!.variant, { maxHeight: 720 });
+  });
+});
+
+describe('split tracks (a video-only and an audio-only file) → one merged download', () => {
+  const VIDEO = 'https://scontent.cdninstagram.com/v/video-720.mp4?oh=sig1';
+  const AUDIO = 'https://scontent.cdninstagram.com/v/audio-128.mp4?oh=sig2';
+  const DOWNLOADABLE_SPLIT: ProbeResult = {
+    ok: true,
+    kind: 'split',
+    finalUrl: VIDEO,
+    contentType: null,
+    container: 'mp4',
+    sizeBytes: 3_000_000,
+    resumable: true,
+    variants: [],
+    audioTracks: [],
+    durationMs: 15_000,
+    mergesAudio: true,
+  };
+
+  test('a split option is enqueued as `split` with its audio file, after the native pair check', async () => {
+    const h = harness({ probe: async () => DOWNLOADABLE_SPLIT });
+    const option = qualityOption({ sourceUrl: VIDEO, audioSourceUrl: AUDIO });
+    const result = await handOffVerifiedVariant({ ...variant, option, variantKey: 'split-1' }, h.deps);
+
+    assert.equal(result.ok, true);
+    assert.equal(h.probed.length, 1, 'the pair is classified before anything is enqueued');
+    assert.equal(h.probed[0]?.kind, 'split');
+    assert.equal(h.probed[0]?.audioUrl, AUDIO);
+    const request = h.enqueued[0]!;
+    assert.equal(request.kind, 'split');
+    assert.equal(request.url, VIDEO);
+    assert.equal(request.audioUrl, AUDIO);
+  });
+
+  test('two files that are not one video are never enqueued', async () => {
+    const h = harness({ probe: async () => refusal('TRACK_MISMATCH') });
+    const option = qualityOption({ sourceUrl: VIDEO, audioSourceUrl: AUDIO });
+    const result = await handOffVerifiedVariant({ ...variant, option, variantKey: 'split-2' }, h.deps);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.ok === false ? result.reason : null, 'TRACK_MISMATCH');
+    assert.equal(h.enqueued.length, 0);
+  });
+
+  test('a missing picture or sound is a truthful refusal', async () => {
+    for (const reason of ['VIDEO_TRACK_MISSING', 'AUDIO_TRACK_MISSING'] as const) {
+      resetV2HandoffForTests();
+      const h = harness({ probe: async () => refusal(reason) });
+      const option = qualityOption({ sourceUrl: VIDEO, audioSourceUrl: AUDIO });
+      const result = await handOffVerifiedVariant({ ...variant, option, variantKey: `split-${reason}` }, h.deps);
+      assert.equal(result.ok === false ? result.reason : null, reason, reason);
+      assert.equal(h.enqueued.length, 0);
+    }
+  });
+
+  test('an audio file that is not a public URL is refused before the engine', async () => {
+    const h = harness({ probe: async () => DOWNLOADABLE_SPLIT });
+    const option = qualityOption({ sourceUrl: VIDEO, audioSourceUrl: 'blob:https://www.instagram.com/abc' });
+    const result = await handOffVerifiedVariant({ ...variant, option, variantKey: 'split-3' }, h.deps);
+    assert.equal(result.ok, false);
+    assert.equal(h.probed.length + h.enqueued.length, 0);
   });
 });

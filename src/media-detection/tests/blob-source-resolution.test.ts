@@ -20,6 +20,7 @@ import {
   MSE_SILENT_GIVE_UP_MS,
   classifyMsePlayback,
   type MsePlaybackState,
+  isSplitPlayerFile,
 } from '../engine/mse-playback-context';
 
 const PAGE = 'https://videos.example.com/watch/abc123';
@@ -390,10 +391,26 @@ test('classifier — protection outranks an available whole-file source', () => 
     elementIdentity: 'v1',
     sourceKind: 'mse',
     protection: 'PROTECTED',
+    trackLayout: null,
     segmentObservations: 0,
     wholeSourceObservations: 5,
     firstSeenAt: 1_000,
     lastSeenAt: 1_000,
   };
   assert.equal(classifyMsePlayback({ state, hasWholeSourceCandidate: true }).kind, 'PROTECTED');
+});
+
+test('a whole file the split player never read is not one of its halves; its own files are, from any CDN edge', () => {
+  const state = {
+    fileUrls: [
+      { key: 'a', url: 'https://video-a1.fbcdn.net/v/t42/AQV_video_half_720.mp4?bytestart=0&byteend=9', lastSeenAt: 1 },
+    ],
+    trackFiles: { video: null, audio: 'https://video-a1.fbcdn.net/v/t42/AQA_audio_half_128.mp4?bytestart=0' },
+  };
+  assert.equal(isSplitPlayerFile(state, 'https://video-b2.fbcdn.net/v/t42/AQV_video_half_720.mp4?oh=x'), true);
+  assert.equal(isSplitPlayerFile(state, 'https://video-b2.fbcdn.net/v/t42/AQA_audio_half_128.mp4'), true);
+  assert.equal(isSplitPlayerFile(state, 'https://video-c3.fbcdn.net/v/t39/AQM_whole_muxed_file.mp4?efg=1'), false);
+  // Nothing known: treated as a half, so the split rule keeps withdrawing it.
+  assert.equal(isSplitPlayerFile(null, 'https://video-c3.fbcdn.net/v/t39/AQM_whole_muxed_file.mp4'), true);
+  assert.equal(isSplitPlayerFile(state, null), true);
 });

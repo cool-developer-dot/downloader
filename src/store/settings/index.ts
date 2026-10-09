@@ -66,6 +66,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         notifications: state.notifications,
         language: state.language,
         maxConcurrentDownloads: state.maxConcurrentDownloads,
+        saveToGallery: state.saveToGallery,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -78,6 +79,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
             current.maxConcurrentDownloads,
           ),
           wifiOnly: typeof raw.wifiOnly === 'boolean' ? raw.wifiOnly : current.wifiOnly,
+          saveToGallery:
+            typeof raw.saveToGallery === 'boolean' ? raw.saveToGallery : current.saveToGallery,
           autoResume:
             typeof raw.autoResume === 'boolean' ? raw.autoResume : current.autoResume,
           notifications:

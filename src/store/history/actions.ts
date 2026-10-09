@@ -2,9 +2,10 @@ import type { StoreApi } from 'zustand';
 
 import { isApiError } from '@/api';
 import { historyService } from '@/storage/services';
-import { isStorageError, type BrowserHistoryEntry } from '@/storage/types';
+import { isStorageError } from '@/storage/types';
 
 import { initialHistoryState } from './state';
+import { reducePrependVisit } from './visit-reducer';
 import type { HistoryActions, HistoryStore } from './types';
 
 function getErrorMessage(error: unknown, fallback: string): string {
@@ -21,16 +22,6 @@ function getErrorMessage(error: unknown, fallback: string): string {
   }
 
   return fallback;
-}
-
-function mergeVisitIntoItems(
-  items: BrowserHistoryEntry[],
-  entry: BrowserHistoryEntry,
-): BrowserHistoryEntry[] {
-  const withoutSame = items.filter(
-    (item) => item.id !== entry.id && item.url !== entry.url,
-  );
-  return [entry, ...withoutSame];
 }
 
 export function createHistoryActions(
@@ -63,19 +54,7 @@ export function createHistoryActions(
       }));
     },
     prependOrUpdate: (entry) => {
-      set((state) => {
-        const existed = state.items.some(
-          (item) => item.id === entry.id || item.url === entry.url,
-        );
-
-        return {
-          items: mergeVisitIntoItems(state.items, entry),
-          total: existed ? state.total : state.total + 1,
-          ready: true,
-          initialized: true,
-          error: null,
-        };
-      });
+      set((state) => reducePrependVisit(state, entry));
     },
     load: async (page = 1, options = {}) => {
       const state = get();

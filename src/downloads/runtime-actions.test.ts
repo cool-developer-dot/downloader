@@ -17,6 +17,11 @@ describe('Retry is offered only when retrying can change the outcome', () => {
     }
   });
 
+  test('a duplicate has no Retry: the video is already saved', () => {
+    assert.equal(resolveDownloadRuntimeActions({ status: 'FAILED', errorCode: 'DUPLICATE' }).canRetry, false);
+    assert.equal(isFinalFailure('DUPLICATE'), true);
+  });
+
   test('the error code never changes a row that has not failed', () => {
     const paused = resolveDownloadRuntimeActions({ status: 'PAUSED', errorCode: 'DRM_PROTECTED' });
     assert.equal(paused.canResume, true);

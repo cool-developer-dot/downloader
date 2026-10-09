@@ -70,6 +70,25 @@ class RecordsTest {
   }
 
   @Test
+  fun aSplitDownloadCarriesItsAudioFileAndNeedsOne() {
+    val split = EnqueueRequestRecord(
+      url = "https://cdn.example.com/v.mp4",
+      kind = "split",
+      audioUrl = "https://cdn.example.com/a.m4a",
+      title = "Reel",
+      site = "instagram",
+    ).toModel()
+    assertEquals(SourceKind.SPLIT, split.kind)
+    assertEquals("https://cdn.example.com/a.m4a", split.audioUrl)
+    assertInvalid { EnqueueRequestRecord(url = "https://cdn.example.com/v.mp4", kind = "split", title = "Reel", site = "web").toModel() }
+    assertInvalid { EnqueueRequestRecord(url = "https://cdn.example.com/v.mp4", kind = "split", audioUrl = "not a url", title = "R", site = "web").toModel() }
+    val probe = ProbeRequestRecord(url = "https://cdn.example.com/v.mp4", kind = "split", audioUrl = "https://cdn.example.com/a.m4a").toModel()
+    assertEquals("https://cdn.example.com/a.m4a", probe.audioUrl)
+    assertInvalid { ProbeRequestRecord(url = "https://cdn.example.com/v.mp4", kind = "split").toModel() }
+    assertInvalid { ProbeRequestRecord(url = "https://cdn.example.com/v.mp4", kind = "hls", audioUrl = "https://cdn.example.com/a.m4a").toModel() }
+  }
+
+  @Test
   fun enqueueNormalizesOptionalValues() {
     val request = EnqueueRequestRecord(
       url = " https://cdn.example.com/m.mpd ",

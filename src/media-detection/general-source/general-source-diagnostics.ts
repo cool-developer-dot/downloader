@@ -21,6 +21,8 @@ type GeneralSourceDiagEvent =
   | 'hls_manifest_invalid'
   | 'dash_classified'
   | 'dash_rejected'
+  | 'hls_classified'
+  | 'hls_rejected'
   | 'native_refused'
   | 'claimed_by_manifest'
   | 'stale_verification_ignored'

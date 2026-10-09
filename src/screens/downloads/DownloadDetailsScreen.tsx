@@ -169,6 +169,7 @@ const DetailsBody = memo(function DetailsBody({
     status: item.status,
     workerState: item.workerState,
     downloadId: item.id,
+    processingStage: transfer?.processingStage ?? null,
   });
   const statusColors = downloadsTokens.status[item.status];
   const mediaType = extractMediaType(item.fileName);

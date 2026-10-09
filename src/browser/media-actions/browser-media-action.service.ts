@@ -14,6 +14,7 @@ import {
 import { isSameContentIdentity, shouldInvalidateCurrentMedia } from './cta-persistence';
 import { buildBrowserMediaFingerprint } from './media-fingerprint';
 import { isSameDocumentUrl } from '@/media-detection/utils';
+import { traceOfferState } from '@/media-detection/pipeline/pipeline-outcome';
 import { stripRequestContextSecrets } from '@/media-detection/session-media/strip-secrets';
 import type { MediaRequestContext } from '@/downloads/types/request-context';
 
@@ -74,7 +75,49 @@ type TabMediaSlice = {
    * after a tab switch names the page the tab already shows — not a navigation inside the tab.
    */
   activationPageUrl: string | null;
+  /**
+   * What verification proved about the videos this tab's page showed (by content identity): a protected or
+   * unsupported one keeps saying so while it is on screen instead of an empty action area. Bounded, per navigation.
+   */
+  verdicts: Map<string, { verdict: BrowserMediaCurrentVerdict; since: number }>;
+  /**
+   * Offers (by media fingerprint) the user already had before tapping: in the library / as a gallery copy
+   * (DOWNLOADED), or a download already under way (DOWNLOADING, with its id so its completion can be followed).
+   */
+  duplicateOffers: Map<string, BrowserOfferDuplicate>;
+  /**
+   * What each consumption (keyed like `consumedFingerprints`) resulted in: the download it started or found, and
+   * whether the video was already in the library BEFORE this tap. A consumption is not "already downloaded" by
+   * itself — a download this tap just started is "Downloading…", then "Downloaded".
+   */
+  consumedOutcomes: Map<string, BrowserConsumedOutcome>;
+  /** The outcome of the consumption the tab's `consumed` state shows (its fingerprint is cleared with the offer). */
+  lastConsumedOutcome: BrowserConsumedOutcome | null;
 };
+
+export type BrowserOfferDuplicate = { kind: 'DOWNLOADED' | 'DOWNLOADING'; downloadId: string | null };
+
+export type BrowserConsumedOutcome = {
+  downloadId: string | null;
+  /** The video was already downloaded before this attempt (the engine answered ALREADY_DOWNLOADED). */
+  preExisting: boolean;
+  /** The user moved on to another video and came back: a completed download now reads "Already downloaded". */
+  revisited: boolean;
+};
+
+export type BrowserConsumedDuplicate = 'ALREADY_DOWNLOADED' | 'ALREADY_DOWNLOADING' | null | undefined;
+
+export type BrowserMediaCurrentVerdict = 'PROTECTED' | 'UNSUPPORTED';
+
+/**
+ * How long a negative verdict must stand — no offer, no new verification of the same video — before it is shown. One
+ * candidate refused (a subtitle or audio playlist, an ad's manifest, the first of several files) is not the video's
+ * answer: the source that downloads may arrive a moment later, and a "can't be downloaded" it then replaces is a false
+ * statement the user saw. Until then the action area shows nothing.
+ */
+export const NEGATIVE_VERDICT_SETTLE_MS = 8_000;
+
+const MAX_VERDICTS_PER_TAB = 32;
 
 const slices = new Map<string, TabMediaSlice>();
 const listeners = new Set<Listener>();
@@ -97,6 +140,10 @@ function emptySlice(): TabMediaSlice {
     selectionGeneration: 0,
     qualityFreeze: null,
     activationPageUrl: null,
+    verdicts: new Map(),
+    duplicateOffers: new Map(),
+    consumedOutcomes: new Map(),
+    lastConsumedOutcome: null,
   };
 }
 
@@ -110,6 +157,10 @@ function ensureSlice(tabId: string): TabMediaSlice {
 }
 
 function emit(): void {
+  const active = slices.get(activeTabId ?? '__default__');
+  if (active) {
+    traceOfferState({ tabId: activeTabId, status: active.state.status, mediaUrl: active.state.mediaUrl });
+  }
   listeners.forEach((listener) => {
     try {
       listener();
@@ -179,6 +230,31 @@ function addConsumed(
     for (let i = 0; i < drop; i += 1) {
       slice.consumedFingerprints.delete(entries[i]!);
     }
+  }
+}
+
+function rememberConsumedOutcome(
+  slice: TabMediaSlice,
+  tabId: string,
+  fingerprint: string,
+  contentIdentity: string | null | undefined,
+  downloadId: string | null | undefined,
+  duplicate: BrowserConsumedDuplicate,
+): void {
+  const outcome: BrowserConsumedOutcome = {
+    downloadId: downloadId ?? null,
+    preExisting: duplicate === 'ALREADY_DOWNLOADED',
+    revisited: false,
+  };
+  slice.lastConsumedOutcome = outcome;
+  slice.consumedOutcomes.set(buildTabScopedConsumptionKey(tabId, fingerprint), outcome);
+  if (contentIdentity) {
+    slice.consumedOutcomes.set(buildContentConsumptionKey(tabId, contentIdentity), outcome);
+  }
+  while (slice.consumedOutcomes.size > MAX_CONSUMED_PER_TAB * 2) {
+    const oldest = slice.consumedOutcomes.keys().next().value;
+    if (oldest === undefined) break;
+    slice.consumedOutcomes.delete(oldest);
   }
 }
 
@@ -405,6 +481,10 @@ export const browserMediaActionService = {
     // commit their fingerprint later without mutating a different media offer.
     slice.consumedFingerprints.clear();
     slice.consumedDownloads.clear();
+    slice.consumedOutcomes.clear();
+    slice.lastConsumedOutcome = null;
+    slice.verdicts.clear();
+    slice.duplicateOffers.clear();
     const pending = firstPending(slice);
     slice.state = {
       ...initialBrowserMediaActionState,
@@ -503,7 +583,8 @@ export const browserMediaActionService = {
    * a protected stream is never downloadable, whatever was published before the evidence arrived.
    * A handoff already in flight is left alone; the enqueue path has its own staleness checks.
    */
-  invalidateProtectedOffer(): boolean {
+  /** Withdraws a standing offer the current player has proven cannot be downloaded (protected, or split A/V). */
+  invalidateProtectedOffer(reason: 'protected_playback' | 'split_audio_video' = 'protected_playback'): boolean {
     const slice = requireActiveSlice();
     if (slice.state.selectionLocked || slice.state.status === 'preparing') {
       return false;
@@ -532,7 +613,7 @@ export const browserMediaActionService = {
     };
     logBrowserCta('navigation_invalidated', {
       tabId: activeTabId ?? '__default__',
-      result: 'protected_playback',
+      result: reason,
       fingerprintHash: fingerprintDiagHash(priorFp),
     });
     emit();
@@ -623,6 +704,9 @@ export const browserMediaActionService = {
     slice.verifiedCandidateId = handoff.media.id;
     slice.verificationAbort?.abort();
     slice.verificationAbort = null;
+    if (handoff.contentIdentity) {
+      slice.verdicts.delete(handoff.contentIdentity);
+    }
 
     patchActive({
       status: 'verified',
@@ -905,8 +989,10 @@ export const browserMediaActionService = {
       slice.consumedDownloads.delete(downloadId);
       slice.consumedFingerprints.delete(consumed.fingerprint);
       slice.consumedFingerprints.delete(buildTabScopedConsumptionKey(tabId, consumed.fingerprint));
+      slice.consumedOutcomes.delete(buildTabScopedConsumptionKey(tabId, consumed.fingerprint));
       if (consumed.contentIdentity) {
         slice.consumedFingerprints.delete(buildContentConsumptionKey(tabId, consumed.contentIdentity));
+        slice.consumedOutcomes.delete(buildContentConsumptionKey(tabId, consumed.contentIdentity));
       }
       if (slice.state.status === 'consumed' && slice.state.downloadId === downloadId) {
         slice.verifiedCandidateId = null;
@@ -934,6 +1020,7 @@ export const browserMediaActionService = {
     fingerprint: string,
     handoffGeneration: number,
     downloadId?: string | null,
+    duplicate?: BrowserConsumedDuplicate,
   ): boolean {
     const slice = slices.get(tabId);
     if (!slice) {
@@ -954,6 +1041,7 @@ export const browserMediaActionService = {
         const contentIdentity = slice.state.contentIdentity;
         addConsumed(slice, fingerprint, tabId, contentIdentity);
         rememberConsumedDownload(slice, downloadId, fingerprint, contentIdentity);
+        rememberConsumedOutcome(slice, tabId, fingerprint, contentIdentity, downloadId, duplicate);
         slice.verifiedCandidateId = null;
         slice.verificationAbort?.abort();
         slice.verificationAbort = null;
@@ -1001,6 +1089,7 @@ export const browserMediaActionService = {
     const contentIdentity = slice.state.contentIdentity;
     addConsumed(slice, fingerprint, tabId, contentIdentity);
     rememberConsumedDownload(slice, downloadId, fingerprint, contentIdentity);
+    rememberConsumedOutcome(slice, tabId, fingerprint, contentIdentity, downloadId, duplicate);
     slice.verifiedCandidateId = null;
     slice.verificationAbort?.abort();
     slice.verificationAbort = null;
@@ -1200,6 +1289,10 @@ export const browserMediaActionService = {
     slice.verificationAbort?.abort();
     slice.verificationAbort = new AbortController();
     slice.verificationContentIdentity = contentIdentity;
+    // The video is being looked at again (a new candidate): whatever it was answered before is not final.
+    if (contentIdentity && slice.verdicts.delete(contentIdentity)) {
+      emit();
+    }
     return slice.verificationAbort.signal;
   },
 
@@ -1212,6 +1305,142 @@ export const browserMediaActionService = {
 
   handoffVerified(handoff: BrowserMediaVerifiedHandoff): void {
     this.setVerified(handoff);
+  },
+
+  /** Verification proved the video with this identity (on the active tab's page) protected or unsupported. */
+  recordVerdict(contentIdentity: string | null | undefined, verdict: BrowserMediaCurrentVerdict): void {
+    if (!contentIdentity) {
+      return;
+    }
+    const slice = requireActiveSlice();
+    if (slice.verdicts.get(contentIdentity)?.verdict === verdict) {
+      return;
+    }
+    slice.verdicts.delete(contentIdentity);
+    const entry = { verdict, since: Date.now() };
+    slice.verdicts.set(contentIdentity, entry);
+    while (slice.verdicts.size > MAX_VERDICTS_PER_TAB) {
+      const oldest = slice.verdicts.keys().next().value;
+      if (oldest === undefined) break;
+      slice.verdicts.delete(oldest);
+    }
+    // Presented once it has stood (see getVerdict): re-render then, if it still stands.
+    setTimeout(() => {
+      if (slice.verdicts.get(contentIdentity) === entry) {
+        emit();
+      }
+    }, NEGATIVE_VERDICT_SETTLE_MS);
+  },
+
+  /** A verification of this video is running right now (its candidate is being checked). */
+  isVerifying(contentIdentity: string | null | undefined): boolean {
+    if (!contentIdentity) {
+      return false;
+    }
+    const slice = requireActiveSlice();
+    return (
+      slice.state.status === 'detecting' &&
+      slice.verificationContentIdentity === contentIdentity &&
+      Boolean(slice.verificationAbort) &&
+      !slice.verificationAbort!.signal.aborted
+    );
+  },
+
+  /**
+   * A negative verdict for this video that has not stood long enough to be its answer: the video is still being
+   * resolved (the action area says "Detecting video…", never the not-yet-final verdict).
+   */
+  hasPendingVerdict(contentIdentity: string | null | undefined, now: number = Date.now()): boolean {
+    if (!contentIdentity) {
+      return false;
+    }
+    const entry = requireActiveSlice().verdicts.get(contentIdentity);
+    return Boolean(entry) && now - entry!.since < NEGATIVE_VERDICT_SETTLE_MS;
+  },
+
+  /**
+   * The video's final negative verdict: recorded at least NEGATIVE_VERDICT_SETTLE_MS ago and not superseded since (an
+   * offer for it, a new verification of it). A fresher one is not an answer yet.
+   */
+  getVerdict(
+    contentIdentity: string | null | undefined,
+    now: number = Date.now(),
+  ): BrowserMediaCurrentVerdict | null {
+    if (!contentIdentity) {
+      return null;
+    }
+    const entry = requireActiveSlice().verdicts.get(contentIdentity);
+    return entry && now - entry.since >= NEGATIVE_VERDICT_SETTLE_MS ? entry.verdict : null;
+  },
+
+  /**
+   * The engine says the user already had the offer with this fingerprint before any tap: in the library
+   * (DOWNLOADED) or as a download under way (DOWNLOADING — never "already downloaded" while it is still running).
+   */
+  markOfferDuplicate(
+    fingerprint: string | null | undefined,
+    kind: BrowserOfferDuplicate['kind'] = 'DOWNLOADED',
+    downloadId: string | null = null,
+  ): void {
+    if (!fingerprint) {
+      return;
+    }
+    const slice = requireActiveSlice();
+    const previous = slice.duplicateOffers.get(fingerprint);
+    if (previous && previous.kind === kind && previous.downloadId === downloadId) {
+      return;
+    }
+    slice.duplicateOffers.delete(fingerprint);
+    slice.duplicateOffers.set(fingerprint, { kind, downloadId });
+    if (slice.duplicateOffers.size > MAX_CONSUMED_PER_TAB) {
+      const oldest = slice.duplicateOffers.keys().next().value;
+      if (oldest !== undefined) slice.duplicateOffers.delete(oldest);
+    }
+    emit();
+  },
+
+  /** True only when the offer's video was already fully downloaded before this page offered it. */
+  isOfferDuplicate(fingerprint: string | null | undefined): boolean {
+    return Boolean(fingerprint) && requireActiveSlice().duplicateOffers.get(fingerprint!)?.kind === 'DOWNLOADED';
+  },
+
+  getOfferDuplicate(fingerprint: string | null | undefined): BrowserOfferDuplicate | null {
+    return fingerprint ? (requireActiveSlice().duplicateOffers.get(fingerprint) ?? null) : null;
+  },
+
+  /** What the consumption of this video (by content identity, else fingerprint) resulted in, on the active tab. */
+  getConsumedOutcome(
+    contentIdentity: string | null | undefined,
+    fingerprint?: string | null,
+  ): BrowserConsumedOutcome | null {
+    const tabKey = activeTabId ?? '__default__';
+    const slice = requireActiveSlice();
+    if (contentIdentity) {
+      const byContent = slice.consumedOutcomes.get(buildContentConsumptionKey(tabKey, contentIdentity));
+      if (byContent) return byContent;
+    }
+    if (fingerprint) {
+      const byFingerprint = slice.consumedOutcomes.get(buildTabScopedConsumptionKey(tabKey, fingerprint));
+      if (byFingerprint) return byFingerprint;
+    }
+    // A page video without a content identity: the tab's consumed state is that consumption.
+    return slice.state.status === 'consumed' ? slice.lastConsumedOutcome : null;
+  },
+
+  /**
+   * The user scrolled from this video to another one: when they come back, its finished download is something they
+   * already have ("Already downloaded"), not the download that just finished in front of them ("Downloaded").
+   */
+  markConsumedRevisitable(contentIdentity: string | null | undefined): void {
+    if (!contentIdentity) {
+      return;
+    }
+    const outcome = requireActiveSlice().consumedOutcomes.get(
+      buildContentConsumptionKey(activeTabId ?? '__default__', contentIdentity),
+    );
+    if (outcome && !outcome.revisited) {
+      outcome.revisited = true;
+    }
   },
 
   /** Test helper */

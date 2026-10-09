@@ -35,6 +35,8 @@ export type {
   BridgeErrorPayload,
   BridgeBlobIndicatorPayload,
   BridgeMediaSourceKind,
+  BridgeMseFiles,
+  BridgeMseTrackLayout,
   BridgeActiveVideoPayload,
   BridgeActiveIframePlayerPayload,
   MediaBridgePayload,

@@ -275,15 +275,17 @@ function mapVariantToOption(
     isProgressive: flags.isProgressive,
     isAudioOnly: flags.isAudioOnly,
     mediaType,
-    hasAudio: tracks.hasAudio,
+    // Split tracks: the separate audio file is merged in, so the download has sound.
+    hasAudio: variant.audioSourceUrl ? true : tracks.hasAudio,
     hasVideo: tracks.hasVideo,
     downloadable: variant.downloadable === true,
     unavailableReason: variant.downloadable
       ? null
       : (variant.unsupportedReason ?? analysis.unsupportedReason),
-    ...(streamType === 'DASH' && variant.representationId
+    ...((streamType === 'DASH' || streamType === 'HLS') && variant.representationId
       ? { representationId: variant.representationId }
       : {}),
+    ...(variant.audioSourceUrl ? { audioSourceUrl: variant.audioSourceUrl } : {}),
   };
 }
 

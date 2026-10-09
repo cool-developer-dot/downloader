@@ -92,3 +92,7 @@ xcuserdata/
 tmp/
 temp/
 .tmp/
+
+# Native module build output
+modules/*/android/build/
+modules/*/android/.cxx/

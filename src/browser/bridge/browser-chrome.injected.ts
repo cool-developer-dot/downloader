@@ -24,6 +24,7 @@ export function buildBrowserChromeInjectedScript(): string {
   var pullStartY = 0;
   var pullFired = false;
   var lastPullPostAt = 0;
+  var PULL_MAX_ANCESTORS = 64;
 
   function post(type, payload) {
     try {
@@ -159,9 +160,42 @@ export function buildBrowserChromeInjectedScript(): string {
       (document.documentElement && document.documentElement.scrollTop) || 0;
   }
 
+  function overscrollContained(el) {
+    try {
+      var value = getComputedStyle(el).overscrollBehaviorY;
+      return value === 'contain' || value === 'none';
+    } catch (e) { return false; }
+  }
+
+  // Whether a downward drag starting on this target would scroll the page's root (and may refresh it), as a browser
+  // decides: never when a scroller around the target is scrolled away from its top (the drag scrolls it back, the
+  // gesture stays latched to it), nor when that scroller or the root opts out with overscroll-behavior-y.
+  function pullReachesRoot(event) {
+    var path = null;
+    try { path = event.composedPath ? event.composedPath() : null; } catch (e) { path = null; }
+    var nodes = [];
+    if (path && path.length) {
+      nodes = path;
+    } else {
+      for (var n = event.target; n && nodes.length < PULL_MAX_ANCESTORS; n = n.parentNode || n.host) nodes.push(n);
+    }
+    var root = document.scrollingElement || document.documentElement;
+    for (var i = 0; i < nodes.length && i < PULL_MAX_ANCESTORS; i++) {
+      var el = nodes[i];
+      if (!el || el.nodeType !== 1 || el === root || el === document.body || el === document.documentElement) continue;
+      if ((el.scrollTop || 0) > 0) return false;
+      if (el.scrollHeight > el.clientHeight + 1) {
+        var overflowY = '';
+        try { overflowY = getComputedStyle(el).overflowY; } catch (e) {}
+        if ((overflowY === 'auto' || overflowY === 'scroll') && overscrollContained(el)) return false;
+      }
+    }
+    return !(root && overscrollContained(root)) && !(document.body && overscrollContained(document.body));
+  }
+
   function onPullTouchStart(event) {
     if (!event.touches || event.touches.length !== 1) return;
-    if (pageScrollY() > 1) {
+    if (pageScrollY() > 1 || !pullReachesRoot(event)) {
       pullTracking = false;
       return;
     }
@@ -196,6 +230,12 @@ export function buildBrowserChromeInjectedScript(): string {
     pullTracking = false;
   }
 
+  // Bubble phase, after the page's own listeners: a page that handles the drag itself (a map, a drawing surface, a
+  // custom slider) prevents it, and that drag is not a pull.
+  function onPullTouchMoveHandled(event) {
+    if (pullTracking && event.defaultPrevented) pullTracking = false;
+  }
+
   function cleanup() {
     try {
       clearPress();
@@ -208,6 +248,7 @@ export function buildBrowserChromeInjectedScript(): string {
       document.removeEventListener('touchmove', onPullTouchMove, true);
       document.removeEventListener('touchend', onPullTouchEnd, true);
       document.removeEventListener('touchcancel', onPullTouchEnd, true);
+      window.removeEventListener('touchmove', onPullTouchMoveHandled, false);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('pagehide', cleanup);
       if (routeTitleTimer) { clearTimeout(routeTitleTimer); routeTitleTimer = null; }
@@ -224,6 +265,7 @@ export function buildBrowserChromeInjectedScript(): string {
   document.addEventListener('touchmove', onPullTouchMove, { capture: true, passive: true });
   document.addEventListener('touchend', onPullTouchEnd, { capture: true, passive: true });
   document.addEventListener('touchcancel', onPullTouchEnd, { capture: true, passive: true });
+  window.addEventListener('touchmove', onPullTouchMoveHandled, { capture: false, passive: true });
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('pagehide', cleanup);
 

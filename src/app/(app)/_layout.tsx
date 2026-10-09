@@ -11,7 +11,9 @@ import {
   createStackHeaderOptions,
   ProtectedRouteGuard,
 } from '@/navigation';
+import { PlayerSessionHost } from '@/player/session-host';
 import { ReviewPromptHost } from '@/review';
+import { MiniPlayerOverlay } from '@/screens/player/mini';
 import { AppLockGate } from '@/security/app-lock';
 
 export default function AppLayout() {
@@ -79,6 +81,8 @@ export default function AppLayout() {
     <ProtectedRouteGuard>
       <AppLockGate>
         <ReviewPromptHost />
+        {/* The one player session, shared by the Player screen and the mini player (outlives the Player screen). */}
+        <PlayerSessionHost />
         <Stack screenOptions={screenOptions}>
           <Stack.Screen
             name={appStackRouteNames.tabs}
@@ -154,6 +158,7 @@ export default function AppLayout() {
             }}
           />
         </Stack>
+        <MiniPlayerOverlay />
       </AppLockGate>
     </ProtectedRouteGuard>
   );

@@ -1,13 +1,11 @@
 import { memo, type ComponentType } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import {
-  Clock3,
-  FolderOpen,
-  Heart,
-  Play,
-  Search,
-  Settings,
-} from 'lucide-react-native';
+import Clock3 from 'lucide-react-native/icons/clock-3';
+import FolderOpen from 'lucide-react-native/icons/folder-open';
+import Heart from 'lucide-react-native/icons/heart';
+import Play from 'lucide-react-native/icons/play';
+import Search from 'lucide-react-native/icons/search';
+import Settings from 'lucide-react-native/icons/settings';
 import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 
 import { useTranslation, type TranslationKey } from '@/localization';

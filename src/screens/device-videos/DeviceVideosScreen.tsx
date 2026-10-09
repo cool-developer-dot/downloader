@@ -74,7 +74,7 @@ export const DeviceVideosScreen = memo(function DeviceVideosScreen() {
           testID={`device-video-${item.id}`}
           accessibilityRole="button"
           accessibilityLabel={item.title}
-          onPress={() => openPlayer(deviceMediaId(item))}
+          onPress={() => openPlayer(deviceMediaId(item), items.map(deviceMediaId))}
           style={({ pressed }) => ({
             flexDirection: 'row',
             alignItems: 'center',
@@ -107,7 +107,7 @@ export const DeviceVideosScreen = memo(function DeviceVideosScreen() {
         </Pressable>
       );
     },
-    [theme],
+    [items, theme],
   );
 
   const empty = !loading && items.length === 0;

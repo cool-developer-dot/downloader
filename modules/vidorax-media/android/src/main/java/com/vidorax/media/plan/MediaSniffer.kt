@@ -12,6 +12,16 @@ internal sealed interface SniffResult {
   data class Unsupported(val reason: ProbeFailure, val detail: String) : SniffResult
 }
 
+/** What a track file's first bytes show (see [MediaSniffer.trackSummary]); null fields are unknown. */
+internal data class TrackSummary(
+  val hasVideo: Boolean?,
+  val hasAudio: Boolean?,
+  val durationUs: Long?,
+  val width: Int?,
+  val height: Int?,
+  val encrypted: Boolean,
+)
+
 /**
  * Classifies a resource from its leading bytes, Content-Type and URL against the VidoraX download contract
  * (docs/ARCHITECTURE.md section 1). Supported progressive containers only: MP4/M4V/MOV/WebM/AVI/WMV and complete
@@ -89,6 +99,157 @@ internal object MediaSniffer {
     trackHandlers(prefix)?.let { handlers -> return "soun" in handlers && "vide" !in handlers }
     val webm = webmTrackTypes(prefix) ?: return false
     return WEBM_TRACK_AUDIO in webm && WEBM_TRACK_VIDEO !in webm
+  }
+
+  /**
+   * What the first bytes of one *track* file show — a video-only or audio-only file of a stream split into separate
+   * tracks: which kinds of track it holds, how long it is and the picture size, whenever the header is in [prefix].
+   * Every field is null when the bytes do not say. Never a support decision on its own.
+   */
+  fun trackSummary(prefix: ByteArray, totalSize: Long? = null): TrackSummary {
+    if (prefix.size >= 8 && ascii(prefix, 4, 4) in setOf("ftyp", "moov", "styp", "sidx", "moof")) return isoSummary(prefix, totalSize)
+    if (prefix.size >= 4 && prefix[0] == 0x1A.toByte() && prefix[1] == 0x45.toByte() && prefix[2] == 0xDF.toByte() && prefix[3] == 0xA3.toByte()) {
+      val types = webmTrackTypes(prefix)
+      return TrackSummary(
+        hasVideo = types?.let { WEBM_TRACK_VIDEO in it },
+        hasAudio = types?.let { WEBM_TRACK_AUDIO in it },
+        durationUs = webmDurationUs(prefix),
+        width = null,
+        height = null,
+        encrypted = hasWebmEncryption(prefix),
+      )
+    }
+    if (matchesAscii(prefix, 0, "ID3") || isAdts(prefix) || isMpegAudioFrame(prefix)) {
+      return TrackSummary(hasVideo = false, hasAudio = true, durationUs = null, width = null, height = null, encrypted = false)
+    }
+    return TrackSummary(null, null, null, null, null, encrypted = false)
+  }
+
+  private fun isoSummary(data: ByteArray, totalSize: Long?): TrackSummary {
+    val handlers = trackHandlers(data)
+    val top = childBoxes(data, 0, data.size.toLong())
+    val moov = top.firstOrNull { it.type == "moov" }
+    var durationUs: Long? = null
+    var width: Int? = null
+    var height: Int? = null
+    if (moov != null) {
+      val moovEnd = minOf(moov.end, data.size.toLong())
+      val children = childBoxes(data, moov.bodyStart, moovEnd)
+      var timescale = 0L
+      children.firstOrNull { it.type == "mvhd" }?.let { mvhd ->
+        val v = data.getOrNull(mvhd.bodyStart)?.toInt() ?: return@let
+        val at = mvhd.bodyStart + 4 + if (v == 1) 16 else 8
+        timescale = beU32(data, at) ?: 0L
+        val duration = if (v == 1) beU64(data, at + 4) else beU32(data, at + 4)
+        if (timescale > 0 && duration != null && duration > 0 && duration != 0xFFFFFFFFL && duration != -1L) {
+          durationUs = duration * 1_000_000L / timescale
+        }
+      }
+      // Fragmented: the movie header says 0; `mvex/mehd` carries the whole length in the movie timescale.
+      if (durationUs == null && timescale > 0) {
+        children.firstOrNull { it.type == "mvex" }?.let { mvex ->
+          childBoxes(data, mvex.bodyStart, minOf(mvex.end, data.size.toLong())).firstOrNull { it.type == "mehd" }?.let { mehd ->
+            val v = data.getOrNull(mehd.bodyStart)?.toInt() ?: return@let
+            val d = if (v == 1) beU64(data, mehd.bodyStart + 4) else beU32(data, mehd.bodyStart + 4)
+            if (d != null && d > 0) durationUs = d * 1_000_000L / timescale
+          }
+        }
+      }
+      for (trak in children.filter { it.type == "trak" }) {
+        val trakEnd = minOf(trak.end, data.size.toLong())
+        val trakChildren = childBoxes(data, trak.bodyStart, trakEnd)
+        val mdia = trakChildren.firstOrNull { it.type == "mdia" } ?: continue
+        val hdlr = childBoxes(data, mdia.bodyStart, minOf(mdia.end, data.size.toLong())).firstOrNull { it.type == "hdlr" } ?: continue
+        if (ascii(data, hdlr.bodyStart + 8, 4) != "vide") continue
+        val tkhd = trakChildren.firstOrNull { it.type == "tkhd" } ?: continue
+        val end = minOf(tkhd.end, data.size.toLong()).toInt()
+        if (end - 8 >= tkhd.bodyStart) {
+          width = ((beU32(data, end - 8) ?: 0L) shr 16).toInt().takeIf { it > 0 }
+          height = ((beU32(data, end - 4) ?: 0L) shr 16).toInt().takeIf { it > 0 }
+        }
+        break
+      }
+    }
+    // An on-demand DASH/CMAF file indexes its whole length in one `sidx` after the moov — trusted only when its
+    // references reach the end of the file (a per-fragment `sidx` describes one fragment, not the file).
+    if (durationUs == null && totalSize != null) {
+      top.firstOrNull { it.type == "sidx" }?.let { sidx ->
+        sidxSpan(data, sidx)?.let { (duration, coveredEnd) ->
+          // Media after what it indexes (another fragment or index) means it described only its own fragment.
+          val moreMedia = top.any { box -> box.type in FRAGMENT_BOXES && box.bodyStart - 8 >= coveredEnd }
+          val slack = maxOf(1_024L, minOf(SIDX_TAIL_SLACK, totalSize / 50))
+          if (!moreMedia && coveredEnd >= totalSize - slack) durationUs = duration
+        }
+      }
+    }
+    return TrackSummary(
+      hasVideo = handlers?.let { "vide" in it },
+      hasAudio = handlers?.let { "soun" in it },
+      durationUs = durationUs,
+      width = width,
+      height = height,
+      encrypted = hasDrmEvidence(data, topLevelBoxes(data)),
+    )
+  }
+
+  /** The duration a `sidx` indexes (µs) and the file offset its last reference ends at. */
+  private fun sidxSpan(data: ByteArray, sidx: Box): Pair<Long, Long>? {
+    val v = data.getOrNull(sidx.bodyStart)?.toInt() ?: return null
+    var at = sidx.bodyStart + 4 + 4 // version/flags, reference_ID
+    val timescale = beU32(data, at) ?: return null
+    at += 4 + if (v == 1) 8 else 4 // timescale, earliest_presentation_time
+    val firstOffset = (if (v == 1) beU64(data, at) else beU32(data, at)) ?: return null
+    at += if (v == 1) 8 else 4
+    at += 2 // reserved
+    val count = ((data.getOrNull(at)?.toInt() ?: return null) and 0xFF shl 8) or ((data.getOrNull(at + 1)?.toInt() ?: return null) and 0xFF)
+    at += 2
+    if (timescale <= 0 || count <= 0) return null
+    var total = 0L
+    var bytes = 0L
+    for (i in 0 until count) {
+      val reference = beU32(data, at) ?: return null
+      val duration = beU32(data, at + 4) ?: return null
+      bytes += reference and 0x7FFFFFFFL
+      total += duration
+      at += 12
+    }
+    return total * 1_000_000L / timescale to sidx.end + firstOffset + bytes
+  }
+
+  /** Segment → Info → Duration (a float in TimecodeScale units, 1 ms by default). */
+  private fun webmDurationUs(data: ByteArray): Long? {
+    val header = ebmlElement(data, 0) ?: return null
+    if (header.id != EBML_HEADER_ID || header.end > data.size) return null
+    val segment = ebmlElement(data, header.end.toInt()) ?: return null
+    if (segment.id != EBML_SEGMENT_ID) return null
+    val segmentEnd = if (segment.size == null) data.size.toLong() else minOf(segment.end, data.size.toLong())
+    var off = segment.bodyStart.toLong()
+    while (off < segmentEnd) {
+      val element = ebmlElement(data, off.toInt()) ?: return null
+      if (element.size == null || element.id == EBML_CLUSTER_ID) return null
+      if (element.id == EBML_INFO_ID) {
+        if (element.end > data.size) return null
+        var scale = 1_000_000L
+        var duration: Double? = null
+        var child = element.bodyStart.toLong()
+        while (child < element.end) {
+          val field = ebmlElement(data, child.toInt()) ?: break
+          if (field.size == null || field.end > element.end) break
+          when (field.id) {
+            EBML_TIMECODE_SCALE_ID -> scale = unsignedValue(data, field)
+            EBML_DURATION_ID -> duration = when (field.size) {
+              4L -> java.lang.Float.intBitsToFloat(unsignedValue(data, field).toInt()).toDouble()
+              8L -> java.lang.Double.longBitsToDouble(unsignedValue(data, field))
+              else -> null
+            }
+          }
+          child = field.end
+        }
+        return duration?.takeIf { it > 0 }?.let { (it * scale / 1000).toLong() }
+      }
+      off = element.end
+    }
+    return null
   }
 
   /** Common Encryption evidence (DRM brands, `pssh`/`tenc`/`sinf`) in ISO-BMFF bytes such as an HLS init section. */
@@ -489,6 +650,13 @@ internal object MediaSniffer {
   private const val EBML_TRACK_ENTRY_ID = 0xAEL
   private const val EBML_TRACK_TYPE_ID = 0x83L
   private const val EBML_CLUSTER_ID = 0x1F43B675L
+  private const val EBML_INFO_ID = 0x1549A966L
+  private val FRAGMENT_BOXES = setOf("moof", "mdat", "sidx", "styp")
+
+  /** Boxes an indexed file may carry after its last fragment (`mfra`, `free`): a `sidx` still covers the file. */
+  private const val SIDX_TAIL_SLACK = 64L * 1024
+  private const val EBML_TIMECODE_SCALE_ID = 0x2AD7B1L
+  private const val EBML_DURATION_ID = 0x4489L
   private const val WEBM_TRACK_VIDEO = 1L
   private const val WEBM_TRACK_AUDIO = 2L
 

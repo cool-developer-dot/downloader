@@ -134,5 +134,5 @@ export function buildFaviconUrl(hostname: string): string | null {
     return null;
   }
 
-  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=64`;
+  return `https://${host}/favicon.ico`;
 }

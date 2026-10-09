@@ -153,6 +153,11 @@ export type PipelineRig = {
    * navigation epoch for these (only its own loads and reloads do): the chrome only reports the new URL.
    */
   linkNavigate: (url: string, options?: HarnessOptions) => void;
+  /**
+   * Back/Forward to a page restored from the back-forward cache: the restored page announces itself (`setup` builds
+   * what it shows and posts) before the browser reports the navigation to it.
+   */
+  restoreBeforeNavigation: (url: string, setup: (harness: PageHarness) => void) => void;
   /** The toolbar's reload: a new document for the same URL and a new navigation epoch. */
   reload: () => void;
   /** The current navigation epoch of this tab, as the browser counts it. */
@@ -174,6 +179,11 @@ export type PipelineRig = {
     epochOverride?: number;
     pageUrlOverride?: string;
   }) => void;
+  /**
+   * A download the WebView could not render and VidoraWeb claimed (a pasted `.mpd`/`.mov`, an attachment link):
+   * the tab asked for exactly this resource.
+   */
+  observeUserDownload: (input: { url: string; mimeType?: string | null }) => void;
   /** What a blob/MediaSource player on this tab currently amounts to. */
   mseResolution: (hasWholeSourceCandidate?: boolean) => MsePlaybackResolution;
   /** The scoped blob/MSE evidence for this tab, or null when nothing is live. */
@@ -184,7 +194,8 @@ export type PipelineRig = {
   selected: () => DetectedMedia | null;
   /** Runs correlation + verification and returns the published offer, or the rejection reason. */
   offer: () => Promise<
-    { ok: true; offer: VerifiedGeneralMediaOffer; url: string } | { ok: false; reason: string }
+    | { ok: true; offer: VerifiedGeneralMediaOffer; url: string }
+    | { ok: false; reason: string; split?: Extract<MsePlaybackResolution, { kind: 'SPLIT_TRACKS' }> }
   >;
 };
 
@@ -236,6 +247,12 @@ export function createPipeline(
       mediaDetectionEngine.onNavigationStart(url, epoch, tabId);
       harness = new PageHarness(harnessOptions ?? { url });
     },
+    restoreBeforeNavigation(url, setup) {
+      harness = new PageHarness({ url });
+      setup(harness);
+      pump();
+      mediaDetectionEngine.onNavigationStart(url, epoch, tabId);
+    },
     reload() {
       const url = harness.currentUrl;
       epoch += 1;
@@ -260,6 +277,20 @@ export function createPipeline(
           input.pageUrlOverride ?? useMediaDetectionStore.getState().lastNavigation ?? undefined,
         isForMainFrame: false,
         observationSource: 'webview',
+      });
+    },
+    observeUserDownload(input) {
+      mediaDetectionEngine.observeNativeCandidate({
+        tabId,
+        navigationEpoch: epoch,
+        observedAt: Date.now(),
+        frameUrl: null,
+        url: input.url,
+        mimeType: input.mimeType ?? null,
+        pageUrl: useMediaDetectionStore.getState().lastNavigation ?? undefined,
+        isForMainFrame: false,
+        observationSource: 'webview-download',
+        userRequested: true,
       });
     },
     mseResolution(hasWholeSourceCandidate) {
@@ -303,9 +334,34 @@ export function createPipeline(
       const resolution = classifyMsePlayback({
         state: getMsePlaybackState(tabId),
         hasWholeSourceCandidate: media != null && !media.url.toLowerCase().startsWith('blob:'),
+        hasManifestCandidate: rig
+          .candidates()
+          .some((c) => c.streamType === 'HLS' || c.streamType === 'DASH' || c.container === 'hls' || c.container === 'dash'),
       });
       if (resolution.kind === 'PROTECTED') {
         return { ok: false as const, reason: resolution.reason };
+      }
+      // A split audio/video MediaSource player on screen: no file it fetched is offered on its own. Its two files are
+      // handed to the split resolver (the native pair probe, see split-tracks.ts) — here reported as `SPLIT_TRACKS`
+      // with the evidence; while its second file is still expected, nothing is offered yet.
+      const splitVerdict =
+        resolution.kind === 'SPLIT_TRACKS' ||
+        (resolution.kind === 'PENDING' && resolution.reason === 'MSE_SPLIT_TRACKS_PENDING');
+      if (splitVerdict) {
+        const context = generalPageMediaContextStore.get(tabId);
+        const state = getMsePlaybackState(tabId);
+        if (
+          context?.activeVideoIsBlob &&
+          (!state?.elementIdentity ||
+            !context.activeMediaElementIdentity ||
+            state.elementIdentity === context.activeMediaElementIdentity)
+        ) {
+          return {
+            ok: false as const,
+            reason: resolution.kind === 'PENDING' ? resolution.reason : 'SPLIT_TRACKS',
+            ...(resolution.kind === 'SPLIT_TRACKS' ? { split: resolution } : {}),
+          };
+        }
       }
       if (!media || !pageUrlNow) {
         return {

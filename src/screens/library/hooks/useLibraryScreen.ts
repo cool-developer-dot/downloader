@@ -5,7 +5,7 @@ import type { DownloadItem } from '@/api';
 import type { LocalDownloadRecord } from '@/downloads/engine/types';
 import { listLocalRecords } from '@/downloads/engine/persistence';
 import { completedActionErrorMessageKey } from '@/downloads/completed-file/action-errors';
-import { reconcileV2Library } from '@/downloads/v2';
+import { ensureV2LibraryHydrated, reconcileV2Library } from '@/downloads/v2';
 import {
   applyLibraryQuery,
   assembleCanonicalItems,
@@ -30,8 +30,8 @@ import { isContinueWatchingEligible } from '@/playback/domain/continue-watching'
 import { getCachedFavoriteMediaIds } from '@/storage/services/catalog-persist';
 import {
   selectAllDownloadItems,
-  selectDownloadCatalogIdentitySignature,
-  selectLibraryTransferSignature,
+  selectDownloadCatalogIdentityRevision,
+  selectLibraryTransferRevision,
   useDownloadsStore,
 } from '@/store/downloads';
 import { useFavoritesStore } from '@/store/favorites';
@@ -75,9 +75,9 @@ export function useLibraryScreen() {
   const resetQuery = useLibraryStore((state) => state.resetQuery);
 
   const catalogIdentity = useDownloadsStore(
-    selectDownloadCatalogIdentitySignature,
+    selectDownloadCatalogIdentityRevision,
   );
-  const transferSignature = useDownloadsStore(selectLibraryTransferSignature);
+  const transferSignature = useDownloadsStore(selectLibraryTransferRevision);
   const urlIndex = useFavoritesStore((state) => state.urlIndex);
   const ensureFavorites = useFavoritesStore((state) => state.ensureReady);
 
@@ -274,6 +274,8 @@ export function useLibraryScreen() {
         setLoading(true);
       }
       void loadLocalAndReconcile(false);
+      // The whole library is loaded a moment after launch; opening Player first loads it now.
+      void ensureV2LibraryHydrated();
       // A video deleted or moved outside VidoraX must not stay listed as playable.
       void reconcileV2Library();
     }, [initialized, loadLocalAndReconcile, setFilter, setLoading, setSearchQuery]),
@@ -527,6 +529,14 @@ export function useLibraryScreen() {
     navigation.push(routePaths.watchHistory);
   }, []);
 
+  // Previous / Next in the Player step through the library as shown (filter, search and sort applied).
+  const openLibraryItem = useCallback(
+    (id: string) => {
+      openPlayer(id, visibleItems.map((item) => item.id));
+    },
+    [visibleItems],
+  );
+
   return {
     visibleItems,
     continueWatchingItems,
@@ -563,7 +573,7 @@ export function useLibraryScreen() {
     onToggleViewMode,
     onReset,
     refresh,
-    openPlayer,
+    openPlayer: openLibraryItem,
     openItemActions,
     closeItemActions,
     actionSheetVisible,

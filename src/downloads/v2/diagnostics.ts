@@ -8,6 +8,8 @@ type V2ActionEvent =
   | 'remove_requested'
   | 'remove_failed'
   | 'notification_permission'
+  | 'gallery_permission'
+  | 'duplicate_download'
   | 'progress_coalesced'
   | 'library_file_missing'
   | 'library_reconcile_failed';

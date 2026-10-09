@@ -32,6 +32,7 @@ export {
   correlateGeneralCandidate,
   selectCurrentGeneralMedia,
   selectCurrentMediaForActiveGeneralTab,
+  isOfferedSourceRejectedNow,
   isPosterOrImageResource,
   isThumbnailResource,
   isSegmentResource,

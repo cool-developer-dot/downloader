@@ -3,7 +3,11 @@ import { beforeEach, describe, test } from 'node:test';
 
 import { mediaDetectionPipeline } from '../services/detection.service';
 import type { DetectedMedia } from '../types';
-import { resolveGeneralRequestProvenance, selectCurrentGeneralMedia } from './general-correlation.service';
+import {
+  isOfferedSourceRejectedNow,
+  resolveGeneralRequestProvenance,
+  selectCurrentGeneralMedia,
+} from './general-correlation.service';
 import { generalPageMediaContextStore } from './general-page-context';
 
 const TAB = 'tab-1';
@@ -313,5 +317,292 @@ describe('resource identity (H/I/S)', () => {
       detectionSource: 'native_network', hasRange: true, isForMainFrame: false,
     });
     assert.equal(native.media.length, 1);
+  });
+});
+
+describe('recycled players, thumbnails and blob hand-over (Phase 15A)', () => {
+  function playerEvidence(input: {
+    src: string | null;
+    element?: string;
+    playing?: boolean;
+    muted?: boolean;
+    videoWidth?: number;
+    videoHeight?: number;
+    displayWidth?: number;
+    displayHeight?: number;
+  }): void {
+    const src = input.src;
+    generalPageMediaContextStore.applyActiveVideoEvidence({
+      tabId: TAB,
+      navigationEpoch: 0,
+      evidence: {
+        pageUrl: PAGE, elementIdentity: input.element ?? 'video:0', currentSrc: src, src, isBlob: Boolean(src?.startsWith('blob:')),
+        paused: !(input.playing ?? true), ended: false, readyState: 4, videoWidth: input.videoWidth ?? 720,
+        videoHeight: input.videoHeight ?? 1280, muted: input.muted ?? false, currentTimeBucket: 0, intersectionRatio: 1,
+        viewportCenterDistance: 0, displayWidth: input.displayWidth ?? 390, displayHeight: input.displayHeight ?? 620,
+        isDisplayed: true, isVisibleStyle: true, recentlyPlayed: input.playing ?? true, explicitAdMarker: false,
+        associatedContentId: null, observedAt: Date.now(),
+      },
+    });
+  }
+
+  /** A DOM candidate the page reported for a <video> element. */
+  function ownedCandidate(url: string, element = 'video:0'): DetectedMedia {
+    return { ...networkCandidate(url, { referer: 'https://news.example.org/' }), ownerElementIdentity: element, detectionSource: 'dom_video' };
+  }
+
+  test('the same recycled element playing the next item does not keep its previous source current', () => {
+    const first = 'https://media.example.org/v/item-1.mp4';
+    const second = 'https://media.example.org/v/item-2.mp4';
+    playerEvidence({ src: first });
+    const earlier = ownedCandidate(first);
+    playerEvidence({ src: second });
+    const next = ownedCandidate(second);
+    const picked = select([earlier, next]);
+    assert.equal(picked.media?.id, next.id);
+    assert.equal(picked.group.confidence, 'STRONG');
+    const rejected = picked.group.rejected.find((r) => r.candidateId === earlier.id);
+    assert.ok(rejected, 'the previous item must be rejected, not merely ranked lower');
+  });
+
+  test('a player between items (no source) makes nothing current, least of all what it played before', () => {
+    const first = 'https://media.example.org/v/item-1.mp4';
+    playerEvidence({ src: first });
+    const earlier = ownedCandidate(first);
+    playerEvidence({ src: null, playing: false });
+    const network = networkCandidate('https://media.example.org/v/unrelated.mp4', { referer: 'https://news.example.org/' });
+    const picked = select([earlier, network]);
+    assert.ok(picked.group.confidence === 'WEAK' || picked.group.confidence === 'REJECTED' || picked.media == null);
+  });
+
+  test('a full-resolution video drawn as a thumbnail is a tiny preview (never STRONG)', () => {
+    const src = 'https://media.example.org/v/suggested.mp4';
+    playerEvidence({ src, muted: true, videoWidth: 1280, videoHeight: 720, displayWidth: 120, displayHeight: 68 });
+    const picked = select([ownedCandidate(src)]);
+    assert.notEqual(picked.group.confidence, 'STRONG');
+    assert.notEqual(picked.group.confidence, 'MEDIUM');
+  });
+
+  test('a recycled blob player keeps the source requested just before its new blob was attached', () => {
+    playerEvidence({ src: 'blob:https://news.example.org/aaaa' });
+    const nextSource = networkCandidate('https://media.example.org/v/item-2.mp4', { referer: 'https://news.example.org/' });
+    playerEvidence({ src: 'blob:https://news.example.org/bbbb' });
+    assert.notEqual(generalPageMediaContextStore.get(TAB)?.pageGeneration, nextSource.observedPageGeneration);
+    const picked = select([nextSource]);
+    assert.equal(picked.media?.id, nextSource.id);
+    assert.ok(picked.group.confidence === 'MEDIUM' || picked.group.confidence === 'STRONG');
+  });
+
+  test('a source requested long before the hand-over, or two generations ago, is not carried', () => {
+    playerEvidence({ src: 'blob:https://news.example.org/aaaa' });
+    const old = { ...networkCandidate('https://media.example.org/v/item-1.mp4', { referer: 'https://news.example.org/' }), detectedAt: Date.now() - 60_000 };
+    playerEvidence({ src: 'blob:https://news.example.org/bbbb' });
+    assert.equal(select([old]).media, null);
+
+    const twoAgo = networkCandidate('https://media.example.org/v/item-2.mp4', { referer: 'https://news.example.org/' });
+    playerEvidence({ src: 'blob:https://news.example.org/cccc' });
+    playerEvidence({ src: 'blob:https://news.example.org/dddd' });
+    assert.equal(select([twoAgo]).media, null);
+  });
+
+  test('a source observed for the current blob outranks one carried over from the previous item', () => {
+    playerEvidence({ src: 'blob:https://news.example.org/aaaa' });
+    const carried = networkCandidate('https://media.example.org/v/item-2.mp4', { referer: 'https://news.example.org/' });
+    playerEvidence({ src: 'blob:https://news.example.org/bbbb' });
+    const current = networkCandidate('https://media.example.org/v/item-3.mp4', { referer: 'https://news.example.org/' });
+    assert.equal(select([carried, current]).media?.id, current.id);
+  });
+});
+
+describe('one shared feed player moving between items (Dailymotion-style autoplay feed)', () => {
+  const MANIFEST = (id: string) => `https://cdn.feedhost.tv/cdn/manifest/video/${id}.m3u8?sec=s1g${id}&dmTs=91`;
+
+  /** The page's one iframe player, laid over the feed item `item` (null: between items). */
+  function sharedPlayerOver(item: string | null, displayed = true, iframeIdentity = 'iframe:0'): void {
+    generalPageMediaContextStore.applyActiveIframePlayerEvidence({
+      tabId: TAB,
+      navigationEpoch: 0,
+      evidence: {
+        pageUrl: PAGE,
+        iframeIdentity,
+        iframeSrc: PLAYER_SRC,
+        frameClass: 'cross-origin',
+        isDisplayed: displayed,
+        isVisibleStyle: displayed,
+        intersectionRatio: displayed ? 1 : 0,
+        width: displayed ? 390 : 0,
+        height: displayed ? 219 : 0,
+        allowFullscreen: true,
+        allow: 'autoplay; fullscreen',
+        looksPlayer: true,
+        sameOriginVideoCount: 0,
+        associatedContentId: item,
+      },
+    });
+  }
+
+  test('the item the player is over is the current video, and its manifest is offered', () => {
+    sharedPlayerOver('xa1b2c3');
+    assert.equal(generalPageMediaContextStore.get(TAB)?.currentMediaIdentity, 'video:xa1b2c3');
+    const first = networkCandidate(MANIFEST('xa1b2c3'));
+    const picked = select([first]);
+    assert.equal(picked.media?.id, first.id);
+    assert.equal(picked.group.confidence, 'STRONG');
+  });
+
+  test('moving over the next item starts a new video: the previous item’s manifest is rejected, never offered', () => {
+    sharedPlayerOver('xa1b2c3');
+    const first = networkCandidate(MANIFEST('xa1b2c3'));
+    const generation = generalPageMediaContextStore.get(TAB)?.pageGeneration ?? 0;
+    sharedPlayerOver('xd4e5f6');
+    const ctx = generalPageMediaContextStore.get(TAB);
+    assert.equal(ctx?.currentMediaIdentity, 'video:xd4e5f6');
+    assert.equal(ctx?.pageGeneration, generation + 1);
+    const picked = select([first]);
+    assert.equal(picked.media, null);
+    const rejected = picked.group.rejected.find((r) => r.candidateId === first.id);
+    assert.ok(rejected, 'the previous item must be explicitly rejected');
+  });
+
+  test('the next item’s manifest requested before the page reported the move (or long before) is still its source', () => {
+    sharedPlayerOver('xa1b2c3');
+    const first = networkCandidate(MANIFEST('xa1b2c3'));
+    const early = { ...networkCandidate(MANIFEST('xd4e5f6')), detectedAt: Date.now() - 50_000 };
+    sharedPlayerOver('xd4e5f6');
+    const picked = select([first, early]);
+    assert.equal(picked.media?.id, early.id);
+    assert.equal(picked.group.confidence, 'STRONG');
+  });
+
+  test('a stream naming no item (an ad break) never replaces the item’s own manifest', () => {
+    sharedPlayerOver('xd4e5f6');
+    const ad = networkCandidate('https://ads.adhost.example/creative/28jf0a/master.m3u8');
+    const own = networkCandidate(MANIFEST('xd4e5f6'));
+    const picked = select([ad, own]);
+    assert.equal(picked.media?.id, own.id);
+    assert.ok(!picked.group.activeCandidateIds.includes(ad.id), 'the unnamed stream must not be offered');
+  });
+
+  test('a report from between items keeps the item the player showed; scrolling back resolves the earlier item again', () => {
+    sharedPlayerOver('xa1b2c3');
+    const first = networkCandidate(MANIFEST('xa1b2c3'));
+    sharedPlayerOver(null);
+    assert.equal(generalPageMediaContextStore.get(TAB)?.currentMediaIdentity, 'video:xa1b2c3');
+    sharedPlayerOver('xd4e5f6');
+    const second = networkCandidate(MANIFEST('xd4e5f6'));
+    assert.equal(select([first, second]).media?.id, second.id);
+    sharedPlayerOver('xa1b2c3');
+    assert.equal(generalPageMediaContextStore.get(TAB)?.currentMediaIdentity, 'video:xa1b2c3');
+    const back = select([first, second]);
+    assert.equal(back.media?.id, first.id);
+    assert.equal(back.group.confidence, 'STRONG');
+  });
+
+  test('the player hiding itself (to move to the next item) marks the current video as not on screen', () => {
+    sharedPlayerOver('xa1b2c3');
+    assert.equal(generalPageMediaContextStore.get(TAB)?.activeOwnerHidden, false);
+    sharedPlayerOver(null, false);
+    const hidden = generalPageMediaContextStore.get(TAB);
+    assert.equal(hidden?.activeOwnerHidden, true);
+    assert.equal(hidden?.currentMediaIdentity, 'video:xa1b2c3', 'ownership is kept; only its presentation is withheld');
+    sharedPlayerOver('xd4e5f6');
+    const shown = generalPageMediaContextStore.get(TAB);
+    assert.equal(shown?.activeOwnerHidden, false);
+    assert.equal(shown?.currentMediaIdentity, 'video:xd4e5f6');
+  });
+
+  test('the player scrolled wholly out of view (before the page hides it) is off screen too', () => {
+    sharedPlayerOver('xa1b2c3');
+    generalPageMediaContextStore.applyActiveIframePlayerEvidence({
+      tabId: TAB,
+      navigationEpoch: 0,
+      evidence: {
+        pageUrl: PAGE, iframeIdentity: 'iframe:0', iframeSrc: PLAYER_SRC, frameClass: 'cross-origin', isDisplayed: true,
+        isVisibleStyle: true, intersectionRatio: 0, width: 390, height: 219, allowFullscreen: true,
+        allow: 'autoplay; fullscreen', looksPlayer: true, sameOriginVideoCount: 0, associatedContentId: null,
+      },
+    });
+    assert.equal(generalPageMediaContextStore.get(TAB)?.activeOwnerHidden, true);
+  });
+
+  test('the player mostly scrolled away (below the share that makes an iframe the current player) is off screen', () => {
+    sharedPlayerOver('xa1b2c3');
+    const partly = (ratio: number) =>
+      generalPageMediaContextStore.applyActiveIframePlayerEvidence({
+        tabId: TAB,
+        navigationEpoch: 0,
+        evidence: {
+          pageUrl: PAGE, iframeIdentity: 'iframe:0', iframeSrc: PLAYER_SRC, frameClass: 'cross-origin', isDisplayed: true,
+          isVisibleStyle: true, intersectionRatio: ratio, width: 390, height: 219, allowFullscreen: true,
+          allow: 'autoplay; fullscreen', looksPlayer: true, sameOriginVideoCount: 0, associatedContentId: 'xa1b2c3',
+        },
+      });
+    partly(0.5);
+    assert.equal(generalPageMediaContextStore.get(TAB)?.activeOwnerHidden, false);
+    partly(0.24);
+    assert.equal(generalPageMediaContextStore.get(TAB)?.activeOwnerHidden, true);
+    partly(0.9);
+    assert.equal(generalPageMediaContextStore.get(TAB)?.activeOwnerHidden, false);
+  });
+
+  test('the page re-syncing its URL while the player is hidden keeps it hidden', () => {
+    sharedPlayerOver('xa1b2c3');
+    sharedPlayerOver(null, false);
+    generalPageMediaContextStore.syncFromPageUrl({ tabId: TAB, pageUrl: PAGE, navigationEpoch: 0 });
+    assert.equal(generalPageMediaContextStore.get(TAB)?.activeOwnerHidden, true);
+  });
+
+  test('another hidden iframe (an ad slot, a parked player) says nothing about the current video', () => {
+    sharedPlayerOver('xa1b2c3');
+    sharedPlayerOver(null, false, 'iframe:7');
+    assert.equal(generalPageMediaContextStore.get(TAB)?.activeOwnerHidden, false);
+    assert.equal(generalPageMediaContextStore.get(TAB)?.currentMediaIdentity, 'video:xa1b2c3');
+  });
+});
+
+describe('a video element out of view', () => {
+  test('the page’s video below the fold, never on screen yet, keeps its offer', () => {
+    const src = 'https://media.example.org/v/demo.mp4';
+    generalPageMediaContextStore.applyActiveVideoEvidence({
+      tabId: TAB,
+      navigationEpoch: 0,
+      evidence: {
+        pageUrl: PAGE, elementIdentity: 'video:0', currentSrc: src, src, isBlob: false, paused: true, ended: false,
+        readyState: 1, videoWidth: 640, videoHeight: 360, muted: false, currentTimeBucket: 0, intersectionRatio: null,
+        viewportCenterDistance: null, isDisplayed: true, isVisibleStyle: true, recentlyPlayed: false,
+        explicitAdMarker: false, associatedContentId: null, observedAt: Date.now(),
+      },
+    });
+    videoOwner({ src, paused: true, intersectionRatio: 0 });
+    assert.equal(generalPageMediaContextStore.get(TAB)?.activeOwnerHidden, false);
+    videoOwner({ src, paused: true, intersectionRatio: 0.8 });
+    videoOwner({ src, paused: true, intersectionRatio: 0 });
+    assert.equal(generalPageMediaContextStore.get(TAB)?.activeOwnerHidden, true, 'scrolled away after being seen');
+  });
+
+  test('a playing video scrolled out of view is still on screen for its offer; a paused one is not', () => {
+    const src = 'https://media.example.org/v/talk.mp4';
+    videoOwner({ src, paused: false, intersectionRatio: 1 });
+    videoOwner({ src, paused: false, intersectionRatio: 0 });
+    assert.equal(generalPageMediaContextStore.get(TAB)?.activeOwnerHidden, false);
+    videoOwner({ src, paused: true, intersectionRatio: 0 });
+    assert.equal(generalPageMediaContextStore.get(TAB)?.activeOwnerHidden, true);
+    videoOwner({ src, paused: true, intersectionRatio: 0.6 });
+    assert.equal(generalPageMediaContextStore.get(TAB)?.activeOwnerHidden, false);
+  });
+});
+
+describe('publishing a verified file', () => {
+  test('a file the page now shows to be another item’s preload is not published; the playing one is', () => {
+    const current = 'https://media.example.org/v/current-clip?sig=1';
+    videoOwner({ src: current, paused: false, intersectionRatio: 1 });
+    const own = { ...networkCandidate(current, { referer: 'https://news.example.org/' }), ownerElementIdentity: 'video:0', detectionSource: 'dom_video' as const };
+    const preload = networkCandidate('https://media.example.org/v/next-clip?sig=2', { referer: 'https://news.example.org/' });
+    const candidates = [own, preload];
+    const ask = (sourceUrl: string) =>
+      isOfferedSourceRejectedNow({ sourceUrl, candidates, tabId: TAB, navigationEpoch: 0, pageUrl: PAGE });
+    assert.equal(ask('https://media.example.org/v/next-clip?sig=7'), true, 'same file, rotated signature');
+    assert.equal(ask(current), false);
+    assert.equal(ask('https://media.example.org/v/rendition-720.m3u8'), false, 'no candidate names it');
   });
 });

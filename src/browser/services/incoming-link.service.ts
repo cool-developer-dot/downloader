@@ -5,8 +5,9 @@
 
 import { getVidoraWeb, isVidoraWebAvailable } from '@modules/vidorax-web';
 
-import { loadUrlActiveTab } from './active-tab-navigation.service';
 import { urlFromSharedText } from './incoming-link';
+import { isYouTubeLink, openPastedLink } from './pasted-link.service';
+import { announceYouTubeNotSupported } from './youtube-refusal';
 
 export { urlFromSharedText };
 
@@ -21,8 +22,14 @@ export function resetIncomingLinksForTests(): void {
 
 function open(text: string | null): void {
   const url = urlFromSharedText(text);
+  // A shared or opened YouTube link is refused before the tab loads or fetches anything.
+  if (url && isYouTubeLink(url)) {
+    announceYouTubeNotSupported();
+    return;
+  }
   if (url) {
-    loadUrlActiveTab(url);
+    // A shared link is a pasted link: the direct analyzer reads its page, then the active tab loads it.
+    openPastedLink(url, { source: 'share' });
   }
 }
 

@@ -1,4 +1,13 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { StyleSheet } from 'react-native';
 import { WebView } from 'react-native-webview';
 import type {
@@ -43,6 +52,18 @@ import {
   resolveScalesPageToFit,
   type BrowserWebViewCacheMode,
 } from '@/browser/webview/webview-configuration';
+import {
+  applyNativeWebViewActivity,
+  forgetNativeWebViewActivity,
+  isBrowserRouteVisible,
+  subscribeBrowserRouteVisible,
+} from '@/browser/webview/webview-activity';
+
+/**
+ * Page DevTools in a pipeline-trace build (EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE=1, inlined at bundle time) — a device-test
+ * build only; debug builds already have them and a normal release never does.
+ */
+const TRACE_BUILD_WEBVIEW_DEBUGGING = process.env.EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE === '1';
 
 export type BrowserWebViewProps = {
   testID?: string;
@@ -134,17 +155,26 @@ export const BrowserWebView = memo(function BrowserWebView({
     return state.isLoading;
   });
 
+  // Only the active tab's WebView runs, and only while the Browser route is in front; every other one is paused
+  // natively (see webview-activity.ts).
+  const browserRouteVisible = useSyncExternalStore(subscribeBrowserRouteVisible, isBrowserRouteVisible);
+  const runsPage = isActive && browserRouteVisible;
+
   const nativeViewTagRef = useRef<number | null>(null);
   const nativeScopeCleanupRef = useRef<(() => void) | null>(null);
   const bindNativeScope = useCallback((tag = nativeViewTagRef.current, pageUrl = tabUrl) => {
     if (tag == null || !tabId) return;
+    if (nativeViewTagRef.current != null && nativeViewTagRef.current !== tag) {
+      forgetNativeWebViewActivity(nativeViewTagRef.current);
+    }
     nativeViewTagRef.current = tag;
+    applyNativeWebViewActivity(tag, runsPage);
     const previousCleanup = nativeScopeCleanupRef.current;
     nativeScopeCleanupRef.current = registerNativeObservationScope(tag, {
       tabId, navigationEpoch: navigationEpochRef.current, pageUrl, active: isActive,
     });
     previousCleanup?.();
-  }, [isActive, navigationEpochRef, tabId, tabUrl]);
+  }, [isActive, navigationEpochRef, runsPage, tabId, tabUrl]);
   // WebView exposes imperative commands, not a host ref. Native events carry
   // the actual wrapper tag, which matches VidoraWeb's NetworkMediaObservation.viewTag.
   //
@@ -161,6 +191,9 @@ export const BrowserWebView = memo(function BrowserWebView({
     () => () => {
       nativeScopeCleanupRef.current?.();
       nativeScopeCleanupRef.current = null;
+      if (nativeViewTagRef.current != null) {
+        forgetNativeWebViewActivity(nativeViewTagRef.current);
+      }
       // A queued scroll inject must never reach a WebView that is going away.
       scrollPositionService.cancelRestore(tabId);
     },
@@ -650,6 +683,7 @@ export const BrowserWebView = memo(function BrowserWebView({
       setBuiltInZoomControls={config.setBuiltInZoomControls}
       setDisplayZoomControls={config.setDisplayZoomControls}
       pullToRefreshEnabled={pullToRefreshEnabled}
+      {...(TRACE_BUILD_WEBVIEW_DEBUGGING ? { webviewDebuggingEnabled: true } : {})}
       injectedJavaScript={injectedJavaScript}
       injectedJavaScriptBeforeContentLoaded={injectedJavaScriptBeforeContentLoaded}
       onMessage={handleMessage}

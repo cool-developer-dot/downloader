@@ -25,7 +25,12 @@ const BYTE_RANGE_QUERY_KEYS = new Set([
   'alr',
   'ump',
   'keepalive',
+  'bytestart',
+  'byteend',
 ]);
+
+/** A whole media file by its extension (segments excluded: they are never candidates on their own). */
+const MEDIA_FILE_PATH_RE = /\.(?:mp4|m4v|m4a|mov|webm|mkv|mp3|aac|ogg|opus)$/i;
 
 function safeUrl(raw: string): URL | null {
   try {
@@ -53,15 +58,17 @@ export function urlHasPlaybackMediaEvidence(url: string): boolean {
 }
 
 /**
- * Drop byte-range fragment params from playback URLs so ingest/download
- * target the whole object. Signatures and expiry query stay intact.
+ * Drop byte-range fragment params (`bytestart`/`byteend`, `range`…) from media URLs so ingest/download target the
+ * whole object, not the slice one request read. Applies to playback paths, CDN video-object paths and media files by
+ * extension; signatures and expiry query stay intact.
  */
 export function canonicalizeObservedMediaUrl(url: string): string {
   const parsed = safeUrl(url.trim());
   if (!parsed) {
     return url;
   }
-  if (!PLAYBACK_PATH_RE.test(parsed.pathname)) {
+  const path = parsed.pathname;
+  if (!PLAYBACK_PATH_RE.test(path) && !VIDEO_OBJECT_PATH_RE.test(path) && !MEDIA_FILE_PATH_RE.test(path)) {
     return url;
   }
   let changed = false;

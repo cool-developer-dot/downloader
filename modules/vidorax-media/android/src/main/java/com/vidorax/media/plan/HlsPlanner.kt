@@ -6,12 +6,14 @@ import android.net.Uri
 import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.Format
+import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.hls.playlist.HlsMediaPlaylist
 import androidx.media3.exoplayer.hls.playlist.HlsMultivariantPlaylist
 import androidx.media3.exoplayer.hls.playlist.HlsPlaylist
 import androidx.media3.exoplayer.hls.playlist.HlsPlaylistParser
 import com.vidorax.media.model.Container
+import com.vidorax.media.model.ProbeAudioTrack
 import com.vidorax.media.model.ProbeFailure
 import com.vidorax.media.model.ProbeResult
 import com.vidorax.media.model.ProbeVariant
@@ -46,8 +48,9 @@ internal data class HlsPlannedSegment(
 )
 
 /**
- * A resolved, classified, downloadable HLS stream: exactly one media playlist of one variant, VOD, unencrypted,
- * single-track. Segment order is the playlist's order and is what the transfer writes.
+ * A resolved, classified, downloadable segment track: one media playlist of one variant (VOD, unencrypted) — or,
+ * built by the DASH planner, one segmented representation. Segment order is what the transfer writes. When the
+ * variant keeps its sound in a separate rendition, [audio] is that rendition's own plan (merged after the download).
  */
 internal data class HlsPlan(
   /** The enqueued playlist URL after redirects (a multivariant or a media playlist). */
@@ -68,6 +71,10 @@ internal data class HlsPlan(
   val fingerprint: String,
   /** Average-bitrate estimate of the final size; null when the playlist does not say. */
   val estimatedBytes: Long?,
+  /** The variant's separate audio rendition (`EXT-X-MEDIA TYPE=AUDIO` with a URI), downloaded and merged in. */
+  val audio: HlsPlan? = null,
+  /** What [audio] is, for the quality sheet. */
+  val audioInfo: ProbeAudioTrack? = null,
 )
 
 internal sealed interface HlsPlanResult {
@@ -137,6 +144,8 @@ internal object HlsCodecs {
     "mp4v" to "video/mp4v-es",
   )
 
+  val VIDEO_TOKENS: Set<String> get() = VIDEO_PREFIXES.keys
+
   fun tokens(codecs: String?): List<String> =
     codecs.orEmpty().split(',').map { it.trim().trim('"') }.filter { it.isNotEmpty() }
 
@@ -180,7 +189,39 @@ internal class HlsPlanner(
   suspend fun confirmMedia(plan: HlsPlan, context: RequestContext): ProbeResult.Failure? =
     withContext(Dispatchers.IO) { confirmMediaBlocking(plan, context) }
 
+  /**
+   * The same check for one track of a split stream (an HLS audio rendition, a DASH segment representation): an
+   * audio track's first bytes must be sound (TS, packed audio, an init with a sound track), a video track's a
+   * picture; Common Encryption is protection. A read that fails is no verdict.
+   */
+  suspend fun confirmTrack(plan: HlsPlan, context: RequestContext, role: TrackRole): ProbeResult.Failure? =
+    withContext(Dispatchers.IO) { confirmTrackBlocking(plan, context, role) }
+
+  private fun confirmTrackBlocking(plan: HlsPlan, context: RequestContext, role: TrackRole): ProbeResult.Failure? {
+    val first = plan.segments.firstOrNull() ?: return null
+    val init = first.initIndex?.let { plan.inits.getOrNull(it) }
+    val head = peek(init ?: first.media, plan.mediaPlaylistUrl, context, if (init != null) INIT_PEEK_BYTES else SEGMENT_PEEK_BYTES)
+      ?: return null
+    if (MediaSniffer.hasEncryptionEvidence(head) || MediaSniffer.trackSummary(head).encrypted) {
+      return failure(ProbeFailure.DRM_PROTECTED, null, "encrypted stream (Common Encryption)")
+    }
+    val missing = if (role == TrackRole.AUDIO) ProbeFailure.AUDIO_TRACK_MISSING else ProbeFailure.VIDEO_TRACK_MISSING
+    if (HlsSegmentFormat.isPackedAudio(head)) {
+      return if (role == TrackRole.AUDIO) null else failure(missing, null, "audio-only stream (packed audio)")
+    }
+    val container = HlsSegmentFormat.containerOf(head)
+      ?: return failure(missing, null, HlsSegmentFormat.refusal(head))
+    if (container == Container.TS) return null
+    val summary = MediaSniffer.trackSummary(head)
+    return when (role) {
+      TrackRole.AUDIO -> if (summary.hasAudio == false) failure(missing, null, "the audio track has no sound") else null
+      TrackRole.VIDEO -> if (summary.hasVideo == false) failure(missing, null, "the video track has no picture") else null
+    }
+  }
+
   private fun confirmMediaBlocking(plan: HlsPlan, context: RequestContext): ProbeResult.Failure? {
+    // The separate audio rendition is checked like the video: it must be sound, and not encrypted.
+    plan.audio?.let { audio -> confirmTrackBlocking(audio, context, TrackRole.AUDIO)?.let { return it } }
     val first = plan.segments.firstOrNull() ?: return null
     val init = first.initIndex?.let { plan.inits.getOrNull(it) }
     val limit = if (init != null) INIT_PEEK_BYTES else SEGMENT_PEEK_BYTES
@@ -255,7 +296,7 @@ internal class HlsPlanner(
     }
     val candidates = master.variants.mapNotNull { variant ->
       val absolute = resolve(sourceUrl, variant.url.toString()) ?: return@mapNotNull null
-      Candidate(absolute, variant.format, needsAudioMux(master, variant)).also {
+      Candidate(absolute, variant.format, needsAudioMux(master, variant), variant.audioGroupId).also {
         it.decodable = decoders.canDecode(it.format.codecs, it.width, it.height)
       }
     }
@@ -278,7 +319,60 @@ internal class HlsPlanner(
     val playlist = media.playlist as? HlsMediaPlaylist
       ?: return refuse(ProbeFailure.UNSUPPORTED_FORMAT, "variant is not a media playlist")
     val variants = candidates.sortedWith(BEST_FIRST).map { it.toProbeVariant(playlist.durationUs) }
-    return classify(sourceUrl, media.finalUrl, playlist, selected.toProbeVariant(playlist.durationUs), variants)
+    val video = classify(sourceUrl, media.finalUrl, playlist, selected.toProbeVariant(playlist.durationUs), variants)
+    if (video !is HlsPlanResult.Ready || !selected.needsAudioMux) return video
+    return withSeparateAudio(video.plan, sourceUrl, master, selected, context, choice)
+  }
+
+  /**
+   * The selected variant's sound lives in its own rendition playlist: pick the rendition (the one asked for, else the
+   * group's DEFAULT, else AUTOSELECT, else the first), classify its media playlist like the video's (VOD,
+   * unencrypted, no gaps) and attach it. Discontinuities cannot be merged across separate tracks.
+   */
+  private fun withSeparateAudio(
+    video: HlsPlan,
+    sourceUrl: String,
+    master: HlsMultivariantPlaylist,
+    selected: Candidate,
+    context: RequestContext,
+    choice: VariantChoice?,
+  ): HlsPlanResult {
+    if (video.hasDiscontinuities) {
+      return refuse(ProbeFailure.UNSUPPORTED_FORMAT, "separate audio with discontinuities cannot be merged")
+    }
+    val renditions = master.audios.filter { it.groupId == selected.audioGroupId && it.url != null }
+    val wanted = choice?.audioId
+    val rendition = renditions.firstOrNull { wanted != null && Redact.url(resolve(sourceUrl, it.url.toString()) ?: "") == Redact.url(wanted) }
+      ?: renditions.firstOrNull { it.format.selectionFlags and C.SELECTION_FLAG_DEFAULT != 0 }
+      ?: renditions.firstOrNull { it.format.selectionFlags and C.SELECTION_FLAG_AUTOSELECT != 0 }
+      ?: renditions.firstOrNull()
+      ?: return refuse(ProbeFailure.AUDIO_TRACK_MISSING, "the audio rendition has no playlist")
+    val audioUrl = resolve(sourceUrl, rendition.url.toString())
+      ?: return refuse(ProbeFailure.AUDIO_TRACK_MISSING, "unusable audio rendition URL")
+    if (Probe.isPolicyBlockedHost(audioUrl)) return refuse(ProbeFailure.POLICY_BLOCKED, "This source is not supported")
+    val fetched = when (val result = fetchPlaylist(audioUrl, parentUrl = sourceUrl, context, master)) {
+      is Fetched.Failed -> return HlsPlanResult.Refused(result.failure)
+      is Fetched.Ok -> result
+    }
+    val playlist = fetched.playlist as? HlsMediaPlaylist
+      ?: return refuse(ProbeFailure.AUDIO_TRACK_MISSING, "the audio rendition is not a media playlist")
+    val audio = when (val classified = classify(sourceUrl, fetched.finalUrl, playlist, selected = null, variants = emptyList())) {
+      is HlsPlanResult.Ready -> classified.plan
+      is HlsPlanResult.Refused -> return classified
+    }
+    if (audio.hasDiscontinuities) {
+      return refuse(ProbeFailure.UNSUPPORTED_FORMAT, "separate audio with discontinuities cannot be merged")
+    }
+    val info = ProbeAudioTrack(
+      id = audioUrl,
+      language = rendition.format.language,
+      label = rendition.format.label ?: rendition.name,
+      bitrate = null,
+      codec = HlsCodecs.tokens(rendition.format.codecs).firstOrNull()
+        ?: HlsCodecs.tokens(selected.format.codecs).firstOrNull { MimeTypes.getAudioMediaMimeType(it) != null },
+      isDefault = rendition.format.selectionFlags and C.SELECTION_FLAG_DEFAULT != 0,
+    )
+    return HlsPlanResult.Ready(video.copy(audio = audio, audioInfo = info))
   }
 
   // --- media playlist classification ---
@@ -366,7 +460,7 @@ internal class HlsPlanner(
 
   // --- variant selection ---
 
-  private class Candidate(val url: String, val format: Format, val needsAudioMux: Boolean) {
+  private class Candidate(val url: String, val format: Format, val needsAudioMux: Boolean, val audioGroupId: String?) {
     val height: Int? get() = format.height.takeIf { it != Format.NO_VALUE && it > 0 }
     val width: Int? get() = format.width.takeIf { it != Format.NO_VALUE && it > 0 }
     val bitrate: Long?
@@ -376,8 +470,24 @@ internal class HlsPlanner(
       get() = listOf(format.peakBitrate, format.bitrate, format.averageBitrate)
         .firstOrNull { it != Format.NO_VALUE && it > 0 }?.toLong()
     val audioOnly: Boolean get() = HlsCodecs.isAudioOnly(format.codecs) && height == null
+
+    /**
+     * How well the variant's sound fits the saved file: AAC/Opus (or unstated) copy into an MP4 as they are; AC-3/E-AC-3
+     * and others would have to be converted — so of two otherwise equal variants, the one an MP4 carries wins.
+     */
+    val audioRank: Int
+      get() {
+        val audio = HlsCodecs.tokens(format.codecs).filter { it.substringBefore('.').lowercase() !in HlsCodecs.VIDEO_TOKENS }
+        return when {
+          audio.isEmpty() -> 1
+          audio.any { it.lowercase().startsWith("mp4a") || it.lowercase().startsWith("opus") } -> 2
+          else -> 0
+        }
+      }
     var decodable: Boolean = true
-    val eligible: Boolean get() = !needsAudioMux && !audioOnly && decodable
+
+    /** Separate audio no longer disqualifies a variant: its rendition is downloaded and merged in. */
+    val eligible: Boolean get() = !audioOnly && decodable
 
     fun toProbeVariant(durationUs: Long): ProbeVariant = ProbeVariant(
       id = url,
@@ -404,7 +514,9 @@ internal class HlsPlanner(
     if (maxHeight != null) {
       val fitting = eligible.filter { (it.height ?: 0) <= maxHeight }
       if (fitting.isNotEmpty()) return fitting.sortedWith(BEST_FIRST).first()
-      return eligible.minWithOrNull(compareBy<Candidate> { it.height ?: Int.MAX_VALUE }.thenBy { it.bitrate ?: 0L })
+      return eligible.minWithOrNull(
+        compareBy<Candidate> { it.height ?: Int.MAX_VALUE }.thenByDescending { it.audioRank }.thenBy { it.bitrate ?: 0L },
+      )
     }
     // Known video renditions before variants that declare nothing about themselves.
     return eligible.sortedWith(BEST_FIRST).first()
@@ -412,18 +524,18 @@ internal class HlsPlanner(
 
   private fun whyNothingEligible(candidates: List<Candidate>): String = when {
     candidates.all { it.audioOnly } -> "audio-only HLS stream"
-    candidates.any { it.needsAudioMux } -> SEPARATE_AUDIO
     else -> "no variant this device can decode"
   }
 
   /**
-   * A variant whose `AUDIO` group delivers audio through its own playlist (a rendition with a URI) is video-only:
-   * saving it would need muxing, which the product refuses. A group whose renditions have no URI is audio muxed
-   * into the variant itself.
+   * A variant whose `AUDIO` group delivers audio only through its own playlists (every rendition has a URI) is
+   * video-only: its sound is downloaded from the rendition and merged in. A rendition without a URI means the audio
+   * is muxed into the variant itself.
    */
   private fun needsAudioMux(master: HlsMultivariantPlaylist, variant: HlsMultivariantPlaylist.Variant): Boolean {
     val group = variant.audioGroupId ?: return false
-    return master.audios.any { it.groupId == group && it.url != null }
+    val renditions = master.audios.filter { it.groupId == group }
+    return renditions.isNotEmpty() && renditions.all { it.url != null }
   }
 
   // --- fetching ---
@@ -537,7 +649,6 @@ internal class HlsPlanner(
     /** Playlists are text; even a 20 000-segment VOD playlist is a few MB. Anything larger is not a playlist. */
     const val MAX_PLAYLIST_BYTES = 8 * 1024 * 1024
     const val MAX_SEGMENTS = 20_000
-    const val SEPARATE_AUDIO = "separate audio and video renditions are not supported"
 
     /** An init section is a few hundred bytes to a few KB; a larger one is not read in full (no verdict). */
     private const val INIT_PEEK_BYTES = 64 * 1024
@@ -549,6 +660,7 @@ internal class HlsPlanner(
 
     private val BEST_FIRST = compareByDescending<Candidate> { it.height != null }
       .thenByDescending { it.height ?: 0 }
+      .thenByDescending { it.audioRank }
       .thenByDescending { it.bitrate ?: 0L }
 
     fun estimateBytes(bitsPerSecond: Long, durationUs: Long): Long? =
@@ -570,12 +682,14 @@ internal class HlsPlanner(
       kind = SourceKind.HLS,
       finalUrl = plan.sourceUrl,
       contentType = "application/vnd.apple.mpegurl",
-      container = plan.containerHint,
+      // Separate tracks are merged into an MP4.
+      container = if (plan.audio != null) Container.MP4 else plan.containerHint,
       sizeBytes = null,
       resumable = true,
       variants = plan.variants,
-      audioTracks = emptyList(),
+      audioTracks = listOfNotNull(plan.audioInfo),
       durationMs = plan.durationUs / 1000,
+      mergesAudio = plan.audio != null,
     )
   }
 }

@@ -13,7 +13,11 @@
  */
 import vm from 'node:vm';
 
-import { buildMediaDetectionInjectedScript, buildMediaDetectionRescanScript } from '../observers/injected-script';
+import {
+  buildMediaDetectionBeforeContentScript,
+  buildMediaDetectionInjectedScript,
+  buildMediaDetectionRescanScript,
+} from '../observers/injected-script';
 
 export type PostedMessage = { type: string; payload: Record<string, unknown>; raw: string };
 
@@ -36,6 +40,9 @@ export interface ElementInit {
 }
 
 let clockRef: ManualClock | null = null;
+
+/** Chunk size of a fake streamed response body. */
+const STREAM_CHUNK_BYTES = 1024;
 
 class ManualClock {
   now = 1_700_000_000_000;
@@ -88,6 +95,8 @@ export class FakeElement {
   duration = Number.NaN;
   currentTime = 0;
   currentSrc = '';
+  /** HTMLMediaElement.networkState when a test sets it (0 EMPTY … 3 NO_SOURCE); undefined otherwise. */
+  networkState: number | undefined = undefined;
   innerText = '';
   mediaKeys: unknown = null;
   /** Same-origin iframe document, when the test provides one. */
@@ -218,7 +227,9 @@ export class FakeDocument {
   body: FakeElement;
   title = 'Test page';
   URL: string;
+  visibilityState: 'visible' | 'hidden' = 'visible';
   private readonly captureListeners = new Map<string, Listener[]>();
+  private readonly bubbleListeners = new Map<string, Listener[]>();
   private readonly mutationObservers: { observer: FakeMutationObserver; root: FakeElement }[] = [];
 
   constructor(url: string) {
@@ -248,17 +259,28 @@ export class FakeDocument {
   }
 
   addEventListener(type: string, listener: Listener, capture?: boolean | { capture?: boolean }): void {
-    if (!capture) return; // the observer only registers capture listeners on document
-    const list = this.captureListeners.get(type) ?? [];
+    const isCapture = capture === true || (typeof capture === 'object' && capture?.capture === true);
+    const map = isCapture ? this.captureListeners : this.bubbleListeners;
+    const list = map.get(type) ?? [];
     list.push(listener);
-    this.captureListeners.set(type, list);
+    map.set(type, list);
   }
 
   removeEventListener(type: string, listener: Listener): void {
-    const list = this.captureListeners.get(type);
-    if (!list) return;
-    const index = list.indexOf(listener);
-    if (index >= 0) list.splice(index, 1);
+    for (const map of [this.captureListeners, this.bubbleListeners]) {
+      const list = map.get(type);
+      if (!list) continue;
+      const index = list.indexOf(listener);
+      if (index >= 0) list.splice(index, 1);
+    }
+  }
+
+  /** What Chromium does when the app pauses a parked tab's WebView (or the app goes to the background). */
+  setVisibility(state: 'visible' | 'hidden'): void {
+    this.visibilityState = state;
+    for (const listener of (this.bubbleListeners.get('visibilitychange') ?? []).slice()) {
+      listener({ type: 'visibilitychange', target: this });
+    }
   }
 
   /** Media events do not bubble, but a capture listener on `document` still sees them. */
@@ -392,12 +414,90 @@ export class PageHarness {
         requestMediaKeySystemAccess: () => Promise.resolve({}),
       },
       MutationObserver: FakeMutationObserver,
-      // Enough of MediaSource for a page to build an MSE player.
+      // Enough of MediaSource for a page to build an MSE player; its buffers are real SourceBuffer instances, so the
+      // script's prototype hooks see the page's appends.
       MediaSource: class {
         readyState = 'closed';
         addEventListener(): void {}
-        addSourceBuffer(): { appendBuffer: () => void } {
-          return { appendBuffer: () => undefined };
+        addSourceBuffer(): unknown {
+          return new (windowObject.SourceBuffer as new () => unknown)();
+        }
+      },
+      SourceBuffer: class {
+        appended = 0;
+        appendBuffer(): void {
+          this.appended += 1;
+        }
+      },
+      // A fetch Response a player reads with arrayBuffer() — or as a stream, chunk by chunk — before appending the bytes.
+      Response: class {
+        url: string;
+        headers: { get: (name: string) => string | null };
+        private bytes: ArrayBuffer;
+        constructor(url: string, bytes: ArrayBuffer, contentType: string | null = null) {
+          this.url = url;
+          this.bytes = bytes;
+          this.headers = { get: (name) => (name.toLowerCase() === 'content-type' ? contentType : null) };
+        }
+        arrayBuffer(): Promise<ArrayBuffer> {
+          return Promise.resolve(this.bytes);
+        }
+        get body(): unknown {
+          const all = new Uint8Array(this.bytes);
+          const chunks: Uint8Array[] = [];
+          for (let at = 0; at < all.length; at += STREAM_CHUNK_BYTES) {
+            chunks.push(all.slice(at, at + STREAM_CHUNK_BYTES));
+          }
+          return new (windowObject.ReadableStream as new (c: Uint8Array[]) => unknown)(chunks);
+        }
+      },
+      // Streams hold their chunks up front; a pipe hands them all over at once (enough for what a player does).
+      ReadableStream: class {
+        chunks: unknown[];
+        constructor(chunks: unknown[] = []) {
+          this.chunks = chunks;
+        }
+        getReader(): unknown {
+          return new (windowObject.ReadableStreamDefaultReader as new (s: unknown) => unknown)(this);
+        }
+        pipeThrough(transform: { writable: { write(c: unknown): void }; readable: unknown }): unknown {
+          this.chunks.splice(0).forEach((chunk) => transform.writable.write(chunk));
+          return transform.readable;
+        }
+        pipeTo(dest: { write(c: unknown): void }): Promise<void> {
+          this.chunks.splice(0).forEach((chunk) => dest.write(chunk));
+          return Promise.resolve();
+        }
+      },
+      TransformStream: class {
+        readable: { chunks: unknown[] };
+        writable: { write(c: unknown): void };
+        constructor(transformer: { transform(chunk: unknown, controller: { enqueue(c: unknown): void }): void }) {
+          const readable = new (windowObject.ReadableStream as new () => { chunks: unknown[] })();
+          this.readable = readable;
+          this.writable = {
+            write: (chunk) => transformer.transform(chunk, { enqueue: (c) => readable.chunks.push(c) }),
+          };
+        }
+      },
+      WritableStream: class {
+        private sink: { write(c: unknown): void };
+        constructor(sink: { write(c: unknown): void }) {
+          this.sink = sink;
+        }
+        write(chunk: unknown): void {
+          this.sink.write(chunk);
+        }
+      },
+      ReadableStreamDefaultReader: class {
+        private next = 0;
+        private stream: { chunks: Uint8Array[] };
+        constructor(stream: { chunks: Uint8Array[] }) {
+          this.stream = stream;
+        }
+        read(): Promise<{ done: boolean; value?: Uint8Array }> {
+          const value = this.stream.chunks[this.next++];
+          return Promise.resolve(value ? { done: false, value } : { done: true });
         }
       },
       PerformanceObserver: class {
@@ -463,6 +563,16 @@ export class PageHarness {
     this.context = vm.createContext(windowObject);
   }
 
+  /** Runs the production before-content script, as the WebView does when a document starts (before page scripts). */
+  injectBeforeContent(): void {
+    vm.runInContext(buildMediaDetectionBeforeContentScript(), this.context, { timeout: 5_000 });
+  }
+
+  /** Evaluates an expression in the page (test inspection only). */
+  evaluate(expression: string): unknown {
+    return vm.runInContext(expression, this.context, { timeout: 5_000 });
+  }
+
   /** Runs the production injected script, as `injectedJavaScript` does after document load. */
   inject(): void {
     vm.runInContext(buildMediaDetectionInjectedScript(), this.context, { timeout: 5_000 });
@@ -511,6 +621,77 @@ export class PageHarness {
 
   fireMediaEvent(target: FakeElement, type: string): void {
     this.document.dispatchMediaEvent(target, type);
+  }
+
+  setVisibility(state: 'visible' | 'hidden'): void {
+    this.document.setVisibility(state);
+  }
+
+  /** A MediaSource created by the page's own code (its prototype is what the script hooks). */
+  newMediaSource(): { readyState: string; addSourceBuffer: (mime: string) => unknown; duration?: number } {
+    return vm.runInContext('new MediaSource()', this.context) as {
+      readyState: string;
+      addSourceBuffer: (mime: string) => unknown;
+    };
+  }
+
+  /**
+   * What an MSE player does with a file it fetched: reads the response as an ArrayBuffer and appends (a view of) it to
+   * one of its SourceBuffers.
+   */
+  async appendFetchedFile(buffer: unknown, url: string): Promise<void> {
+    const ResponseCtor = vm.runInContext('Response', this.context) as new (u: string, b: ArrayBuffer) => {
+      arrayBuffer(): Promise<ArrayBuffer>;
+    };
+    const bytes = await new ResponseCtor(url, new ArrayBuffer(64)).arrayBuffer();
+    (buffer as { appendBuffer(data: unknown): void }).appendBuffer(new Uint8Array(bytes, 0, 32));
+  }
+
+  /**
+   * What a player that streams its files does (Facebook's reel viewer): reads `response.body` chunk by chunk, then
+   * appends a COPY of `length` bytes from `from` — a new ArrayBuffer the response never produced — to one of its
+   * SourceBuffers. With `append: false` the file is only read (a prefetch of the next item).
+   */
+  async streamFile(
+    buffer: unknown,
+    url: string,
+    bytes: Uint8Array,
+    options: { contentType?: string | null; from?: number; length?: number; append?: boolean; pipe?: boolean } = {},
+  ): Promise<void> {
+    // `pipe`: the body goes through the page's own transform into its own sink (Facebook), never through a reader.
+    const run = vm.runInContext(
+      `(async function(url, values, contentType, from, length, buffer, pipe) {
+        var res = new Response(url, new Uint8Array(values).buffer, contentType);
+        var all = new Uint8Array(values.length);
+        var at = 0;
+        function take(value) {
+          all.set(value, at);
+          at += value.byteLength;
+        }
+        if (pipe) {
+          var passThrough = new TransformStream({ transform: function(c, controller) { controller.enqueue(c); } });
+          await res.body.pipeThrough(passThrough).pipeTo(new WritableStream({ write: take }));
+        } else {
+          var reader = res.body.getReader();
+          for (;;) {
+            var r = await reader.read();
+            if (r.done) break;
+            take(r.value);
+          }
+        }
+        if (buffer) buffer.appendBuffer(all.slice(from, from + length).buffer);
+      })`,
+      this.context,
+    ) as (...args: unknown[]) => Promise<void>;
+    await run(
+      url,
+      Array.from(bytes),
+      options.contentType === undefined ? 'video/mp4' : options.contentType,
+      options.from ?? 0,
+      options.length ?? Math.min(512, bytes.length),
+      options.append === false ? null : buffer,
+      Boolean(options.pipe),
+    );
   }
 
   /** What a page does to build an MSE or Blob player: hand the object to `URL.createObjectURL`. */

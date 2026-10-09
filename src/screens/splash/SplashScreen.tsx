@@ -15,22 +15,23 @@ import {
   selectAppLoading,
   useAppStore,
 } from '@/store/app';
-import { resolveIntroColors } from '@/theme';
 
 import { useSplashSequence } from './animations';
 import { SPLASH_REDUCED_MOTION, SPLASH_TIMINGS } from './animations/timings';
 import { SplashBackground, SplashBrand, SplashLoader, SplashLogo, SplashTagline } from './components';
+import { resolveSplashIntro } from './constants/splash.constants';
 import { useReducedMotionPreference, useSplashExitGate } from './hooks';
 import { createSplashStyles } from './styles';
 
 /**
- * Cinematic branded loader — Splash 1 on every cold process start.
- * Colors follow intro continuity: LIGHT / LOGO / DARK all themed.
+ * Cinematic branded loader — Splash 1 on every cold process start. In the app's theme (Light / Logo white, Dark
+ * #0D0D0D, System the device's), continuing the native launch screen drawn in the same theme; the transparent logo
+ * sits directly on the background, with "VidoraX" underneath.
  */
 export function SplashScreen() {
   const { t } = useTranslation();
-  const theme = useTheme();
-  const intro = useMemo(() => resolveIntroColors(theme.mode), [theme.mode]);
+  const themeMode = useTheme().mode;
+  const intro = useMemo(() => resolveSplashIntro(themeMode), [themeMode]);
   const splashStyles = useMemo(() => createSplashStyles(intro), [intro]);
   useAuthBackHandler();
   const insets = useSafeAreaInsets();

@@ -37,6 +37,18 @@ internal object NetworkMediaClassifier {
   private val SEGMENT_FILE_STEM =
     Regex("(?:^|[-_.])(?:init|seg|segment|chunk|frag|fragment)(?:\\d|[-_.]|$)", RegexOption.IGNORE_CASE)
 
+  // Downloads (responses the WebView cannot render): which ones the detection pipeline classifies.
+  private val VIDEO_FILE_EXTENSIONS = setOf("mp4", "m4v", "mov", "webm", "mkv", "avi", "wmv", "3gp", "flv")
+  private val HLS_TYPES = setOf("application/vnd.apple.mpegurl", "application/x-mpegurl", "audio/mpegurl", "audio/x-mpegurl")
+  private val GENERIC_BINARY_TYPES = setOf(
+    "application/octet-stream", "binary/octet-stream", "application/binary", "application/x-binary",
+    "application/force-download", "application/download", "application/x-download", "application/unknown",
+  )
+  // A script endpoint names no file type: what it serves is unknown until asked.
+  private val SCRIPT_EXTENSIONS = setOf("php", "asp", "aspx", "jsp", "cgi", "pl", "do", "action", "ashx")
+  private val DISPOSITION_FILE_NAME =
+    Regex("filename\\*?\\s*=\\s*(?:[\\w-]+'[\\w-]*')?\"?([^\";]+)\"?", RegexOption.IGNORE_CASE)
+
   fun classify(url: String, method: String, isMainFrame: Boolean, accept: String?, hasRange: Boolean): NetworkMediaHint? {
     if (url.length > MAX_URL_LENGTH) return null
     if (!method.equals("GET", ignoreCase = true) && !method.equals("HEAD", ignoreCase = true)) return null
@@ -63,6 +75,48 @@ internal object NetworkMediaClassifier {
       accept.containsIgnoreCase("video/") || accept.containsIgnoreCase("audio/") -> NetworkMediaHint.UNKNOWN
       else -> null
     }
+  }
+
+  /**
+   * Decides whether a WebView download — a navigation or link whose response the WebView cannot render, such as a
+   * pasted `.mpd`, a `.mov`, or a file served as an attachment — is a video for the detection pipeline to classify,
+   * instead of Android's DownloadManager saving it unseen. Decided from the response's MIME type, else the file name
+   * (Content-Disposition, then the URL). [NetworkMediaHint.UNKNOWN] is a generic binary with no usable name: JS asks
+   * the source and hands anything that is not a video back to DownloadManager. Null: not a video (documents, archives,
+   * apps, audio, lone transport segments) — the system download runs exactly as before.
+   */
+  fun classifyDownload(url: String, mimeType: String?, contentDisposition: String?): NetworkMediaHint? {
+    if (url.length > MAX_URL_LENGTH) return null
+    val parts = UrlParts.parse(url) ?: return null
+    if (isBlockedHost(parts.host)) return null
+    val type = mimeType?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT).orEmpty()
+    return when {
+      type in HLS_TYPES -> NetworkMediaHint.MANIFEST_HLS
+      type == "application/dash+xml" -> NetworkMediaHint.MANIFEST_DASH
+      type == "video/mp2t" -> null
+      type.startsWith("video/") -> NetworkMediaHint.PROGRESSIVE
+      type.isEmpty() || type in GENERIC_BINARY_TYPES -> {
+        val named = fileExtension(dispositionFileName(contentDisposition)) ?: parts.extension
+        when (named) {
+          "m3u8" -> NetworkMediaHint.MANIFEST_HLS
+          "mpd" -> NetworkMediaHint.MANIFEST_DASH
+          in VIDEO_FILE_EXTENSIONS -> NetworkMediaHint.PROGRESSIVE
+          null, in SCRIPT_EXTENSIONS -> NetworkMediaHint.UNKNOWN
+          else -> null
+        }
+      }
+      else -> null
+    }
+  }
+
+  private fun dispositionFileName(contentDisposition: String?): String? =
+    contentDisposition?.let { DISPOSITION_FILE_NAME.find(it)?.groupValues?.get(1)?.trim() }?.takeIf { it.isNotEmpty() }
+
+  private fun fileExtension(fileName: String?): String? {
+    val name = fileName?.substringAfterLast('/') ?: return null
+    val dot = name.lastIndexOf('.')
+    val extension = if (dot >= 0) name.substring(dot + 1) else return null
+    return extension.lowercase(Locale.ROOT).takeIf { it.length in 1..5 && it.all(Char::isLetterOrDigit) }
   }
 
   /** The URL without its fragment and byte-range query parameters: every range request of one file shares it. */

@@ -326,6 +326,11 @@ export interface MediaAnalysisVariant {
   unsupportedReason: AnalysisUnsupportedReason | null;
   /** DASH only: the manifest representation this variant downloads (the engine's `variant.videoId`). */
   representationId?: string | null;
+  /**
+   * A video-only file whose sound is this separate audio file (a MediaSource player fed from two tracks): the
+   * engine downloads both and merges them (`kind: 'split'`).
+   */
+  audioSourceUrl?: string | null;
 }
 
 /** Response from POST /downloads/analyze — does not create DownloadHistory. */

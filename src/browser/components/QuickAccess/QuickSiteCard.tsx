@@ -1,5 +1,4 @@
-import { Image } from 'expo-image';
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback } from 'react';
 
 import { Box } from '@/components/base/Box';
 import { Icon } from '@/components/base/Icon';
@@ -8,7 +7,6 @@ import { Text } from '@/components/base/Text';
 import type { QuickSite } from '@/browser/config/quick-sites';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
-import { buildFaviconUrl } from '@/screens/bookmarks/utils/bookmark-format';
 
 import {
   getQuickAccessTokens,
@@ -30,14 +28,8 @@ export const QuickSiteCard = memo(function QuickSiteCard({
 }: QuickSiteCardProps) {
   const theme = useTheme();
   const { t } = useTranslation();
-  const [faviconFailed, setFaviconFailed] = useState(false);
   const tokens = getQuickAccessTokens(density);
   const isCompact = density === 'compact' || density === 'startPage';
-
-  const faviconUrl = useMemo(
-    () => buildFaviconUrl(site.hostname),
-    [site.hostname],
-  );
 
   const accentColor = theme.colors[site.accent] ?? theme.colors.primary;
 
@@ -76,24 +68,8 @@ export const QuickSiteCard = memo(function QuickSiteCard({
           backgroundColor: `${accentColor}14`,
           overflow: 'hidden',
         }}>
-        {faviconUrl && !faviconFailed ? (
-          <Image
-            source={{ uri: faviconUrl }}
-            style={{
-              width: tokens.faviconSize,
-              height: tokens.faviconSize,
-            }}
-            contentFit="contain"
-            onError={() => setFaviconFailed(true)}
-            accessibilityIgnoresInvertColors
-          />
-        ) : (
-          <Icon
-            name={site.icon}
-            size={isCompact ? 'md' : 'lg'}
-            color="primary"
-          />
-        )}
+        {/* Generic glyph only — promoted shortcuts never show third-party brand logos. */}
+        <Icon name={site.icon} size={isCompact ? 'md' : 'lg'} color="primary" />
       </Box>
 
       <Text

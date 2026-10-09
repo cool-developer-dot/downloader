@@ -1,15 +1,20 @@
 package com.vidorax.media
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import com.vidorax.media.bridge.DownloadSettingsRecord
 import com.vidorax.media.bridge.EnqueueRequestRecord
 import com.vidorax.media.bridge.LegacyMetadataRecord
 import com.vidorax.media.bridge.LibraryQueryRecord
+import com.vidorax.media.bridge.PageFetchRequestRecord
 import com.vidorax.media.bridge.ProbeRequestRecord
 import com.vidorax.media.bridge.toJs
 import com.vidorax.media.engine.DownloadEngineApi
 import com.vidorax.media.engine.DownloadEngineProvider
 import com.vidorax.media.library.DeviceVideos
+import com.vidorax.media.player.ActivityVisibility
+import com.vidorax.media.player.PictureInPictureAutoEnter
 import com.vidorax.media.player.Volume
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Coroutine
@@ -35,10 +40,18 @@ class VidoraMediaModule : Module() {
 
   private fun volume(): Volume = volume ?: Volume(context).also { volume = it }
 
+  private val pictureInPicture = PictureInPictureAutoEnter()
+
+  private val mainHandler = Handler(Looper.getMainLooper())
+
+  private val activityVisibility = ActivityVisibility { inPictureInPicture ->
+    sendEvent(ON_ACTIVITY_STOP, mapOf("inPictureInPicture" to inPictureInPicture))
+  }
+
   override fun definition() = ModuleDefinition {
     Name("VidoraMedia")
 
-    Events(ON_DOWNLOAD_PROGRESS, ON_DOWNLOAD_STATE_CHANGE, ON_LIBRARY_CHANGE, ON_VOLUME_CHANGE)
+    Events(ON_DOWNLOAD_PROGRESS, ON_DOWNLOAD_STATE_CHANGE, ON_LIBRARY_CHANGE, ON_VOLUME_CHANGE, ON_ACTIVITY_STOP)
 
     OnCreate {
       val media = services
@@ -55,6 +68,12 @@ class VidoraMediaModule : Module() {
       events.launch {
         downloads.stateChanges.collect { sendEvent(ON_DOWNLOAD_STATE_CHANGE, mapOf("record" to it.toJs())) }
       }
+      mainHandler.post { activityVisibility.attach(appContext.currentActivity) }
+    }
+
+    // Lifecycle observers are main-thread only; this callback can also run while the module is created from JS.
+    OnActivityEntersForeground {
+      mainHandler.post { activityVisibility.attach(appContext.currentActivity) }
     }
 
     OnStartObserving(ON_VOLUME_CHANGE) {
@@ -67,6 +86,12 @@ class VidoraMediaModule : Module() {
 
     OnDestroy {
       volume?.stopObserving()
+      mainHandler.post { activityVisibility.detach() }
+    }
+
+    // Home / Recents while a video plays: Android 8–11 need PiP requested right here (see PictureInPictureAutoEnter).
+    OnUserLeavesActivity {
+      appContext.currentActivity?.let { pictureInPicture.onUserLeaveHint(it) }
     }
 
     // Probing and downloads
@@ -75,8 +100,24 @@ class VidoraMediaModule : Module() {
       engine.probe(request.toModel()).toJs()
     }
 
+    // A pasted/shared link read the way its tab would navigate to it, before the WebView plays anything. Returns the
+    // page's bytes (bounded) or says the link is media itself; nothing on the page is executed.
+    AsyncFunction("fetchPage") Coroutine { request: PageFetchRequestRecord ->
+      val model = request.toModel()
+      withContext(Dispatchers.IO) { services.pageFetcher.fetch(model) }.toJs()
+    }
+
     AsyncFunction("enqueue") Coroutine { request: EnqueueRequestRecord ->
       engine.enqueue(request.toModel()).toJs()
+    }
+
+    // One download per video: an existing download or saved copy of the same video is returned instead
+    AsyncFunction("enqueueUnique") Coroutine { request: EnqueueRequestRecord ->
+      engine.enqueueUnique(request.toModel()).toJs()
+    }
+
+    AsyncFunction("findDuplicate") Coroutine { request: EnqueueRequestRecord ->
+      engine.findDuplicate(request.toModel())?.toJs()
     }
 
     AsyncFunction("pause") Coroutine { id: String -> engine.pause(id) }
@@ -205,6 +246,10 @@ class VidoraMediaModule : Module() {
     Function("getVolume") { volume().get() }
 
     Function("setVolume") { value: Double -> volume().set(value) }
+
+    Function("setPictureInPictureAutoEnter") { armed: Boolean, aspectWidth: Int, aspectHeight: Int ->
+      pictureInPicture.arm(armed, aspectWidth, aspectHeight)
+    }
   }
 
   private companion object {
@@ -212,6 +257,7 @@ class VidoraMediaModule : Module() {
     const val ON_DOWNLOAD_STATE_CHANGE = "onDownloadStateChange"
     const val ON_LIBRARY_CHANGE = "onLibraryChange"
     const val ON_VOLUME_CHANGE = "onVolumeChange"
+    const val ON_ACTIVITY_STOP = "onActivityStop"
     const val MAX_ACKNOWLEDGE_IDS = 1_000
   }
 }

@@ -103,7 +103,7 @@ export function resolveFavoriteThumbnailUrl(
   try {
     return `${new URL(sourceUrl).origin}/favicon.ico`;
   } catch {
-    return 'https://www.google.com/s2/favicons?domain=vidorax.app&sz=128';
+    return 'https://vidorax.app/favicon.ico';
   }
 }
 

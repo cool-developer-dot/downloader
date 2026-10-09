@@ -1,9 +1,12 @@
 package com.vidorax.media.engine
 
 import com.vidorax.media.InvalidStateException
+import com.vidorax.media.library.GalleryExport
 import com.vidorax.media.library.LibraryStore
 import com.vidorax.media.library.MediaInfo
 import com.vidorax.media.library.MediaMetadata
+import com.vidorax.media.library.SavedCopy
+import com.vidorax.media.library.SavedVideoIndex
 import com.vidorax.media.model.LibraryItem
 import com.vidorax.media.model.ProbeFailure
 import com.vidorax.media.model.ProbeRequest
@@ -11,7 +14,14 @@ import com.vidorax.media.model.ProbeResult
 import com.vidorax.media.model.RequestContext
 import com.vidorax.media.model.VariantChoice
 import com.vidorax.media.net.MediaRefusedException
+import com.vidorax.media.model.DownloadErrorCode
+import com.vidorax.media.model.ProcessingStage
 import com.vidorax.media.plan.DashResolution
+import com.vidorax.media.plan.SplitResolution
+import com.vidorax.media.process.MediaProcessor
+import com.vidorax.media.process.ProcessingInput
+import com.vidorax.media.process.ProcessingOperation
+import com.vidorax.media.process.ProcessingResult
 import com.vidorax.media.plan.HlsPlanResult
 import com.vidorax.media.plan.HlsPlanner
 import com.vidorax.media.plan.Probe
@@ -71,9 +81,9 @@ internal interface HlsDownloads {
 }
 
 /**
- * DASH whose chosen representation is one complete file: [resolve] classifies the manifest and that file, and the
- * download then runs as the progressive file it is. Segmented, separate-audio, live and protected manifests are
- * refused there with their own codes.
+ * DASH: [resolve] classifies the manifest and what it would download — one complete file (the download then runs as
+ * the progressive file it is), or a video track and an optional separate audio track (single files or segments),
+ * downloaded one after the other and merged. Live and protected manifests are refused with their own codes.
  */
 internal fun interface DashDownloads {
   suspend fun resolve(url: String, context: RequestContext, choice: VariantChoice?): DashResolution
@@ -84,6 +94,53 @@ internal fun interface DashDownloads {
       DashResolution.Refused(ProbeResult.Failure(ProbeFailure.UNSUPPORTED_FORMAT, null, "DASH is not available"))
     }
   }
+}
+
+/** A split source (separate video and audio files): both classified for their role and checked to belong together. */
+internal fun interface SplitDownloads {
+  suspend fun resolve(videoUrl: String, audioUrl: String, context: RequestContext): SplitResolution
+
+  companion object {
+    val UNSUPPORTED = SplitDownloads { _, _, _ ->
+      SplitResolution.Refused(ProbeResult.Failure(ProbeFailure.UNSUPPORTED_FORMAT, null, "Merging tracks is not available"))
+    }
+  }
+}
+
+/**
+ * Turns the downloaded track files into the one file the library keeps: keep, remux, merge or transcode, then
+ * re-read it (see [MediaProcessor]). [onProgress] reports the stage and its fraction.
+ */
+internal fun interface MediaProcessing {
+  suspend fun process(
+    input: ProcessingInput,
+    workDir: File,
+    onProgress: (ProcessingStage, Double?) -> Unit,
+  ): ProcessingResult
+
+  companion object {
+    /**
+     * No processing layer (unit tests of the engine's other steps): one downloaded file is kept exactly as it is, and
+     * separately downloaded tracks cannot be merged.
+     */
+    val PASSTHROUGH = MediaProcessing { input, _, _ ->
+      when (input) {
+        is ProcessingInput.Single ->
+          ProcessingResult.Done(input.track.file, MediaProcessor.keptContainer(input.track.container), ProcessingOperation.KEEP)
+        is ProcessingInput.Split -> ProcessingResult.Failed(DownloadErrorCode.MUX_FAILED, "merging is not available")
+      }
+    }
+  }
+}
+
+internal class RealMediaProcessing(private val processor: MediaProcessor) : MediaProcessing {
+  override suspend fun process(input: ProcessingInput, workDir: File, onProgress: (ProcessingStage, Double?) -> Unit): ProcessingResult =
+    processor.process(input, workDir, onProgress)
+}
+
+internal class RealSplitDownloads(private val probe: Probe) : SplitDownloads {
+  override suspend fun resolve(videoUrl: String, audioUrl: String, context: RequestContext): SplitResolution =
+    probe.resolveSplit(videoUrl, audioUrl, context)
 }
 
 internal fun interface MediaInspector {
@@ -98,6 +155,43 @@ internal fun interface ThumbnailMaker {
 internal fun interface LibraryWriter {
   /** Inserts a completed item; returns false when an item with that id already exists (idempotent completion). */
   suspend fun insertCompleted(item: LibraryItem): Boolean
+}
+
+/** Videos the user already has, so the same video is never downloaded twice (library/SavedVideoIndex). */
+internal interface SavedVideos {
+  /** A library item with its file, or a VidoraX gallery copy that still exists, for this source identity. */
+  suspend fun findByIdentity(identityKey: String): SavedCopy?
+
+  /** A library item (other than [excludeId]) or a VidoraX gallery copy with exactly the bytes of [file]. */
+  suspend fun findByContent(file: File, excludeId: String, audioOnly: Boolean): SavedCopy?
+
+  /** Items saved before identities existed get the identity of their recorded source. */
+  suspend fun backfillIdentities()
+
+  companion object {
+    /** Nothing is ever known as saved: every download is new (tests that are not about duplicates). */
+    val NONE = object : SavedVideos {
+      override suspend fun findByIdentity(identityKey: String): SavedCopy? = null
+      override suspend fun findByContent(file: File, excludeId: String, audioOnly: Boolean): SavedCopy? = null
+      override suspend fun backfillIdentities() = Unit
+    }
+  }
+}
+
+/** The device-gallery copy of a completed download. Never throws: a failed copy never touches the download. */
+internal interface GalleryPublisher {
+  /** Copies the completed library item [id] into the gallery and records the copy on it. */
+  suspend fun publish(id: String)
+
+  /** After a restart: finishes the copies a process death interrupted. */
+  suspend fun resumePending()
+
+  companion object {
+    val NONE = object : GalleryPublisher {
+      override suspend fun publish(id: String) = Unit
+      override suspend fun resumePending() = Unit
+    }
+  }
 }
 
 // --- production adapters over the tested progressive foundation ---
@@ -138,6 +232,22 @@ internal class RealMediaInspector(private val mediaInfo: MediaInfo) : MediaInspe
 
 internal class RealThumbnails(private val thumbnails: com.vidorax.media.library.Thumbnails) : ThumbnailMaker {
   override fun create(id: String, file: File, metadata: MediaMetadata): File? = thumbnails.create(id, file, metadata)
+}
+
+internal class RealSavedVideos(private val index: SavedVideoIndex) : SavedVideos {
+  override suspend fun findByIdentity(identityKey: String): SavedCopy? = index.findByIdentity(identityKey)
+
+  override suspend fun findByContent(file: File, excludeId: String, audioOnly: Boolean): SavedCopy? =
+    index.findByContent(file, excludeId, audioOnly)
+
+  override suspend fun backfillIdentities() =
+    index.backfillIdentities { sourceUrl, pageUrl -> DownloadIdentity.of(sourceUrl, variant = null, pageUrl = pageUrl) }
+}
+
+internal class RealGalleryPublisher(private val gallery: GalleryExport) : GalleryPublisher {
+  override suspend fun publish(id: String) = gallery.publishCompleted(id)
+
+  override suspend fun resumePending() = gallery.resumePending()
 }
 
 internal class RealLibraryWriter(private val library: LibraryStore) : LibraryWriter {

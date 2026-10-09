@@ -4,6 +4,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { Icon } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
 import { Button } from '@/components/buttons/Button';
 import { useTheme } from '@/hooks/use-theme';
@@ -13,7 +14,51 @@ import {
   useAppLockStore,
 } from '@/security/app-lock';
 
+import { AppLockDataLossWarning } from './AppLockDataLossWarning';
+
 type SetupStep = 'set' | 'confirm' | 'recovery';
+
+function SetupCheckbox({
+  checked,
+  onToggle,
+  label,
+  testID,
+}: {
+  checked: boolean;
+  onToggle: () => void;
+  label: string;
+  testID: string;
+}) {
+  const theme = useTheme();
+  return (
+    <Pressable
+      onPress={onToggle}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      accessibilityLabel={label}
+      hitSlop={6}
+      style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 12 }}
+      testID={testID}>
+      <View
+        style={{
+          width: 22,
+          height: 22,
+          marginTop: 1,
+          borderRadius: 4,
+          borderWidth: 2,
+          borderColor: checked ? theme.colors.primary : theme.colors.border,
+          backgroundColor: checked ? theme.colors.primary : 'transparent',
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}>
+        {checked ? <Icon name="check" size={16} color="onPrimary" /> : null}
+      </View>
+      <Text variant="body" style={{ flex: 1 }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
 
 /**
  * Single-screen App Lock enable flow. PIN/recovery never enter route params.
@@ -36,6 +81,8 @@ export const AppLockSetupScreen = memo(function AppLockSetupScreen() {
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [savedChecked, setSavedChecked] = useState(false);
+  // App Lock can't be enabled until the user has read what losing both the PIN and the recovery code means.
+  const [dataLossAcknowledged, setDataLossAcknowledged] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   const exit = useCallback(() => {
@@ -95,6 +142,10 @@ export const AppLockSetupScreen = memo(function AppLockSetupScreen() {
       setLocalError(t('appLock.mustConfirmSaved'));
       return;
     }
+    if (!dataLossAcknowledged) {
+      setLocalError(t('appLock.mustAcknowledgeDataLoss'));
+      return;
+    }
     const ok = await completeSetup(true);
     if (ok) {
       if (router.canGoBack()) {
@@ -103,7 +154,7 @@ export const AppLockSetupScreen = memo(function AppLockSetupScreen() {
       return;
     }
     setLocalError(t('appLock.setupError'));
-  }, [completeSetup, router, savedChecked, t]);
+  }, [completeSetup, dataLossAcknowledged, router, savedChecked, t]);
 
   const errorText =
     localError ??
@@ -199,27 +250,27 @@ export const AppLockSetupScreen = memo(function AppLockSetupScreen() {
             testID="app-lock-copy-recovery"
           />
 
-          <Pressable
-            onPress={() => setSavedChecked((v) => !v)}
-            accessibilityRole="checkbox"
-            accessibilityState={{ checked: savedChecked }}
-            accessibilityLabel={t('appLock.savedRecoveryConfirm')}
-            style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}
-            testID="app-lock-saved-checkbox">
-            <View
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 4,
-                borderWidth: 2,
-                borderColor: savedChecked ? theme.colors.primary : theme.colors.border,
-                backgroundColor: savedChecked ? theme.colors.primary : 'transparent',
-              }}
-            />
-            <Text variant="body" style={{ flex: 1 }}>
-              {t('appLock.savedRecoveryConfirm')}
-            </Text>
-          </Pressable>
+          <SetupCheckbox
+            checked={savedChecked}
+            onToggle={() => {
+              setLocalError(null);
+              setSavedChecked((v) => !v);
+            }}
+            label={t('appLock.savedRecoveryConfirm')}
+            testID="app-lock-saved-checkbox"
+          />
+
+          <AppLockDataLossWarning testID="app-lock-setup-data-loss-warning" />
+
+          <SetupCheckbox
+            checked={dataLossAcknowledged}
+            onToggle={() => {
+              setLocalError(null);
+              setDataLossAcknowledged((v) => !v);
+            }}
+            label={t('appLock.dataLossAcknowledge')}
+            testID="app-lock-data-loss-checkbox"
+          />
 
           {errorText ? (
             <Text variant="caption" color="error" accessibilityLiveRegion="polite">
@@ -231,7 +282,7 @@ export const AppLockSetupScreen = memo(function AppLockSetupScreen() {
             title={t('appLock.enableAppLock')}
             fullWidth
             loading={isBusy}
-            disabled={isBusy || !savedChecked}
+            disabled={isBusy || !savedChecked || !dataLossAcknowledged}
             onPress={() => {
               void handleCommit();
             }}

@@ -26,6 +26,10 @@ data class LibraryItem(
   val galleryUri: String?,
   val createdAt: Long,
   val completedAt: Long,
+  /** Hash of the source identity it was downloaded from (engine/DownloadIdentity); null for imported items. */
+  val identityKey: String? = null,
+  /** True until the automatic gallery copy of a new item is saved (survives a process death mid-copy). */
+  val galleryPending: Boolean = false,
 )
 
 data class LibraryQuery(

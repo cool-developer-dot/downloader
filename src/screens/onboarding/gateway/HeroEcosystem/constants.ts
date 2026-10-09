@@ -1,15 +1,14 @@
 import type { ComponentType } from 'react';
-import { Download, Globe, Link2 } from 'lucide-react-native';
+import CirclePlay from 'lucide-react-native/icons/circle-play';
+import Download from 'lucide-react-native/icons/download';
+import Film from 'lucide-react-native/icons/film';
+import Globe from 'lucide-react-native/icons/globe';
+import Library from 'lucide-react-native/icons/library';
+import Link2 from 'lucide-react-native/icons/link-2';
+import Users from 'lucide-react-native/icons/users';
+import Video from 'lucide-react-native/icons/video';
 
 import { resolveOnboardingSurfaces } from '@/theme/onboarding-surfaces';
-
-import {
-  DailymotionMonoIcon,
-  FacebookMonoIcon,
-  InstagramMonoIcon,
-  TikTokMonoIcon,
-  VimeoMonoIcon,
-} from './PlatformMonoIcons';
 
 export type HeroIconRendererProps = {
   size?: number;
@@ -18,11 +17,11 @@ export type HeroIconRendererProps = {
 };
 
 export type HeroOrbitItemId =
-  | 'instagram'
-  | 'tiktok'
-  | 'facebook'
-  | 'vimeo'
-  | 'dailymotion'
+  | 'video'
+  | 'social'
+  | 'media'
+  | 'player'
+  | 'library'
   | 'browser'
   | 'pasteLink'
   | 'download';
@@ -51,54 +50,54 @@ function radialEnter(index: number, distance = 14): { enterDx: number; enterDy: 
   };
 }
 
-/** Onboarding orbit — no YouTube promotion. */
+/** Onboarding orbit — generic icons only, no third-party brand artwork. */
 export const HERO_ORBIT_ITEMS: readonly HeroOrbitItem[] = [
   {
-    id: 'instagram',
-    label: 'Instagram',
-    kind: 'platform',
-    Icon: InstagramMonoIcon,
-    color: '#E1306C',
+    id: 'video',
+    label: 'Video',
+    kind: 'capability',
+    Icon: Video,
+    color: '#EF4444',
     tint: 'rgba(255, 255, 255, 0.04)',
     border: 'rgba(255, 255, 255, 0.14)',
     ...radialEnter(0),
   },
   {
-    id: 'tiktok',
-    label: 'TikTok',
-    kind: 'platform',
-    Icon: TikTokMonoIcon,
-    color: '#F8FAFC',
+    id: 'social',
+    label: 'Social',
+    kind: 'capability',
+    Icon: Users,
+    color: '#EC4899',
     tint: 'rgba(255, 255, 255, 0.04)',
     border: 'rgba(255, 255, 255, 0.14)',
     ...radialEnter(1),
   },
   {
-    id: 'facebook',
-    label: 'Facebook',
-    kind: 'platform',
-    Icon: FacebookMonoIcon,
-    color: '#1877F2',
+    id: 'media',
+    label: 'Media',
+    kind: 'capability',
+    Icon: Film,
+    color: '#F97316',
     tint: 'rgba(255, 255, 255, 0.04)',
     border: 'rgba(255, 255, 255, 0.14)',
     ...radialEnter(2),
   },
   {
-    id: 'vimeo',
-    label: 'Vimeo',
-    kind: 'platform',
-    Icon: VimeoMonoIcon,
-    color: '#1AB7EA',
+    id: 'player',
+    label: 'Player',
+    kind: 'capability',
+    Icon: CirclePlay,
+    color: '#F59E0B',
     tint: 'rgba(255, 255, 255, 0.04)',
     border: 'rgba(255, 255, 255, 0.14)',
     ...radialEnter(3),
   },
   {
-    id: 'dailymotion',
-    label: 'Dailymotion',
-    kind: 'platform',
-    Icon: DailymotionMonoIcon,
-    color: '#0066DC',
+    id: 'library',
+    label: 'Library',
+    kind: 'capability',
+    Icon: Library,
+    color: '#8B5CF6',
     tint: 'rgba(255, 255, 255, 0.04)',
     border: 'rgba(255, 255, 255, 0.14)',
     ...radialEnter(4),

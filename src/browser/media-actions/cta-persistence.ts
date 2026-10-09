@@ -201,6 +201,29 @@ export function shouldHideStickyOfferForLiveIdentity(input: {
   return isStrongOwner(input.liveOwnershipConfidence);
 }
 
+/**
+ * Why the tab's offer is withdrawn when the detection pipeline's navigation moves from `previous` to `next` (null: the
+ * start page, or no page yet), or null to keep it. `NAVIGATED`: another document with other content. `LEFT_FOR_HOME`:
+ * the tab left its page for the start page — the same link opened again later is a new page load, and the offer the old
+ * page last showed (a later reel of a viewer that never changes its URL) must not come back as the new page's offer.
+ * From no page to a page keeps it: a tab switched back to shows its own offer again.
+ */
+export function offerNavigationReset(input: {
+  previous: string | null;
+  next: string | null;
+  nextIsHome: boolean;
+  sameDocument: boolean;
+  sameContent: boolean;
+}): 'NAVIGATED' | 'LEFT_FOR_HOME' | null {
+  if (!input.previous) {
+    return null;
+  }
+  if (input.next) {
+    return input.sameDocument || input.sameContent ? null : 'NAVIGATED';
+  }
+  return input.nextIsHome ? 'LEFT_FOR_HOME' : null;
+}
+
 export type VerifyRerunBudget = { key: string; count: number };
 
 /**

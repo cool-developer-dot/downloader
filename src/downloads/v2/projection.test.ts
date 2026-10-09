@@ -97,3 +97,42 @@ describe('v2 engine state → the existing Downloads row', () => {
     assert.equal(entry.transfer.localState, 'complete');
   });
 });
+
+describe('processing stage', () => {
+  test('a processing event names what the engine is doing, without moving the bytes', () => {
+    const entry = projectV2Download(downloadRecord({ state: 'processing', bytesDone: 5_242_880, totalBytes: 5_242_880 }));
+    const merging = applyV2Progress(entry, {
+      id: entry.item.id,
+      phase: 'processing',
+      stage: 'merging',
+      bytesDone: 5_242_880,
+      totalBytes: 5_242_880,
+      fraction: 0.4,
+      speedBps: 0,
+      etaSeconds: null,
+    });
+    assert.ok(merging);
+    assert.equal(merging!.transfer.processingStage, 'merging');
+    assert.equal(merging!.transfer.bytesWritten, entry.transfer.bytesWritten);
+    // The same stage again changes nothing.
+    assert.equal(
+      applyV2Progress(merging!, { id: entry.item.id, phase: 'processing', stage: 'merging', bytesDone: 1, totalBytes: 1, fraction: 0.9, speedBps: 0, etaSeconds: null }),
+      null,
+    );
+  });
+
+  test('a processing event never touches a row that is still downloading', () => {
+    const entry = projectV2Download(downloadRecord({ state: 'downloading', bytesDone: 1 }));
+    assert.equal(
+      applyV2Progress(entry, { id: entry.item.id, phase: 'processing', stage: 'remuxing', bytesDone: 1, totalBytes: 1, fraction: null, speedBps: 0, etaSeconds: null }),
+      null,
+    );
+  });
+
+  test('every new failure code has its own message', () => {
+    for (const code of ['VIDEO_TRACK_MISSING', 'AUDIO_TRACK_MISSING', 'TRACK_MISMATCH', 'SEGMENT_FAILED', 'MUX_FAILED', 'TRANSCODE_FAILED', 'INVALID_MEDIA'] as const) {
+      const entry = projectV2Download(downloadRecord({ state: 'failed', errorCode: code }));
+      assert.ok(entry.item.errorMessage && entry.item.errorMessage !== 'The download failed.', code);
+    }
+  });
+});

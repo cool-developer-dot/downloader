@@ -18,15 +18,13 @@ export const THEME_PREFERENCES: readonly ThemePreference[] = [
 
 /**
  * Normalize stored / incoming preference.
- * Legacy `system` → `light` (product requirement);
+ * Legacy `system` (case-insensitive: 'system' and 'SYSTEM' both occurred in older builds) → `light`;
  * unknown values → `DEFAULT_THEME_PREFERENCE` (first-time / safe default).
  */
 export function normalizeThemePreference(value: unknown): ThemePreference {
   if (value === 'light' || value === 'logo' || value === 'dark') {
     return value;
   }
-  // Legacy system preference collapses to LIGHT per product requirement
-  // (case-insensitive: 'system' and 'SYSTEM' both occurred in older builds).
   if (typeof value === 'string' && value.toLowerCase() === 'system') {
     return 'light';
   }
@@ -40,4 +38,9 @@ export function isThemePreference(value: unknown): value is ThemePreference {
 /** Preference always maps 1:1 to a full theme object (no OS takeover). */
 export function resolveThemeMode(preference: ThemePreference): ThemeMode {
   return preference;
+}
+
+/** Light/dark as Android's night mode sees it: Logo paints on the light native scheme. */
+export function nightModeOf(preference: ThemePreference): 'light' | 'dark' {
+  return preference === 'dark' ? 'dark' : 'light';
 }

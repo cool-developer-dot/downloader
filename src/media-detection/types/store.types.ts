@@ -34,6 +34,11 @@ export interface MediaDetectionActions {
   setPageMetadata: (metadata: PageMediaMetadata | null) => void;
   /** The page renamed itself: its media that carried the previous name take the new one. */
   renamePageMedia: (pageUrl: string, fromTitle: string, toTitle: string) => void;
+  /**
+   * The page's player is showing this file right now (a reel scrolled back into view plays it from cache, so no new
+   * request is seen): its candidates count as observed now. Returns how many were refreshed.
+   */
+  refreshPlayingSource: (sourceUrl: string, observedAt: number) => number;
   setScanning: (scanning: boolean, progress?: number) => void;
   setSupported: (supported: boolean) => void;
   setDetectionError: (error: MediaDetectionError | null) => void;

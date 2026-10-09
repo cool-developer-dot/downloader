@@ -38,6 +38,13 @@ export interface NetworkMediaBatchEvent {
   observations: NetworkMediaObservation[];
 }
 
+/**
+ * A download the WebView started (a navigation or link whose response it cannot render: a pasted `.mpd` or `.mov`,
+ * a file served as an attachment) that looks like a video. Only those are sent — every other download goes to
+ * Android's DownloadManager as before. `hint` comes from the response's MIME type or file name; `unknown` is a
+ * generic binary with no usable name, which JS must either identify as a video or hand back with
+ * `startSystemDownload`.
+ */
 export interface WebDownloadEvent {
   viewTag: number;
   url: string;
@@ -45,6 +52,7 @@ export interface WebDownloadEvent {
   contentDisposition: string | null;
   mimeType: string | null;
   contentLength: number | null;
+  hint: Extract<NetworkMediaHint, 'manifest-hls' | 'manifest-dash' | 'progressive' | 'unknown'>;
 }
 
 export interface SharedTextEvent {
@@ -61,6 +69,18 @@ export type VidoraWebEvents = {
 
 export interface VidoraWebModuleApi {
   setNetworkObservationEnabled(enabled: boolean): void;
+  /**
+   * Parks (`false`) or wakes (`true`) the WebView whose RNCWebViewWrapper has this view tag: `WebView.onPause()` /
+   * `onResume()`, so a parked page is hidden (`document.hidden`), stops drawing, animating and playing, and its media
+   * requests are no longer reported. Resolves false when no such WebView exists.
+   */
+  setWebViewActive(viewTag: number, active: boolean): Promise<boolean>;
+  /**
+   * Settings → Theme for Android itself: kept natively and applied before the first activity frame on every start,
+   * and on Android 12+ given to the system (`UiModeManager.setApplicationNightMode`) so its splash follows the app's
+   * theme. `system` follows the device. Returns the mode applied. Missing on older native builds.
+   */
+  setAppNightMode?(mode: 'light' | 'dark' | 'system'): string;
   /** Persist WebView cookies to disk (call when the app goes to background). */
   flushCookies(): Promise<void>;
   /**
@@ -68,6 +88,16 @@ export interface VidoraWebModuleApi {
    * Resolves false when no activity can handle it.
    */
   launchIntentUri(uri: string): Promise<boolean>;
+  /**
+   * Hands a download that `onWebDownload` claimed back to Android's DownloadManager, as react-native-webview would
+   * have started it. Resolves false when it could not be started.
+   */
+  startSystemDownload(
+    url: string,
+    userAgent: string | null,
+    contentDisposition: string | null,
+    mimeType: string | null,
+  ): Promise<boolean>;
   /** User-Agent of a WebView with default settings, for requests not tied to a tab. */
   getDefaultUserAgent(): string;
   /**

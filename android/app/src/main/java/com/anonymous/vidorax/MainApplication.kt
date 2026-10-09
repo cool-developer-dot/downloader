@@ -3,6 +3,9 @@ package com.anonymous.vidorax
 import android.app.Application
 import android.content.res.Configuration
 
+import androidx.appcompat.app.AppCompatDelegate
+import com.vidorax.web.AppNightMode
+
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
@@ -34,6 +37,13 @@ class MainApplication : Application(), ReactApplication {
 
   override fun onCreate() {
     super.onCreate()
+    // Settings → Theme applies from the first activity frame (the launch screen on Android 8–11, the window background
+    // everywhere), before JavaScript runs; Android 12+ also gets it for its system splash (AppNightMode).
+    when (AppNightMode.recorded(this)) {
+      AppNightMode.LIGHT -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_NO)
+      AppNightMode.DARK -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_YES)
+      AppNightMode.SYSTEM -> AppCompatDelegate.setDefaultNightMode(AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+    }
     DefaultNewArchitectureEntryPoint.releaseLevel = try {
       ReleaseLevel.valueOf(BuildConfig.REACT_NATIVE_RELEASE_LEVEL.uppercase())
     } catch (e: IllegalArgumentException) {

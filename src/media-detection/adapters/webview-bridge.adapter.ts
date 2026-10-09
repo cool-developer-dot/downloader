@@ -5,6 +5,8 @@ import {
   type BridgeActiveIframePlayerPayload,
   type BridgeBlobIndicatorPayload,
   type BridgeMediaSourceKind,
+  type BridgeMseFiles,
+  type BridgeMseTrackLayout,
   type BridgeErrorPayload,
   type BridgeMediaCandidatePayload,
   type BridgeMutationBatchPayload,
@@ -279,6 +281,25 @@ function sanitizeSourceKind(value: unknown): BridgeMediaSourceKind | null {
   return value === 'mse' || value === 'blob' ? value : null;
 }
 
+function sanitizeMseTracks(value: unknown): BridgeMseTrackLayout | null {
+  return value === 'muxed' || value === 'split' || value === 'video' || value === 'audio' ? value : null;
+}
+
+/** Public http(s) file URLs only: a page cannot point the downloader at the user's network. */
+function sanitizeMseFiles(value: unknown): BridgeMseFiles | null {
+  const obj = asRecord(value);
+  if (!obj) {
+    return null;
+  }
+  const file = (raw: unknown): string | null => {
+    const url = optionalString(raw, 4_096);
+    return url && isSafeMediaUrl(url) ? normalizeMediaUrl(url) : null;
+  };
+  const video = file(obj.video);
+  const audio = file(obj.audio);
+  return video || audio ? { video, audio } : null;
+}
+
 function sanitizeBlobIndicator(raw: unknown): BridgeBlobIndicatorPayload | null {
   const obj = asRecord(raw);
   if (!obj) {
@@ -295,6 +316,8 @@ function sanitizeBlobIndicator(raw: unknown): BridgeBlobIndicatorPayload | null 
     elementIdentity: optionalString(obj.elementIdentity, 64),
     isProtected: obj.isProtected === true,
     sourceKind: sanitizeSourceKind(obj.sourceKind),
+    mseTracks: sanitizeMseTracks(obj.mseTracks),
+    mseFiles: sanitizeMseFiles(obj.mseFiles),
   };
 }
 
@@ -372,6 +395,8 @@ function sanitizeActiveVideo(raw: unknown): BridgeActiveVideoPayload | null {
       min: 0,
       max: 100_000,
     }),
+    displayWidth: sanitizeFiniteNumber(obj.displayWidth, { min: 0, max: 100_000 }),
+    displayHeight: sanitizeFiniteNumber(obj.displayHeight, { min: 0, max: 100_000 }),
     isDisplayed: obj.isDisplayed !== false,
     isVisibleStyle: obj.isVisibleStyle !== false,
     recentlyPlayed: Boolean(obj.recentlyPlayed),
@@ -379,6 +404,9 @@ function sanitizeActiveVideo(raw: unknown): BridgeActiveVideoPayload | null {
     associatedContentId: sanitizeAssociatedContentId(obj.associatedContentId),
     isProtected: obj.isProtected === true,
     sourceKind: sanitizeSourceKind(obj.sourceKind),
+    mseTracks: sanitizeMseTracks(obj.mseTracks),
+    mseFiles: sanitizeMseFiles(obj.mseFiles),
+    duration: sanitizeFiniteNumber(obj.duration, { min: 0, max: 86_400 * 7 }),
   };
 }
 

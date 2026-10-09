@@ -7,6 +7,7 @@ import { SegmentedControl } from '@/components/inputs/SegmentedControl';
 import { Switch } from '@/components/inputs/Switch';
 
 import { useTranslation } from '@/localization';
+import { selectSaveToGallery, useSettingsStore } from '@/store/settings';
 
 import {
   SettingsFeedbackBanner,
@@ -37,6 +38,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
   } = useDownloadSettingsScreen();
 
   const preferenceDisabled = !hydrated;
+  const saveToGallery = useSettingsStore(selectSaveToGallery);
   const concurrentValue = String(
     settings.maxConcurrentDownloads,
   ) as '1' | '2' | '3' | '4';
@@ -140,9 +142,28 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
                   testID="download-settings-auto-resume-switch"
                 />
               }
-              showDivider={false}
               accessibilityHint={t('settings.autoResumeLongHint')}
               testID="download-settings-auto-resume"
+            />
+            <SettingsRow
+              title={t('settings.saveToGallery')}
+              description={t('settings.saveToGalleryHint')}
+              icon="image-multiple-outline"
+              trailing={
+                <Switch
+                  value={saveToGallery}
+                  onValueChange={(value) => {
+                    useSettingsStore.getState().updateSetting('saveToGallery', value);
+                  }}
+                  disabled={preferenceDisabled}
+                  accessibilityLabel={t('settings.saveToGallery')}
+                  accessibilityHint={t('settings.saveToGalleryHint')}
+                  testID="download-settings-save-to-gallery-switch"
+                />
+              }
+              showDivider={false}
+              accessibilityHint={t('settings.saveToGalleryHint')}
+              testID="download-settings-save-to-gallery"
             />
           </SettingsSection>
         </SettingsStaggerItem>

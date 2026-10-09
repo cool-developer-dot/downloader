@@ -81,6 +81,23 @@ def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBu
  */
 def jscFlavor = 'io.github.react-native-community:jsc-android:2026004.+'
 
+/**
+ * Play upload key. Kept outside the repo in a properties file (storeFile, storePassword, keyAlias, keyPassword);
+ * path from -PVIDORAX_UPLOAD_KEYSTORE_PROPERTIES, the env var of the same name, or ~/.vidorax-signing/keystore.properties.
+ * Release is never signed with the debug keystore: without the upload key the release output is left unsigned.
+ */
+def uploadKeystorePropsFile = file(findProperty('VIDORAX_UPLOAD_KEYSTORE_PROPERTIES')
+    ?: System.getenv('VIDORAX_UPLOAD_KEYSTORE_PROPERTIES')
+    ?: "${System.getProperty('user.home')}/.vidorax-signing/keystore.properties")
+def uploadKeystoreProps = new Properties()
+if (uploadKeystorePropsFile.isFile()) {
+    uploadKeystorePropsFile.withInputStream { uploadKeystoreProps.load(it) }
+}
+def hasUploadKey = ['storeFile', 'storePassword', 'keyAlias', 'keyPassword'].every { uploadKeystoreProps.getProperty(it) }
+if (!hasUploadKey) {
+    logger.warn("VidoraX: no upload key at ${uploadKeystorePropsFile}; release builds will be UNSIGNED.")
+}
+
 android {
     ndkVersion rootProject.ext.ndkVersion
 
@@ -89,7 +106,7 @@ android {
 
     namespace 'com.anonymous.vidorax'
     defaultConfig {
-        applicationId 'com.anonymous.vidorax'
+        applicationId 'com.vidorax.fast.videodownloader'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
@@ -104,15 +121,21 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
+        if (hasUploadKey) {
+            release {
+                storeFile file(uploadKeystoreProps.getProperty('storeFile'))
+                storePassword uploadKeystoreProps.getProperty('storePassword')
+                keyAlias uploadKeystoreProps.getProperty('keyAlias')
+                keyPassword uploadKeystoreProps.getProperty('keyPassword')
+            }
+        }
     }
     buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
-            signingConfig signingConfigs.debug
+            signingConfig hasUploadKey ? signingConfigs.release : null
             def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'
             shrinkResources enableShrinkResources.toBoolean()
             minifyEnabled enableMinifyInReleaseBuilds

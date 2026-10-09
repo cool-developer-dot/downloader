@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Play } from 'lucide-react-native';
+import Play from 'lucide-react-native/icons/play';
 import Animated, {
   interpolate,
   type SharedValue,

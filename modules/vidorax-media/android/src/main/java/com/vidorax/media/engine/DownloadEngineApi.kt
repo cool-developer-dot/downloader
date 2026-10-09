@@ -4,6 +4,7 @@ import com.vidorax.media.model.DownloadProgress
 import com.vidorax.media.model.DownloadRecord
 import com.vidorax.media.model.DownloadSettings
 import com.vidorax.media.model.EnqueueRequest
+import com.vidorax.media.model.EnqueueResult
 import com.vidorax.media.model.ProbeRequest
 import com.vidorax.media.model.ProbeResult
 import kotlinx.coroutines.flow.Flow
@@ -22,7 +23,17 @@ interface DownloadEngineApi {
 
   suspend fun probe(request: ProbeRequest): ProbeResult
 
+  /** [enqueueUnique], with an already-saved video refused as ERR_ALREADY_DOWNLOADED (older callers). */
   suspend fun enqueue(request: EnqueueRequest): DownloadRecord
+
+  /**
+   * Starts the download unless the same video (engine/DownloadIdentity) is already downloading — that download is
+   * returned — or already saved in the library or as VidoraX's gallery copy. Atomic: racing calls start one download.
+   */
+  suspend fun enqueueUnique(request: EnqueueRequest): EnqueueResult
+
+  /** What [enqueueUnique] would find for this request without starting anything; null when the video is new. */
+  suspend fun findDuplicate(request: EnqueueRequest): EnqueueResult?
 
   suspend fun pause(id: String)
 

@@ -41,12 +41,17 @@ import okio.Buffer
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import com.vidorax.media.process.MediaFiles
+import com.vidorax.media.process.MediaProcessor
+import com.vidorax.media.process.TrackContainer
 import org.robolectric.RobolectricTestRunner
 
 /**
@@ -96,7 +101,10 @@ class DownloadEngineDashTest {
   private fun fixture(path: String): ByteArray =
     checkNotNull(javaClass.getResourceAsStream(path)) { "missing fixture $path" }.use { it.readBytes() }
 
-  private fun engine(settings: DownloadSettings = DownloadSettings.DEFAULT): DownloadEngine {
+  private fun engine(
+    settings: DownloadSettings = DownloadSettings.DEFAULT,
+    processing: MediaProcessing = MediaProcessing.PASSTHROUGH,
+  ): DownloadEngine {
     val probe = Probe(http, HlsPlanner(http), DashPlanner(http))
     return DownloadEngine(
       store = store,
@@ -109,6 +117,7 @@ class DownloadEngineDashTest {
       scope = scope,
       hls = RealHlsDownloads(HlsPlanner(http), HlsTransfer(http)),
       dash = RealDashDownloads(probe),
+      processing = processing,
       retryDelay = { delays += it },
       initialSettings = settings,
       idFactory = { "dash-${ids.incrementAndGet()}" },
@@ -254,20 +263,109 @@ class DownloadEngineDashTest {
 
   // ---------- refused before any media byte ----------
 
-  @Test fun separateAudioAndVideoFailsAsUnsupportedWithoutFetchingMedia() = runBlocking {
-    manifest("/s/split.mpd") { mpd(rep("v", 720, "avc1.64001f", "v.mp4"), extraSets = separateAudio) }
-    serveRanged("/s/v.mp4", videoOnly)
-    serveRanged("/s/a.m4a", fixture("/media/formats/audio.m4a"))
-    val engine = engine()
+  // ---------- separate tracks, merged ----------
+
+  private val splitVideo = fixture("/media/process/split-video.mp4")
+  private val splitAudio = fixture("/media/process/split-audio.m4a")
+  private val realProcessing = RealMediaProcessing(MediaProcessor())
+
+  /** An fMP4 file cut the way a DASH packager serves it: the init section, then one segment per fragment. */
+  private fun segmentsOf(bytes: ByteArray): Pair<ByteArray, List<ByteArray>> {
+    val boxes = mutableListOf<Pair<String, ByteArray>>()
+    var off = 0
+    while (off + 8 <= bytes.size) {
+      val size = java.nio.ByteBuffer.wrap(bytes, off, 4).int
+      boxes += String(bytes, off + 4, 4, Charsets.ISO_8859_1) to bytes.copyOfRange(off, off + size)
+      off += size
+    }
+    val init = boxes.takeWhile { it.first == "ftyp" || it.first == "moov" }.fold(ByteArray(0)) { a, b -> a + b.second }
+    val segments = mutableListOf<ByteArray>()
+    var current = ByteArray(0)
+    for ((type, box) in boxes.drop(2)) {
+      if (type == "mfra") continue
+      current += box
+      if (type == "mdat") {
+        segments += current
+        current = ByteArray(0)
+      }
+    }
+    return init to segments
+  }
+
+  private fun assertMerged(file: java.io.File) {
+    val info = checkNotNull(MediaFiles.read(file, TrackContainer.MP4)) { "the finished file is readable" }
+    assertNotNull("picture", info.video)
+    assertNotNull("sound", info.audio)
+    assertFalse("a plain, seekable MP4", info.fragmented)
+  }
+
+  @Test fun separateAudioAndVideoFilesAreDownloadedAndMergedIntoOneFile() = runBlocking {
+    manifest("/s/split.mpd") { mpd(rep("v", 54, "avc1.64000a", "v.mp4", width = 96), extraSets = separateAudio).replace("PT10S", "PT2S") }
+    serveRanged("/s/v.mp4", splitVideo)
+    serveRanged("/s/a.m4a", splitAudio)
+    val engine = engine(processing = realProcessing)
 
     val record = engine.enqueue(request("/s/split.mpd"))
     engine.awaitIdle()
 
     val row = store.current(record.id)!!
+    assertEquals("${row.errorCode} ${row.errorMessage}", DownloadState.COMPLETED, row.state)
+    val item = library.items[record.id]!!
+    assertEquals(Container.MP4, item.container)
+    assertMerged(item.file)
+    assertTrue("both tracks were fetched", count("/s/v.mp4") >= 1 && count("/s/a.m4a") >= 1)
+    assertFalse("no track file is left behind", paths.workDir(record.id).exists())
+  }
+
+  @Test fun segmentedSeparateTracksAreAssembledAndMerged() = runBlocking {
+    val (videoInit, videoSegments) = segmentsOf(splitVideo)
+    val (audioInit, audioSegments) = segmentsOf(splitAudio)
+    fun list(prefix: String, count: Int) =
+      """<SegmentList timescale="1000" duration="1000"><Initialization sourceURL="$prefix/init.mp4"/>""" +
+        (1..count).joinToString("") { """<SegmentURL media="$prefix/$it.m4s"/>""" } + "</SegmentList>"
+    manifest("/seg/split.mpd") {
+      """
+      <?xml version="1.0" encoding="UTF-8"?>
+      <MPD xmlns="urn:mpeg:dash:schema:mpd:2011" type="static" mediaPresentationDuration="PT2S" minBufferTime="PT2S">
+        <Period>
+          <AdaptationSet mimeType="video/mp4" contentType="video">
+            <Representation id="v" bandwidth="100000" width="96" height="54" codecs="avc1.64000a">${list("v", videoSegments.size)}</Representation>
+          </AdaptationSet>
+          <AdaptationSet mimeType="audio/mp4" contentType="audio">
+            <Representation id="a" bandwidth="32000" codecs="mp4a.40.2">${list("a", audioSegments.size)}</Representation>
+          </AdaptationSet>
+        </Period>
+      </MPD>
+      """
+    }
+    serveRanged("/seg/v/init.mp4", videoInit)
+    videoSegments.forEachIndexed { i, bytes -> serveRanged("/seg/v/${i + 1}.m4s", bytes) }
+    serveRanged("/seg/a/init.mp4", audioInit)
+    audioSegments.forEachIndexed { i, bytes -> serveRanged("/seg/a/${i + 1}.m4s", bytes) }
+    val engine = engine(processing = realProcessing)
+
+    val record = engine.enqueue(request("/seg/split.mpd"))
+    engine.awaitIdle()
+
+    val row = store.current(record.id)!!
+    assertEquals("${row.errorCode} ${row.errorMessage}", DownloadState.COMPLETED, row.state)
+    assertMerged(library.items[record.id]!!.file)
+    assertEquals("every segment once", 1, count("/seg/v/2.m4s"))
+  }
+
+  @Test fun separateTracksWithoutAMergeLayerFailAsAMuxFailureNotAsASilentVideo() = runBlocking {
+    manifest("/s2/split.mpd") { mpd(rep("v", 54, "avc1.64000a", "v.mp4", width = 96), extraSets = separateAudio) }
+    serveRanged("/s2/v.mp4", splitVideo)
+    serveRanged("/s2/a.m4a", splitAudio)
+    val engine = engine()
+
+    val record = engine.enqueue(request("/s2/split.mpd"))
+    engine.awaitIdle()
+
+    val row = store.current(record.id)!!
     assertEquals(DownloadState.FAILED, row.state)
-    assertEquals(DownloadErrorCode.UNSUPPORTED_FORMAT, row.errorCode)
-    assertEquals(0, count("/s/v.mp4") + count("/s/a.m4a"))
-    assertTrue(library.items.isEmpty())
+    assertEquals(DownloadErrorCode.MUX_FAILED, row.errorCode)
+    assertTrue("never a video without its sound", library.items.isEmpty())
   }
 
   @Test fun aProtectedManifestFailsAsProtected() = runBlocking {

@@ -3,10 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { selectIsHome, selectBrowserError, useBrowserStore } from '@/browser/stores';
 import { navigation, routePaths } from '@/navigation';
 import { buildAnalysisFromVerification } from '@/downloads/analyze/analyze-from-verification';
-import {
-  normalizeAnalysisToSelection,
-  selectDefaultQualityOption,
-} from '@/downloads/quality';
+import { normalizeAnalysisToSelection } from '@/downloads/quality';
 import { verifyMediaCandidate } from '@/media-detection/services/candidate-verifier.service';
 import {
   hashHandoffIdentity,
@@ -22,6 +19,7 @@ import {
   classifyMsePlayback,
   getMsePlaybackContext,
   getMsePlaybackState,
+  isSplitPlayerFile,
 } from '@/media-detection/engine/mse-playback-context';
 import { useMediaDiscovery } from '@/media-detection/hooks/useMediaDiscovery';
 import { useMediaDetectionStore } from '@/media-detection/stores';
@@ -33,6 +31,7 @@ import {
 } from '@/media-detection/social';
 import {
   generalPageMediaContextStore,
+  isOfferedSourceRejectedNow,
   selectCurrentMediaForActiveGeneralTab,
 } from '@/media-detection/general-media';
 import { isSameGeneralContentNavigation } from '@/media-detection/general-media/general-content-navigation';
@@ -50,6 +49,7 @@ import {
 
 import type { VerifyRerunBudget } from './cta-persistence';
 import {
+  offerNavigationReset,
   shouldAcceptVerificationResult,
   shouldInvalidateCurrentMedia,
   shouldRetainAvailableCta,
@@ -59,12 +59,17 @@ import {
 import { browserMediaActionService } from './browser-media-action.service';
 import type { BrowserMediaActionState } from './browser-media-action.types';
 import { toBrowserMediaCtaState } from './browser-media-action.types';
+import type { V2DuplicateOutcome } from '@/downloads/v2';
+
 import { enqueueBrowserMediaDownload } from './browser-media-download.service';
 import {
   buildBrowserDownloadPresentation,
+  resolveConsumedDownloadNotice,
   resolveLivePresentationOwnership,
+  resolveOfferDuplicateNotice,
   type BrowserDownloadPresentation,
 } from './browser-download-presentation';
+import { useDownloadsStore } from '@/store/downloads';
 import {
   fingerprintDiagHash,
   logBrowserCta,
@@ -78,13 +83,37 @@ import {
   type MediaResolutionOutcome,
 } from './media-resolution-outcome';
 import { logMediaResolveTrace } from './media-resolve-diagnostics';
+import { recordVerificationOutcome } from './pipeline-trace';
+import { pickOfferedQualityOption } from './offered-option';
+import {
+  pipelineRejectionFor,
+  recordPipelineOutcome,
+  traceCtaPresentation,
+} from '@/media-detection/pipeline/pipeline-outcome';
+import { findExistingDownload } from '@/downloads/v2/handoff';
 import { mergeEligibleWindowCandidates } from '@/media-detection/observation/candidate-observation-window';
+import { resolveSplitPair, splitPairAnalysis } from '@/media-detection/pipeline/split-tracks';
+import { getV2Engine } from '@/downloads/v2/engine-port';
+import { toV2RequestContext } from '@/downloads/v2/enqueue-request';
 import {
   selectVerifiedStandaloneQualities,
 } from './verified-quality-options';
 
 /** Consecutive re-runs allowed for the same media, owner and page after a verification the page overtook. */
 const MAX_VERIFY_RERUNS = 3;
+/** Wait before verifying again after a temporary network/server failure. */
+const TRANSIENT_RETRY_MS = 3_000;
+/**
+ * How long a newly current video reads "Detecting video…" while nothing about it is known yet (no offer, no
+ * verdict). Detection usually answers in 2–4 s; a video still unanswered after this shows nothing rather than a
+ * detection that never ends. A not-yet-final negative verdict keeps it detecting until that verdict settles.
+ */
+const DETECTING_WINDOW_MS = 10_000;
+/**
+ * A verification of the current video that starts late (a slow page requests its media only after this window) shows
+ * "Detecting video…" while it runs, up to this long after the video became current — never an endless detection.
+ */
+const DETECTING_MAX_MS = 30_000;
 
 export type UseBrowserMediaActionOptions = {
   onOpenQualitySheet?: (
@@ -119,9 +148,11 @@ export type BrowserMediaActionViewModel = BrowserMediaActionState & {
   dismiss: () => void;
   download: () => Promise<{
     ok: boolean;
-    downloadId?: string;
-    /** True when the tap landed on a download this session already accepted, so nothing new was started. */
+    downloadId?: string | null;
+    /** True when nothing new was started. */
     deduped?: boolean;
+    /** DUPLICATE: the same video is already downloading, or already saved (library or VidoraX gallery copy). */
+    duplicate?: V2DuplicateOutcome | null;
     outcome?: MediaResolutionOutcome;
   }>;
   viewDownloads: () => void;
@@ -132,6 +163,18 @@ export type BrowserMediaActionViewModel = BrowserMediaActionState & {
  * Unified Browser media-action layer: correlate → verify → download CTA.
  * CTA is an entry point only — hide after successful Phase 1 enqueue.
  */
+/** The content identity of the video the page on this tab shows now (social or general context), or null. */
+function liveMediaIdentityOf(tabId: string, pageUrl: string | null | undefined): string | null {
+  if (pageUrl && resolveSocialPlatform(pageUrl)) {
+    const ctx = socialPageContextStore.get(tabId);
+    return (
+      ctx?.currentVisibleMediaIdentity ??
+      (ctx?.canonicalContentId ? `${ctx.platform}:${ctx.contentType}:${ctx.canonicalContentId}` : null)
+    );
+  }
+  return generalPageMediaContextStore.get(tabId)?.currentMediaIdentity ?? null;
+}
+
 export function useBrowserMediaAction(
   options: UseBrowserMediaActionOptions = {},
 ): BrowserMediaActionViewModel {
@@ -169,9 +212,12 @@ export function useBrowserMediaAction(
     fingerprint: string;
   } | null>(null);
 
+  // Verdicts and duplicate answers change the service without changing the offer state object.
+  const [serviceRevision, setServiceRevision] = useState(0);
   useEffect(() => {
     return browserMediaActionService.subscribe(() => {
       setActionState(browserMediaActionService.getState());
+      setServiceRevision((n) => n + 1);
     });
   }, []);
 
@@ -192,25 +238,26 @@ export function useBrowserMediaAction(
   }, []);
 
   useEffect(() => {
-    if (prevNavRef.current && lastNavigation) {
-      const social =
-        resolveSocialPlatform(lastNavigation) ??
-        resolveSocialPlatform(prevNavRef.current);
-      const sameDocument = isSameDocumentUrl(prevNavRef.current, lastNavigation);
-      const sameContent =
-        !social &&
-        isSameGeneralContentNavigation(prevNavRef.current, lastNavigation);
-      if (!sameDocument && !sameContent) {
-        browserMediaActionService.resetForNavigation(lastNavigation);
-        qualityHandoffRef.current = null;
-      }
+    const previous = prevNavRef.current;
+    const both = previous && lastNavigation ? { previous, next: lastNavigation } : null;
+    const social = both ? (resolveSocialPlatform(both.next) ?? resolveSocialPlatform(both.previous)) : null;
+    const reset = offerNavigationReset({
+      previous,
+      next: lastNavigation,
+      nextIsHome: selectIsHome(useBrowserStore.getState()),
+      sameDocument: both != null && isSameDocumentUrl(both.previous, both.next),
+      sameContent: both != null && !social && isSameGeneralContentNavigation(both.previous, both.next),
+    });
+    if (reset) {
+      browserMediaActionService.resetForNavigation(lastNavigation);
+      qualityHandoffRef.current = null;
     }
     prevNavRef.current = lastNavigation;
   }, [lastNavigation]);
 
   // Quality sheet confirm → Phase 1 create: consume CTA for the offered fingerprint.
   useEffect(() => {
-    return registerQualitySelectionDownloadListener(() => {
+    return registerQualitySelectionDownloadListener((created) => {
       const handoff = qualityHandoffRef.current;
       const fp =
         handoff?.fingerprint ??
@@ -220,7 +267,13 @@ export function useBrowserMediaAction(
         browserMediaActionService.getActiveTabId() ??
         '__default__';
       if (fp) {
-        browserMediaActionService.commitConsumed(tabId, fp, -1);
+        browserMediaActionService.commitConsumed(
+          tabId,
+          fp,
+          -1,
+          created?.downloadId ?? null,
+          created?.duplicate ?? null,
+        );
       }
       qualityHandoffRef.current = null;
     });
@@ -318,6 +371,7 @@ export function useBrowserMediaAction(
       const mseResolution = classifyMsePlayback({
         state: mseState,
         hasWholeSourceCandidate: !executableIsBlob || httpCandidates.length > 0,
+        hasManifestCandidate: httpCandidates.some(isManifestCandidate),
       });
       if (mseResolution.kind === 'PROTECTED') {
         logMediaResolveTrace({
@@ -341,7 +395,25 @@ export function useBrowserMediaAction(
         });
       }
 
-      if (executableIsBlob && httpCandidates.length === 0) {
+      // A split-buffer player whose second file has not been requested yet: wait (briefly) instead of offering the
+      // one half seen so far, and look again when the wait is over.
+      if (
+        mseResolution.kind === 'PENDING' &&
+        mseResolution.reason === 'MSE_SPLIT_TRACKS_PENDING' &&
+        isMsePlayerOnScreen(mseState, socialCtxEarly, generalCtxEarly)
+      ) {
+        setTimeout(() => setVerifyRevision((n) => n + 1), Math.max(250, mseResolution.retryInMs ?? 1_000));
+        return classifyMediaResolutionOutcome({ verificationInFlight: true });
+      }
+
+      // The player on screen is a MediaSource fed by separate video and audio files: each file is one half, so none is
+      // offered on its own — the pair is proven below and offered as one download that merges both.
+      const splitTracks =
+        mseResolution.kind === 'SPLIT_TRACKS' && isMsePlayerOnScreen(mseState, socialCtxEarly, generalCtxEarly)
+          ? mseResolution
+          : null;
+
+      if (executableIsBlob && httpCandidates.length === 0 && !splitTracks) {
         const unresolvable = mseResolution.kind === 'UNSUPPORTED';
         const mse = getMsePlaybackContext(pageUrlEarly);
         const rejectionReason = unresolvable
@@ -375,7 +447,11 @@ export function useBrowserMediaAction(
 
       const fingerprint = buildBrowserMediaFingerprint({
         pageUrl,
-        mediaUrl: executableIsBlob ? (httpCandidates[0]?.url ?? pageUrl) : mediaUrl,
+        mediaUrl: splitTracks
+          ? (splitTracks.videoUrl ?? splitTracks.candidateUrls[0] ?? pageUrl)
+          : executableIsBlob
+            ? (httpCandidates[0]?.url ?? pageUrl)
+            : mediaUrl,
         platform: executable.websiteSource,
       });
       if (
@@ -554,6 +630,8 @@ export function useBrowserMediaAction(
         browserMediaActionService.setDetecting(pageUrl);
       }
       const signal = browserMediaActionService.beginVerification(nextIdentity);
+      /** The result described a page state that is gone (the player moved on while this ran). */
+      let staleResult = false;
 
       const retainOnTransientFailure = (): boolean => {
         const live = browserMediaActionService.getState();
@@ -586,6 +664,97 @@ export function useBrowserMediaAction(
       };
 
       try {
+        // Split audio/video player: prove the exact pair and offer one download that merges both files.
+        if (splitTracks) {
+          const engine = getV2Engine();
+          if (!engine) {
+            clearOrRetain();
+            return classifyMediaResolutionOutcome({ rejectionReason: 'ENGINE_UNAVAILABLE' });
+          }
+          const probeUrl = splitTracks.videoUrl ?? splitTracks.candidateUrls[0] ?? pageUrl;
+          const requestContext = await buildRequestContextFromDetectedMedia({
+            mediaUrl: probeUrl,
+            pageUrl,
+            requiresCookies: executable.requiresCookies,
+            tabId,
+            navigationEpoch,
+          });
+          const resolved = await resolveSplitPair({
+            evidence: splitTracks,
+            probe: (request) => engine.probe(request),
+            request: toV2RequestContext(requestContext, pageUrl),
+            signal,
+          });
+          if (signal.aborted) {
+            return classifyMediaResolutionOutcome({ staleToken: true });
+          }
+          if (
+            (socialScope && !isSocialScopeCurrent(tabId, navigationEpoch, socialScope)) ||
+            (generalScope && !isGeneralScopeCurrent(tabId, navigationEpoch, generalScope))
+          ) {
+            staleResult = true;
+            return classifyMediaResolutionOutcome({ staleToken: true });
+          }
+          if (!resolved.ok) {
+            const { failure } = resolved;
+            staleResult = failure.outcome === 'STALE';
+            clearOrRetain();
+            logMediaResolveTrace({
+              tabId,
+              platform: socialPlatform ?? 'general',
+              generation: socialScope?.socialContextGeneration ?? generalScope?.pageGeneration ?? 0,
+              identityKind: nextIdentity,
+              event: failure.proven ? 'PROVEN_UNSUPPORTED' : 'TRANSIENT_UNRESOLVED',
+              candidateType: 'blob',
+              rejectionReason: failure.reason,
+            });
+            return classifyMediaResolutionOutcome({
+              // A temporary answer is retried like any network failure; everything else keeps its own reason.
+              rejectionReason: failure.outcome === 'TRANSIENT_FAILURE' ? 'PROBE_FAILED' : failure.reason,
+              hasCandidates: true,
+              allBoundedCandidatesRejected: failure.proven,
+            });
+          }
+          const pair = resolved.pair;
+          const offerFp = buildBrowserMediaFingerprint({ pageUrl, mediaUrl: pair.videoUrl, platform: executable.websiteSource });
+          if (
+            browserMediaActionService.isFingerprintConsumed(offerFp) ||
+            (nextIdentity != null && browserMediaActionService.isContentIdentityConsumed(nextIdentity))
+          ) {
+            if (nextIdentity != null) {
+              browserMediaActionService.retainConsumedPresentation(nextIdentity);
+            }
+            return classifyMediaResolutionOutcome({ staleToken: true });
+          }
+          browserMediaActionService.handoffVerified({
+            pageUrl,
+            media: executable,
+            analysis: splitPairAnalysis(pair, {
+              title: executable.title ?? media.title ?? null,
+              thumbnailUrl: executable.thumbnailUrl ?? media.thumbnailUrl ?? null,
+              platform: (socialPlatform ?? 'OTHER').toUpperCase(),
+            }),
+            requestContext,
+            mediaUrl: pair.videoUrl,
+            autoShow: Boolean(pendingMediaResolutionService.get()),
+            contentIdentity: nextIdentity,
+            variantIdentity: `split:${hashSafeId(pair.videoUrl)}+${hashSafeId(pair.audioUrl)}`,
+          });
+          logMediaResolveTrace({
+            tabId,
+            platform: socialPlatform ?? 'general',
+            generation: socialScope?.socialContextGeneration ?? generalScope?.pageGeneration ?? 0,
+            identityKind: nextIdentity,
+            event: 'OFFER_READY',
+            outcome: 'RESOLVED_SUPPORTED',
+          });
+          logAutomaticHandoff('MEDIA_CTA_AVAILABLE', {
+            tabId,
+            contentIdentityHash: hashHandoffIdentity(nextIdentity),
+          });
+          return classifyMediaResolutionOutcome({ resolvedSupported: true });
+        }
+
         const session = pendingMediaResolutionService.get();
         if (session && pendingMediaResolutionService.matchesPageUrl(pageUrl)) {
           const pendingResult = await tryCompletePageResolutionFromStore(session, signal);
@@ -653,6 +822,7 @@ export function useBrowserMediaAction(
                 socialPageContextStore.get(tabId)?.contextGeneration ?? -1,
             })
           ) {
+            staleResult = true;
             logAutomaticHandoff('MEDIA_VERIFY_STALE_RESULT_IGNORED', {
               tabId,
               contentIdentityHash: hashHandoffIdentity(socialScope.contentIdentity),
@@ -661,6 +831,7 @@ export function useBrowserMediaAction(
             return classifyMediaResolutionOutcome({ staleToken: true });
           }
           if (!isSocialScopeCurrent(tabId, navigationEpoch, socialScope)) {
+            staleResult = true;
             logAutomaticHandoff('MEDIA_VERIFY_STALE_RESULT_IGNORED', {
               tabId,
               contentIdentityHash: hashHandoffIdentity(socialScope.contentIdentity),
@@ -671,6 +842,9 @@ export function useBrowserMediaAction(
           }
 
           if (!offerResult.ok) {
+            staleResult =
+              offerResult.reason === 'STALE_SOCIAL_CONTEXT' ||
+              offerResult.reason === 'STALE_SOURCE_GENERATION';
             clearOrRetain();
             const outcome = classifyMediaResolutionOutcome({
               rejectionReason: offerResult.reason,
@@ -810,6 +984,7 @@ export function useBrowserMediaAction(
                 generalPageMediaContextStore.get(tabId)?.pageGeneration ?? -1,
             })
           ) {
+            staleResult = true;
             logAutomaticHandoff('MEDIA_VERIFY_STALE_RESULT_IGNORED', {
               tabId,
               contentIdentityHash: hashHandoffIdentity(generalScope.mediaIdentity),
@@ -818,6 +993,7 @@ export function useBrowserMediaAction(
             return classifyMediaResolutionOutcome({ staleToken: true });
           }
           if (!isGeneralScopeCurrent(tabId, navigationEpoch, generalScope)) {
+            staleResult = true;
             logAutomaticHandoff('MEDIA_VERIFY_STALE_RESULT_IGNORED', {
               tabId,
               contentIdentityHash: hashHandoffIdentity(generalScope.mediaIdentity),
@@ -828,6 +1004,9 @@ export function useBrowserMediaAction(
           }
 
           if (!offerResult.ok) {
+            staleResult =
+              offerResult.reason === 'STALE_PAGE_GENERATION' ||
+              offerResult.reason === 'STALE_SOURCE_GENERATION';
             logGeneralVerifyTrace('VERIFY_REJECTED', {
             tabId,
             pageGeneration: generalScope.pageGeneration,
@@ -875,6 +1054,28 @@ export function useBrowserMediaAction(
               allBoundedCandidatesRejected: true,
               rejectionReason: 'NO_FRESH_SOURCE',
             });
+          }
+
+          // The page moved on while this was verified (an item preloaded ahead is now known not to be the one shown):
+          // never publish a file the current correlation rejects; look at the page again instead.
+          if (
+            isOfferedSourceRejectedNow({
+              sourceUrl: preferred.executableUrl,
+              candidates: httpCandidates.length > 0 ? httpCandidates : [media],
+              tabId,
+              navigationEpoch,
+              pageUrl,
+            })
+          ) {
+            staleResult = true;
+            logAutomaticHandoff('MEDIA_VERIFY_STALE_RESULT_IGNORED', {
+              tabId,
+              contentIdentityHash: hashHandoffIdentity(generalScope.mediaIdentity),
+              scope: 'general',
+              reason: 'SOURCE_REJECTED_NOW',
+            });
+            clearOrRetain();
+            return classifyMediaResolutionOutcome({ staleToken: true });
           }
 
           const offerFp = buildBrowserMediaFingerprint({
@@ -1030,10 +1231,10 @@ export function useBrowserMediaAction(
           hasCandidates: true,
         });
       } finally {
-        // The page moved on while this ran — a trigger arrived meanwhile, or a navigation or a new owner cancelled
-        // it. The page reports each video only once, so waiting for its next event could mean waiting forever:
-        // look at the current page again instead.
-        const lookAgain = rerunRequestedRef.current || signal.aborted;
+        // The page moved on while this ran — a trigger arrived meanwhile, a navigation or a new owner cancelled it,
+        // or its result described a player state that is gone. The page reports each video only once, so waiting for
+        // its next event could mean waiting forever: look at the current page again instead.
+        const lookAgain = rerunRequestedRef.current || signal.aborted || staleResult;
         rerunRequestedRef.current = false;
         verifyingRef.current = false;
         browserMediaActionService.cancelVerification();
@@ -1056,12 +1257,40 @@ export function useBrowserMediaAction(
       browserMediaActionService.getActiveTabId() ??
       useBrowserStore.getState().activeTabId ??
       '__default__';
+    const playback = getMsePlaybackState(protectedTabId);
     const protection = classifyMsePlayback({
-      state: getMsePlaybackState(protectedTabId),
+      state: playback,
       hasWholeSourceCandidate: discovery.candidates.length > 0,
+      hasManifestCandidate: discovery.candidates.some(isManifestCandidate),
     });
     if (protection.kind === 'PROTECTED') {
       browserMediaActionService.invalidateProtectedOffer();
+      browserMediaActionService.recordVerdict(
+        liveMediaIdentityOf(protectedTabId, useMediaDetectionStore.getState().lastNavigation),
+        'PROTECTED',
+      );
+    } else if (
+      protection.kind === 'SPLIT_TRACKS' &&
+      // Only a published offer for one half: a verification in flight (the pair being proven) is left alone.
+      browserMediaActionService.getState().status === 'verified' &&
+      !isSplitOffer(browserMediaActionService.getState().analysis) &&
+      isMsePlayerOnScreen(
+        playback,
+        socialPageContextStore.get(protectedTabId),
+        generalPageMediaContextStore.get(protectedTabId),
+      ) &&
+      // A whole file of this same video that the player does not read (a reel's declared file, offered before its
+      // player switched to split buffers) is not a half: it stays while this video is current.
+      !(
+        !isSplitPlayerFile(playback, browserMediaActionService.getState().mediaUrl) &&
+        browserMediaActionService.getState().contentIdentity != null &&
+        browserMediaActionService.getState().contentIdentity ===
+          liveMediaIdentityOf(protectedTabId, useMediaDetectionStore.getState().lastNavigation)
+      )
+    ) {
+      // A standing offer for one half of a split player (its video-only or audio-only file) is withdrawn; the pair is
+      // then verified and offered as one merged download.
+      browserMediaActionService.invalidateProtectedOffer('split_audio_video');
     }
   }, [discovery.ownershipKey, discovery.candidates.length, isHome, ownerRevision]);
 
@@ -1168,8 +1397,36 @@ export function useBrowserMediaAction(
     }
 
     // Ownership transitions (MEDIUM → STRONG, player switch, preload becoming current) re-run
-    // verification without waiting for a new network request.
-    void verifyCandidate(discovery.media, discovery.ownershipKey);
+    // verification without waiting for a new network request. Its outcome — offered, or the reason it was not — is
+    // recorded, so a playing video without a CTA always has an explicit account.
+    const verified = discovery.media;
+    const ownershipKey = discovery.ownershipKey;
+    const identityAtStart = liveMediaIdentityOf(tabId, pageUrl);
+    void verifyCandidate(verified, ownershipKey).then((outcome) => {
+      recordVerificationOutcome({ tabId, pageUrl, media: verified, outcome });
+      // A proven verdict about the video on screen stays visible while it is there (Protected / Unsupported) — only
+      // for the video it was about: one the user scrolled past meanwhile never labels the next.
+      if (
+        outcome.kind === 'PROVEN_UNSUPPORTED' &&
+        identityAtStart &&
+        (browserMediaActionService.getActiveTabId() ?? useBrowserStore.getState().activeTabId ?? '__default__') ===
+          tabId &&
+        liveMediaIdentityOf(tabId, pageUrl) === identityAtStart
+      ) {
+        browserMediaActionService.recordVerdict(
+          identityAtStart,
+          pipelineRejectionFor(outcome.reason) === 'PROTECTED' ? 'PROTECTED' : 'UNSUPPORTED',
+        );
+      }
+      // A temporary network/server answer is no verdict: look again shortly (bounded per media/owner/page), instead of
+      // waiting for the page to happen to request the file again.
+      if (outcome.kind === 'NETWORK_FAILURE') {
+        setTimeout(
+          () => scheduleVerifyRerun(`${verified.id}|${ownershipKey}|${pageUrl ?? ''}`),
+          TRANSIENT_RETRY_MS,
+        );
+      }
+    });
   }, [
     discovery.media,
     discovery.candidates,
@@ -1177,6 +1434,7 @@ export function useBrowserMediaAction(
     discovery.ownershipKey,
     isHome,
     lastNavigation,
+    scheduleVerifyRerun,
     verifyCandidate,
     verifyRevision,
   ]);
@@ -1206,7 +1464,11 @@ export function useBrowserMediaAction(
       useBrowserStore.getState().activeTabId ??
       '__default__';
     if (!pageUrl) {
-      return { identity: null as string | null, confidence: null as 'STRONG' | 'MEDIUM' | 'WEAK' | 'REJECTED' | null };
+      return {
+        identity: null as string | null,
+        hidden: false,
+        confidence: null as 'STRONG' | 'MEDIUM' | 'WEAK' | 'REJECTED' | null,
+      };
     }
     if (resolveSocialPlatform(pageUrl)) {
       const ctx = socialPageContextStore.get(tabId);
@@ -1217,6 +1479,7 @@ export function useBrowserMediaAction(
           : null);
       return {
         identity,
+        hidden: false,
         confidence: resolveLivePresentationOwnership({
           canonicalContentId: ctx?.canonicalContentId,
           identityConfidence: ctx?.identityConfidence,
@@ -1233,6 +1496,7 @@ export function useBrowserMediaAction(
         : null;
     return {
       identity,
+      hidden: Boolean(gctx?.activeOwnerHidden),
       confidence:
         storedStrength ??
         resolveLivePresentationOwnership({
@@ -1243,6 +1507,110 @@ export function useBrowserMediaAction(
         }),
     };
   }, [currentUrl, lastNavigation, ownerRevision]);
+
+  // "Already downloaded" is known before any tap: each verified offer asks the engine's duplicate lookup once (the
+  // same one the tap uses — local, no network request).
+  useEffect(() => {
+    const fingerprint = actionState.mediaFingerprint;
+    const analysis = actionState.analysis;
+    if (actionState.status !== 'verified' || !analysis || !fingerprint) {
+      return;
+    }
+    if (browserMediaActionService.isOfferDuplicate(fingerprint)) {
+      return;
+    }
+    const tabAtAsk = browserMediaActionService.getActiveTabId();
+    const selection = normalizeAnalysisToSelection(analysis);
+    const option = pickOfferedQualityOption(selection.options, actionState.mediaUrl);
+    if (!option) {
+      return;
+    }
+    let cancelled = false;
+    void findExistingDownload(
+      {
+        option,
+        title: selection.title ?? '',
+        pageUrl: actionState.pageUrl,
+        thumbnailUrl: null,
+        requestContext: actionState.requestContext,
+      },
+      { engine: getV2Engine(), applyEntries: () => {} },
+    ).then((found) => {
+      if (cancelled || !found?.duplicate || browserMediaActionService.getActiveTabId() !== tabAtAsk) {
+        return;
+      }
+      // Already downloading is not already downloaded: follow that download instead.
+      browserMediaActionService.markOfferDuplicate(
+        fingerprint,
+        found.duplicate === 'ALREADY_DOWNLOADED' ? 'DOWNLOADED' : 'DOWNLOADING',
+        found.duplicate === 'ALREADY_DOWNLOADING' ? found.downloadId : null,
+      );
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    actionState.analysis,
+    actionState.mediaFingerprint,
+    actionState.mediaUrl,
+    actionState.pageUrl,
+    actionState.requestContext,
+    actionState.status,
+  ]);
+
+  // Moving on from a video: when the user comes back to it, a download that finished meanwhile is "Already
+  // downloaded" (the "Downloaded" moment was for the video they were watching when it finished).
+  const previousLiveIdentityRef = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = previousLiveIdentityRef.current;
+    if (previous && previous !== liveOwner.identity) {
+      browserMediaActionService.markConsumedRevisitable(previous);
+    }
+    previousLiveIdentityRef.current = liveOwner.identity;
+  }, [liveOwner.identity]);
+
+  // Which download the action area follows for the current video: the one its tap started or found, or the one the
+  // engine said was already running for the offer. Its live row status drives Downloading… / Downloaded.
+  const consumedOutcome = browserMediaActionService.getConsumedOutcome(
+    liveOwner.identity ?? actionState.contentIdentity,
+    actionState.mediaFingerprint,
+  );
+  const offerDuplicate = browserMediaActionService.getOfferDuplicate(actionState.mediaFingerprint);
+  const consumedRowStatus = useDownloadsStore((state) =>
+    consumedOutcome?.downloadId ? (state.engineRowsById[consumedOutcome.downloadId]?.status ?? null) : null,
+  );
+  const offerRowStatus = useDownloadsStore((state) =>
+    offerDuplicate?.downloadId ? (state.engineRowsById[offerDuplicate.downloadId]?.status ?? null) : null,
+  );
+  const consumedNotice = resolveConsumedDownloadNotice(consumedOutcome, consumedRowStatus);
+  const offerDuplicateNotice = resolveOfferDuplicateNotice(offerDuplicate, offerRowStatus);
+
+  // "Detecting video…": the live video (strong owner, on screen) has no offer and no final verdict, and detection is
+  // working on it — it became current less than DETECTING_WINDOW_MS ago, or a not-yet-final verdict is still settling.
+  const [expiredDetecting, setExpiredDetecting] = useState<{ identity: string; capped: boolean } | null>(null);
+  const liveIdentity = liveOwner.identity;
+  useEffect(() => {
+    if (!liveIdentity) {
+      return;
+    }
+    const windowTimer = setTimeout(
+      () => setExpiredDetecting({ identity: liveIdentity, capped: false }),
+      DETECTING_WINDOW_MS,
+    );
+    const capTimer = setTimeout(() => setExpiredDetecting({ identity: liveIdentity, capped: true }), DETECTING_MAX_MS);
+    return () => {
+      clearTimeout(windowTimer);
+      clearTimeout(capTimer);
+      setExpiredDetecting(null);
+    };
+  }, [liveIdentity]);
+  const detectingExpiry = expiredDetecting?.identity === liveIdentity ? expiredDetecting : null;
+  const liveDetecting =
+    Boolean(liveIdentity) &&
+    !liveOwner.hidden &&
+    (!detectingExpiry ||
+      browserMediaActionService.hasPendingVerdict(liveIdentity) ||
+      (!detectingExpiry.capped && browserMediaActionService.isVerifying(liveIdentity)));
 
   const presentation = useMemo(
     () =>
@@ -1259,8 +1627,19 @@ export function useBrowserMediaAction(
         liveIdentityConsumed: browserMediaActionService.isContentIdentityConsumed(
           liveOwner.identity,
         ),
+        liveVerdict: browserMediaActionService.getVerdict(liveOwner.identity),
+        offerDuplicate: browserMediaActionService.isOfferDuplicate(actionState.mediaFingerprint),
+        offerDuplicateNotice,
+        consumedNotice,
+        liveDetecting,
+        liveOwnerHidden: liveOwner.hidden,
       }),
     [
+      consumedNotice,
+      liveDetecting,
+      offerDuplicateNotice,
+      liveOwner.hidden,
+      serviceRevision,
       actionState,
       browserError,
       currentUrl,
@@ -1275,6 +1654,26 @@ export function useBrowserMediaAction(
 
   // Browser CTA offers download entry only — not download progress.
   const visible = presentation.showCard;
+
+  useEffect(() => {
+    traceCtaPresentation({
+      shown: visible,
+      notice: presentation.statusNotice,
+      mediaUrl: actionState.mediaUrl,
+      offerIdentity: actionState.contentIdentity,
+      liveIdentity: liveOwner.identity,
+      liveHidden: liveOwner.hidden,
+      status: actionState.status,
+    });
+  }, [
+    actionState.status,
+    actionState.contentIdentity,
+    actionState.mediaUrl,
+    liveOwner.hidden,
+    liveOwner.identity,
+    presentation.statusNotice,
+    visible,
+  ]);
 
   useEffect(() => {
     if (visible && expanded && actionState.status === 'verified' && !actionState.autoShownOnce) {
@@ -1313,8 +1712,9 @@ export function useBrowserMediaAction(
 
   const download = useCallback(async (): Promise<{
     ok: boolean;
-    downloadId?: string;
+    downloadId?: string | null;
     deduped?: boolean;
+    duplicate?: V2DuplicateOutcome | null;
     outcome?: MediaResolutionOutcome;
   }> => {
     const captureToken = (): DownloadResolutionToken => {
@@ -1331,10 +1731,11 @@ export function useBrowserMediaAction(
         tabId,
         navigationEpoch: useMediaDetectionStore.getState().navigationEpoch,
         generation: social?.contextGeneration ?? general?.pageGeneration ?? 0,
+        // What the page's player shows, so a scroll to the next video during the tap's hand-off is seen.
         contentIdentity:
-          browserMediaActionService.getState().contentIdentity ??
           social?.currentVisibleMediaIdentity ??
           general?.currentMediaIdentity ??
+          browserMediaActionService.getState().contentIdentity ??
           null,
       };
     };
@@ -1370,7 +1771,14 @@ export function useBrowserMediaAction(
       };
     }
 
-    if (!isDownloadResolutionTokenCurrent(token, captureToken())) {
+    // The player already shows another video (the next reel) than the standing offer names: never download it.
+    const offerIdentity = browserMediaActionService.getState().contentIdentity;
+    if (
+      !isDownloadResolutionTokenCurrent(token, captureToken()) ||
+      // Its player is hidden while the page moves it to another item: the offer may no longer be the video shown.
+      generalPageMediaContextStore.get(token.tabId)?.activeOwnerHidden ||
+      (offerIdentity != null && token.contentIdentity != null && offerIdentity !== token.contentIdentity)
+    ) {
       return {
         ok: false,
         outcome: classifyMediaResolutionOutcome({ staleToken: true }),
@@ -1449,8 +1857,9 @@ export function useBrowserMediaAction(
     });
 
     try {
-      const defaultOption = selectDefaultQualityOption(
+      const defaultOption = pickOfferedQualityOption(
         normalizeAnalysisToSelection(claim.analysis).options,
+        claim.mediaUrl,
       );
       const result = await enqueueBrowserMediaDownload({
         analysis: claim.analysis,
@@ -1463,12 +1872,22 @@ export function useBrowserMediaAction(
         isOfferCurrent: () => isDownloadResolutionTokenCurrent(token, captureToken()),
       });
 
+      recordPipelineOutcome({
+        tabId: claim.tabId,
+        pageUrl: claim.pageUrl,
+        mediaUrl: defaultOption?.sourceUrl ?? claim.mediaUrl,
+        stage: 'enqueue',
+        outcome: result.ok ? (result.duplicate ? 'DUPLICATE' : 'ENQUEUED') : 'REJECTED',
+        reason: result.ok ? (result.duplicate ?? (result.deduped ? 'DEDUPED' : null)) : (result.reason ?? 'ENQUEUE_FAILED'),
+      });
       if (!result.ok) {
         logBrowserCta('enqueue_failed', {
           tabId: claim.tabId,
           fingerprintHash: fingerprintDiagHash(claim.fingerprint),
           handoffGeneration: claim.handoffGeneration,
           result: 'immediate_failure',
+          // The hand-off's own reason code (never a URL): SOURCE_EXPIRED, PROTECTED, STALE_OFFER, ENGINE_REJECTED…
+          reason: result.reason ?? null,
         });
         logBrowserCta('media_handoff_failure', {
           tabId: claim.tabId,
@@ -1519,12 +1938,15 @@ export function useBrowserMediaAction(
         claim.fingerprint,
         claim.handoffGeneration,
         result.downloadId,
+        result.duplicate,
       );
       logGeneralDownloadTrace('ENQUEUE_ACCEPTED', {
         tabId: claim.tabId,
       });
-      options.onDownloadStarted?.(result.downloadId);
-      return { ok: true, downloadId: result.downloadId, deduped: result.deduped };
+      if (result.downloadId && !result.duplicate) {
+        options.onDownloadStarted?.(result.downloadId);
+      }
+      return { ok: true, downloadId: result.downloadId, deduped: result.deduped, duplicate: result.duplicate };
     } catch {
       logBrowserCta('enqueue_failed', {
         tabId: claim.tabId,
@@ -1619,6 +2041,38 @@ function isSocialScopeCurrent(
     return false;
   }
   return true;
+}
+
+function isManifestCandidate(media: { streamType?: string | null; container?: string | null }): boolean {
+  return (
+    media.streamType === 'HLS' || media.streamType === 'DASH' || media.container === 'hls' || media.container === 'dash'
+  );
+}
+
+/**
+ * The tab's recorded MediaSource player is the one on screen now: the page's current player is a blob player and,
+ * when both sides know it, the same element. Evidence about another (earlier, or background) blob player says
+ * nothing about a progressive video that is playing now.
+ */
+/** The standing offer already downloads a split player's two files together. */
+function isSplitOffer(analysis: { variants?: { audioSourceUrl?: string | null }[] } | null | undefined): boolean {
+  return Boolean(analysis?.variants?.some((variant) => variant.audioSourceUrl));
+}
+
+function isMsePlayerOnScreen(
+  state: { elementIdentity: string | null } | null,
+  social: { activeVideoIsBlob: boolean; activeVideoElementIdentity: string | null } | null,
+  general: { activeVideoIsBlob: boolean; activeMediaElementIdentity: string | null } | null,
+): boolean {
+  if (!state) {
+    return false;
+  }
+  const isBlob = social ? social.activeVideoIsBlob : Boolean(general?.activeVideoIsBlob);
+  const element = social ? social.activeVideoElementIdentity : (general?.activeMediaElementIdentity ?? null);
+  if (!isBlob) {
+    return false;
+  }
+  return !state.elementIdentity || !element || state.elementIdentity === element;
 }
 
 function isGeneralScopeCurrent(

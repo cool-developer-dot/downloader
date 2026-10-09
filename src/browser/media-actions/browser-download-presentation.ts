@@ -11,6 +11,7 @@ import {
 import { generalPageMediaContextStore } from '@/media-detection/general-media';
 import type { DetectedMedia } from '@/media-detection/types';
 import { formatFileSize, isSafeMediaUrl, isSameDocumentUrl } from '@/media-detection/utils';
+import { isYouTubeLink } from '@/browser/services/pasted-link';
 
 import {
   shouldHideStickyOfferForLiveIdentity,
@@ -56,7 +57,85 @@ export type BrowserDownloadPresentation = {
   accessibilityTitle: string;
   accessibilityMeta: string | null;
   accessibilityButton: string;
+  /**
+   * The media-action area's state for the video on screen when it is not a Download button (or the button's
+   * video is already saved): still being analyzed, already downloaded, protected, or not downloadable. Null: nothing
+   * to say (no current video).
+   */
+  statusNotice: BrowserMediaStatusNotice | null;
 };
+
+export type BrowserMediaStatusNotice =
+  /** The current video is being resolved right now (never a verdict: only while detection is active). */
+  | 'DETECTING'
+  /** A download of the current video is under way (started by this tap, or already running before it). */
+  | 'DOWNLOADING'
+  /** The download the user just started for the current video finished. */
+  | 'DOWNLOADED'
+  /** The current video was already downloaded before this attempt (or the user came back to it after it finished). */
+  | 'ALREADY_DOWNLOADED'
+  | 'PROTECTED'
+  | 'UNSUPPORTED';
+
+/** What a download of the current video says in the action area; null: nothing (failed, cancelled, removed). */
+export type BrowserDownloadProgressNotice = Extract<
+  BrowserMediaStatusNotice,
+  'DOWNLOADING' | 'DOWNLOADED' | 'ALREADY_DOWNLOADED'
+>;
+
+type DownloadRowStatus = 'QUEUED' | 'DOWNLOADING' | 'PAUSED' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+
+function isActiveDownloadStatus(status: DownloadRowStatus | null | undefined): boolean {
+  return status === 'QUEUED' || status === 'DOWNLOADING' || status === 'PAUSED';
+}
+
+/**
+ * A video this page consumed (the user tapped Download): "Already downloaded" only when it existed BEFORE the tap;
+ * a download the tap started reads "Downloading…" while it runs and "Downloaded" when it finishes in front of the
+ * user ("Already downloaded" once they left the video and came back). `rowStatus` is the download's live row status
+ * (null: no such row).
+ */
+export function resolveConsumedDownloadNotice(
+  outcome: { downloadId: string | null; preExisting: boolean; revisited: boolean } | null | undefined,
+  rowStatus: DownloadRowStatus | null | undefined,
+): BrowserDownloadProgressNotice | null {
+  if (!outcome) {
+    return null;
+  }
+  if (outcome.preExisting) {
+    return 'ALREADY_DOWNLOADED';
+  }
+  if (!outcome.downloadId) {
+    return null;
+  }
+  if (isActiveDownloadStatus(rowStatus)) {
+    return 'DOWNLOADING';
+  }
+  if (rowStatus === 'COMPLETED') {
+    return outcome.revisited ? 'ALREADY_DOWNLOADED' : 'DOWNLOADED';
+  }
+  return null;
+}
+
+/**
+ * An offer the engine says the user already has (asked before any tap): a finished copy is "Already downloaded"; a
+ * download still running is "Downloading…" — never "already downloaded" — and "Downloaded" once it finishes.
+ */
+export function resolveOfferDuplicateNotice(
+  duplicate: { kind: 'DOWNLOADED' | 'DOWNLOADING'; downloadId: string | null } | null | undefined,
+  rowStatus: DownloadRowStatus | null | undefined,
+): BrowserDownloadProgressNotice | null {
+  if (!duplicate) {
+    return null;
+  }
+  if (duplicate.kind === 'DOWNLOADED') {
+    return 'ALREADY_DOWNLOADED';
+  }
+  if (isActiveDownloadStatus(rowStatus) || (rowStatus == null && duplicate.downloadId)) {
+    return 'DOWNLOADING';
+  }
+  return rowStatus === 'COMPLETED' ? 'DOWNLOADED' : null;
+}
 
 export type BrowserDownloadPresentationInput = {
   actionState: BrowserMediaActionState;
@@ -71,6 +150,21 @@ export type BrowserDownloadPresentationInput = {
   liveContentIdentity?: string | null;
   liveOwnershipConfidence?: OwnershipConfidence;
   liveIdentityConsumed?: boolean;
+  /** What verification proved about the video on screen (by its content identity). */
+  liveVerdict?: 'PROTECTED' | 'UNSUPPORTED' | null;
+  /** The engine says the user already has the standing offer's video. */
+  offerDuplicate?: boolean;
+  /** What the standing offer's duplicate says (`resolveOfferDuplicateNotice`); wins over `offerDuplicate`. */
+  offerDuplicateNotice?: BrowserDownloadProgressNotice | null;
+  /**
+   * What the download of the consumed current video says (`resolveConsumedDownloadNotice`). Undefined: unknown —
+   * the legacy "Already downloaded"; null: nothing.
+   */
+  consumedNotice?: BrowserDownloadProgressNotice | null;
+  /** The current video is being actively resolved right now (no offer, no final verdict yet). */
+  liveDetecting?: boolean;
+  /** The current video's player is hidden: no video is on screen right now. */
+  liveOwnerHidden?: boolean;
 };
 
 const TITLE_MAX_LEN = 64;
@@ -517,6 +611,11 @@ export function isBrowserDownloadCtaEligible(
       }
     } else {
       const gctx = generalPageMediaContextStore.get(tabId);
+      // The video's own player is hidden (a feed moving its one player to the next item): nothing of the offered
+      // video is on screen, and what shows next is not known yet — never a Download meanwhile.
+      if (gctx?.activeOwnerHidden) {
+        return false;
+      }
       const liveIdentity = gctx?.currentMediaIdentity ?? null;
       const liveOwnershipConfidence = resolveLivePresentationOwnership({
         canonicalContentId: liveIdentity,
@@ -615,6 +714,13 @@ export function buildBrowserDownloadPresentation(
     isActionableCtaShell(shellState) &&
     shellState !== 'CONSUMED_CURRENT_CONTENT';
 
+  const statusNotice = resolveStatusNotice({
+    input,
+    shellState,
+    showCard,
+    isPreparing,
+  });
+
   return {
     candidateId: media?.id ?? null,
     tabId: activeTabId,
@@ -647,5 +753,63 @@ export function buildBrowserDownloadPresentation(
     accessibilityButton: isPreparing
       ? 'Preparing download'
       : 'Video available. Opens Play or Download.',
+    statusNotice,
   };
+}
+
+/**
+ * The media-action area never points at an old video: for the video on screen it says Video available (the Download
+ * button), Already downloaded, or — once that is its final answer — Protected / Unsupported. While the video is still
+ * being resolved it says nothing: detection and verification are never shown as a state of their own.
+ */
+function resolveStatusNotice(args: {
+  input: BrowserDownloadPresentationInput;
+  shellState: CtaShellPresentationState;
+  showCard: boolean;
+  isPreparing: boolean;
+}): BrowserMediaStatusNotice | null {
+  const { input, shellState, showCard, isPreparing } = args;
+  if (shellState === 'HIDDEN' && !showCard) {
+    return null;
+  }
+  if (input.isHome || input.hasBrowserError || input.overlayBlocking || input.liveOwnerHidden) {
+    return null;
+  }
+  if (showCard) {
+    if (isPreparing) {
+      return null;
+    }
+    if (input.offerDuplicateNotice !== undefined) {
+      return input.offerDuplicateNotice;
+    }
+    return input.offerDuplicate ? 'ALREADY_DOWNLOADED' : null;
+  }
+  if (shellState === 'CONSUMED_CURRENT_CONTENT' || input.liveIdentityConsumed) {
+    // Consumed means "the user tapped Download for it" — not that it was already downloaded.
+    return input.consumedNotice === undefined ? 'ALREADY_DOWNLOADED' : input.consumedNotice;
+  }
+  if (input.liveVerdict) {
+    return input.liveVerdict;
+  }
+  // A failure only speaks for the video it was about, never for the one scrolled to after it.
+  if (
+    shellState === 'UNSUPPORTED_CURRENT_CONTENT' &&
+    (!input.actionState.contentIdentity ||
+      input.actionState.contentIdentity === input.liveContentIdentity)
+  ) {
+    return 'UNSUPPORTED';
+  }
+  const liveStrong =
+    Boolean(input.liveContentIdentity) &&
+    (input.liveOwnershipConfidence === 'STRONG' || input.liveOwnershipConfidence === 'MEDIUM');
+  // VidoraX never downloads from YouTube: that is a video's final answer there.
+  if (liveStrong && isYouTubeLink(input.currentPageUrl)) {
+    return 'UNSUPPORTED';
+  }
+  // The video on screen has no answer yet and detection is working on it right now. Only for the live video (the
+  // offer for a previous one is already gone: TRACKING), never after its final verdict.
+  if (liveStrong && input.liveDetecting && shellState === 'TRACKING_CURRENT_VIDEO') {
+    return 'DETECTING';
+  }
+  return null;
 }

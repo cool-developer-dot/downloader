@@ -86,11 +86,13 @@ export async function saveCompletedFileToDevice(
       return { ok: false, error: new CompletedFileExportError('UNSUPPORTED_EXPORT_DESTINATION') };
     }
     try {
+      // Completed downloads are copied to the gallery automatically; the engine reuses a copy that still exists.
+      const before = await engine.getLibraryItem(id).catch(() => null);
       await engine.saveToGallery([id]);
       const item = await engine.getLibraryItem(id);
       return {
         ok: true,
-        kind: 'saved',
+        kind: before?.galleryUri && before.galleryUri === item?.galleryUri ? 'already_saved' : 'saved',
         displayName: item?.fileName ?? useDownloadsStore.getState().engineRowsById[id]?.title ?? '',
         contentUri: item?.galleryUri ?? '',
       };

@@ -1,6 +1,7 @@
 package com.vidorax.media.bridge
 
 import com.vidorax.media.InvalidRequestException
+import com.vidorax.media.analyze.PageFetchRequest
 import com.vidorax.media.library.Titles
 import com.vidorax.media.model.DownloadSettings
 import com.vidorax.media.model.EnqueueRequest
@@ -45,13 +46,45 @@ data class ProbeRequestRecord(
   @Field val manifestText: String? = null,
   @Field val request: RequestContextRecord = RequestContextRecord(),
   @Field val variant: VariantChoiceRecord? = null,
+  @Field val audioUrl: String? = null,
 ) : Record {
   fun toModel(): ProbeRequest {
     val sourceKind = kind?.let { parseWire<SourceKind>(it, "kind") }
     if (manifestText != null && sourceKind != null && sourceKind != SourceKind.DASH) {
       invalid("manifestText is only valid for DASH")
     }
-    return ProbeRequest(httpUrl(url, "url"), sourceKind, manifestText, request.toModel(), variant?.toModel())
+    if (audioUrl != null && sourceKind != SourceKind.SPLIT) invalid("audioUrl is only valid for split")
+    if (sourceKind == SourceKind.SPLIT && audioUrl == null) invalid("a split probe needs audioUrl")
+    return ProbeRequest(
+      httpUrl(url, "url"),
+      sourceKind,
+      manifestText,
+      request.toModel(),
+      variant?.toModel(),
+      audioUrl = audioUrl?.let { httpUrl(it, "audioUrl") },
+    )
+  }
+}
+
+/** `fetchPage`: a pasted/shared link read the way its tab would navigate to it (see analyze/PageFetcher). */
+data class PageFetchRequestRecord(
+  @Field val url: String = "",
+  @Field val userAgent: String? = null,
+  @Field val useSessionCookies: Boolean = true,
+  @Field val commitCookies: Boolean = false,
+  @Field val timeoutMs: Double? = null,
+  @Field val maxBytes: Double? = null,
+) : Record {
+  internal fun toModel(): PageFetchRequest {
+    val defaults = PageFetchRequest(url = "")
+    return PageFetchRequest(
+      url = httpUrl(url, "url"),
+      userAgent = userAgent.nonBlank()?.take(512),
+      useSessionCookies = useSessionCookies,
+      commitCookies = commitCookies,
+      timeoutMs = timeoutMs.positiveLong() ?: defaults.timeoutMs,
+      maxBytes = maxBytes.positiveLong()?.coerceAtMost(Int.MAX_VALUE.toLong())?.toInt() ?: defaults.maxBytes,
+    )
   }
 }
 
@@ -81,11 +114,13 @@ data class EnqueueRequestRecord(
   @Field val estimatedBytes: Double? = null,
   @Field val qualityLabel: String? = null,
   @Field val saveToGallery: Boolean? = null,
+  @Field val identityUrl: String? = null,
 ) : Record {
   fun toModel(): EnqueueRequest {
     val sourceKind = parseWire<SourceKind>(kind, "kind")
     if (manifestText != null && sourceKind != SourceKind.DASH) invalid("manifestText is only valid for DASH")
-    if (audioUrl != null && sourceKind != SourceKind.PROGRESSIVE) invalid("audioUrl is only valid for progressive")
+    if (audioUrl != null && sourceKind != SourceKind.SPLIT) invalid("audioUrl is only valid for split")
+    if (sourceKind == SourceKind.SPLIT && audioUrl == null) invalid("a split download needs audioUrl")
     return EnqueueRequest(
       url = httpUrl(url, "url"),
       kind = sourceKind,
@@ -101,6 +136,8 @@ data class EnqueueRequestRecord(
       estimatedBytes = estimatedBytes.positiveLong(),
       qualityLabel = qualityLabel.nonBlank()?.trim(),
       saveToGallery = saveToGallery,
+      // Only an identity hint: an unusable value falls back to `url` instead of refusing the download.
+      identityUrl = identityUrl?.trim()?.takeIf { it.toHttpUrlOrNull() != null },
     )
   }
 }

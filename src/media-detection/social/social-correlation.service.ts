@@ -21,6 +21,7 @@ import { mergeEligibleWindowCandidates } from '../observation/candidate-observat
 import { scoreMediaCorrelation } from '../services/media-correlation.service';
 import { logSocialCorrelation, hashSafeId } from './social-correlation-diagnostics';
 import { socialPageContextStore } from './social-page-context';
+import { recordPipelineOutcome } from '../pipeline/pipeline-outcome';
 import { resolveSocialPlatform } from './social-content-identity';
 import type {
   CandidateOwnershipEvidence,
@@ -446,6 +447,14 @@ export function selectCurrentSocialMedia(
     if (correlation.confidence === 'REJECTED') {
       rejected.push({
         candidateId: candidate.id,
+        reason: correlation.rejectionReason ?? 'LOW_CORRELATION',
+      });
+      recordPipelineOutcome({
+        tabId: context.tabId,
+        pageUrl: context.pageUrl,
+        mediaUrl: candidate.finalUrl || candidate.url,
+        stage: 'correlation',
+        outcome: 'REJECTED',
         reason: correlation.rejectionReason ?? 'LOW_CORRELATION',
       });
       logSocialCorrelation('candidate_rejected', {

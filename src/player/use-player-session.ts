@@ -16,7 +16,12 @@ import {
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { invalidateLibraryAvailability, reconcileAvailability } from '@/library';
-import { decideAppLifecycleAction } from './app-lifecycle-policy';
+import {
+  decideActivityStopped,
+  decideAppLifecycleAction,
+  type PictureInPictureState,
+} from './app-lifecycle-policy';
+import { subscribeActivityStopped } from './picture-in-picture';
 import { playerLog } from './diagnostics';
 import {
   classifyNativePlayerError,
@@ -85,6 +90,10 @@ export type UsePlayerSessionResult = {
   replay: () => void;
   /** Explicit user retry for recoverable errors. */
   retry: () => void;
+  /** The screen says whether leaving the app now opens a PiP window (keeps playback going instead of pausing). */
+  setPictureInPictureArmed: (armed: boolean) => void;
+  onPictureInPictureStart: () => void;
+  onPictureInPictureStop: () => void;
 };
 
 export function usePlayerSession(
@@ -479,7 +488,49 @@ export function usePlayerSession(
     };
   }, [cancelPendingReveal, controller]);
 
-  // Background / screen-lock → pause; foreground → no autoplay.
+  // Picture-in-picture: the screen arms it while the video plays; the window's own events say when it is showing.
+  const pictureInPictureRef = useRef<PictureInPictureState>({ armed: false, active: false });
+
+  const pauseForBackground = useCallback(
+    (reason: 'background' | 'activity_stopped') => {
+      if (!mountedRef.current) {
+        return;
+      }
+      const wasPlaying = sessionRef.current.isPlaying || player.playing;
+      try {
+        player.pause();
+      } catch {
+        // ignore
+      }
+      if (!wasPlaying) {
+        return;
+      }
+      const id = sourceRef.current?.mediaId;
+      const position = Number.isFinite(player.currentTime)
+        ? player.currentTime
+        : sessionRef.current.positionSeconds;
+      playerLog('player.background_pause', {
+        mediaId: id ?? undefined,
+        reason,
+      });
+      if (id) {
+        emitPlaybackEvent({
+          type: 'paused',
+          mediaId: id,
+          positionSeconds: position,
+          at: Date.now(),
+        });
+      }
+      wasPlayingRef.current = false;
+      safeSetSession((prev) => ({
+        ...prev,
+        isPlaying: false,
+      }));
+    },
+    [player, safeSetSession],
+  );
+
+  // Background / screen-lock → pause, unless the video moves into a PiP window; foreground → no autoplay.
   useEffect(() => {
     const onChange = (next: AppStateStatus) => {
       if (!mountedRef.current) {
@@ -488,34 +539,12 @@ export function usePlayerSession(
       const decision = decideAppLifecycleAction({
         nextState: next,
         isPlaying: sessionRef.current.isPlaying,
+        pictureInPicture: pictureInPictureRef.current,
       });
       if (decision.action === 'background_pause') {
-        try {
-          player.pause();
-        } catch {
-          // ignore
-        }
-        const id = sourceRef.current?.mediaId;
-        const position = Number.isFinite(player.currentTime)
-          ? player.currentTime
-          : sessionRef.current.positionSeconds;
-        playerLog('player.background_pause', {
-          mediaId: id ?? undefined,
-        });
-        if (id) {
-          emitPlaybackEvent({
-            type: 'paused',
-            mediaId: id,
-            positionSeconds: position,
-            at: Date.now(),
-          });
-        }
-        wasPlayingRef.current = false;
-        safeSetSession((prev) => ({
-          ...prev,
-          isPlaying: false,
-        }));
+        pauseForBackground('background');
       }
+      // await_picture_in_picture: keeps playing into the PiP window; the activity stopping (below) ends it otherwise.
       // foreground_no_autoplay: intentionally no play()
     };
 
@@ -523,7 +552,38 @@ export function usePlayerSession(
     return () => {
       sub.remove();
     };
-  }, [player, safeSetSession]);
+  }, [pauseForBackground]);
+
+  // No one can see the video any more (PiP dismissed, no PiP window opened, screen off): stop it.
+  useEffect(
+    () =>
+      subscribeActivityStopped(() => {
+        if (!mountedRef.current) {
+          return;
+        }
+        const playing = sessionRef.current.isPlaying || player.playing;
+        if (decideActivityStopped({ isPlaying: playing }) === 'pause') {
+          pauseForBackground('activity_stopped');
+        }
+      }),
+    [pauseForBackground, player],
+  );
+
+  const setPictureInPictureArmed = useCallback((armed: boolean) => {
+    pictureInPictureRef.current = { ...pictureInPictureRef.current, armed };
+  }, []);
+
+  const onPictureInPictureStart = useCallback(() => {
+    pictureInPictureRef.current = { ...pictureInPictureRef.current, active: true };
+    playerLog('player.pip_start', { mediaId: sourceRef.current?.mediaId ?? undefined });
+  }, []);
+
+  // Expanded → VidoraX is in front again and playback simply continues. Dismissed → the activity stops next, and the
+  // listener above pauses.
+  const onPictureInPictureStop = useCallback(() => {
+    pictureInPictureRef.current = { ...pictureInPictureRef.current, active: false };
+    playerLog('player.pip_stop', { mediaId: sourceRef.current?.mediaId ?? undefined });
+  }, []);
 
   useEventListener(player, 'statusChange', ({ status, error }) => {
     if (!mountedRef.current) {
@@ -878,6 +938,9 @@ export function usePlayerSession(
     toggleMute,
     replay,
     retry,
+    setPictureInPictureArmed,
+    onPictureInPictureStart,
+    onPictureInPictureStop,
   };
 }
 

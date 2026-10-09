@@ -1,1 +1,0 @@
-int id vidorax_web_document_start_script 0x0

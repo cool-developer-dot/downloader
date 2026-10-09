@@ -19,6 +19,12 @@ export type V2HandoffRejection =
   | 'SOURCE_UNREACHABLE'
   /** The link was refused or has expired: the page has to produce a fresh one. */
   | 'SOURCE_EXPIRED'
+  /** Split tracks: the video file has no picture. */
+  | 'VIDEO_TRACK_MISSING'
+  /** Split tracks: the audio file (or the stream's audio rendition) has no sound. */
+  | 'AUDIO_TRACK_MISSING'
+  /** Split tracks: the video and the audio are not the same video's (never merged). */
+  | 'TRACK_MISMATCH'
   | 'INVALID_SOURCE';
 
 export type V2HandoffInput = {
@@ -28,6 +34,11 @@ export type V2HandoffInput = {
   pageUrl: string | null;
   thumbnailUrl: string | null;
   requestContext: MediaRequestContext | null;
+  /**
+   * The source as the offer carried it, before a refresh or redirect replaced `option.sourceUrl`: the engine
+   * recognises the same video by it. Defaults to `option.sourceUrl`.
+   */
+  identityUrl?: string | null;
 };
 
 export type V2EnqueueDecision =
@@ -212,8 +223,9 @@ function positiveBytes(option: DownloadQualityOption): number | undefined {
  *
  * An HLS variant is handed over as `hls`: its playlist URL (the variant's own media playlist, or a multivariant
  * playlist with the chosen height as the ceiling). A DASH option is handed over as `dash`: the manifest URL with
- * the exact representation (`variant.videoId`) and its height as the ceiling. Whether either is actually
- * downloadable is the native classifier's call right before enqueue (see `handOffVerifiedVariant`).
+ * the exact representation (`variant.videoId`) and its height as the ceiling. A video-only file with its separate
+ * audio file (`audioSourceUrl`) is handed over as `split` (both merged by the engine). Whether any of these is
+ * actually downloadable is the native classifier's call right before enqueue (see `handOffVerifiedVariant`).
  */
 export function buildV2EnqueueRequest(input: V2HandoffInput): V2EnqueueDecision {
   const { option } = input;
@@ -221,9 +233,18 @@ export function buildV2EnqueueRequest(input: V2HandoffInput): V2EnqueueDecision 
   if (!source) {
     return { ok: false, reason: option.sourceUrl?.startsWith('blob:') ? 'UNSUPPORTED_SOURCE' : 'INVALID_SOURCE' };
   }
-  const hls = isHlsOption(option, source);
-  const dash = !hls && isDashOption(option, source);
-  if (!hls) {
+  const audioSource = option.audioSourceUrl ? httpUrl(option.audioSourceUrl) : null;
+  if (option.audioSourceUrl && !audioSource) {
+    return { ok: false, reason: option.audioSourceUrl.startsWith('blob:') ? 'UNSUPPORTED_SOURCE' : 'INVALID_SOURCE' };
+  }
+  // A video-only file and its separate audio file: the engine downloads both and merges them.
+  const split = audioSource != null;
+  const hls = !split && isHlsOption(option, source);
+  const dash = !split && !hls && isDashOption(option, source);
+  if (split && !option.downloadable) {
+    return { ok: false, reason: rejectionForUnavailable(option) };
+  }
+  if (!hls && !split) {
     if (!option.downloadable) {
       return { ok: false, reason: rejectionForUnavailable(option) };
     }
@@ -238,13 +259,15 @@ export function buildV2EnqueueRequest(input: V2HandoffInput): V2EnqueueDecision 
   const qualityLabel = option.label?.trim();
   const stream = hls || dash;
   const maxHeight = stream && typeof option.height === 'number' && option.height > 0 ? Math.trunc(option.height) : null;
-  // The exact DASH representation the user picked: downloaded as chosen, or refused — never swapped for another.
-  const videoId = dash ? option.representationId?.trim() || null : null;
+  // The exact DASH representation / HLS variant the user picked: downloaded as chosen, or refused — never swapped.
+  const videoId = stream ? option.representationId?.trim() || null : null;
+  const identityUrl = httpUrl(input.identityUrl)?.toString();
   return {
     ok: true,
     request: {
       url: option.sourceUrl,
-      kind: hls ? 'hls' : dash ? 'dash' : 'progressive',
+      kind: split ? 'split' : hls ? 'hls' : dash ? 'dash' : 'progressive',
+      ...(audioSource ? { audioUrl: audioSource.toString() } : {}),
       ...(maxHeight || videoId
         ? { variant: { ...(videoId ? { videoId } : {}), ...(maxHeight ? { maxHeight } : {}) } }
         : {}),
@@ -255,6 +278,7 @@ export function buildV2EnqueueRequest(input: V2HandoffInput): V2EnqueueDecision 
       ...(thumbnailUrl ? { thumbnailUrl } : {}),
       ...(estimatedBytes ? { estimatedBytes } : {}),
       ...(qualityLabel ? { qualityLabel } : {}),
+      ...(identityUrl && identityUrl !== option.sourceUrl ? { identityUrl } : {}),
     },
   };
 }
@@ -271,6 +295,12 @@ export function v2HandoffRejectionMessage(reason: V2HandoffRejection): string {
       return 'Couldn’t reach the video server. Check your connection and try again.';
     case 'SOURCE_EXPIRED':
       return 'Open the video page again to refresh the download link.';
+    case 'VIDEO_TRACK_MISSING':
+      return 'This video’s picture couldn’t be found. Play it again and retry.';
+    case 'AUDIO_TRACK_MISSING':
+      return 'This video’s sound couldn’t be found. Play it again and retry.';
+    case 'TRACK_MISMATCH':
+      return 'This video changed. Wait for “Video available” and try again.';
     case 'INVALID_SOURCE':
     default:
       return 'This video is no longer available. Reload the page and try again.';

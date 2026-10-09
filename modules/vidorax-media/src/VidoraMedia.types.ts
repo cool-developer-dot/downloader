@@ -13,18 +13,22 @@
  *   ERR_RUNNER_START       background runner could not start (app not visible on API 34+)
  *   ERR_STORAGE            a file could not be copied or written (e.g. disk full while saving to the gallery)
  *   ERR_NO_APP             `openWith`: no installed app can open the file
+ *   ERR_ALREADY_DOWNLOADED `enqueue`: the same video is already saved (prefer `enqueueUnique`, which says so without
+ *                          an error)
  */
 
 /**
- * `progressive`: one complete file. `hls`: an unencrypted VOD HLS stream (multivariant or media playlist); the
- * engine downloads one single-track variant's segments into one file (MPEG-TS or fMP4). Encrypted/DRM HLS is
- * refused as `DRM_PROTECTED`, live HLS as `LIVE_UNSUPPORTED`, separate-audio or audio-only variants as
- * `UNSUPPORTED_FORMAT`. `dash`: an MPD whose chosen representation is one complete file (muxed audio+video, or video
- * in a manifest without audio) — downloaded as that file. `ContentProtection`/DRM is `DRM_PROTECTED`, `type="dynamic"`
- * is `LIVE_UNSUPPORTED`; separate audio/video, segmented (SegmentTemplate/SegmentList), multi-period and audio-only
- * manifests are `UNSUPPORTED_FORMAT` — the engine never muxes or reassembles fragments.
+ * `progressive`: one complete file (kept byte for byte when it already plays; a fragmented MP4, AVI or FLV is remuxed
+ * into an MP4, and a track an MP4 cannot hold is converted). `hls`: an unencrypted VOD HLS stream (multivariant or
+ * media playlist) — the chosen variant's segments and, when its sound is a separate `EXT-X-MEDIA TYPE=AUDIO`
+ * rendition, that rendition's segments (MPEG-TS, fMP4 or packed audio), merged into one MP4. `dash`: an unprotected
+ * VOD MPD with one period — the chosen video representation (one file, or init + segments) and, when the sound is a
+ * separate adaptation set, its best audio representation, merged into one MP4 (WebM for VP8/VP9 + Opus/Vorbis).
+ * `split`: a video file and an audio file of one video (a MediaSource player fed from two tracks), both downloaded
+ * and merged. Encrypted/DRM → `DRM_PROTECTED`; live → `LIVE_UNSUPPORTED`; multi-period DASH and audio-only streams →
+ * `UNSUPPORTED_FORMAT`. Two tracks whose lengths disagree are never merged (`TRACK_MISMATCH`).
  */
-export type SourceKind = 'progressive' | 'hls' | 'dash';
+export type SourceKind = 'progressive' | 'hls' | 'dash' | 'split';
 
 export type SiteId =
   | 'instagram'
@@ -70,6 +74,11 @@ export interface ProbeRequest {
    * download (omitted = the best decodable variant capped by `DownloadSettings.preferredMaxHeight`).
    */
   variant?: { videoId?: string; audioId?: string; maxHeight?: number };
+  /**
+   * `split` only (required): the audio file that goes with the video file `url`. Both are classified for their role
+   * (a picture / sound, not encrypted) and, when their headers state lengths, checked to be one video's.
+   */
+  audioUrl?: string;
 }
 
 export type ProbeFailure =
@@ -81,7 +90,13 @@ export type ProbeFailure =
   | 'HTTP_404'
   | 'HTTP_ERROR'
   | 'NETWORK'
-  | 'POLICY_BLOCKED';
+  | 'POLICY_BLOCKED'
+  /** `split`: the video file has no video track. */
+  | 'VIDEO_TRACK_MISSING'
+  /** `split` / HLS rendition / DASH adaptation set: the audio has no sound. */
+  | 'AUDIO_TRACK_MISSING'
+  /** `split`: the two files are not tracks of the same video (their lengths disagree). */
+  | 'TRACK_MISMATCH';
 
 export type Container = 'mp4' | 'webm' | 'mov' | 'avi' | 'wmv' | 'mkv' | 'ts' | 'flv' | '3gp' | 'unknown';
 
@@ -96,9 +111,8 @@ export interface ProbeVariant {
   /** RFC 6381 codecs string or MIME type. */
   videoCodec: string | null;
   /**
-   * True when a separate audio track would need muxing in (HLS `EXT-X-MEDIA TYPE=AUDIO` with its own URI, or a
-   * video-only DASH representation next to an audio adaptation set). The engine never muxes: such a variant is
-   * refused if chosen (DASH lists only downloadable representations).
+   * True when the variant's sound is a separate track (HLS `EXT-X-MEDIA TYPE=AUDIO` with its own URI, a split
+   * source): the engine downloads it too and merges it in. (DASH reports the merge through `mergesAudio`.)
    */
   needsAudioMux: boolean;
   /** Estimated total bytes including the default audio track, null when unknown. */
@@ -131,8 +145,73 @@ export type ProbeResult =
       variants: ProbeVariant[];
       audioTracks: ProbeAudioTrack[];
       durationMs: number | null;
+      /** The download merges a separate audio track into the video (split files, HLS/DASH separate audio). */
+      mergesAudio?: boolean;
     }
   | { ok: false; reason: ProbeFailure; httpStatus: number | null; message: string | null };
+
+/**
+ * A pasted or shared link fetched the way its browser tab would navigate to it, so the page can be read for its
+ * video before (and without) the WebView playing anything. Nothing on the page is executed. Redirects are followed
+ * (at most 10 hops, each a public http(s) host — never into the user's network; a URL seen twice is a loop); YouTube
+ * is refused by policy; one deadline covers every hop and the body, which is read up to `maxBytes`.
+ */
+export interface PageFetchRequest {
+  url: string;
+  /** Omit for the stock WebView User-Agent (a tab in mobile mode); a desktop tab passes its desktop UA. */
+  userAgent?: string;
+  /** Send the browsing session's cookies for each hop (default true). */
+  useSessionCookies?: boolean;
+  /**
+   * Store the cookies the servers set into the WebView jar after a complete fetch inside the deadline — what the tab's
+   * own navigation would store — so links the page signs for that session keep answering the tab and the engine.
+   * Only for the fetch that precedes the tab's own navigation of the same URL.
+   */
+  commitCookies?: boolean;
+  /** 1 000–20 000 ms (default 8 000). */
+  timeoutMs?: number;
+  /** 16 KiB–4 MiB (default 3 MiB). */
+  maxBytes?: number;
+}
+
+export type PageFetchFailure =
+  | 'INVALID_URL'
+  /** A hop pointed at a private, loopback or link-local address. */
+  | 'UNSAFE_URL'
+  /** YouTube. */
+  | 'POLICY_BLOCKED'
+  | 'REDIRECT_LOOP'
+  | 'TOO_MANY_REDIRECTS'
+  | 'TIMEOUT'
+  | 'NETWORK'
+  /** An HTTP status of 400 or more (`status`), or a redirect without a usable Location. */
+  | 'HTTP_ERROR'
+  /** Neither a page nor media (an image, an archive…). */
+  | 'UNSUPPORTED_CONTENT';
+
+export type PageFetchResult =
+  | {
+      kind: 'document';
+      finalUrl: string;
+      status: number;
+      contentType: string | null;
+      body: string;
+      /** The byte bound cut the body. */
+      truncated: boolean;
+      redirects: number;
+      elapsedMs: number;
+    }
+  | {
+      /** The link itself is a media file or a manifest (recognised from its type and first bytes, not read further). */
+      kind: 'media';
+      finalUrl: string;
+      status: number;
+      contentType: string | null;
+      contentLength: number | null;
+      redirects: number;
+      elapsedMs: number;
+    }
+  | { kind: 'failure'; code: PageFetchFailure; status: number | null; redirects: number; elapsedMs: number };
 
 export interface EnqueueRequest {
   /**
@@ -143,13 +222,13 @@ export interface EnqueueRequest {
   kind: SourceKind;
   /** @deprecated DASH manifest text — not supported; the v2 engine ignores this field. */
   manifestText?: string;
-  /** @deprecated Separate audio for split A/V muxing — not supported; the v2 engine ignores this field. */
+  /** `split` only (required): the audio file merged with the video file `url`. Rejected for any other kind. */
   audioUrl?: string;
   /**
    * HLS (multivariant playlist) and DASH: `videoId` (a `ProbeVariant.id` — HLS variant URI, DASH representation id)
    * picks that exact variant, `maxHeight` the best one up to that height; neither = the best decodable variant
-   * (capped by `DownloadSettings.preferredMaxHeight`). A chosen variant that needs separate audio is refused, never
-   * substituted. `audioId` is ignored: separate audio is never muxed.
+   * (capped by `DownloadSettings.preferredMaxHeight`). `audioId` (a `ProbeAudioTrack.id`) picks the separate audio
+   * rendition/representation; omitted = the default one. A chosen variant is downloaded exactly, never substituted.
    */
   variant?: { videoId?: string; audioId?: string; maxHeight?: number };
   request: RequestContext;
@@ -164,7 +243,23 @@ export interface EnqueueRequest {
   qualityLabel?: string;
   /** Overrides `DownloadSettings.autoSaveToGallery` for this download. */
   saveToGallery?: boolean;
+  /**
+   * The source as the page offered it, before a refresh or redirect. The engine derives the video's identity from it
+   * (host, path, query without rotating signature fields, the chosen variant, and the page when a signature was
+   * removed), so a re-signed or redirected link is still recognised as the same video. Defaults to `url`.
+   */
+  identityUrl?: string;
 }
+
+/**
+ * What `enqueueUnique` did. A video is downloaded once: the same video already downloading returns that download
+ * (a paused one is resumed); the same video already saved — in the library, or as the gallery copy VidoraX made —
+ * returns its library item id (null when only the gallery copy is left). Racing calls start exactly one download.
+ */
+export type EnqueueResult =
+  | { outcome: 'ENQUEUED'; record: DownloadRecord; libraryItemId: null }
+  | { outcome: 'ALREADY_DOWNLOADING'; record: DownloadRecord; libraryItemId: null }
+  | { outcome: 'ALREADY_DOWNLOADED'; record: null; libraryItemId: string | null };
 
 export type DownloadState =
   | 'queued'
@@ -173,7 +268,7 @@ export type DownloadState =
   | 'paused'
   | 'waiting_network'
   | 'waiting_retry'
-  /** Verifying the downloaded file, finalizing it into the library, and reading metadata. */
+  /** Merging / remuxing / converting the downloaded tracks, verifying the result and adding it to the library. */
   | 'processing'
   | 'completed'
   | 'failed'
@@ -194,7 +289,26 @@ export type DownloadErrorCode =
   | 'PROCESSING_FAILED'
   | 'NO_SPACE'
   | 'STORAGE_ERROR'
-  | 'UNKNOWN';
+  /**
+   * The finished file is byte-for-byte a video the user already has (reached through another link): it was discarded
+   * and nothing was added. Final — retrying gives the same answer.
+   */
+  | 'DUPLICATE'
+  | 'UNKNOWN'
+  /** The "video" file of a split download has no picture. Final. */
+  | 'VIDEO_TRACK_MISSING'
+  /** The audio file / rendition / representation has no sound. Final. */
+  | 'AUDIO_TRACK_MISSING'
+  /** The video and the audio are not one video's (lengths or start disagree): never merged. Final. */
+  | 'TRACK_MISMATCH'
+  /** A segment of an HLS/DASH stream is missing on the server or refused (after the link was refreshed). */
+  | 'SEGMENT_FAILED'
+  /** Merging or re-containering the downloaded tracks failed; the tracks are kept, so Retry only processes again. */
+  | 'MUX_FAILED'
+  /** Converting a track the output cannot carry failed (no decoder/encoder); the tracks are kept for Retry. */
+  | 'TRANSCODE_FAILED'
+  /** The processed file did not read back as the video it should be (no picture, lost sound, wrong length). */
+  | 'INVALID_MEDIA';
 
 export interface DownloadRecord {
   id: string;
@@ -217,9 +331,14 @@ export interface DownloadRecord {
   updatedAt: number;
 }
 
+/** What the `processing` phase is doing (progress events only). */
+export type ProcessingStage = 'merging' | 'remuxing' | 'transcoding' | 'verifying';
+
 export interface DownloadProgressEvent {
   id: string;
   phase: 'download' | 'processing';
+  /** `processing` only: merging tracks, remuxing into MP4, converting a track, or verifying the result. */
+  stage?: ProcessingStage | null;
   bytesDone: number;
   totalBytes: number | null;
   /** 0..1 when known. */
@@ -309,7 +428,10 @@ export interface DownloadSettings {
   maxConcurrent: number;
   /** Default false. */
   wifiOnly: boolean;
-  /** Default false. */
+  /**
+   * Default true: every completed download is also copied to the device gallery (`Movies/VidoraX/<Site>`), after it
+   * is COMPLETED and only as the final verified file. A failed copy never affects the download or its library item.
+   */
   autoSaveToGallery: boolean;
   /** e.g. 1080; null = best available. */
   preferredMaxHeight: number | null;
@@ -328,6 +450,11 @@ export type VidoraMediaEvents = {
   onDownloadStateChange: (event: DownloadStateEvent) => void;
   onLibraryChange: (event: LibraryChangeEvent) => void;
   onVolumeChange: (event: { volume: number }) => void;
+  /**
+   * The activity stopped being visible (onStop): a PiP window was dismissed, leaving the app opened no PiP window, or
+   * the screen went off. Sent on the main thread while JavaScript timers are paused — the player's cue to stop.
+   */
+  onActivityStop: (event: { inPictureInPicture: boolean }) => void;
 };
 
 /** A genuine completion the engine recorded for JavaScript to count once (see `listCompletedDownloads`). */
@@ -340,9 +467,16 @@ export type CompletedDownload = {
 export interface VidoraMediaModuleApi {
   // Probing
   probe(request: ProbeRequest): Promise<ProbeResult>;
+  /** Reads a pasted/shared link's page for the direct analyzer; see `PageFetchRequest`. */
+  fetchPage(request: PageFetchRequest): Promise<PageFetchResult>;
 
   // Downloads
+  /** Rejects with ERR_ALREADY_DOWNLOADED for a video already saved; see `enqueueUnique`. */
   enqueue(request: EnqueueRequest): Promise<DownloadRecord>;
+  /** Starts the download unless the same video is already downloading or saved (atomic; see `EnqueueResult`). */
+  enqueueUnique(request: EnqueueRequest): Promise<EnqueueResult>;
+  /** What `enqueueUnique` would find, without starting anything or touching the network; null for a new video. */
+  findDuplicate(request: EnqueueRequest): Promise<EnqueueResult | null>;
   pause(id: string): Promise<void>;
   resume(id: string): Promise<void>;
   retry(id: string): Promise<void>;
@@ -416,4 +550,10 @@ export interface VidoraMediaModuleApi {
   /** Media stream volume 0..1. */
   getVolume(): number;
   setVolume(volume: number): void;
+  /**
+   * Arms (or disarms) the picture-in-picture window for when the user leaves the app while the player plays, with the
+   * video's display size for the window's shape (0 when unknown). Acts on Android 8–11 only; from Android 12 the
+   * player view's own auto-enter does it. Optional: builds before this function simply have no PiP there.
+   */
+  setPictureInPictureAutoEnter?(armed: boolean, aspectWidth: number, aspectHeight: number): void;
 }

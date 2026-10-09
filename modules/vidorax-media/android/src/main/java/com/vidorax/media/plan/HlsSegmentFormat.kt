@@ -6,7 +6,7 @@ import com.vidorax.media.model.Container
 internal object HlsSegmentFormat {
   private val ISO_BMFF_FIRST_BOXES = setOf("ftyp", "styp", "moov", "moof", "sidx")
 
-  /** MPEG-TS or fragmented MP4 — the two segment formats an HLS video can be saved from — else null. */
+  /** MPEG-TS, fragmented MP4 or (DASH) WebM — the segment formats a video track can be saved from — else null. */
   fun containerOf(head: ByteArray): Container? {
     if (head.size >= 1 && head[0].toInt() and 0xFF == 0x47 && (head.size <= 188 || head[188].toInt() and 0xFF == 0x47)) {
       return Container.TS
@@ -15,8 +15,21 @@ internal object HlsSegmentFormat {
       val type = String(head, 4, 4, Charsets.ISO_8859_1)
       if (type in ISO_BMFF_FIRST_BOXES) return Container.MP4
     }
+    // DASH WebM representations: an EBML header (init) or a Cluster.
+    if (isEbml(head)) return Container.WEBM
     return null
   }
+
+  /** ID3-tagged ADTS/MP3 or bare ADTS: an HLS packed-audio segment (an audio rendition, never a video). */
+  fun isPackedAudio(head: ByteArray): Boolean =
+    (head.size >= 3 && String(head, 0, 3, Charsets.ISO_8859_1) == "ID3") ||
+      (head.size >= 2 && head[0].toInt() and 0xFF == 0xFF && head[1].toInt() and 0xF6 == 0xF0)
+
+  private fun isEbml(head: ByteArray): Boolean =
+    head.size >= 4 && (
+      (head[0] == 0x1A.toByte() && head[1] == 0x45.toByte() && head[2] == 0xDF.toByte() && head[3] == 0xA3.toByte()) ||
+        (head[0] == 0x1F.toByte() && head[1] == 0x43.toByte() && head[2] == 0xB6.toByte() && head[3] == 0x75.toByte())
+      )
 
   fun refusal(head: ByteArray): String = when {
     head.size >= 3 && String(head, 0, 3, Charsets.ISO_8859_1) == "ID3" -> "audio-only HLS stream (packed audio)"

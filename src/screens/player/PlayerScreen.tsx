@@ -1,11 +1,12 @@
 /**
  * Stage 2 player screen — composition / chrome only.
- * Session, resolver, and engine stay in `@/player`.
+ * Session, resolver, and engine stay in `@/player`; the session itself runs in the app-wide PlayerSessionHost, so
+ * leaving this screen keeps the same player (and position) going in the in-app mini player.
  */
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, BackHandler, StyleSheet, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
+import { BackHandler, StyleSheet, View } from 'react-native';
+import { router as appRouter, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
@@ -21,25 +22,39 @@ import {
   parseRouteMediaId,
   SEEK_FEEDBACK_MS,
   SEEK_STEP_SECONDS,
+  shouldArmPictureInPicture,
   shouldShowStartupCover,
   type DoubleTapSeekSide,
   type PlaybackRate,
 } from '@/player';
 import { useControlsVisibility } from '@/player/use-controls-visibility';
 import { useFullscreenLifecycle } from '@/player/use-fullscreen-lifecycle';
+import { usePlayQueueNeighbours } from '@/player/play-queue';
 import { usePlayerBrightness } from '@/player/hooks/use-player-brightness';
 import { usePlayerOrientation } from '@/player/hooks/use-player-orientation';
 import type { OrientationMode } from '@/player/orientation-mode';
 import { usePlayerVolume } from '@/player/hooks/use-player-volume';
 import { usePlayerSideGestures } from '@/player/use-player-side-gestures';
-import { resolveOrientationIcon } from '@/player/volume-icons';
-import { usePlayerSession } from '@/player/use-player-session';
-import { useResumePrompt } from '@/playback/use-resume-prompt';
+import { armNativePictureInPicture, pictureInPictureSupported } from '@/player/picture-in-picture';
+import { parseResolution } from '@/player/zoom-math';
+import { useDownloadsStore } from '@/store/downloads';
+import { resolveOrientationIcon, resolveVolumeIcon } from '@/player/volume-icons';
+import {
+  closePlayerSession,
+  openPlayerSession,
+  setPlayerSessionPictureInPicture,
+  useFullPlayerSession,
+  useRedrawOnAttach,
+  type LivePlayerSession,
+} from '@/player/session-host';
 import { Button } from '@/components/buttons/Button';
+import { IconButton } from '@/components/buttons/IconButton';
+import { Pressable } from '@/components/base/Pressable';
 import { getPlayerSupportContext } from '@/support';
 import { openSupportWithContext } from '@/support/support-navigation';
 
 import { PlayerControls } from './components/PlayerControls';
+import { PlayerLockButton, PlayerLockedOverlay } from './components/PlayerLockControl';
 import { PlayerAdjustmentHud } from './components/PlayerAdjustmentHud';
 import { PlaybackSpeedSheet } from './components/PlaybackSpeedSheet';
 import { OrientationSheet } from './components/OrientationSheet';
@@ -52,17 +67,78 @@ import {
 } from './components/SeekFeedback';
 
 export const PlayerScreen = memo(function PlayerScreen() {
+  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const mediaId = parseRouteMediaId(params.id);
+  const live = useFullPlayerSession(mediaId);
+  // Owned here, not by the session view: Previous / Next swap the session (the view remounts) and must keep the
+  // Player fullscreen and locked as it was.
+  const fullscreen = useFullscreenLifecycle();
+  const [locked, setLocked] = useState(false);
+
+  // Back on top (another Player above it closed): this route's media is the session again.
+  useFocusEffect(
+    useCallback(() => {
+      openPlayerSession(mediaId);
+    }, [mediaId]),
+  );
+
+  if (!live) {
+    return <PlayerOpeningShell isFullscreen={fullscreen.isFullscreen} />;
+  }
+  return (
+    <PlayerSessionView
+      key={live.key}
+      live={live}
+      mediaId={mediaId}
+      fullscreen={fullscreen}
+      locked={locked}
+      setLocked={setLocked}
+    />
+  );
+});
+
+/** The first frames of a newly opened session: the same black stage and spinner as the startup cover. */
+function PlayerOpeningShell({ isFullscreen }: { isFullscreen: boolean }) {
+  const theme = useTheme();
+  const { t } = useTranslation();
+  return (
+    <SafeAreaScreen
+      padded={false}
+      edges={isFullscreen ? [] : ['left', 'right', 'top', 'bottom']}
+      style={{ backgroundColor: theme.colors.black }}
+      safeAreaStyle={{ backgroundColor: theme.colors.black }}>
+      <View style={styles.openingShell} accessibilityLabel={t('player.preparing')}>
+        <Loader size="large" accessibilityLabel={t('player.preparing')} />
+        <Text variant="bodySmall" color="textSecondary">
+          {t('player.preparing')}
+        </Text>
+      </View>
+    </SafeAreaScreen>
+  );
+}
+
+const PlayerSessionView = memo(function PlayerSessionView({
+  live,
+  mediaId,
+  fullscreen,
+  locked,
+  setLocked,
+}: {
+  live: LivePlayerSession;
+  mediaId: string | null;
+  fullscreen: ReturnType<typeof useFullscreenLifecycle>;
+  locked: boolean;
+  setLocked: (locked: boolean) => void;
+}) {
   const theme = useTheme();
   const { t } = useTranslation();
   const router = useRouter();
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
-  const mediaId = parseRouteMediaId(params.id);
 
   const {
+    key: sessionKey,
     session,
     controller,
     player,
-    resolveGeneration,
     markFirstFrameRendered,
     seekPreviewSeconds,
     beginSeekPreview,
@@ -74,31 +150,15 @@ export const PlayerScreen = memo(function PlayerScreen() {
     toggleMute,
     replay,
     retry,
-  } = usePlayerSession(mediaId);
-
-  // Auto-resume seek runs inside the hook (no Resume/Start Over sheet).
-  // Cover stays until first frame, so resume seek happens behind the cover.
-  useResumePrompt({
-    mediaId,
-    isReady: session.isReady,
-    resolveGeneration,
-    controller,
-    activeMediaId: session.mediaId ?? mediaId,
-  });
-
-  // Opens with autoplay: once per loaded media (a retry or next/previous loads again), after the resume seek
-  // above has been applied, and only with the app in front — coming back from the background never resumes
-  // playback by itself.
-  const autoPlayedGenerationRef = useRef<number | null>(null);
-  useEffect(() => {
-    if (!session.isReady || session.error || autoPlayedGenerationRef.current === resolveGeneration) {
-      return;
-    }
-    autoPlayedGenerationRef.current = resolveGeneration;
-    if (AppState.currentState === 'active') {
-      controller.play();
-    }
-  }, [controller, resolveGeneration, session.error, session.isReady]);
+    setPictureInPictureArmed,
+    onPictureInPictureStart,
+    onPictureInPictureStop,
+  } = live;
+  const activeMediaId = session.mediaId ?? mediaId;
+  // Resume seek and autoplay run with the session (PlayerSessionHost), not here: reopening the Player from the mini
+  // player continues where it is — and shows the paused frame there, which a new surface lacks.
+  const [reopened] = useState(() => session.isSurfaceRevealed);
+  useRedrawOnAttach(player, reopened);
 
   const {
     isFullscreen,
@@ -106,7 +166,7 @@ export const PlayerScreen = memo(function PlayerScreen() {
     toggleFullscreen,
     restorePresentation,
     handleAndroidBack,
-  } = useFullscreenLifecycle();
+  } = fullscreen;
 
   const [speedSheetOpen, setSpeedSheetOpen] = useState(false);
   const [externalOpenError, setExternalOpenError] = useState<string | null>(null);
@@ -131,6 +191,12 @@ export const PlayerScreen = memo(function PlayerScreen() {
   );
 
   const [surfaceHeight, setSurfaceHeight] = useState(480);
+
+  // The picture as displayed (rotation applied) from the library; the player's own track size is the fallback.
+  const libraryResolution = useDownloadsStore((state) =>
+    activeMediaId ? (state.engineRowsById[activeMediaId]?.resolution ?? null) : null,
+  );
+  const contentSize = useMemo(() => parseResolution(libraryResolution), [libraryResolution]);
 
   const brightness = usePlayerBrightness();
   const volume = usePlayerVolume();
@@ -167,6 +233,47 @@ export const PlayerScreen = memo(function PlayerScreen() {
     hasError: Boolean(session.error),
   });
 
+  // Picture-in-picture: leaving VidoraX while the video plays moves this same player into a floating window.
+  // While the window shows, the arming must not change — the player view elected for the window has to stay the one
+  // put back when it closes.
+  const pipSupported = useMemo(() => pictureInPictureSupported(), []);
+  const [pipActive, setPipActive] = useState(false);
+  const pipArmedNow = shouldArmPictureInPicture({
+    supported: pipSupported,
+    isPlaying: session.isPlaying,
+    isReady: session.isReady,
+    hasError: Boolean(session.error),
+    isSurfaceRevealed: session.isSurfaceRevealed,
+  });
+  const pipAutoEnter = pipActive || pipArmedNow;
+  useEffect(() => {
+    setPictureInPictureArmed(pipAutoEnter);
+    armNativePictureInPicture(pipAutoEnter, contentSize);
+  }, [contentSize, pipAutoEnter, setPictureInPictureArmed]);
+  // Only the full Player opens a PiP window: once it is gone (the session may go on in the mini player), leaving the
+  // app pauses instead.
+  useEffect(
+    () => () => {
+      armNativePictureInPicture(false, null);
+      setPictureInPictureArmed(false);
+      setPlayerSessionPictureInPicture(false);
+    },
+    [setPictureInPictureArmed],
+  );
+
+  const hud = sideGestures.hud;
+  const handlePictureInPictureStart = useCallback(() => {
+    hud.hideNow();
+    setPipActive(true);
+    setPlayerSessionPictureInPicture(true);
+    onPictureInPictureStart();
+  }, [hud, onPictureInPictureStart]);
+  const handlePictureInPictureStop = useCallback(() => {
+    setPipActive(false);
+    setPlayerSessionPictureInPicture(false);
+    onPictureInPictureStop();
+  }, [onPictureInPictureStop]);
+
   const {
     controlsVisible,
     toggleControls,
@@ -188,21 +295,20 @@ export const PlayerScreen = memo(function PlayerScreen() {
     }
   }, [session.error, isFullscreen, restorePresentation]);
 
+  // Leaving collapses the Player into the mini player: the session keeps playing (same player, same position). A failed
+  // session has nothing to continue, so it ends here (closing it reports the exit position and releases the player).
+  const sessionFailed = session.error != null;
   const leavePlayer = useCallback(async () => {
-    try {
-      controller.pause();
-    } catch {
-      // ignore
+    if (sessionFailed) {
+      closePlayerSession(sessionKey);
     }
-    // Pause emits coordinator flush; unmount also emits playerExited.
-    // Capture latest position before navigation tears down the surface.
     await restorePresentation();
     if (router.canGoBack()) {
       router.back();
     } else {
       router.replace('/library');
     }
-  }, [controller, restorePresentation, router]);
+  }, [restorePresentation, router, sessionFailed, sessionKey]);
 
   const onChromeBack = useCallback(() => {
     if (speedSheetOpen) {
@@ -222,6 +328,10 @@ export const PlayerScreen = memo(function PlayerScreen() {
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (locked) {
+        // A locked screen ignores Back too (pocket / child presses); the lock pill unlocks.
+        return true;
+      }
       if (speedSheetOpen) {
         setSpeedSheetOpen(false);
         return true;
@@ -238,7 +348,7 @@ export const PlayerScreen = memo(function PlayerScreen() {
       return true;
     });
     return () => sub.remove();
-  }, [handleAndroidBack, leavePlayer, orientationSheetOpen, speedSheetOpen]);
+  }, [handleAndroidBack, leavePlayer, locked, orientationSheetOpen, speedSheetOpen]);
 
   const onPlayPause = useCallback(() => {
     bumpControls();
@@ -372,9 +482,34 @@ export const PlayerScreen = memo(function PlayerScreen() {
     bumpControls();
   }, [bumpControls, cancelSeekPreview]);
 
+  // Previous / Next: the route param changes in place, so the Player stays mounted (and fullscreen) and the shared
+  // session switches to that media.
+  const { previousId, nextId } = usePlayQueueNeighbours(activeMediaId);
+  const hasQueue = previousId != null || nextId != null;
+  const goToMedia = useCallback(
+    (id: string) => {
+      bumpControls();
+      appRouter.setParams({ id });
+    },
+    [bumpControls],
+  );
+  const onPrevious = useMemo(() => (previousId ? () => goToMedia(previousId) : null), [goToMedia, previousId]);
+  const onNext = useMemo(() => (nextId ? () => goToMedia(nextId) : null), [goToMedia, nextId]);
+
+  const onLock = useCallback(() => {
+    hud.hideNow();
+    setSpeedSheetOpen(false);
+    setOrientationSheetOpen(false);
+    setLocked(true);
+  }, [hud, setLocked]);
+  const onUnlock = useCallback(() => {
+    setLocked(false);
+    showControls();
+  }, [setLocked, showControls]);
+
   const title = session.displayName ?? t('player.untitled');
   const showError = session.phase === 'error' && session.error != null;
-  const overlayVisible = controlsVisible || session.isSeeking || speedSheetOpen;
+  const overlayVisible = !locked && (controlsVisible || session.isSeeking || speedSheetOpen);
   const orientationIcon = resolveOrientationIcon(orientationMode);
   const playerSurfaceBg = theme.colors.black;
   const screenBg = showError ? theme.colors.background : playerSurfaceBg;
@@ -390,7 +525,7 @@ export const PlayerScreen = memo(function PlayerScreen() {
         <PlayerVideoSurface
           player={player}
           gesturesEnabled={
-            !speedSheetOpen && !orientationSheetOpen && !startupCoverVisible
+            !locked && !speedSheetOpen && !orientationSheetOpen && !startupCoverVisible
           }
           brightnessGesturesEnabled={sideGestures.brightnessAvailable}
           onSingleTap={onSingleTap}
@@ -401,12 +536,19 @@ export const PlayerScreen = memo(function PlayerScreen() {
               setSurfaceHeight(height);
             }
           }}
-          onBrightnessPanBegin={sideGestures.onBrightnessPanBegin}
+          onBrightnessPanStart={sideGestures.onBrightnessPanStart}
           onBrightnessPanUpdate={sideGestures.onBrightnessPanUpdate}
-          onBrightnessPanEnd={sideGestures.onBrightnessPanEnd}
-          onVolumePanBegin={sideGestures.onVolumePanBegin}
+          onBrightnessPanFinalize={sideGestures.onBrightnessPanFinalize}
+          onVolumePanStart={sideGestures.onVolumePanStart}
           onVolumePanUpdate={sideGestures.onVolumePanUpdate}
-          onVolumePanEnd={sideGestures.onVolumePanEnd}
+          onVolumePanFinalize={sideGestures.onVolumePanFinalize}
+          onZoomChange={sideGestures.onZoomChange}
+          onZoomFinalize={sideGestures.onZoomFinalize}
+          zoomResetKey={activeMediaId ?? ''}
+          contentSize={contentSize}
+          pictureInPictureAutoEnter={pipAutoEnter}
+          onPictureInPictureStart={handlePictureInPictureStart}
+          onPictureInPictureStop={handlePictureInPictureStop}
         />
         {/*
           Instant opaque cover (no FadeOut). FadeOut over a SurfaceView that
@@ -427,14 +569,10 @@ export const PlayerScreen = memo(function PlayerScreen() {
             </Text>
           </View>
         ) : null}
-        <PlayerAdjustmentHud
-          type={sideGestures.hud.kind}
-          percent={sideGestures.hud.percent}
-          visible={sideGestures.hud.visible}
-        />
+        <PlayerAdjustmentHud hud={sideGestures.hud} />
         {/* Single TopBar instance — avoids cover→controls remount swap shimmer. */}
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          {(startupCoverVisible || overlayVisible) && !showError ? (
+          {(startupCoverVisible || overlayVisible) && !showError && !locked ? (
             <PlayerTopBar
               title={title}
               isFullscreen={isFullscreen}
@@ -454,18 +592,19 @@ export const PlayerScreen = memo(function PlayerScreen() {
               isReady={session.isReady}
               isLoading={session.isLoading && session.hasFirstFrame}
               isCompleted={session.isCompleted}
-              isMuted={isMuted}
-              volumeLevel={volumeLevel}
-              playbackRate={session.playbackRate}
               disabled={Boolean(session.error)}
               visible
+              hasQueue={hasQueue}
+              onPrevious={onPrevious}
+              onNext={onNext}
               onPlayPause={onPlayPause}
               onRewind={onRewind}
               onForward={onForward}
               onReplay={onReplay}
-              onToggleMute={onToggleMute}
-              onOpenSpeed={onOpenSpeed}
             />
+          ) : null}
+          {overlayVisible && !startupCoverVisible && !showError ? (
+            <PlayerLockButton onLock={onLock} />
           ) : null}
         </View>
         <SeekFeedbackOverlay
@@ -474,6 +613,7 @@ export const PlayerScreen = memo(function PlayerScreen() {
           visible={session.isSeeking}
         />
         <DoubleTapSeekFeedback side={doubleTapSide} />
+        {locked && !showError ? <PlayerLockedOverlay onUnlock={onUnlock} /> : null}
       </View>
 
       {(overlayVisible || session.isSeeking) && !startupCoverVisible ? (
@@ -494,10 +634,30 @@ export const PlayerScreen = memo(function PlayerScreen() {
             onSeekCancel={onSeekCancel}
           />
           {session.isSeeking ? null : (
-            <Text variant="caption" color="textSecondary">
-              Speed {formatPlaybackRateLabel(session.playbackRate)}
-              {isMuted ? ' · Muted' : ''}
-            </Text>
+            <Box row style={styles.dockActions}>
+              <IconButton
+                icon={resolveVolumeIcon(volumeLevel, isMuted)}
+                size="small"
+                variant="ghost"
+                color={session.error ? 'disabled' : 'inverse'}
+                accessibilityLabel={isMuted ? t('player.unmute') : t('player.mute')}
+                disabled={Boolean(session.error)}
+                onPress={onToggleMute}
+              />
+              <Pressable
+                onPress={onOpenSpeed}
+                disabled={Boolean(session.error)}
+                accessibilityRole="button"
+                accessibilityLabel={t('player.playbackSpeedSelected', {
+                  rate: formatPlaybackRateLabel(session.playbackRate),
+                })}
+                hitSlop={8}
+                style={styles.speedChip}>
+                <Text variant="caption" color="white">
+                  {formatPlaybackRateLabel(session.playbackRate)}
+                </Text>
+              </Pressable>
+            </Box>
           )}
         </Box>
       ) : null}
@@ -584,6 +744,12 @@ export const PlayerScreen = memo(function PlayerScreen() {
 });
 
 const styles = StyleSheet.create({
+  openingShell: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
   body: {
     flex: 1,
   },
@@ -603,5 +769,19 @@ const styles = StyleSheet.create({
   },
   timelineDock: {
     backgroundColor: 'rgba(0,0,0,0.55)',
+  },
+  dockActions: {
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  speedChip: {
+    minWidth: 44,
+    height: 28,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.5)',
   },
 });

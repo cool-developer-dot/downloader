@@ -13,6 +13,7 @@ import {
   requestInitiatorClass,
 } from '../general-media/general-media-diagnostics';
 import { extractHostname, isSafeMediaUrl, normalizeMediaUrl } from '../utils';
+import { recordPipelineOutcome } from '../pipeline/pipeline-outcome';
 import { resolveNativeObservationScope } from './native-observation-scope';
 
 export type NativeMediaCandidate = {
@@ -28,6 +29,8 @@ export type NativeMediaCandidate = {
   isForMainFrame?: boolean;
   resourceFingerprint?: string | null;
   observationSource?: string | null;
+  /** A WebView download the user started (see `DetectedMedia.userRequested`). */
+  userRequested?: boolean;
 };
 
 export type NativeMediaCandidateEvent = {
@@ -186,6 +189,14 @@ export function processNativeMediaCandidateEvent(
   });
 
   if (!acceptedIntoIngest) {
+    recordPipelineOutcome({
+      tabId: scope?.tabId ?? null,
+      pageUrl: pageUrl ?? null,
+      mediaUrl: url,
+      stage: 'network',
+      outcome: 'REJECTED',
+      reason: classified.rejectionReason ?? 'non_media',
+    });
     logGeneralNetworkTrace('RESOURCE_REJECTED', {
       candidateFingerprintHash: fingerprint,
       rejectionReason: classified.rejectionReason ?? 'non_media',
@@ -227,6 +238,57 @@ export function processNativeMediaCandidateEvent(
     isForMainFrame,
     resourceFingerprint: fingerprint,
     observationSource: event.observationSource ?? 'webview',
+  };
+}
+
+/**
+ * A download the WebView started for a video (VidoraWeb `onWebDownload`: a pasted `.mpd` or `.mov`, a file served as
+ * an attachment) enters detection as the tab's own request for that resource. Unlike a passive observation it is
+ * neither deduplicated against the request the WebView just made for the same URL nor classified by request shape:
+ * the response's type is known, and the user asked for exactly this file. Null when the URL is unsafe or no mounted
+ * tab owns the WebView — the caller then hands the download back to the system.
+ */
+export function nativeCandidateFromWebDownload(event: {
+  viewTag: number;
+  url: string;
+  mimeType: string | null;
+  observedAt: number;
+}): NativeMediaCandidate | null {
+  const fingerprint = resourceFingerprintFromUrl(event.url);
+  const url = isSafeMediaUrl(event.url) ? normalizeMediaUrl(canonicalizeObservedMediaUrl(event.url)) : null;
+  const scope = url
+    ? resolveNativeObservationScope({ webViewId: event.viewTag, parentViewId: event.viewTag, observedAt: event.observedAt })
+    : null;
+  if (!url || !scope) {
+    logGeneralNetworkTrace('RESOURCE_REJECTED', {
+      candidateFingerprintHash: fingerprint,
+      rejectionReason: url ? 'NO_CURRENT_OWNER' : 'unsafe_or_missing_url',
+      acceptedIntoIngest: false,
+      observationSource: 'webview-download',
+    });
+    return null;
+  }
+  logGeneralNetworkTrace('RESOURCE_OBSERVED', {
+    candidateFingerprintHash: fingerprint,
+    frameClass: 'download',
+    mimeHintClass: event.mimeType ? 'present' : 'none',
+    acceptedIntoIngest: true,
+    observationSource: 'webview-download',
+  });
+  return {
+    url,
+    tabId: scope.tabId,
+    navigationEpoch: scope.navigationEpoch,
+    observedAt: event.observedAt,
+    frameUrl: null,
+    mimeType: event.mimeType ? event.mimeType.slice(0, 128) : null,
+    requiresCookies: false,
+    pageUrl: scope.pageUrl,
+    hasRange: false,
+    isForMainFrame: false,
+    resourceFingerprint: fingerprint,
+    observationSource: 'webview-download',
+    userRequested: true,
   };
 }
 

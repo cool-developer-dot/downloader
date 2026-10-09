@@ -1,12 +1,15 @@
 package com.vidorax.media
 
 import android.content.Context
+import com.vidorax.media.analyze.BrowserIdentity
+import com.vidorax.media.analyze.PageFetcher
 import com.vidorax.media.db.MediaDatabase
 import com.vidorax.media.files.FileActions
 import com.vidorax.media.library.GalleryExport
 import com.vidorax.media.library.LegacyImport
 import com.vidorax.media.library.LibraryStore
 import com.vidorax.media.library.MediaInfo
+import com.vidorax.media.library.SavedVideoIndex
 import com.vidorax.media.library.StoragePaths
 import com.vidorax.media.library.StorageUsage
 import com.vidorax.media.library.Thumbnails
@@ -25,9 +28,18 @@ class MediaServices private constructor(context: Context) {
   val mediaInfo = MediaInfo(context)
   val thumbnails = Thumbnails(paths)
   val galleryExport = GalleryExport(context, library)
+  val savedVideos = SavedVideoIndex(library, galleryExport)
   val fileActions = FileActions(context)
   val storageUsage = StorageUsage(paths, library)
   val legacyImport = LegacyImport(context, paths, library, mediaInfo, thumbnails)
+
+  /** Pasted/shared links read for their video before the tab plays anything (`fetchPage`). */
+  internal val pageFetcher: PageFetcher by lazy {
+    PageFetcher.create(
+      defaultUserAgent = { BrowserIdentity.userAgent(context) },
+      acceptLanguage = { BrowserIdentity.acceptLanguage() },
+    )
+  }
 
   /** For work that must outlive the JavaScript runtime that started it. */
   val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)

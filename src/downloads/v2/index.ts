@@ -27,7 +27,13 @@ export {
   type V2HandoffInput,
   type V2HandoffRejection,
 } from './enqueue-request';
-export { handOffVerifiedVariant, resetV2HandoffForTests, type V2HandoffResult } from './handoff';
+export {
+  findExistingDownload,
+  handOffVerifiedVariant,
+  resetV2HandoffForTests,
+  type V2DuplicateOutcome,
+  type V2HandoffResult,
+} from './handoff';
 export {
   applyV2Progress,
   fileQualityLabel,
@@ -39,6 +45,8 @@ export {
 export { collectV2Entries, hydrateV2Downloads, subscribeV2Downloads, type V2BridgeSink } from './bridge';
 export {
   ensureV2DownloadBridge,
+  ensureV2LibraryHydrated,
+  ensureV2LibraryItem,
   reconcileV2Library,
   reconcileV2LibraryIds,
   refreshV2Downloads,

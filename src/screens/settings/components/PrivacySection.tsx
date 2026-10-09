@@ -1,9 +1,11 @@
 import { memo, useCallback } from 'react';
+import { View } from 'react-native';
 
 import { Switch } from '@/components/inputs/Switch';
 import { push, routePaths } from '@/navigation';
 import { useTranslation } from '@/localization';
 import { useAppLockStore } from '@/security/app-lock';
+import { AppLockDataLossWarning } from '@/screens/security/AppLockDataLossWarning';
 
 import { SettingsRow } from './SettingsRow';
 import { SettingsSection } from './SettingsSection';
@@ -84,6 +86,10 @@ export const PrivacySection = memo(function PrivacySection({
           />
         </>
       ) : null}
+      {/* What losing both the PIN and the recovery code means, next to the PIN / recovery code settings. */}
+      <View style={{ paddingBottom: 14, paddingTop: isEnabled ? 4 : 0 }}>
+        <AppLockDataLossWarning compact testID={`${testID}-data-loss-warning`} />
+      </View>
     </SettingsSection>
   );
 });

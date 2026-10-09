@@ -44,6 +44,12 @@ them unnecessarily.
 - The browser is usable immediately at launch (no long splash/onboarding).
 
 **Explicit non-goals** (refused with a clear message):
+
+> **2026-10-03:** this list is the original 2026-09 contract. Since §4.22 (2026-09-27) separate audio/video merging,
+> segmented DASH, HLS alternate-audio renditions and remux/transcode **are supported**; `docs/ARCHITECTURE.md` §1 is
+> the current, authoritative goals / non-goals list. Still refused: DRM, YouTube, encrypted HLS, unresolved
+> `blob:`/MSE-only sources, live streams, login/paywall bypass.
+
 - DRM (Widevine/PlayReady/FairPlay, encrypted samples of any kind).
 - YouTube (`youtube.com`, `youtu.be`, `*.googlevideo.com`) — SABR streaming makes plain
   capture infeasible in 2026, and it violates YouTube's ToS.
@@ -144,7 +150,9 @@ module.config.json`, matching the pattern of `node_modules/expo-video`):
   progressive direct-to-disk transfer with Range resume, HLS segment concatenation with
   per-segment checkpoint, post-download verification, library store, thumbnails, gallery
   export, background runners (API 34+ user-initiated data transfer job; API 24-33 `dataSync`
-  foreground service), notifications. No remuxing, no DASH, no AES-128 decrypt, no ffmpeg.
+  foreground service), notifications. No remuxing, no DASH, no AES-128 decrypt, no ffmpeg. *(Superseded by §4.22:
+  `process/` now remuxes, merges and transcodes with Media3 muxer/Transformer, and DASH is planned and downloaded.
+  Still no AES decrypt and no ffmpeg.)*
   **Critical pinning rule:** every Media3 artifact must be at exactly the same version as
   `expo-video` bundles (currently **1.9.0**, see `node_modules/expo-video/android/build.gradle`)
   — mixed Media3 versions crash at runtime.
@@ -190,16 +198,24 @@ top of it.
 
 ---
 
-## 4. Exact current state (as of commit `38dcf8b`, branch `overhaul`)
+## 4. Exact current state
 
-Git: `main` is untouched at the original v1 commit (`bfe38ea`). All v2 work is on branch
+> **Current (2026-10-03):** branch `phase14-cloud-sync` at `ba825ea` (pushed to `origin/phase14-cloud-sync`), with
+> everything from §4.17 to §4.31 and the 2026-10-01 Play release prep **uncommitted** on top of it (≈490 changed
+> paths). Play package id is `com.vidorax.fast.videodownloader` (§6). The newest section is §4.31 (feature checklist
+> audit and the Phase 16–22 plan in `docs/ROADMAP.md`). The text right below describes the original `38dcf8b`
+> snapshot on branch `overhaul` and is kept for history.
+
+Git (at `38dcf8b`): `main` is untouched at the original v1 commit (`bfe38ea`). All v2 work is on branch
 `overhaul`. Not pushed to `origin` (a real GitHub remote exists:
 `cool-developer-dot/downloader.git`, but nothing has been pushed there this project).
 `overhaul` is 8 commits ahead of the point it branched from (`517331c`, which itself is a
 checkpoint of the user's own uncommitted pre-rewrite edits — preserved, not lost).
 
 Working tree is clean (`git status` → nothing to commit) as of this writing. *(Later note: everything from Phase 6
-on — §4.5 to §4.15 — is uncommitted on top of `e394dab`; read those sections for the current state.)*
+on — §4.5 to §4.16 — was committed on 2026-09-25 as `ba825ea` "Checkpoint Phase 14 work for cloud continuation" on
+branch `phase14-cloud-sync`, pushed to `origin/phase14-cloud-sync`; `overhaul` still points at `e394dab`. The §4.16
+doc edit and the §4.17 fixes are uncommitted on top of `ba825ea`. Read those sections for the current state.)*
 
 ### 4.1 Done and verified
 
@@ -1064,11 +1080,904 @@ piece of state stays on the device).
   `ENGINE` = requests with `Accept-Encoding: identity`, logs `If-Range`) behind `adb reverse tcp:8093`; `svc wifi
   disable/enable` keeps `adb reverse` working; checkpoint the WAL before pushing a DB snapshot back with `run-as`.
 
+### 4.16 Phase 14 — last fixes + local native verification (committed as `ba825ea`, 2026-09-25)
+
+Status `LOCAL_NATIVE_VERIFICATION_PASSED` (2026-09-25). The Phase 14 code is commit `ba825ea` on `phase14-cloud-sync`
+(= `origin/phase14-cloud-sync`). The Phase 14 session stopped partway through its social-site checks (Dailymotion) and
+never wrote its device evidence here. The fixes below are confirmed present in the code, with tests.
+
+- **Phase 14 fixes:**
+  1. *Expired signed link:* a download that failed because its link expired (`needsFreshSource`,
+     `src/downloads/v2/actions.ts`) now lets the page offer the video again
+     (`newlyFailedForFreshSource`, `src/browser/media-actions/consumed-release-rows.ts`).
+  2. *Returning to a tab* no longer re-offers a video that tab has already downloaded (`consumed-release-rows.test.ts`).
+  3. *SPA title:* a download now takes the name the live page gives that media (`live-media-title.ts`), not the
+     previous route's title. The fallback is the tab's own title (`download-title.ts`,
+     `src/media-detection/tests/spa-route-title.test.ts`).
+  4. *Encrypted MP4 with the `moov` after the media:* now refused as PROTECTED before any download (`ProbeTest`,
+     `MediaSnifferTest`, `VerifierTest`; fixture `src/test/resources/media/formats/cenc-moov-at-end.mp4`).
+  5. *Auto-play* only for the download the user just started, and only while the app is active
+     (`src/downloads/v2/autoplay.ts`). There are also resume-prompt changes (`src/playback/use-resume-prompt.ts`) and
+     lint fixes: `npx eslint .` now reports 0 errors (84 warnings), so the three §4.15 files no longer have errors.
+- **Local native verification** (Pixel_8 AVD, API 35 / Android 15 arm64, booted with
+  `-gpu host -feature -Vulkan -memory 4096`, every Gradle call through `scripts/dev/gradle.sh`):
+  | Gate | Result |
+  | --- | --- |
+  | `:vidorax-media:testDebugUnitTest --rerun` | 406/406, 34 classes, 0 skipped (§4.15's 397 + the Phase 14 cases) |
+  | `:vidorax-web:testDebugUnitTest --rerun` | 16/16, 3 classes |
+  | `:vidorax-media:connectedDebugAndroidTest` | 17/17 on `Pixel_8(AVD) - 15` (`HlsE2EAndroidTest` 9, `ProgressiveE2EAndroidTest` 8) |
+  | `:vidorax-web:compileDebugKotlin :app:assembleDebug` | BUILD SUCCESSFUL |
+  | `node --test scripts/patch-react-native-webview.test.mjs` | 5/5 (not part of `npm test`) |
+  | `npm test` | 355/355 (§4.15's 339 + 16 Phase 14 tests) |
+  | `npx tsc --noEmit`, `npx tsc --noEmit -p tsconfig.test.json` | 0 errors each |
+  | `git diff --check` | clean |
+  Nothing failed, so no code was changed.
+- **Notes:** without `--rerun`, Gradle marks the unit-test tasks UP-TO-DATE when their inputs haven't changed, and no
+  tests run. Commit `5a4f3d2` committed 278 files under `modules/vidorax-web/android/build/` by mistake. They are still
+  tracked, even though `modules/vidorax-web/.gitignore` now ignores `android/build/`, so every Gradle build shows them
+  as modified or deleted in `git status`. Untracking them (`git rm -r --cached modules/vidorax-web/android/build`) is a
+  separate, deliberate change. Still open: the real Play review sheet (`REAL_GOOGLE_PLAY_REVIEW_SHEET_NOT_VALIDATED`)
+  and the unfinished Phase 14 social-site device checks *(finished in §4.17)*.
+
+### 4.17 Social regression + release-device smoke (uncommitted on top of `ba825ea`, 2026-09-25)
+
+Status `SOCIAL_AND_RELEASE_SMOKE_VERIFIED`. Two generic fixes (below), no site-specific code, no prebuild. The device
+was the Pixel_8 AVD (API 35). The social run used the debug build; the smoke run used a fresh `:app:assembleRelease`
+APK that contains both fixes.
+
+- **Fix 1 — a stale quality sheet started the previous video through the v1 engine.** Seen on Dailymotion, which
+  moves on to the next video by itself. An in-page navigation while the sheet is open runs `resetForNavigation`, which
+  releases the selection lock. The sheet's confirm then took the paste-link branch (`runPreDownloadGate` + store
+  `create` → v1 JS engine) with the old page's variant (row `ea17c61c`: v1 Scheduler/Worker, no native row). New
+  `src/screens/downloads/quality/confirm-route.ts` (`qualityConfirmRoute`). The sheet now remembers it was opened for
+  the locked browser offer, and a confirm after the lock is gone is refused as stale (hint, sheet stays open), never
+  sent to v1. The same hole existed after the Phase 5C stale branch ended the lock (a second tap went to v1).
+  Device: auto-advance with the sheet open → "Select a format to download", no v1 activity, no row.
+- **Fix 2 — a transient HLS manifest failure counted as proven unsupported.** `fetchBoundedHlsManifest` turned a
+  network error, an 8 s bounded-fetch timeout, a 5xx, 408 or 429 into `MANIFEST_INVALID`. That reason is in
+  `PROVEN_UNSUPPORTED_REASONS`, so it triggered `MARK_LOCAL_UNAVAILABLE`. Dailymotion's first cold run got four 8 s
+  timeouts and never showed a CTA. These failures are now `PROBE_FAILED` (transient); 401/403/HTML stay
+  `AUTH_REQUIRED`, and a 404 or a non-playlist body stays `MANIFEST_INVALID`. The dev log now carries `httpStatus`.
+  7 new tests are in `general-source-reliability.service.test.ts`.
+- **Social matrix** (debug build; "correct" = byte-identical to the page's own video, fetched in page context through
+  WebView DevTools, or the engine requested only the expected fixture path):
+  | Case | Result | Final |
+  | --- | --- | --- |
+  | Dailymotion (feed auto-advance) | HLS fMP4 muxed, 3 variants; the `dmxleo…/manifest/*.m3u8` "manifest" is a VMAP ad (XML), correctly refused; the chosen 640p only; 57.6 s = the page's current video; title = page | PASS (after fixes) |
+  | TikTok, 2 videos (link A→B in one tab) | progressive, sha256 = page video each time, new page's title | PASS |
+  | TikTok in-page "related video" link | app-install funnel → play.google.com | PAGE_STATE_BLOCKED |
+  | Instagram reel (logged out) | "Sign up to keep watching"; only MSE fragments/init segments seen, all refused | PAGE_STATE_BLOCKED |
+  | Facebook (`m.facebook.com/watch/?v=…`, NASA) | progressive 1280x720 125.8 s, sha256 = main video; suggested video not offered (`www.facebook.com/…/videos/…` → WebView `ERR_CONNECTION_CLOSED`) | PASS |
+  | X (NASA thread) | HLS with video-only variants + separate `AUDIO` renditions; nothing offered (reply clips, LIVE parent) | UNSUPPORTED |
+  | Generic dynamic (`/p/p.html`), cross-origin iframe (`/p/o.html`), SPA pushState / query-only / Back (`/spa/app.html`), feed scroll (`/feed.html`) | CTA 1–6 s; engine fetched only the current route's/post's file; Back to a downloaded route re-offers and the tap dedupes (no row, no request) | PASS |
+- **Release smoke** (`app-release.apk` 140.9 MB, all ABIs, Hermes bytecode bundle, no `debuggable`, no cleartext
+  attribute; installed over debug with the same signer):
+  - Launch and browsing: cold launch → splash → Browser. Address-bar navigation, toolbar and hardware Back/Forward,
+    tabs (new tab, switch, the offer restored on return).
+  - Downloads, all through the real pages: progressive w3schools; HLS Mux 480p (72 MB) and Apple bipbop 4x3 232 kbps
+    (52 MB); Commons WebM 481p (97 MB).
+  - Pause from Downloads (bytes frozen 12 s). Background downloading with the launcher in front. Notification
+    Resume / Pause / Cancel (the PAUSE and CANCEL broadcasts are visible in `dumpsys activity broadcasts history`).
+    Tapping an individual completion notification opens the Player tab; the group summary opens Downloads.
+  - Player: plays with picture.
+  - Library: real-frame thumbnails and metadata (format · size · quality · resolution · date); favorite, rename,
+    search. Share opens the system sheet; Open with → Google Photos plays the file.
+  - Restart: after force-stop and cold start, the renamed item plays.
+  - External deletion: install debug → `run-as rm` one library file → reinstall release → count 136 → 135, item gone.
+  - Settings: Download Settings, Storage; English ⇄ Urdu (RTL, immediate); Light / Logo / Dark.
+  - Runtime release checks: 0 VidoraX ANR/crash events. Only `Running "main"` in logcat (no dev diagnostics), no
+    WebView DevTools socket, no Metro connection, and `http://` refused (see below).
+- **Tests:** `npm test` 365/365; `tsc` both configs 0; ESLint 0 errors repo-wide (84 warnings, unchanged);
+  `vidorax-media` 406/0, `vidorax-web` 16/0 (`--rerun`); instrumented 17/0; `git diff --check` clean.
+- **Open / decisions:**
+  - ~~`android/app/build.gradle` signs **release with the debug keystore**~~ (fixed 2026-09-30): release signs with
+    the Play upload key from `~/.vidorax-signing/keystore.properties` (override: `VIDORAX_UPLOAD_KEYSTORE_PROPERTIES`
+    Gradle property or env var); without it the release output is unsigned, never debug-signed. Installing a
+    release build on the emulator now needs that key (or sign the APK by hand).
+  - 2026-10-01 Play prep: removed expo-video's `ExpoVideoPlaybackService` + `FOREGROUND_SERVICE_MEDIA_PLAYBACK` from
+    the app manifest (and `supportsBackgroundPlayback` → false in app.json). Nothing ever started it (no player sets
+    `staysActiveInBackground`/`showNowPlayingNotification`; background = pause, PiP needs no FGS), and Play would
+    demand a declaration + video for an unused FGS type. `dataSync` is now the only FGS type. Play Console answers,
+    declarations and store copy: `docs/play-console/PLAY_SUBMISSION.md`.
+  - 2026-10-01 store cleanup: onboarding orbit (`PlatformHubGraphic/platform-hub-items.ts`) and browser Quick Access
+    (`quick-sites.ts`, `QuickSiteCard.tsx`) show generic glyphs only; onboarding headline "Download Supported Media".
+    All favicon helpers load `https://<host>/favicon.ico` instead of Google's s2 service (hostnames of history and
+    bookmarks were going to Google). Firebase never initializes (no google-services config); Data safety = none.
+  - Release cannot open or download `http://` at all. Cleartext is enabled only by the debug manifest; this was
+    already flagged in Phase 14 and is a product/security decision.
+  - Streams whose master has an alternate-audio rendition with a URI plus subtitles (Apple `bipbop_16x9`): the JS
+    verifier refuses the master (`MANIFEST_INVALID`, split audio out of scope), yet a single rendition playlist is
+    still offered. Its tap fails at hand-off (`enqueue_failed immediate_failure`, `PROBE_FAILED`), so nothing
+    downloads, but the CTA misleads (the §4.12 known limit).
+  - Titles: an offer built before the page's JS set its title keeps the generic one (seen once: "Dailymotion", page
+    loaded behind the Player); a direct media URL is titled "Download".
+  - Duplicates and labels: a re-download after an app restart makes a second copy (hand-off dedupe is in-memory by
+    design); the sheet labels vertical HLS by height ("1280p" for 720x1280); masters without `RESOLUTION` show
+    "Original Quality" for every variant.
+  - Play review sheet still not validated.
+- **Testing notes:** on the emulator the debug app talks to Metro at `10.0.2.2:8081` (the host's own 8081), not
+  through `adb reverse`. A different Metro needs `debug_http_host` in `shared_prefs/<applicationId>_preferences.xml`
+  (`com.anonymous.vidorax` at the time; `com.vidorax.fast.videodownloader` since 2026-10-01, see §6);
+  it was removed afterwards. `uiautomator dump` hangs while a page video plays, so use screenshots or pause the video
+  via DevTools. A running download's notification rebinds up to 4×/s, and the shade dump can be stale: aim action
+  taps from a fresh screenshot. The progress notification collapses whenever it updates. Under memory pressure
+  (3.3/4 GB used + swap) the emulator's cold start went from 0.9 s to 7–10 s.
+
+### 4.18 Phase 15A — multi-tab performance + consecutive social videos (uncommitted on top of `ba825ea`, 2026-09-25)
+
+Status `PHASE15A_PERFORMANCE_DETECTION_VERIFIED`. No prebuild, no site-specific code, no backend. Everything below is uncommitted (together with
+§4.17's two fixes).
+
+- **Multi-tab lag — root cause.** Only two WebViews are ever mounted (`MAX_MOUNTED_WEBVIEWS = 2`), but the parked one
+  kept running at full speed: it sits at `left:-10000` inside the window, so Chromium still treats its page as
+  `visible`. A parked Facebook video kept playing (DevTools: `visibilityState: 'visible'`, `currentTime` 46 → 106 s over
+  a minute behind w3schools), every decoded frame invalidated the app's view tree (idle app CPU 2 % → 11 %, scroll p99
+  25 → 350 ms), the injected detector kept its MutationObserver/PerformanceObserver/IntersectionObserver and posts, and
+  the parked view's media requests still crossed the bridge as `onNetworkMedia` only to be dropped in JS.
+- **Multi-tab fixes.**
+  1. `VidoraWeb.setWebViewActive(viewTag, active)` (new, `VidoraWebModule.kt`): `WebView.onPause()` / `onResume()` on
+     the RNCWebViewWrapper's WebView (per WebView — never the process-wide `pauseTimers`). A paused page is hidden:
+     `document.hidden`, no rAF/compositor frames, throttled timers, media suspended (Chromium resumes it on
+     `onResume`). Requests of a parked view are dropped natively (`SuspendedViews`, bounded 8) before any event.
+  2. `src/browser/webview/webview-activity.ts` + `BrowserWebView`: a WebView runs only when its tab is active **and**
+     the Browser route is in front (`useBrowserRouteLifecycle` → `setBrowserRouteVisible`). Each state is sent once
+     per view tag (bounded map, retried when the view was not resolvable yet, forgotten on unmount).
+  3. Injected detector: suspends itself on `visibilitychange` → hidden (observers detached, queue cleared, nothing
+     posted, rescans refused) and on visible re-attaches, re-reports the page like a route change and replays only the
+     resource entries recorded while hidden. A document injected while hidden starts suspended.
+  4. `MAX_OPEN_TABS` 8 → 10 (strings in en/ur). Mounted WebViews stay capped at 2, so 10 tabs cost URL rows only.
+- **Consecutive-video detection — root causes and fixes** (all generic; fixture `fx15-server.mjs` reproduces
+  reels/feed/MSE patterns):
+  1. *Chromium keeps `currentSrc` after `removeAttribute('src'); load()`* (a recycled feed player between items), so
+     after a route change the detector reported the previous item as the current source. `currentSourceOf()` treats
+     `networkState` EMPTY/NO_SOURCE as "no source" (only a freshly assigned `src` counts).
+  2. *"Same element" counted as a source match* in `general-correlation.service.ts`, so a recycled player's previous
+     item stayed STRONG. Element identity now matches only the element's current source; an active player with no
+     source makes every candidate at most WEAK (`emptyPlayerPenalty`) — nothing is offered between items.
+  3. *Ad / content-id walks crossed feed containers*: a "Sponsored" neighbour marked the current post as an ad (half the
+     feed posts got no offer). The walks stop at the first ancestor that holds another player
+     (`isSharedMediaContainer`).
+  4. *Thumbnail previews were measured by intrinsic resolution*: a 1280×720 file drawn 120×68 counted as a main player
+     and was offered. `active_video` now carries the rendered box (`displayWidth/Height`); a player drawn under
+     40 000 CSS px² is a tiny preview (never STRONG/MEDIUM).
+  5. *Recycled blob/MSE players*: hls.js requests the next item's manifest just before attaching the new blob, so the
+     manifest was stamped with the previous page generation and rejected STALE once the blob changed; the verification
+     that had just succeeded was discarded as stale and never re-run. A blob→blob recycle now carries candidates
+     observed in the previous generation during the last 4 s (`carryFromGeneration` / `carryObservedSince`; ranked
+     below anything observed for the current blob, newest first), and a stale verification result schedules a re-check
+     (`staleResult` in `useBrowserMediaAction`, still bounded by `MAX_VERIFY_RERUNS`).
+- **Measurements** (Pixel_8 AVD, 4 GB, `adb reboot` before each run, same scripted protocol `perfrun.sh`; "before" =
+  the committed code + §4.17 JS bundle swapped into the new release APK and re-signed, "after" = this release build;
+  CPU is % of one core over 20 s, PSS from `dumpsys meminfo`, frames from `gfxinfo` over a 5× scroll):
+  | Case | App PSS MB | App CPU % | Renderer PSS MB | Renderer CPU % | Scroll p50/p90/p99 ms |
+  | --- | --- | --- | --- | --- | --- |
+  | 1 tab (w3schools) | 279 → 231 | 3.0 → 2.9 | 192 → 104 | 1.7 → 1.3 | 17/19/32 → 17/17/18 |
+  | 2 tabs, Facebook video parked | 290 → 245 | 12.8 → 2.9 | 252 → 156 | 5.0 → 1.6 | 23/34/48 → 17/17/19 |
+  | 5 tabs | 290 → 259 | 7.7 → 2.4 | 238 → 203 | 10.7 → 0.8 | 17/22/31 → 17/17/22 |
+  | 8 tabs | 300 → 259 | 4.4 → 2.7 | 270 → 321 | 5.5 → 0.1 | 17/17/18 → 17/17/19 |
+  | 10 tabs (before: capped at 8) | 297 → 265 | 3.3 → 16.2¹ | 261 → 322 | 4.6 → 2.9 | 20/25/40 → 19/22/27 |
+  | after 16/32/48/64 switches | 321/311/319/321 → 288/288/301/301 | 8.1/12.2/9.0/7.3 → 5.4/4.9/0.1/5.1 | 340/414/354/394 → 322/338/326/385 | — | — |
+  | all tabs closed | 319 → 296 | 2.5 → 2.6 | 287 → 299 | 1.2 → 1.4 | — |
+  ¹ the 10th tab had just loaded its media page (buffering). Threads 77–104 in both builds; always 2 WebViews in the
+  view tree (1 after closing all). Both runs kept one app PID and one renderer PID through all 16 samples (no crash, no
+  renderer loss). Parked page (DevTools): before `visible` + video playing; after `hidden` + paused, 0 posts, media
+  listeners detached (19 → 10 document listeners), counts unchanged after 30 tab switches; Chromium resumes playback and
+  the offer returns (≤ 1 s) when the tab is shown again.
+- **Consecutive-video matrix** (debug build, production JS from `expo start --no-dev --minify`; "correct" = the file the
+  offer names equals the page's current item, from the fixture's own beacons, or the playing `currentSrc` on Facebook):
+  | Case | Before the fixes | After |
+  | --- | --- | --- |
+  | Reels (recycled `<video>`, SPA route per item, hidden prefetch, sponsored every 5th), 24 Next + 6 Back + 4 Prev | item 1 only; 24/24 later items no CTA; previous item briefly offered on every new route | 20/20 non-ad items offered with the right file, 0 wrong/stale offers; ads not offered |
+  | Feed (one URL, 4 recycled slots, "Suggested" preview always playing, sponsored every 6th), 26 scrolls | ~half the posts missing (sponsored neighbour); preview offered | 25/25 posts correct; preview and ads never offered |
+  | MSE reels (hls.js into the same element, blob src), 22 Next | item 1 only | 23/23 correct |
+  | Tab switch away/back, background/foreground, SPA Back/Forward | — | offer back ≤ 1 s, correct; detection re-arms |
+  | Downloads | — | reel-8 / post-4 / MSE reel-23 (4 segments) / dynamic post-9: engine fetched the current item, byte counts = source |
+  | Facebook (logged out, `m.facebook.com/watch/?v=`), 15 videos + 6 Back + tab switch + bg/fg + related tile | — | 11/11 playable videos + 5/5 Back: offered file = playing file; tab/bgfg PASS; 779937251447144 downloaded, md5 = source; 7 steps PAGE_STATE_BLOCKED (login page); own pager/tiles blocked by the login sheet; Forward unavailable (Facebook's load-time `#` entry) |
+  | Instagram (logged out, 3 reels, 25 steps) | — | every playable reel is MSE with separate video-only + audio-only files → no offer (UNSUPPORTED, correct); "Sign up to keep watching"/app wall → PAGE_STATE_BLOCKED; never a stale offer |
+  Regression re-test (fresh debug build): dynamic video inserted after 3 s (offer ~5 s), cross-origin iframe player
+  (offer ~1 s), SPA + hardware Back + toolbar Forward, cross-tab offers, download from a tab after switching, tab
+  restore after force-stop + cold start (8 tabs, offer on the restored page) — all PASS.
+- **Tests:** `npm test` 384/384 (+19: `consecutive-video.test.ts` 6 — 5 of them fail on the pre-fix code, run in a temporary
+  worktree —, general correlation +6, `webview-activity.test.ts` 7); `tsc` both configs 0; ESLint on the changed files
+  0 errors (7 warnings, all on pre-existing lines); `vidorax-web` 20/0 (+`SuspendedViewsTest` 4), `vidorax-media`
+  406/0 (`--rerun`); instrumented 17/0 on the AVD; `git diff --check` clean; `:app:assembleRelease` and
+  `:app:assembleDebug` OK.
+- **Known limits:** a whole audio-only file observed on a page whose player is MSE can be offered as "Video available" (seen once, when a
+  DevTools test script fetched Instagram's audio track without byte ranges; Instagram itself only requests ranges) — the
+  progressive probe does not report track types; once, on Facebook after a tab switch + background/foreground, two
+  download taps failed immediately in the pre-download gate (`enqueue_failed`), not reproducible after a restart (two
+  later downloads from the same flow succeeded) — cause not captured; a new document keeps the previous page's offer for
+  ~1 s until the navigation reaches JS (pre-existing); an MSE page that prefetches later items' manifests can still rank
+  the wrong one (current-generation requests win, then the newest carried one); ANRs were not captured separately in the
+  perf runs (PID stability only). Real Facebook/Instagram in-site swiping needs a logged-in session (not done by
+  design); the generic fixtures cover those patterns. The emulator's quick-boot snapshot restored its pre-session state
+  after an overnight shutdown (app data from this session gone).
+
+
+### 4.19 Phase 15A.5 — generic media detection → capability pipeline (uncommitted, 2026-09-26)
+
+Status `PHASE15A5_GENERIC_MEDIA_PIPELINE_VERIFIED`. Uncommitted on top of §4.17/§4.18 (the debug APK was rebuilt for
+the vidorax-web change). No prebuild, no site-specific code, no backend.
+
+- **Root causes fixed (all generic):**
+  1. *Pasted/opened links the WebView cannot render never reached detection.* A pasted `.mpd`, `.mov`, attachment or
+     extensionless octet-stream fired the WebView DownloadListener; nothing in JS listened to `onWebDownload`, so Android
+     DownloadManager silently saved the file to /sdcard/Download and detection ended at `WEAK_OWNERSHIP`. Now
+     `NetworkMediaClassifier.classifyDownload` claims only videos, JS turns them into `userRequested` candidates
+     (`handleWebDownload` → `nativeCandidateFromWebDownload` → `generalPageMediaContextStore.adoptUserRequestedMedia`,
+     STRONG in correlation), and anything that is not a video (or has no owning tab) goes back to DownloadManager via the
+     new `VidoraWeb.startSystemDownload`.
+  2. *The CTA tap could download a different video.* It re-picked the best-quality option across every active source;
+     it now downloads the offered variant (`offered-option.ts`), and the general offer holds only the owned source's
+     renditions.
+  3. *Split audio/video MSE players (Instagram) ended UNRESOLVED.* The page reports each MediaSource's SourceBuffer
+     layout (`mseTracks`; `addSourceBuffer` hook, fallback for MediaSources created before injection); split buffers fed
+     from ≥ 2 files with no manifest ⇒ `UNSUPPORTED SPLIT_AUDIO_VIDEO` (a manifest exempts hls.js demuxing one TS stream).
+  4. *Protection appearing alone did not withdraw an offer* (`setMediaKeys` hook + `subscribeMsePlayback`).
+  5. *No single account of losses:* `src/media-detection/pipeline/pipeline-outcome.ts` records OBSERVED / OFFERED /
+     ENQUEUED or one of STALE, PROTECTED, UNSUPPORTED, UNRESOLVED, TRANSIENT_FAILURE, INVALID_MEDIA at the network,
+     detector, correlation, verification and enqueue stages (`[VidoraPipeline]` in debug builds or with
+     `EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE=1`).
+  6. *Latency:* the engine probe runs in parallel with the JS range read; a transient verification failure is verified
+     again after 3 s (bounded by the existing rerun budget).
+- **Device matrix** (Pixel_8 AVD, production JS via `EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE=1 CI=1 expo start --no-dev
+  --minify`; fixtures `fx155-server.mjs` :8097 and `fx15-server.mjs` :8096 in scratchpad `2d5e01ea…`):
+  | Case | Result |
+  | --- | --- |
+  | Pasted MP4 / progressive page / pasted MOV, WebM, attachment, extensionless, short link | offer → download completed, the page's file |
+  | HLS page + pasted master (sheet 360p) / DASH page + pasted MPD (`av-360`) | offer → completed |
+  | blob-from-fetch, whole-file MSE, dynamic video, cross-origin iframe, attachment clicked while another video plays | offer → completed, the right file |
+  | Split MSE, DASH split (page + pasted) / AES HLS, Widevine DASH, CENC MP4, ClearKey EME on https / live HLS | no CTA: UNSUPPORTED / PROTECTED (standing offer withdrawn) / UNSUPPORTED |
+  | zip, non-video binary download | still saved by the system downloader |
+  | Reels 1→7 + Back, MSE reels 1→4, feed by swipes and by multi-post jumps | every offer = item on screen, ads none, downloads = current item |
+  | Instagram `/reel/DdiUOZezpFs/` (logged out, "Continue on web") | MSE `mseTracks: split` → UNSUPPORTED `SPLIT_AUDIO_VIDEO`, no CTA |
+  | Facebook `m.facebook.com/watch` ×10 + Back ×3 | every offer = playing file; 34–55 s after the link on this emulator (page JS starts the player ~20 s after commit; ~1.2 s per request to the fbcdn edge) |
+  | Regression: 3 tabs + switching, bg/fg, Back/Forward (hw + toolbar), stale tap 0.5 s after Next | PASS (parked pages hidden+paused; per-tab downloads = own file; stale tap enqueues nothing) |
+- **Tests:** `npm test` 401/401; `tsc` both configs 0; ESLint 0 errors on changed files; `vidorax-media` 406/0 and
+  `vidorax-web` 24/0 (`--rerun`); instrumented 17/0; `git diff --check` clean.
+- **Testing notes:** `adb shell input text` sends key events — two `r` keys trigger React Native's debug "RR" reload
+  (use `view.sh`, a VIEW intent, for such URLs); an overloaded AVD (days of uptime, 3.6/4 GB) slowed detection 10×
+  (reboot first); EME cannot be tested on plain-http fixtures (not a secure context); Gradle's `--rerun` applies only to
+  the task before it; the dev-client LogBox toast can cover the tab switcher's last row.
+- **Known limits:** Facebook's offer latency is page startup + CDN bound; a feed prefetch can still rank a wrong item on
+  MSE pages (§4.18); the pipeline ledger lives in memory (bounded, per process).
+
+
+### 4.20 Phase 15B — player UX, download UX, large data, release size (uncommitted, 2026-09-26)
+
+Status `PHASE15B_PLAYER_RELEASE_OPTIMIZATION_VERIFIED`. Uncommitted on top of §4.17–§4.19. No prebuild, no backend, no
+detection/protection rule touched. Device: Pixel_8 AVD (API 35, arm64); release builds signed with the debug keystore.
+
+- **Download completion** — root cause: `bridge.ts` → `claimAutoPlay` → `openPlayer` opened the Player for the download
+  the user had just started. Now `completion-notice.ts`: a system toast "Video downloaded" (en/ur), only while the app is
+  active, once per download id (bounded 200), a burst within 2.5 s shows one. Nothing navigates or plays; the
+  notification/library still open it. `autoplay.ts` removed. Device: Browser (fixture page) and Downloads flows — toast
+  shown, screen unchanged, 0 player events, no media session.
+- **Brightness/volume HUD** — root causes: the edge `Pan` showed the HUD in `onBegin` (touch-down), so a tap or sideways
+  move on an edge never reached `onEnd` and left it on screen; hide delay was 1200 ms + 220 ms fade; every swipe frame
+  re-rendered the whole PlayerScreen; brightness writes queued one native call per frame. Now `adjustment-hud.ts`
+  (external store, one hide timer, 400 ms + 100 ms fade), shown from `onStart`/`onUpdate`, released from `onFinalize`,
+  `PlayerAdjustmentHud` subscribes itself; brightness writes are coalesced (one in flight, latest wins). Device (screen
+  recording timestamps): hidden 500/501 ms (brightness) and 500 ms (volume) after the last value change; an edge tap
+  shows nothing.
+- **Pinch zoom** — `PlayerVideoSurface` now has one `GestureDetector`: `Race(Simultaneous(Pinch, Pan-when-zoomed),
+  edge pans (hitSlop 25 %), Exclusive(doubleTap, singleTap))`. Geometry in `zoom-math.ts` (1×–4×, rubber band, focal
+  anchoring, translation clamped to the contain-fitted picture — library display size, else track size). Double tap:
+  reset when zoomed, seek otherwise; a new video resets; rotation/fullscreen re-clamps; edge swipes only at 1× (a drag
+  pans when zoomed). `VideoView` uses `surfaceType="textureView"` so transforms and clipping are exact. Device: portrait
+  and landscape fullscreen zoom, HUD %, pan bounds, double-tap reset, zoom kept across PiP.
+- **PiP** — `startsPictureInPictureAutomatically` armed only while a revealed, healthy video plays (frozen while the
+  window shows: toggling it inside PiP clears expo-video's candidate and skips the exit re-layout). Android 8–11:
+  `player/PictureInPictureAutoEnter.kt` enters from `OnUserLeavesActivity` (JS arms it via
+  `setPictureInPictureAutoEnter`). Root cause found on device: after dismissing the PiP window the video kept playing
+  in the background — JS timers do not run while the activity is paused, so the grace/settle timeouts never fired.
+  Now `player/ActivityVisibility.kt` emits `onActivityStop` (lifecycle `ON_STOP`, attach posted to the main thread — a
+  first version threw `addObserver must be called on the main thread` inside module creation and stalled startup) and
+  the session pauses on it. Device (API 35): Home while playing → PiP (`mode=pinned`), same player/position, one
+  AudioTrack, system play/pause work, expand → same session (no reload), dismiss → paused at once
+  (`reason: activity_stopped`), paused + Home → no PiP, fullscreen + zoom + PiP → landscape and zoom restored.
+- **Large data** (3,168 library items, 461 completed records, 20,557 history, 3,000 bookmarks; synthetic rows pushed
+  into both DBs, originals restored afterwards):
+  1. `reduceEngineEntries` copied `libraryOnlyIds` per entry — O(n²) hydration (Node: 5,000 items 2,515 → 2.1 ms;
+     20,000: 47 s → 8.6 ms).
+  2. Store-wide signature selectors joined every row into one string on every store update (progress ticks) —
+     replaced by `row-revision.ts` (reference-compared parts, no allocation when nothing changed) and an
+     allocation-free in-flight count.
+  3. The whole library was pulled across the bridge on the startup path — now active/recent records first
+     (`hydrateV2ActiveDownloads`), the full library 2.5 s later or when Player/Watch History/Favorites opens;
+     `ensureV2LibraryItem` loads one item for an early Player (notification tap).
+  4. History showed only this session's visits: `prependOrUpdate` marked the store `initialized`, so the screen never
+     loaded from SQLite (`visit-reducer.ts`).
+  Release A/B on the same data: cold start 34.2/21.2/22.7 s → 18.2/17.2/19.4 s; app CPU while downloading with the
+  Library mounted 17.0 % → 6.6 %; library scroll janky frames 3.35 % → 0.84 % (p99 61 → 22 ms); History 20k opens in
+  1.6 s (p99 40 ms), search ~1 s. Small library starts in 4–10 s on this AVD.
+- **Release size** (bundletool `get-size total`, compressed download; arm64 = API 35, 420 dpi, en):
+  | | Before | After |
+  | --- | --- | --- |
+  | Universal APK | 140,965,396 B | 95,392,401 B |
+  | AAB | 99,204,053 B | 72,883,276 B |
+  | Play download, arm64 | 38,616,105 B | 22,902,516 B |
+  | Play download, armeabi-v7a (API 28) | 37,226,016 B | 21,556,830 B |
+  | Installed splits, arm64 | 92.97 MiB | 55.36 MiB |
+  | DEX (master split) | 51.56 MiB | 19.13 MiB |
+  | JS bundle | 8.36 MiB | 7.12 MiB |
+  | Font files | 38 | 4 (+ system numerals) |
+  Changes: R8 + resource shrinking (`android.enableMinifyInReleaseBuilds`, `...ShrinkResources...`; keep rules for
+  `@JavascriptInterface` — react-native-webview ships none — and the legacy `@ReactMethod` modules), per-weight font
+  imports (the package index required 36 TTFs), per-icon lucide imports (1.2 MB of JS), no 32-bit x86 ABI, removed
+  unused `expo-web-browser`, `react-hook-form`, `@hookform/resolvers`, `zod` (still present transitively for the React
+  Compiler). Native libs per ABI unchanged (arm64 25.5 MiB: libreactnative 6.7, libhermesvm 2.4, libappmodules 1.8,
+  libexpo-sqlite 1.8, libreanimated 1.4, libexpo-modules-core 1.4). R8 release smoke: launch, detection (w3schools,
+  hls.js demo), progressive + HLS (177 MB) download, notification, library, player, zoom, PiP, Settings, Downloads.
+- **Tests:** `npm test` 430/430; `tsc` both configs 0; ESLint 0 errors (87 warnings, none in changed lines);
+  `vidorax-media` 409/0 (+`PictureInPictureAutoEnterTest` 3), `vidorax-web` 24/0 (`--rerun`); instrumented 17/0;
+  `patch-react-native-webview` 5/5; `:app:assembleRelease` and `:app:bundleRelease` OK; `git diff --check` clean.
+- **Known limits:** after a PiP round trip a *paused* video shows black until Play (Media3 does not draw the first frame
+  on a replaced surface while paused; position/state intact). On the emulator's goldfish H.264 decoder a second PiP
+  surface hand-over can fail `queueBuffer -32` after buffer migration (black picture, audio/position continue; any seek
+  recovers) — the §4.13 emulator decoder defect. The Android 8–11 PiP path is unit-tested only (no API < 31 AVD).
+  Pinch anchoring is verified numerically; the emulator console cannot inject a symmetric two-finger pinch. With a
+  3k-item library the per-progress-tick reducer still copies N-key maps (O(N)). Switching media inside a completed
+  Player session (deep link while the Player is open) leaves controls forced visible (pre-existing, not changed).
+  Release still signed with the debug keystore. Incremental Gradle release builds keep stale files in
+  `android/app/build/generated/{res,assets}/react/release` — delete them before measuring size (a CI clean build is fine).
+- **Testing notes:** multi-touch without root: emulator console `event send` over the auth'd socket (scratchpad
+  `mt/emu.py`); raw `/dev/input` writes are blocked by SELinux. HUD timing: `screenrecord` + per-frame timestamps on a
+  paused/static frame. Release A/B: `before/app-release.apk` vs `final/app-release.apk` over the same data (same signer);
+  `run-as` needs the debug APK, hard links are refused (use small placeholder files). Reboot the AVD when it swaps.
+
+### 4.21 Post-15B — dark splash, automatic Gallery copy, duplicate downloads (uncommitted, 2026-09-26)
+
+Status `POST15B_GALLERY_DUPLICATE_UX_VERIFIED`. Uncommitted on top of §4.20. No prebuild, no backend. A parallel session
+("media format and merge support": split A/V merge, segmented DASH, `process/`, `media3-transformer`) edited the same
+tree at the same time; the shared files carry both sessions' hunks, and its tests are included in the totals below.
+
+- **Splash** — root causes: `assets/logos/vidorax-logo.png` had a ~3 px baked-in white rim (edge luminance 254 → 161 vs
+  141 inside, the art was cut from a white background) that reads as a white box/outline on dark, and the plate touched
+  the canvas; the native splash (`splashscreen_background`) was white in every configuration. Now: the logo is
+  defringed (rim recoloured from the plate, alpha kept) on a 544 px canvas with a transparent margin (same file serves
+  header/about/onboarding); the native splash is `#0D0D0D` everywhere and its icon is the logo (112 dp plate) with the
+  "VidoraX" wordmark (Poppins SemiBold #F5F5F5) underneath, rendered per density by `scripts/dev/render-native-splash.py`
+  and kept inside the Android 12 192 dp icon mask (max radius 90.6 dp). The branded JS splash is always dark
+  (`SPLASH_INTRO`) with the same 112 dp plate. Finding: the JS splash is effectively never visible on this AVD — its
+  minimum time runs while it is still hidden behind the native splash (release: native 0.75–2.25 s, then Browser) — so
+  the native splash carries the full branding. Device: dark in every app theme, no white frame, centred and unscaled at
+  1080×2400/420, 720×1280/320 and 1600×2560/320.
+- **Gallery** — root cause: `GalleryExport` existed but only the per-item action called it; JS pinned
+  `autoSaveToGallery: false` and the engine never read the setting. Now the engine publishes after COMPLETED (final file
+  only) when `saveToGallery ?: autoSaveToGallery` (default **true**; Settings → Download Settings → "Save to Gallery").
+  Library rows carry `gallery_state='pending'` from the insert until the copy is recorded; `resumePending()` at engine
+  start deletes the app's own half-written `IS_PENDING` items and finishes owed copies. Idempotent: a recorded copy is
+  reused while it exists, else an own `Movies/VidoraX` item of the same size + SHA-256 is reused, else one is published.
+  A failed copy sets `failed` and never touches the download. API 24–28 ask `WRITE_EXTERNAL_STORAGE` once from the
+  download tap (`gallery-permission.ts`). MediaStore ignores an app's `DATE_TAKEN` ("Ignoring mutation of datetaken"),
+  so the gallery orders by the file's own date or the date added.
+- **Duplicates** — root cause: dedupe was a per-session JS map (`acceptedByVariant`, which also answered COMPLETED even
+  after the file was deleted) plus the CTA's consumed fingerprint; nothing native, nothing across restarts or entry
+  points, nothing by content. Now `engine/DownloadIdentity` (hashed host+path+query minus rotating signature fields +
+  variant, + page when a signature was stripped) is checked atomically with row creation in `enqueueUnique` →
+  `ENQUEUED | ALREADY_DOWNLOADING | ALREADY_DOWNLOADED` (a paused duplicate resumes); `findDuplicate` answers before any
+  network request; the same bytes from another link are caught at finalization (size + SHA-256 against the library and
+  VidoraX's gallery copies, under a finalize lock; also in the crash-repair path) → the copy is deleted and the row ends
+  `failed(DUPLICATE)`, which JS turns into "Video already downloaded" and removes (no failed row). Schema v4 adds
+  `identity_key`, `content_sha256`, `gallery_state` and `gallery_exports`; the migration records older gallery copies
+  and older library items get their identity at engine start (verified: the Big Buck Bunny clip from an earlier session
+  was recognised in the release build). UX: "Video is already downloading" / "Video already downloaded" (en/ur), in the
+  CTA bar, the quality sheet (system toast) and the bridge (late duplicates); pipeline outcome `DUPLICATE`.
+- **Device (Pixel_8 API 35, debug + release)** — download stays on the Browser with "Added to Downloads" → "Video
+  downloaded"; MediaStore row `Movies/VidoraX/Web/video.mp4`, `video/mp4`, size = source, `is_pending=0`, SHA-256 equal
+  to the source, plays in Google Photos, survives force-stop/restart; same video again → "Video already downloaded" with
+  zero network requests and no new row/file/gallery item; tap while a throttled download runs → "Video is already
+  downloading" (one row); double tap → one job; another video named `video.mp4` with the same title → its own library
+  item and gallery copy (`video (1).mp4`); same bytes via another link → discarded, library 141 and gallery unchanged;
+  release: fresh HTTPS download (test-videos.co.uk Jellyfish 1 MB) → gallery copy byte-identical, restart, re-tap →
+  "Video already downloaded".
+- **Tests:** `npm test` 463/463; `tsc` both configs 0; ESLint 0 errors (87 warnings, unchanged); `vidorax-media` JVM
+  457/0 (`--rerun`; new: `DownloadEngineDuplicateTest` 11, `DownloadIdentityTest` 8, v3→v4 migration); `vidorax-web`
+  24/0; instrumented full run 31 (17 existing pass; new `GalleryDuplicateE2EAndroidTest` 5/5 after relaxing a name
+  assertion; the parallel session's 2 failures there were fixed by it afterwards); `:app:assembleRelease` OK (universal
+  95.4 MB); `git diff --check` clean.
+- **Known limits:** a duplicate reached through a *different* link is only known after its bytes are downloaded (the tap
+  says "Added to Downloads", then "Video already downloaded"). A gallery copy the user keeps after deleting the video in
+  VidoraX still counts as downloaded (by design: "already exported to Gallery by VidoraX"); deleting that copy allows a
+  new download. Different videos sharing a title get MediaStore's `Title (n).mp4`. The device-videos screen lists
+  VidoraX's own gallery copies too. The API 24–28 legacy copy path is unit-level only (no such AVD).
+
+### 4.22 Full media formats — merge / remux / transcode, split A/V, HLS/DASH separate audio (uncommitted, 2026-09-27)
+
+Status `FULL_MEDIA_PIPELINE_BLOCKED` (only Instagram, see limits). Uncommitted on top of §4.21 (written in parallel with it
+in the same tree). No prebuild, no backend, no site-specific code. Architecture: `docs/ARCHITECTURE.md` (§2 components
+`process/*`, planners, engine; §4 item 5; §5.1).
+
+- **Processing layer** (`modules/vidorax-media/.../process/`, dependency `media3-transformer` 1.9.0 = expo-video's Media3):
+  `MediaProcessor` decides KEEP (progressive MP4/MOV/WebM/MKV/3GP/WMV — original bytes), REMUX (TS, AVI, FLV, fragmented
+  MP4 → MP4, lossless), MERGE (separate video + audio → MP4, or WebM for VP8/VP9 + Opus/Vorbis) or TRANSCODE (only the
+  track an MP4 cannot carry, via Transformer/MediaCodec to H.264 or AAC, then a lossless merge with the other track);
+  every produced file is re-read and checked (tracks, length, merged spans start together). `Remuxer` = Media3
+  extractors → `Mp4Muxer`/`WebmMuxer`; `CodecConfig` recovers in-band configs; `FragmentEdits` applies fMP4 edit-list
+  delays Media3 skips (found on device: HLS fMP4 audio was 45 ms early; fixed, now = source).
+- **Engine**: multi-track jobs (whole file | segmented), per-track `.part.done` markers and checkpoints (resume kept),
+  `processing` stage events (merging/remuxing/transcoding/verifying) in the notification and Downloads UI, typed codes
+  `VIDEO_TRACK_MISSING`, `AUDIO_TRACK_MISSING`, `TRACK_MISMATCH`, `SEGMENT_FAILED`, `MUX_FAILED`, `TRANSCODE_FAILED`,
+  `INVALID_MEDIA`; tracks kept for retry after `MUX_FAILED`/`TRANSCODE_FAILED`/`NO_SPACE`. New source kind `split`
+  (video URL + audio URL, native split probe proves roles, encryption, lengths).
+- **HLS**: separate audio renditions (TS, packed AAC with ID3 timestamps, fMP4); DASH: segmented/SegmentBase tracks,
+  separate video + audio AdaptationSets, `presentationTimeOffset`; DRM/encrypted/live still refused.
+- **Detection**: MSE split players resolved from the page's own SourceBuffer ↔ file mapping, else from exactly two
+  network files; pair proven natively and offered as one `split` download. Device-found root causes fixed on 2026-09-27:
+  (1) react-native-webview evaluated the before-content script from `onPageStarted` (after page scripts) and the MSE
+  hooks lived only in the load-end script → patch registers it with `addDocumentStartJavaScript` and one shared
+  `vidoraxMseObservation` installer runs at document start; (2) requests made before the first player report were
+  dropped → replayed per tab/epoch; (3) a ranged `bytestart/byteend` URL was offered as a whole file →
+  `canonicalizeObservedMediaUrl` covers media files and CDN object paths; (4) a split offer tapped > 20 s after
+  verification was refused `SOURCE_EXPIRED` by the JS progressive gate (video half only) → split uses the native probe
+  like HLS/DASH. Paste flow: a pasted link that answers HTML goes to the page route (`isWebPageAnalysis`).
+- **Device (Pixel_8 API 35; debug + release)**: direct MP4/WebM/MOV/WMV KEEP (md5 = source), fMP4 REMUX, AVI MPEG-4+MP3
+  → audio-only transcode (video packets identical); HLS TS master (chosen variant only), fMP4, TS+TS / TS+packed AAC /
+  fMP4+fMP4 separate audio (offsets = source); DASH single-file, segmented separate A/V, SegmentBase separate files;
+  MSE split (buffers and network); reels 1→2→3 each its own pair (no stale track/offer); Facebook watch (fbcdn
+  progressive, full download, typed DUPLICATE vs earlier copy); TikTok (two videos, second 720×1280 29 s fresh);
+  Dailymotion autoplay chain (stale sheets refused, xb346be HLS 118 MB 429 s); public Akamai DASH separate A/V in the
+  DASH-IF player on the **release** APK (634.6 s + AAC, Gallery). Matrix: scratchpad `results.md` of that session.
+- **Tests**: `npm test` 470/470; `tsc` both 0; ESLint 0 errors (87 warnings, unchanged); `vidorax-media` JVM 469/0
+  (`--rerun`); `vidorax-web` 24/0; patch script 5/5; instrumented 31/31 (`ProcessingE2EAndroidTest` 7,
+  `MergeE2EAndroidTest` 2 with ExoPlayer playback + seek); `:app:assembleRelease` + `:app:bundleRelease` OK;
+  `git diff --check` clean.
+- **Size** (bundletool `get-size total`, before → after): arm64 API 35 22,902,516 → 23,023,928 (+121,412 B, +0.53 %);
+  armeabi-v7a API 28 21,667,263 → 21,792,455 (+125,192 B); AAB 72,883,276 → 73,015,135; universal APK 95,392,401 →
+  95,382,989.
+- **Known limits**: Instagram logged out shows "Watch this reel in the app" and only "Continue on web" (whose sheet says
+  "By continuing, you agree to Instagram's Terms…") creates the player — not accepted on the user's behalf, so
+  Instagram is unverified on device (the MSE split path it uses is verified with fixtures). Facebook/TikTok logged out
+  block in-page next-video navigation (login sheet / Play Store). WMV/ASF is kept as downloaded (no Android extractor;
+  plays in external apps only). On the debug build with pipeline tracing, a DASH page streaming 2.5 Mbps floods logcat
+  and makes the UI lag (dev-only `__DEV__` diagnostics; release is unaffected). Reel 3 of the fixture feed took 14 s to
+  offer (its file mapping arrived after the first verification; correct pair).
+
+### 4.23 Pasted-link direct analyzer (uncommitted, 2026-09-27)
+
+Status `PASTED_LINK_DIRECT_ANALYZER_VERIFIED`. Uncommitted on top of §4.22. No prebuild, no backend, no site-specific code
+(Dailymotion stays on the WebView path — see limits). Design: `docs/ARCHITECTURE.md` §5.4 and the `analyze/PageFetcher` row
+of §3.2.
+
+- **Root cause of the gap.** A pasted/shared link only ever reached detection through the WebView: the page had to load,
+  its player had to start, and the network/MSE observers had to see the media. Instagram and TikTok (logged out) show an
+  app wall whose player only exists after "Continue on web" (Instagram's sheet states Terms acceptance), so nothing was
+  ever observed; Facebook needed 34–55 s of page start-up. Yet all three put the video's URLs in the page's own bytes —
+  `og:video`, `data-video-url`, embedded JSON (`video_versions`, `playAddr`, `browser_native_*_url`) and inline DASH
+  manifests — (Instagram only in the desktop-site rendering). Nothing read them.
+- **What was added.** Native `VidoraMedia.fetchPage` (`analyze/PageFetcher`, `BrowserIdentity`): a bounded navigation
+  fetch with the tab's identity, per-hop SSRF/YouTube checks, loop/hop/time/size bounds, media sniffing, and a cookie
+  commit into the WebView jar. JS `src/media-detection/direct-analyzer/` (pure: HTML/JSON scanning, content-id ownership,
+  inline DASH, orchestrator, publish policy; runtime verifier reusing `verifyGeneralSourceCandidate` + the native split
+  probe), `src/browser/media-actions/direct-analysis.service.ts` (session per tab, early offer + in-place upgrade,
+  URL-rewrite following, late-tap link refresh), `src/browser/services/pasted-link{,.service}.ts` (which links, and the
+  deferred tab navigation). Wired into the omnibox (`navigate` intent and the "Go to website" row) and shared/VIEW links.
+  The offer is published through `browserMediaActionService.handoffVerified` — the download path, duplicate checks,
+  engine, merge/remux/transcode, verification, library and gallery are untouched.
+- **Found and fixed on device:** (1) the CTA service notifies synchronously inside `handoffVerified`, so the session saw
+  its own offer as "already offered" and stopped watching → state is recorded before the hand-over, re-entrancy guarded;
+  (2) Facebook rewrites its URL (`&vanity=…`) seconds after load — the same content for detection, but the CTA only shows
+  for the offer's own page URL, so the offer vanished → the session publishes under the browser's current URL and follows
+  same-content rewrites; (3) the split probe made the first offer wait ~4 s → whole files are offered first and the split
+  quality is added in place; (4) a direct offer tapped > 2 min after verification failed `SOURCE_EXPIRED` (signed links
+  without a readable expiry age out in the pre-download gate, and nothing re-requests them) → `refreshStaleDirectSource`
+  re-reads the page at tap time and takes the same file's current link (verified: tap at 210 s → refreshed in 5 s →
+  completed); (5) a split listed beside a muxed file of the same picture made the merge the default → listed only when
+  clearly better (height, else > 25 % bigger).
+- **Capability matrix (direct analyzer):**
+  | Input | Direct result |
+  | --- | --- |
+  | Direct file URL (MP4/MOV/WebM…) | SUPPORTED (`direct`), byte-identical download |
+  | Pasted HLS master / media playlist | SUPPORTED, every decodable variant (Mux: 5 qualities) |
+  | Pasted DASH MPD (clear, static) | SUPPORTED via the DASH planner |
+  | Page with `og:video` / `twitter:player:stream` / JSON-LD `contentUrl` | SUPPORTED (`declared`) |
+  | Page embedding the video in JSON/attributes tied to the link's id | SUPPORTED (`content`); related items / feeds excluded |
+  | Inline DASH manifest with separate video + audio files | SUPPORTED as a `split` quality (merged by the engine) |
+  | Plain HTML5 page with one `<video>` | SUPPORTED (`single`) |
+  | Declared embedded player page (og:video html, twitter:player, JSON-LD embedUrl) | read one level deep |
+  | Page naming nothing on mobile but on the desktop site | SUPPORTED after the desktop retry (Instagram) |
+  | Several unrelated videos / carousel | UNRESOLVED `AMBIGUOUS_MEDIA` → WebView |
+  | JS-only player (Dailymotion), MSE/blob-only, login walls, 4xx | UNRESOLVED → WebView |
+  | Widevine/CENC DASH, AES HLS, inline `ContentProtection` | PROTECTED |
+  | Live HLS / dynamic DASH / `isLiveBroadcast` | LIVE_UNSUPPORTED |
+  | YouTube (page or embed) | UNSUPPORTED `POLICY_BLOCKED`, no request |
+  | Private/loopback host or redirect into one | INVALID_MEDIA `UNSAFE_URL`, no request to it |
+  | Timeout / network / 5xx / 408 / 429 | TRANSIENT_FAILURE → WebView |
+  | Redirect loop / > 10 hops | UNRESOLVED → WebView |
+  | Superseded by a newer paste, tab closed, tab moved on | STALE (never shown) |
+- **Device results** (Pixel_8 AVD API 35; debug + release, release signed with the debug keystore):
+  | Link | Page fetched | Directly resolved | Source | Capability | WebView fallback | CTA | Final file | Result |
+  | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+  | Instagram `/reel/DdiUOZezpFs/` (debug) | yes (mobile: upsell, 0; desktop: 2) | yes, no "Continue on web" | muxed MP4 + split 1440p | SUPPORTED | no | early 6.1 s, upgraded 10 s | merged 1440×2560 VP9 + AAC 33.6 s, Gallery | PASS |
+  | Instagram `/reel/DSxdvp9lcDa/` (omnibox, release) | yes | yes (one transient interstitial → UNRESOLVED once) | muxed MP4 | SUPPORTED | no | 4.4–6.4 s warm | 360×640 H.264 + AAC 58.2 s, Gallery | PASS |
+  | Instagram `/reel/DPMBsWbkaoe/` (plain release) | yes | yes | muxed MP4 | SUPPORTED | no | ≤ 25 s after a cold start | 720×1280 H.264 + AAC 62.6 s, Gallery | PASS |
+  | Facebook `m.facebook.com/watch/?v=1376350954687257` | yes | yes (`declared`) | progressive MP4 | SUPPORTED | no | 8 s (release), followed `&vanity=` rewrite | 360×640 H.264 + AAC 57.1 s (late tap, refreshed link) | PASS |
+  | Facebook `…?v=2289516264908285` (already saved) | yes | yes | progressive | SUPPORTED | no | yes | discarded as duplicate at finalize (same 20.6 MB), library unchanged | PASS (duplicate) |
+  | TikTok `@complex/video/7626254334065511711` | yes | yes (`playAddr`, session cookie committed) | progressive | SUPPORTED | no | 6.6 s (release) | 720×1280 H.264 + AAC 99.8 s, Gallery | PASS |
+  | TikTok `@scout2015/video/6718335390845095173` (already saved) | yes | yes | progressive | SUPPORTED | no | yes | duplicate discarded at finalize | PASS (duplicate) |
+  | Dailymotion `/video/x9zk0s0` | yes (mobile + desktop, 0) | no — `NO_MEDIA_IN_PAGE` | — | UNRESOLVED | yes | WebView offer ~90 s (preroll) | 512×288 H.264 + AAC 701 s (HLS → MP4) | PASS via fallback |
+  | w3schools `html5_video.asp` | yes | yes (`single`) | progressive | SUPPORTED | no | 4.6 s | already saved → `DUPLICATE ALREADY_DOWNLOADED`, no transfer | PASS (duplicate) |
+  | test-videos BBB 1 MB file | yes (media) | yes (`direct`) | progressive | SUPPORTED | no | 2.3 s | md5 = source | PASS |
+  | Mux `x36xhzz.m3u8` | yes (media) | yes | HLS, 5 variants | SUPPORTED | no | 2.8 s | (offer only) | PASS |
+  | Widevine `tears.mpd` | yes | — | DASH | PROTECTED `DRM_UNSUPPORTED` | yes (no CTA) | none | — | PASS |
+  | Unified Streaming live HLS / DASH-IF livesim | yes | — | HLS / DASH | LIVE_UNSUPPORTED | yes (no CTA) | none | — | PASS |
+  | Rapid FB → IG → TikTok pastes (1.5 s apart) | — | FB, IG STALE (`SUPERSEDED`, their deferred navigations never ran); TikTok offered | | | | TikTok only | | PASS |
+  | Sequential IG → FB → TikTok | | each offered its own video | | | | one per page | | PASS |
+- **Tests:** `npm test` 534/534 (+64: extraction 20, orchestrator 15, verifier 10, publish policy + duplicate protection 9,
+  inline DASH 4, content tokens 4, paste gate 2); `tsc` both configs 0; ESLint 0 errors (87 warnings, unchanged);
+  `vidorax-media` JVM 493/0 (`--rerun`; +`PageFetcherTest` 24: navigation headers, redirects, loop, > 10 hops, SSRF hop,
+  YouTube, invalid URL, timeout, 5xx/4xx, media sniffing, size bound, gzip, charset, cookie replay/commit); `vidorax-web`
+  24/0; instrumented 33/33 (+`PageFetcherAndroidTest` 2: the real WebView jar and stock UA); `:app:assembleRelease` +
+  `:app:bundleRelease` OK; `git diff --check` clean.
+- **Size** (bundletool `get-size total`, vs §4.22): arm64 API 35 23,023,928 → 23,070,958 (+47,030 B, +0.20 %); armeabi-v7a
+  API 28 21,792,455 → 21,839,633 (+47,178 B); AAB 73,015,135 → 73,076,118; universal APK 95,382,989 → 95,460,673. The
+  `[VidoraDirect]` diagnostics are dead-code eliminated from production bundles (present only with
+  `EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE=1`).
+- **Known limits:** Dailymotion's page names no media (its player builds a metadata request in JS; that metadata's HLS
+  answered 403 to a plain client) — left to the WebView by design, no site adapter. Instagram occasionally serves an
+  interstitial to the desktop fetch (seen once → UNRESOLVED → WebView). A muxed file whose height the page does not state
+  shows as "Original Quality". A merged (split) option waited ~40 s in the existing pre-enqueue split re-probe once on
+  the debug build (not the analyzer; not re-measured on release). The analyzer fetches the page once more than the
+  WebView does (the tab's navigation waits ≤ 6 s for it). Carousels and feeds are ambiguous by design. Titles come from
+  the page (`og:title`/`<title>`/JSON-LD); TikTok has none → "TikTok Video". On a cold-started app the JS thread can
+  delay the offer by several seconds (release, first minute after launch).
+- **Testing notes:** `[VidoraDirect]` events (`start`, `navigation_released`, `stage_fetched`/`stage_extracted`,
+  `verify_start`, `candidate_verified`, `early_offer`, `result`, `offered`/`upgraded`/`followed`, `source_refresh`,
+  `session_end`) give the whole account per paste in debug or trace builds; a trace release is
+  `EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE=1 bash scripts/dev/gradle.sh :app:assembleRelease`. Use VIEW intents for links with
+  two `r`s on debug builds; the omnibox path was tested on debug (Facebook) and release (Instagram).
+
+### 4.24 Theme-aware splash + in-app floating mini player (uncommitted, 2026-09-27)
+
+Status `THEME_SPLASH_MINIPLAYER_VERIFIED`. Uncommitted on top of §4.23. No prebuild (the Android resources, `MainApplication`
+and `app.json` were edited by hand and kept in step). Design: `docs/ARCHITECTURE.md` §4 (`setAppNightMode`), §7 (one
+session, two views) and §8 (startup).
+
+- **Root causes.** (1) The launch was dark in every theme: native `splashscreen_background` #0D0D0D with a light-only
+  wordmark, and the JS splash pinned to `resolveIntroColors('dark')`; with Light/Logo selected the start went dark →
+  white (AppLock bootstrap gate) → dark (JS splash) → white (app) — recorded on the 09:03 baseline release: dark
+  3.3–13.7 s, white 15.0–25.5 s, dark 25.5–27.0 s, white. (2) Android 12+ draws its splash before any app code, from the
+  app theme resolved with the *system's* night mode, so no in-app choice could reach it; there was no System choice
+  (a legacy `SYSTEM` collapsed to Light). (3) The player session lived in the Player screen (`useVideoPlayer` inside
+  `PlayerScreen`): leaving the screen paused (`leavePlayer`) and released the player — nothing could keep playing.
+- **Splash / theme.** Settings → Theme gains **System** (default stays **Logo**). `resolveThemeMode(preference,
+  deviceScheme)`; `applyNativeColorScheme` → `Appearance.setColorScheme('unspecified')` for System, and VidoraWeb
+  `setAppNightMode(light|dark|system)` (`AppNightMode.kt`: SharedPreferences + `UiModeManager.setApplicationNightMode`
+  on API 31+, only when the choice changes); `MainApplication.onCreate` applies the recorded choice with
+  `AppCompatDelegate.setDefaultNightMode` before the first activity. Resources: `splashscreen_background` #FFFFFF
+  (night #0D0D0D), `drawable-night-*/splashscreen_logo.png` (#F5F5F5 wordmark) beside the day ones (#171717),
+  `launch_light_system_bars` for the splash's status/navigation icons, all rendered by
+  `scripts/dev/render-native-splash.py` (also writes `assets/logos/splash-icon{,-dark}.png` for `app.json`). The JS
+  splash, its stack card and the startup background use `resolveSplashIntro(theme.mode)` /
+  `resolvePersistedThemeMode()` (device scheme for System).
+- **Mini player.** `src/player/session-host/`: `player-session-store.ts` (request/key, live session, full-Player
+  count, PiP flag), `PlayerSessionHost.tsx` (runs `usePlayerSession` + resume seek + autoplay per key, publishes in a
+  layout effect; closes a session that fails while minimised), `use-full-player-session.ts` (the Player route opens or
+  reuses the session), `mini-player-policy.ts` (pure rules), `use-redraw-on-attach.ts`. `src/screens/player/mini/`:
+  `MiniPlayer` (same player, textureView, no PiP; title, time, progress, play/pause/replay, close, swipe to dismiss,
+  tap → full Player), docked through `Tabs tabBar={renderMiniPlayerTabBar}` on the tabs and floating
+  (`MiniPlayerOverlay`, ≤ 480 dp, end-aligned on tablets) over other stack screens. `PlayerScreen` attaches to the
+  session instead of owning it; leaving no longer pauses (a failed session is closed); it disarms PiP when it
+  unmounts.
+- **Found and fixed on device:** (1) React Navigation calls `tabBar(props)` as a plain function inside a context
+  consumer, and the React Compiler gives any PascalCase component a memo-cache hook → "Invalid hook call" and a blank
+  app → a lowercase render function returns the element; (2) a view that takes the picture over from a paused or
+  finished player stays black (the decoder only draws into a surface when it renders a frame) → re-seek in place once
+  attached; (3) expo-video reports a finished video as `idle`, and Media3 ends with `playWhenReady` on, so that seek
+  replayed the last moment (pause icon flashed) → pause first, then seek just before the end.
+- **Splash results** (Pixel_8 AVD API 35, release, host-side `adb emu screenrecord` — device `screenrecord` stops
+  producing frames once VidoraX's window is up on this image; each run classified frame by frame at 25 fps):
+  | Theme | Device | Start | Size | Launch sequence | Flash |
+  | --- | --- | --- | --- | --- | --- |
+  | Light | light | cold | phone | white splash (dark wordmark) → white gate → light JS splash → Browser | none |
+  | Light | dark | cold | phone | white throughout (per-app night mode overrides the device) | none |
+  | Dark | dark | cold | phone | #0D0D0D throughout | none |
+  | Dark | light | cold | phone | #0D0D0D throughout, light status icons | none |
+  | Logo | dark | cold + warm | phone | white throughout, red accents after the splash | none |
+  | System | dark | cold | phone | #0D0D0D throughout | none |
+  | System | light | cold | phone | white throughout | none |
+  | System | light → dark while open | live | phone | app follows the device at once | — |
+  | Logo | dark | cold | tablet 1600×2560 @320 | white splash, logo centred, app with Logo chrome | none |
+  | System | dark | cold | tablet | dark splash → dark JS splash (tagline, loader) → dark Browser | none |
+- **Mini-player results** (release unless noted; H.264 clips; VidoraX MediaSessions from `dumpsys media_session`):
+  | Case | Result |
+  | --- | --- |
+  | Player → Back while playing | docked above the tabs, same player: position 3.0 → 7.9 → 10.9 s, no reload, 1 session |
+  | Paused → Back | mini shows the paused frame (redraw) |
+  | Play/pause from the mini | works; frame kept while paused |
+  | Browser / Downloads / Settings / Library | stays docked; each tab's content ends above it |
+  | Tap the mini | full Player, same session and position (10.9 s, still playing); paused/finished frame drawn |
+  | Finish while minimised | last frame + replay; player stays paused at 62.45 s (no replayed moment); replay → 0 s |
+  | Other stack screen (Watch History) | floating card above the gesture bar |
+  | Open another video from the library | old session released, new one plays; mini shows the new title/picture; 1 session |
+  | Close / swipe sideways | card gone, player released (0 sessions), exit position saved (Continue Watching / Watch History) |
+  | Home from the mini | paused (PAUSED at 2.8 s), no PiP window; back in front → no autoplay, frame shown |
+  | Invalid media (`vidorax://player/<bogus>`) | "Not found" → Go back → no mini, 0 sessions |
+  | Fullscreen | Back exits fullscreen, Back again collapses; restore → portrait Player, fullscreen works again |
+- **PiP.** Home from the full Player while playing → PiP window with the video only (no mini player in it), one
+  PLAYING session; returning (task relaunch) → the full Player, not pinned; Back → mini. PiP is never armed from the
+  mini player (Home there pauses). `PictureInPictureAutoEnterTest` and the activity auto-enter path are unchanged.
+- **Tests:** `npm test` 552/552 (+18: theme preference 4, session host policy/store 10, redraw 4); `tsc` both configs
+  0; ESLint 0 errors (84 warnings); `vidorax-media` JVM 493/0 (`--rerun`); `vidorax-web` JVM 26/0 (+`AppNightModeTest`
+  2); instrumented 33/33 on `Pixel_8(AVD) - 15`; `:app:assembleDebug` + `:app:assembleRelease` OK; `git diff --check` clean.
+- **Known limits:** until the app has recorded a choice (the very first launch after install or after clearing data)
+  Android draws its splash in the device's theme; on Android 8–11 the system preview window before the process starts
+  also follows the device (not testable on the API 35 AVD). Pinch-zoom was not driven on the AVD (console multi-touch is
+  unreliable, §8 notes); zoom stays the Player surface's own state and resets when the Player remounts, the mini player
+  always shows the whole picture. VP9 clips can go black after a surface switch on this AVD (goldfish VP9 buffer
+  migration, §4.20 notes) — H.264 used for the runs. Startup on this AVD takes ~26 s and sometimes logs a startup ANR
+  in WebView initialisation (binder calls into a slow system_server) — the 09:03 baseline does the same; after a
+  reboot, wait for the load average to drop. On the debug build Metro takes 40–80 s per cold start, and device-side
+  screenshots of that window can come out black.
+
 ---
+
+### 4.25 Facebook reel viewer — current-video detection (uncommitted, 2026-09-27)
+
+Status `FACEBOOK_REEL_CURRENT_MEDIA_VERIFIED`. Uncommitted on top of §4.24. JS only (no native rebuild), no site-specific code.
+
+- **Bug (client recording + `facebook.com/reel/4678791569058145/…`):** the link lands on
+  `www.facebook.com/watch/?v=4678791569058145&vanity=…`, a vertical reel viewer (one `<video>` per reel inside a
+  scroll-snap DIV) whose URL **never changes** while scrolling. Reel 1 was offered; reels 2…N kept reel 1's
+  "Video available", and a tap downloaded reel 1.
+- **Root causes (generic):**
+  1. `buildGeneralCurrentMediaIdentity` put the page URL's video id (`v=…`) ahead of the playing element/resource, so
+     every reel had identity `video:4678…`; the page generation bumped on each new `<video>`, but sticky AVAILABLE
+     (`shouldStartVerification`, same identity) skipped verification and the ledger even logged `OFFERED`.
+     Fix (`general-page-context.ts`, `resolvePageIdIdentity`): the URL's id is bound to the first displayed, non-ad,
+     non-preview resource shown under it (`pageIdResource`, object path without host/query); any other resource — the
+     next reel, a recycled player's next file or its empty state, the item still playing when an SPA route switched to
+     a new id (`pageIdExcludedResource`) — gets its own `element:resource` identity; scrolling back to the bound file
+     returns `video:<id>`.
+  2. A reel scrolled back to minutes later plays from cache (no new request): its signed candidate (`oe=`/`oh=`, no
+     readable expiry) aged past `isLikelyExpiredMediaUrl`'s 120 s and was rejected `EXPIRED_SOURCE` forever. Fix: the
+     engine refreshes `detectedAt` of the candidates whose stable resource equals the displayed player's `currentSrc`
+     (`refreshPlayingSource`, ≤ once per 30 s, before the owner change); the engine probe still validates the link.
+  3. Hardening: a direct-analyzer session never (re)publishes or follows while the page's live media identity differs
+     from its offer (`OTHER_MEDIA_PLAYING`); the CTA tap refuses an offer whose identity differs from the live one.
+- **Diagnostics:** trace builds log `[VidoraOffer]` (active tab's CTA status + media hash + first 12 chars of the file
+  name) on every change — map it to page videos with `pipelineMediaHash`.
+- **Device (Pixel_8 AVD, debug APK + production JS, `EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE=1`):** 3 full passes over 10+ reels:
+  every reel's offer = its playing `currentSrc` file; "More from the community" card (no video) → no CTA; fast scroll
+  (4 swipes in 1.6 s) → idle/detecting then the landing reel only; scroll back (after 2–5 min) → each reel's own file
+  (one first-try `EXPIRED_SOURCE` race, re-verified 0.9 s later); tab switch → other tab none, back ≤ 2 s correct;
+  background/foreground → correct, next scroll correct; tap 0.3 s after a swipe → CTA hidden, nothing enqueued.
+  Downloads: reel 2 `AQOE4PGtPuV-` 71.7 s, reel 5 `AQNxpCM-twa_` 80.1 s, reel 10 `AQMHs3pqvS_S` 56.3 s, final build
+  `AQOu97X3z5bc` 17.3 s — reel 2, reel 10 and the final one md5-identical to the page's own `currentSrc` file.
+- **Tests:** `npm test` 560/560 (+5: `consecutive-video.test.ts` 4 — all fail on the old code —, direct policy 1); `tsc`
+  both configs 0; ESLint 0 errors on changed files; `git diff --check` clean. No native change.
+- **Known limits / testing notes:** the saved title is the page's `document.title` (reel 1's caption for every reel —
+  Facebook never retitles the page); Facebook's "Get the full experience" sheet must be closed by tapping the dimmed
+  backdrop; swiping down to the previous reel used to reload the page (fixed in §4.26); host screenshots via
+  `adb emu screenrecord screenshot` (device `screencap` goes stale).
+
+### 4.26 Pull-to-refresh inside inner scrollers (uncommitted, 2026-09-27)
+
+JS only, no native change, detection untouched. On Android the browser's pull-to-refresh is **not** react-native-webview's
+`pullToRefreshEnabled` (an iOS-only prop there — RNW 13.16.1 has no SwipeRefreshLayout on Android); it is the injected
+browser-chrome script (`src/browser/bridge/browser-chrome.injected.ts`, `pull_to_refresh` → `MountedTabWebView` reload),
+which only checked `window.scrollY`. A page that scrolls an inner container (Facebook's reel viewer: a scroll-snap DIV,
+document never scrolled) reloaded on every downward swipe back to the previous item.
+
+- **Fix:** at touchstart the gesture is a pull only if it would reach the page's root, as a browser decides: no scroller
+  on the target's path (`composedPath`, shadow DOM included) is scrolled away from its top, no scroll container on it
+  or the root/body sets `overscroll-behavior-y: contain|none`; and a drag the page handles itself (`preventDefault` seen
+  in a bubble-phase `touchmove`) is not a pull.
+- **Tests:** `browser-chrome.injected.test.ts` 5 (runs the production script in a VM; 3 fail on the old script); `npm
+  test` 565/565; `tsc` both 0; ESLint 0.
+- **Device (Pixel_8, after `adb reboot`):** example.com pull → reload; Facebook `/watch/?v=4678791569058145` viewer at
+  scrollTop 1327 → two downward swipes scroll back to reels 2 and 1 in the same document (no load start); a pull with the
+  viewer at its top still refreshes.
+
+### 4.27 Dynamic feed current-video detection (Dailymotion) + YouTube input block + media status (uncommitted, 2026-09-28)
+
+Status `DYNAMIC_FEED_MEDIA_DETECTION_VERIFIED`. Uncommitted on top of §4.26. JS only (no native rebuild). Started in the
+2026-09-27 night session (ran out of usage mid-edit), finished and runtime-verified 2026-09-28. No site-specific code.
+
+- **Bug (client recording, Dailymotion home `/pk`, `/sg`, `#for-you`):** feed cards autoplay in ONE shared cross-origin
+  player iframe (`geo.dailymotion.com/player/…`) that the page moves over the card in view. "Video available" came late,
+  never, or kept the previous card's offer.
+- **Root causes (generic):**
+  1. The shared player had no item identity: nothing tied it to the card under it, and the same element/src moving to
+     the next card was not a new video. Fix (injected script `readOverlaidContentId`, `general-page-context`
+     `activeAssociatedContentId`): the item a player sits in or is laid over (smallest block beneath it naming exactly
+     one content id) is its identity `video:<id>`; the same player showing another item starts a new generation
+     (requests just before the change carry over); a capture-phase scroll listener re-reports after scrolling.
+  2. Requests named no owner: `extractMediaUrlContentId` reads the id a manifest URL names (`…/video/<id>.m3u8`).
+     Correlation: a URL naming the current item is STRONG whatever its generation (early/preloaded manifest, scroll
+     back); one naming another item of the same id shape is REJECTED `OTHER_CONTENT`; once a named candidate exists,
+     unnamed ones (ad streams) are not offered.
+  3. **Stale offer while the player is hidden** (measured on release: the page hides its player — visibility hidden,
+     height 0 — loads the next card into it, and shows it over the next card ~5 s later; hidden reports were dropped,
+     so the old card's Download stayed up). Fix: `activeOwnerHidden` — the current owner (same element, seen on screen
+     before) reporting itself off screen (not displayed; iframe below its 0.25 owner share; paused video wholly out of
+     view) withdraws the Download (`isBrowserDownloadCtaEligible`, status notice, tap guard). Ownership is kept, so the
+     same player back over the same item re-shows the offer at once. A playing video scrolled out of view (article) and
+     a video below the fold of a just-opened page (never on screen yet) keep their offer. `syncFromPageUrl` carries it.
+  4. **Wrong file for the current reel (Facebook, pre-existing race):** a verification's active set could include an
+     item's preload that correlation rejected moments later; the offer was published with that file. Fix:
+     `isOfferedSourceRejectedNow` re-correlates at publish time; a file whose candidate is now rejected as another
+     video (`OFFSCREEN_PRELOAD`, `OTHER_CONTENT`, `ADVERTISEMENT`, `TINY_PREVIEW` — not merely old) is not published and
+     verification looks again.
+  5. A Protected/Unsupported verdict was recorded against whatever was live when verification ended (could label the
+     next card); now only for the identity it started with, same tab.
+- **YouTube (previous session, audited):** `isYouTubeLink` (all youtube.com hosts, youtu.be, nocookie, googlevideo, app
+  schemes) refuses omnibox typed/pasted links and share/VIEW intents (`incoming-link.service`) before navigation/fetch.
+  Added: `youtube-refusal.ts` (one toast + announcement for all entry points) — the omnibox message was invisible under
+  the suggestion panel; a YouTube page's video reads Unsupported, never "Analyzing".
+- **Persistent status (previous session, audited/finished):** `statusNotice` ANALYZING / ALREADY_DOWNLOADED / PROTECTED /
+  UNSUPPORTED (`BrowserMediaDownloadBar`, `browser-media-action.service` verdicts + `findExistingDownload` duplicate
+  check). Fixed: lint error (setState in effect → timer-only analyzing window); UNSUPPORTED only for the failure's own
+  video; nothing shown while the owner is hidden.
+- **Trace builds:** `[VidoraCta]` (what the bar shows: shown/notice/file/offer id/live id/hidden) and page DevTools
+  (`webviewDebuggingEnabled`) when built with `EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE=1` only.
+- **Device (Pixel_8 AVD, RELEASE build + trace, rebooted; 4/6/8 cores):** Dailymotion 15-card pass + 3 re-runs (~45
+  transitions): every shown offer = the playing card's id; offer withdrawn 0.4–0.8 s before the page hides its player;
+  correct offer 1.1–3.6 s after the player shows (one 10 s after background/foreground, one 6 s); fast scroll (4 flings)
+  → only the landing card; scroll back (incl. to cards offered before) → correct; tab switch → other tab none, back 0.5
+  s; bg/fg correct. Downloads card 2 `xbd1p1u` 27.10 s, card 7 `xbd2a4a` 20.94 s, card 15 `xbdkm2a` 77.67 s (page
+  27.17/20.95/77.64): source manifests name the ids, decoded video frames identical to ffmpeg's read of the same
+  720x1280 rendition (812/1254/1941 frames). Facebook reels: 20+ reels, every offer = playing `currentSrc`, community
+  card none, reel download md5 = the page file; the wrong-file race reproduced once before fix 4, not after. hls.js/MSE,
+  w3schools, TikTok, Instagram offered; Vimeo refused (DRM). YouTube: 3 links × omnibox/VIEW/share refused, no
+  navigation, no YouTube target.
+- **Tests:** `npm test` 593/593 (+26: shared feed player, hidden owner, publish guard, content-id parsing, status
+  notice; the feed tests fail without the content-id matching); `tsc` both 0; ESLint 0 errors; `git diff --check` clean.
+- **Limits:** no Dailymotion preroll appeared in ~45 transitions (ad path unit-tested only); saved titles are
+  "Dailymotion" (feed page title); the emulator overloads after ~20–60 min of video (load 10–34, system_server stuck) —
+  page→app messages then lag 10–50 s: reboot before judging latency; "System UI / VidoraX isn't responding" after boot
+  (tap Wait at 320,1365).
+
+### 4.28 Silent detection: no "Analyzing", no transient negative verdicts (uncommitted, 2026-09-28)
+
+Status `DYNAMIC_FEED_UX_VERIFIED`. JS only, on top of §4.27.
+
+- **"Analyzing video…" removed:** it exposed verification as a state (every Dailymotion card read it 2–4 s before
+  "Video available"). `statusNotice` no longer has `ANALYZING`; the hook's analyzing window, the bar branch and the
+  `analyzingVideo` strings are gone. Unresolved = nothing shown.
+- **Transient "This video can't be downloaded" (root cause):** `classifyMediaResolutionOutcome` turns "every candidate
+  so far refused" (a subtitle/audio playlist, an ad manifest, the first of several files) into `PROVEN_UNSUPPORTED`; the
+  hook recorded that as the live video's verdict and the bar showed it until the real manifest verified. Fix
+  (`browser-media-action.service`): a verdict is presented only once final — `getVerdict` returns it after
+  `NEGATIVE_VERDICT_SETTLE_MS` (8 s) with no offer for the video and no new verification of it; `beginVerification`
+  for the identity discards it; one timer re-renders at settle time. Offers still clear it.
+- **Device (Pixel_8 AVD cold boot, 6 cores, RELEASE + trace):** Dailymotion `/sg#for-you` 15 distinct inline cards
+  scrolled from the top without opening any: 0 shown offers ≠ live card, notices seen only ALREADY_DOWNLOADED (after
+  downloads), no ANALYZING/UNSUPPORTED/PROTECTED; offer 1.4–3.6 s after the app saw each card (one 10.6 s, verification
+  8 s, silent). Downloads card 2 `xbd9kwi` (576x1024, 50.99 s), 7 `xbdmoaq` (23.99 s), 15 `xb73wae` (23.89 s): video
+  frames identical to ffmpeg's read of each card's own rendition (1529/575/1431). Fast scroll, scroll back (downloaded
+  cards read Already downloaded), tab switch, bg/fg correct. Facebook 7 reels = playing file; w3schools, hls.js/MSE,
+  TikTok, Instagram offered with no intermediate notice; Vimeo (DRM) nothing; YouTube VIEW/share refused.
+- **Tests:** npm 595/595 (+3 settle tests with mocked timers; presentation tests updated); tsc 0; ESLint 0 errors.
+- **Testing note:** never `adb emu kill` right after `adb install` (the install was lost once) — `adb shell sync` first.
+
+### 4.29 Facebook reel CTA: first offer withdrawn, later reels never offered (uncommitted, 2026-09-28)
+
+Status `FACEBOOK_REEL_CTA_VERIFIED`. JS only, on top of §4.28. Repro: exact link
+`facebook.com/reel/4678791569058145/?mibextid=…` on a release build. Only reproduces with Facebook's **first-visit
+(no cookies) reel viewer**, which Facebook serves in varying layouts: (a) multi-`<video>` progressive (as in §4.25),
+(b) ONE recycled `<video>` fed by MediaSource with separate video-only + audio-only DASH files for every reel.
+
+- **Root causes (generic):**
+  1. *No offer on any MSE reel:* Facebook reads each file with `response.body.pipeThrough(transform).pipeTo(sink)` and
+     appends copies it builds itself, so the MSE observer (which named buffers only from `arrayBuffer()`/XHR buffers)
+     never knew which file fed which SourceBuffer; resolution fell back to "exactly two requested files", which a feed
+     that prefetches the next reels never satisfies → `SPLIT_AMBIGUOUS` forever. Fix (`injected-script.ts`
+     `MSE_OBSERVATION_SOURCE`): a media `Response.body` stream carries its URL through `getReader`/`pipeThrough`/`tee`;
+     `pipeTo` of such a stream goes through a pass-through `TransformStream` tap; reader/tap chunks are kept (≤ 64
+     chunks / 3 MB); an appended buffer not found in the buffer map is looked up by its first 128 bytes in those chunks
+     (≤ every 250 ms per buffer while unknown, 1 s once known) and named only when exactly one file (byte ranges
+     ignored) holds them. The existing `buffers` split path then proves and offers the exact pair.
+  2. *Reel 1's correct offer withdrawn after ~2–4 s:* the direct analyzer offers the page's declared whole file for
+     reel 1; the player then switches to split buffers and the "standing offer for one half of a split player" rule
+     withdrew it although that file is not one of the player's halves. Fix: `isSplitPlayerFile`
+     (`mse-playback-context.ts`) — the rule keeps an offer whose file the player never read while its identity is the
+     live one.
+  3. *Previous page's offer revived:* Home sets `lastNavigation` to null and the hook skipped every reset from a null
+     previous navigation, so re-opening the same reel URL showed the last reel's offer (wrong file) and made the direct
+     analyzer skip (`WEBVIEW_OFFER_PRESENT`). Fix: `offerNavigationReset` (`cta-persistence.ts`) — leaving for the
+     start page withdraws the tab's offer; arriving from no page still keeps it (tab switch back).
+  4. *MSE reel scrolled back to, replayed from cache:* no new request → blob-player correlation rejected the old
+     candidates (`WEAK_UNCORRELATED_MEDIA` / earlier generation). Fix: the page-named files ride on the active-video
+     evidence (`playingFiles` → `activeVideoPlayingFiles`, canonicalized like candidates); a candidate for one of them is
+     the blob player's current-source match, and they are refreshed like `refreshPlayingSource` (§4.25).
+- **Device (Pixel_8 AVD, RELEASE + trace, cold boots, Facebook cookies/storage cleared via CDP before each run):**
+  progressive layout: reels 1–11 (+ "Watch more reels like this" topic grid → no CTA, correct), fast scroll (4 in
+  1 s) → landing reel only, scroll back 10→3 each own file, tab switch / bg-fg correct; downloads reel 2 (11.52 s) and
+  reel 7 (78.64 s) md5-identical to the page's own files. MSE layout: reel 1 offer stays; reels 2–11 each offered with
+  the file that reel streams (5–13 s after the swipe on a cool AVD); fast scroll back 11→7 landing only (2.1 s);
+  scroll back 6→2 each own file; tab switch / bg-fg correct; merged downloads reel 2 (89.6 s) and reel 7 (39.8 s):
+  video packets identical to each reel's video file, audio packet payloads identical to its audio file (timestamps
+  differ: the merger drops the audio edit list — pre-existing, not changed here).
+- **Dailymotion:** unit/pipeline regression tests pass (shared iframe player path untouched: the new code only affects
+  main-frame blob `<video>` players). Device re-check NOT done: clearing WebView cookies for the Facebook repro also
+  cleared Dailymotion's consent, and its cookie banner now blocks the feed; accepting it needs the owner's OK.
+- **Tests:** npm 603/603 (+8: streamed/piped split attribution ×2, ambiguous bytes, non-media stream, MSE scroll back,
+  `isSplitPlayerFile`, `offerNavigationReset` ×3 — the attribution and scroll-back tests fail on the old code); tsc
+  both 0; ESLint 0 errors.
+- **Testing notes:** Facebook's layout varies per first visit (clear cookies + `Storage.clearDataForOrigin` for
+  www./m.facebook.com via CDP); after closing its centered modal with ✕ an invisible layer eats swipes — scroll the
+  viewer's scroll-snap DIV via DevTools `scrollBy({top: clientHeight})`. `input keyevent`/installs restart the app and
+  the tab restore swallows a VIEW sent too early — resend once the browser is up.
+
+### 4.30 UX polish: download states, Detecting, Go, How to use, Help & Support, PIN warning (uncommitted, 2026-09-29)
+
+Status `VIDORAX_UX_POLISH_VERIFIED`. JS + one manifest query (mailto package visibility). No downloader/HLS/DASH/merge
+changes; detection and stale-offer rules untouched (presentation only).
+
+- **False "Already downloaded" (root cause):** after a tap, the service marks the video *consumed*; the presentation
+  mapped every consumed video (`CONSUMED_CURRENT_CONTENT` / `liveIdentityConsumed`) to `ALREADY_DOWNLOADED`, so a download
+  the tap had just started read "Already downloaded". Also the pre-tap duplicate check ignored `ALREADY_DOWNLOADING`.
+  Fix: `commitConsumed(…, downloadId, duplicate)` records a `BrowserConsumedOutcome` {downloadId, preExisting (engine
+  said ALREADY_DOWNLOADED), revisited} per fingerprint/content key (+ `lastConsumedOutcome` for identity-less pages);
+  the quality-sheet bus now passes `{downloadId, duplicate}`. The hook follows that download's live row
+  (`engineRowsById[id].status`): `resolveConsumedDownloadNotice` → DOWNLOADING (queued/downloading/paused) → DOWNLOADED
+  (completed) → ALREADY_DOWNLOADED only if pre-existing or the user left the video and came back
+  (`markConsumedRevisitable` on live-identity change); failed/cancelled/removed → nothing. `duplicateOffers` is a map
+  {kind DOWNLOADED|DOWNLOADING, downloadId}; `resolveOfferDuplicateNotice` labels a standing offer "Downloading…".
+- **"Detecting video…":** notice `DETECTING` only for the live strong owner in `TRACKING_CURRENT_VIDEO` (no offer, no
+  final verdict, not hidden): for `DETECTING_WINDOW_MS` (10 s) after the video became current, while a negative verdict
+  is still settling (`hasPendingVerdict`), or while a verification of that identity runs (`isVerifying`, capped at
+  `DETECTING_MAX_MS` 30 s). Transient failures stay hidden (§4.28 settle unchanged). Bar: label + three sequenced dots +
+  breathing `movie-search-outline` icon (reanimated, theme primary); DOWNLOADING = small spinner; DOWNLOADED /
+  ALREADY_DOWNLOADED = green check-circle.
+- **Go:** omnibox `exact_url` suggestion shows a rounded primary pill "Go →" (`browser.goAction`), pressed = primaryDark
+  + 0.96 scale. Verified System/Red/Dark.
+- **Settings:** new `HowToUseSection` (7 steps + YouTube / DRM notes). Support section → "Help & Support": Contact
+  Support / Report an Issue open `mailto:Vidoraxlabs@gmail.com` (subject "VidoraX Support / Issue Report", body App
+  version / Android version / Device / Issue) via `src/support/support-email{,-open}.ts` (`Linking.openURL` directly; no
+  app → alert with Copy address). `legalConfig.contact.supportEmail` set to that address (old Support/Report screens now
+  in email mode); manifest `<queries>` SENDTO/VIEW mailto. The old Help/Report screens are no longer linked from Settings.
+- **PIN warning:** `AppLockDataLossWarning` (full on setup's recovery step, compact under Privacy in Settings). Setup
+  needs both "I've saved my recovery code" and the new "I understand…" checkbox before Enable App Lock. No security
+  logic changed.
+- **Device (Pixel_8 AVD, RELEASE; one trace release for diagnosis):** FB reel first download: Detecting → Video available
+  → Preparing → Downloading… → Downloaded; reload → Already downloaded; swipe → Detecting (~2.4 s) → Video available.
+  hls.js Mux 1080p via quality sheet: Downloading…; re-opened while downloading (paused) → offer "Downloading…", tap →
+  consumed ALREADY_DOWNLOADING → "Downloading…". Settings: How to use, Help & Support → Gmail compose pre-filled (draft
+  discarded, nothing sent), PIN gate (disabled until both boxes), enable + disable with PIN OK, warnings readable in
+  light/dark. Regression: TikTok, Instagram, Facebook offered; YouTube VIEW refused with toast; Dailymotion blocked by
+  its login/cookie wall (owner OK needed to accept) — shows Detecting then nothing, no false verdict.
+- **Tests:** npm 624/624 (+21); tsc both 0; ESLint 0 errors; `git diff --check` clean.
+- **Testing notes:** a large engine download saturates the emulator network — pages fail with ERR_CONNECTION_CLOSED
+  until it is paused. Reloading the hls.js demo while its stream downloads failed the same way.
+
+### 4.31 Feature checklist audit + Phase 16–22 plan (docs only, 2026-10-03)
+
+The owner supplied a 985-row feature checklist (`1234 VidoraX.xlsx`: Browser 289, Downloader 229, Player 222, File
+Manager 245; ✔/✘ from a static scan of the release APK). Every ✔ row and every plausible ✘ row was checked against the
+source. Result: `docs/feature-audit/VidoraX-feature-checklist-verified-2026-10-03.xlsx` (original statuses kept in
+column J, verdict in K, file-level evidence in L, phase in M; Summary and Phases sheets are live formulas) and the plan
+in `docs/ROADMAP.md`. No code changed.
+
+- **Scan 222 ✔ → verified 243 ✔ / 742 ✘.** 25 ticks were wrong, 46 crosses were wrong, 20 ticks had wrong evidence.
+- **Wrong ticks (ticked, not in the app):** clipboard-link open; link-menu "Open in New Tab" (registered disabled,
+  empty callback); clear recent searches (store only, no UI); web-video fullscreen in the browser
+  (`allowsFullscreenVideo` unset) and browser rotation (activity is portrait-locked); background audio, media
+  notification, lock-screen controls (service removed 2026-10-01); Translate page (label only); multi-connection
+  downloads (native `ProgressiveTransfer` is single-connection; v1 JS multi-range only on the legacy paste-link
+  route); save cover image; re-download; copy link in Downloads/Library; Check for Updates (`PLAY_STORE_LISTING_URL`
+  is null, also blocks Rate); player remaining time; seek frame preview (time label only); double-tap centre
+  play/pause (centre double-tap seeks); network-stream playback in the player; opening video files from other apps
+  (video/* and audio/* are only in `<queries>`, not an intent-filter); junk cleaner (cache only).
+- **Missed (in the app, scan said ✘):** tab sleeping (parked WebViews paused), history search, insecure-site
+  warning, HTTPS-only (release refuses `http://`), pinch page zoom, autoplay block, live download speed, automatic
+  Referer, 429/5xx backoff, Urdu file names, slow-motion speeds, keep-screen-on, no analytics, and the library's
+  list/grid, sort, rename, delete, folders, properties, favorites (the File Manager rows apply to VidoraX's own media
+  only). Platform-provided rows (WebView text-selection Copy/Share/Web search, Safe Browsing, IPv6, HW decoding) are
+  ✔ with Low confidence until checked on a device.
+- **In-app text found wrong while auditing (fix in Phase 16):** FAQ "How do I change the theme?" says Light/Dark/System
+  (the options are System/Red/Dark); FAQ "Can I pause and resume downloads?" says HLS can't be paused (the native
+  engine checkpoints HLS segments); the link sheet title "Link options" and its action labels are hard-coded English.
+- **Plan:** Phase 16 makes every ticked feature real (27 rows), then 17 browser core (56), 18 browser privacy &
+  reading (43), 19 downloader (76), 20 player (82), 21 library/privacy/backup (63), 22 extras (20). 375 rows are
+  "Not planned" with a reason (torrent/P2P, accounts/cloud vs the local-only rule, Play-restricted permissions,
+  device-wide file manager, password manager, music-player and online-service features).
 
 ## 5. How to resume
 
-1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec.
+1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.
 2. **Re-verify the two "done" native modules still build**, since time has passed:
    ```bash
    bash scripts/dev/gradle.sh :vidorax-media:testDebugUnitTest :vidorax-web:compileDebugKotlin :app:assembleDebug
@@ -1122,12 +2031,18 @@ piece of state stays on the device).
 
 - **minSdk 24, targetSdk/compileSdk 36** (verified from `node_modules/react-native/gradle/
   libs.versions.toml` and the merged manifest).
+- **Package id (2026-10-01):** `applicationId` = `com.vidorax.fast.videodownloader` (android/app/build.gradle, app.json
+  `android.package`, `DEFAULT_VIDORAX_PACKAGE_ID` in `src/downloads/completed-file/uri-safety.ts`). The Gradle
+  `namespace` and Kotlin packages stay `com.anonymous.vidorax` on purpose (the WebView patch reflects
+  `com.anonymous.vidorax.mediadetection.MediaNetworkBridge`; ProGuard keeps that package). Use the new id for
+  `adb shell run-as`, `pm clear`, `am start` and shared_prefs paths; older sections of this file still say
+  `com.anonymous.vidorax`. versionCode 1 / versionName 1.0.0 — bump versionCode for every Play upload.
 - **Media3 1.9.0** is already in the Gradle cache via `expo-video` (session-exoplayer,
   exoplayer, exoplayer-dash, exoplayer-hls, ui, datasource-okhttp). `vidorax-media` uses
   `media3-exoplayer-hls` (`HlsPlaylistParser`), `media3-exoplayer-dash` (`DashManifestParser`,
   classification only — Phase 12B), `media3-inspector` (`MediaExtractorCompat`),
-  `media3-datasource-okhttp` and `media3-common`; `media3-muxer`/`media3-container` are declared
-  but unused. **Do not** add `media3-transformer` or any remuxing — out of scope.
+  `media3-datasource-okhttp` and `media3-common`; since §4.22 also `media3-muxer` (lossless remux and A/V merge,
+  `process/Remuxer`) and `media3-transformer` (re-encoding only a track the output can't carry, `process/Transcoder`).
   **Do not** upgrade past 1.9.0 without also bumping whatever `expo-video` bundles, checked
   at build time, or the app crashes.
 - **HLS playlist parsing uses Media3's `HlsPlaylistParser`** — do not hand-roll a playlist

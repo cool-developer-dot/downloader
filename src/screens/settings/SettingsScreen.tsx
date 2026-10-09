@@ -8,6 +8,7 @@ import {
   AppearanceSection,
   DownloadsSection,
   GeneralSection,
+  HowToUseSection,
   LegalSection,
   PrivacySection,
   SettingsFeedbackBanner,
@@ -91,14 +92,18 @@ export const SettingsScreen = memo(function SettingsScreen() {
           </SettingsStaggerItem>
 
           <SettingsStaggerItem index={5}>
-            <SupportSection />
+            <HowToUseSection />
           </SettingsStaggerItem>
 
           <SettingsStaggerItem index={6}>
-            <PrivacySection disabled={saving} />
+            <SupportSection />
           </SettingsStaggerItem>
 
           <SettingsStaggerItem index={7}>
+            <PrivacySection disabled={saving} />
+          </SettingsStaggerItem>
+
+          <SettingsStaggerItem index={8}>
             <LegalSection />
           </SettingsStaggerItem>
         </View>

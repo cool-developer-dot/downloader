@@ -4,6 +4,7 @@ import com.vidorax.media.model.DownloadErrorCode
 import com.vidorax.media.model.DownloadProgress
 import com.vidorax.media.model.DownloadRecord
 import com.vidorax.media.model.DownloadState
+import com.vidorax.media.model.ProcessingStage
 import com.vidorax.media.model.ProgressPhase
 import com.vidorax.media.model.SiteId
 import com.vidorax.media.model.SourceKind
@@ -103,6 +104,24 @@ class DownloadRunnerTest {
 
   private fun tick(ms: Long = 1_000) {
     now += ms
+  }
+
+  @Test
+  fun `a download being merged or converted says so, and the words go away with the stage`() {
+    runner.onState(record(state = DownloadState.PROCESSING, bytesDone = 1_000))
+    assertTrue("before any stage: finishing up", host.summary.text.startsWith("Finishing up"))
+    tick(10)
+    runner.onProgress(
+      DownloadProgress("dl-1", ProgressPhase.PROCESSING, 1_000, 1_000, 0.1, 0, null, ProcessingStage.MERGING),
+    )
+    assertTrue(host.summary.text, host.summary.text.startsWith("Merging audio and video"))
+    tick(10)
+    runner.onProgress(
+      DownloadProgress("dl-1", ProgressPhase.PROCESSING, 1_000, 1_000, 0.5, 0, null, ProcessingStage.TRANSCODING),
+    )
+    assertTrue(host.summary.text, host.summary.text.startsWith("Converting the video"))
+    runner.onState(record(state = DownloadState.COMPLETED, bytesDone = 1_000))
+    assertTrue(notifier.posted.none { it.text.startsWith("Merging") && it.kind != DownloadNotificationContent.Kind.ACTIVE })
   }
 
   @Test

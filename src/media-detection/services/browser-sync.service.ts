@@ -80,12 +80,12 @@ function placeholderThumbnail(media: DetectedMedia): string {
   try {
     const host = new URL(media.pageUrl || media.url).hostname;
     if (host) {
-      return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=128`;
+      return `https://${host}/favicon.ico`;
     }
   } catch {
     // fall through
   }
-  return 'https://www.google.com/s2/favicons?domain=vidorax.app&sz=128';
+  return 'https://vidorax.app/favicon.ico';
 }
 
 /**

@@ -1,15 +1,14 @@
-import { memo } from 'react';
+import { memo, useSyncExternalStore } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 
 import { Icon } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
-import type { PlayerSideGestureKind } from '@/player/use-player-side-gestures';
+import { useTranslation } from '@/localization';
+import type { AdjustmentHud, AdjustmentHudKind } from '@/player/adjustment-hud';
 
 export type PlayerAdjustmentHudProps = {
-  type: PlayerSideGestureKind | null;
-  percent: number;
-  visible: boolean;
+  hud: AdjustmentHud;
 };
 
 function brightnessIcon(percent: number): string {
@@ -35,39 +34,51 @@ function volumeIcon(percent: number): string {
   return 'volume-high';
 }
 
+function iconFor(kind: AdjustmentHudKind, percent: number): string {
+  switch (kind) {
+    case 'brightness':
+      return brightnessIcon(percent);
+    case 'volume':
+      return volumeIcon(percent);
+    case 'zoom':
+    default:
+      return 'magnify-plus-outline';
+  }
+}
+
 /**
- * Compact temporary brightness/volume HUD — visible only during side gestures.
+ * Compact temporary brightness / volume / zoom indicator — visible only while a gesture changes a value and briefly
+ * after. Subscribes to the gesture's store itself, so a swipe re-renders this card alone. Never takes a touch.
  * Fixed dark scrim over video pixels (intentional media overlay — not theme chrome).
  */
-export const PlayerAdjustmentHud = memo(function PlayerAdjustmentHud({
-  type,
-  percent,
-  visible,
-}: PlayerAdjustmentHudProps) {
-  if (!visible || !type) {
+export const PlayerAdjustmentHud = memo(function PlayerAdjustmentHud({ hud }: PlayerAdjustmentHudProps) {
+  const { t } = useTranslation();
+  const state = useSyncExternalStore(hud.subscribe, hud.getSnapshot, hud.getSnapshot);
+  if (!state.visible || !state.kind) {
     return null;
   }
-
-  const iconName = type === 'brightness' ? brightnessIcon(percent) : volumeIcon(percent);
+  const { kind, percent } = state;
   const label =
-    type === 'brightness'
-      ? `Brightness ${percent} percent`
-      : `Volume ${percent} percent`;
+    kind === 'brightness'
+      ? t('player.hud.brightness', { percent })
+      : kind === 'volume'
+        ? t('player.hud.volume', { percent })
+        : t('player.hud.zoom', { percent });
 
   return (
     <Animated.View
-      entering={FadeIn.duration(140)}
-      exiting={FadeOut.duration(220)}
+      entering={FadeIn.duration(90)}
+      exiting={FadeOut.duration(100)}
       pointerEvents="none"
       style={[
         styles.wrap,
-        type === 'brightness' ? styles.left : styles.right,
+        kind === 'brightness' ? styles.left : kind === 'volume' ? styles.right : styles.center,
       ]}
       accessibilityRole="text"
       accessibilityLiveRegion="polite"
       accessibilityLabel={label}>
       <Animated.View style={styles.card}>
-        <Icon name={iconName} size={28} color="inverse" />
+        <Icon name={iconFor(kind, percent)} size={28} color="inverse" />
         <Text variant="title" color="white" style={styles.percent}>
           {percent}%
         </Text>
@@ -88,6 +99,11 @@ const styles = StyleSheet.create({
   },
   right: {
     right: '18%',
+    alignItems: 'center',
+  },
+  center: {
+    left: 0,
+    right: 0,
     alignItems: 'center',
   },
   card: {

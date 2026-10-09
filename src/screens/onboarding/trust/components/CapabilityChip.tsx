@@ -1,13 +1,11 @@
 import { memo, type ComponentType } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import {
-  Bell,
-  Download,
-  ListOrdered,
-  Pause,
-  Play,
-  RotateCcw,
-} from 'lucide-react-native';
+import Bell from 'lucide-react-native/icons/bell';
+import Download from 'lucide-react-native/icons/download';
+import ListOrdered from 'lucide-react-native/icons/list-ordered';
+import Pause from 'lucide-react-native/icons/pause';
+import Play from 'lucide-react-native/icons/play';
+import RotateCcw from 'lucide-react-native/icons/rotate-ccw';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
 import { fontFamilies } from '@/theme/typography';

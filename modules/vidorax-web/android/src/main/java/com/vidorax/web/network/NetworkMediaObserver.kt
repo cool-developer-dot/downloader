@@ -14,6 +14,7 @@ private const val BATCH_INTERVAL_MS = 250L
 private const val DEDUPE_WINDOW_MS = 2_000L
 private const val MAX_PENDING = 256
 private const val MAX_BATCH_SIZE = 64
+private const val MAX_SUSPENDED_VIEWS = 8
 
 // viewTag for requests without a WebView (service workers) or whose WebView is already unmounted.
 private const val NO_VIEW_TAG = -1
@@ -54,12 +55,20 @@ internal class NetworkMediaObserver(private val emit: (List<Map<String, Any?>>) 
   // Main thread only.
   private val recentKeys = RecentKeys(DEDUPE_WINDOW_MS)
 
+  // Main thread only: parked tabs, whose requests are dropped instead of emitted.
+  private val suspendedViews = SuspendedViews(MAX_SUSPENDED_VIEWS)
+
   fun setHasListeners(value: Boolean) {
     hasListeners = value
   }
 
   fun setEnabled(value: Boolean) {
     isEnabled = value
+  }
+
+  /** Main thread. */
+  fun setViewSuspended(viewTag: Int, suspended: Boolean) {
+    suspendedViews.set(viewTag, suspended)
   }
 
   fun observe(view: WebView?, request: WebResourceRequest) {
@@ -109,6 +118,7 @@ internal class NetworkMediaObserver(private val emit: (List<Map<String, Any?>>) 
       if (!isActive) continue
 
       val viewTag = observation.view?.let { RNCWebViewWrapper.getReactTagFromWebView(it) } ?: NO_VIEW_TAG
+      if (viewTag in suspendedViews) continue
       if (recentKeys.add("$viewTag ${NetworkMediaClassifier.dedupeKey(observation.url)}", now)) {
         batch.add(observation.toEvent(viewTag))
       }

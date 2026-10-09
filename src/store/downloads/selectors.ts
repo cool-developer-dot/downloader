@@ -1,3 +1,6 @@
+import type { TransferProgressSnapshot } from '@/downloads/engine/types';
+
+import { createRowRevision } from './row-revision';
 import type { DownloadItem, DownloadsStore } from './types';
 
 export const selectDownloadOrderedIds = (state: DownloadsStore) => state.orderedIds;
@@ -162,9 +165,6 @@ export function selectCompletedCatalogSignature(state: DownloadsStore): string {
 }
 
 /**
- * Catalog identity for Library assemble — excludes in-flight progress %.
- */
-/**
  * Every known download row: the visible v1 catalog page plus every mirrored v2 engine row (the engine wins on id).
  * Library-side callers use this so a Downloads status filter can never hide a completed v2 item.
  */
@@ -184,53 +184,85 @@ export function selectAllDownloadItems(state: DownloadsStore): DownloadItem[] {
 
 /**
  * Downloads that are still being worked on — queued, preparing, transferring, waiting, or finishing up (v2 engine
- * rows and v1 catalog rows alike). A number, so subscribers re-render only when the count changes.
+ * rows and v1 catalog rows alike). A number, so subscribers re-render only when the count changes. Runs on every
+ * store update (progress ticks included), so it walks the rows without building any list.
  */
 export function selectInFlightDownloadCount(state: DownloadsStore): number {
   let count = 0;
-  for (const item of selectAllDownloadItems(state)) {
-    if (item.status === 'QUEUED' || item.status === 'DOWNLOADING') {
+  for (const id of state.orderedIds) {
+    if (Object.prototype.hasOwnProperty.call(state.engineRowsById, id)) {
+      continue;
+    }
+    const status = state.itemsById[id]?.status;
+    if (status === 'QUEUED' || status === 'DOWNLOADING') {
+      count += 1;
+    }
+  }
+  for (const id in state.engineRowsById) {
+    const status = state.engineRowsById[id]?.status;
+    if (status === 'QUEUED' || status === 'DOWNLOADING') {
       count += 1;
     }
   }
   return count;
 }
 
-export function selectDownloadCatalogIdentitySignature(
-  state: DownloadsStore,
-): string {
-  const parts: string[] = [];
-  for (const item of selectAllDownloadItems(state)) {
-    const id = item.id;
-    parts.push(
-      [
-        id,
-        item.status,
-        item.title,
-        item.fileName,
-        item.folderId ?? '',
-        item.thumbnailUrl,
-        item.downloadedAt ?? '',
-        item.updatedAt,
-      ].join(':'),
-    );
+/** Visits every known row once: the visible v1 catalog page, then every v2 engine row (the engine wins on id). */
+function forEachDownloadItem(state: DownloadsStore, visit: (id: string, item: DownloadItem) => void): void {
+  for (const id of state.orderedIds) {
+    if (Object.prototype.hasOwnProperty.call(state.engineRowsById, id)) {
+      continue;
+    }
+    const item = state.itemsById[id];
+    if (item) {
+      visit(id, item);
+    }
   }
-  return parts.join('|');
+  for (const id in state.engineRowsById) {
+    const item = state.engineRowsById[id];
+    if (item) {
+      visit(id, item);
+    }
+  }
 }
+
+const catalogIdentityRevision = createRowRevision<DownloadItem>((id, item) =>
+  [
+    id,
+    item.status,
+    item.title,
+    item.fileName,
+    item.folderId ?? '',
+    item.thumbnailUrl,
+    item.downloadedAt ?? '',
+    item.updatedAt,
+  ].join(':'),
+);
+
+/**
+ * Catalog identity for Library assemble — changes when a row appears, goes away or changes what the Library shows
+ * (status, title, file, folder, thumbnail, dates), never for in-flight progress.
+ */
+export function selectDownloadCatalogIdentityRevision(state: DownloadsStore): number {
+  return catalogIdentityRevision((visit) => forEachDownloadItem(state, visit));
+}
+
+const libraryTransferRevision = createRowRevision<TransferProgressSnapshot>(
+  (_id, transfer) => `${transfer.localState}:${transfer.localUri ?? ''}`,
+);
 
 /**
  * Library only needs transfer localState/localUri for eligibility — not bytes.
  */
-export function selectLibraryTransferSignature(state: DownloadsStore): string {
-  const parts: string[] = [];
-  for (const id of Object.keys(state.transferById)) {
-    const transfer = state.transferById[id];
-    if (!transfer) {
-      continue;
+export function selectLibraryTransferRevision(state: DownloadsStore): number {
+  return libraryTransferRevision((visit) => {
+    for (const id in state.transferById) {
+      const transfer = state.transferById[id];
+      if (transfer) {
+        visit(id, transfer);
+      }
     }
-    parts.push(`${id}:${transfer.localState}:${transfer.localUri ?? ''}`);
-  }
-  return parts.sort().join('|');
+  });
 }
 
 /** Membership signature for Downloads section grouping (status buckets only). */

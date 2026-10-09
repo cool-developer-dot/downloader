@@ -21,6 +21,432 @@ const ROUTE_TITLE_CHECK_MS = 250;
 const ROUTE_TITLE_CHECKS = 12;
 
 /**
+ * MediaSource observation, shared by both injected scripts and installed once per document by whichever runs first —
+ * normally the before-content script, at document start, so a player that builds its MediaSource while the page is
+ * still loading (the first video of a feed) is seen; the main script, injected when the page has loaded, adopts the
+ * state and receives the events. Observation only: every original is called and its result returned untouched.
+ *
+ * - `objectUrls`/`sourcesByUrl`: media blob: URLs → 'mse' | 'blob' and the MediaSource behind each (bounded).
+ * - `recent`: MediaSources seen through addSourceBuffer; each carries `__vidoraxTracks` (per buffer 'v' | 'a' | 'av'),
+ *   each SourceBuffer its `__vidoraxKind`/`__vidoraxSource`.
+ * - Bytes read with Response.arrayBuffer or an arraybuffer XHR remember their URL (weakly); an appendBuffer of those
+ *   bytes names the file feeding that SourceBuffer: `MediaSource.__vidoraxFiles = { v, a }` — the video file and the
+ *   audio file of a split player.
+ * - A media response read as a stream (`response.body`, chunk by chunk) keeps its latest chunks (bounded); a player
+ *   that copies those bytes into the buffers it appends is named by the one file whose chunks hold the appended bytes.
+ * - `emeRequested`: the page negotiated encrypted media (a protection signal; no key system is touched).
+ */
+const MSE_OBSERVATION_SOURCE = `
+  function vidoraxMseObservation() {
+    if (window.__VIDORAX_MSE__) return window.__VIDORAX_MSE__;
+    var state = {
+      objectUrls: Object.create(null),
+      objectUrlKeys: [],
+      sourcesByUrl: Object.create(null),
+      recent: [],
+      bufferUrls: typeof WeakMap === 'function' ? new WeakMap() : null,
+      emeRequested: false,
+      listener: null
+    };
+    try {
+      Object.defineProperty(window, '__VIDORAX_MSE__', { value: state, configurable: false, enumerable: false, writable: false });
+    } catch (e) {
+      window.__VIDORAX_MSE__ = state;
+    }
+    var MAX_OBJECT_URLS = 24;
+    var MAX_SOURCES = 8;
+    // Streamed media chunks kept for naming appended bytes, and how often one SourceBuffer may be looked up in them.
+    var MAX_STREAM_CHUNKS = 64;
+    var MAX_STREAM_BYTES = 3 * 1024 * 1024;
+    var STREAM_MATCH_BYTES = 128;
+    var MIN_STREAM_MATCH_BYTES = 32;
+    var STREAM_MATCH_UNKNOWN_MS = 250;
+    var STREAM_MATCH_KNOWN_MS = 1000;
+    state.streamChunks = [];
+    state.streamBytes = 0;
+    var VIDEO_CODEC_RE = /^(avc[1-4]|hev1|hvc1|dvh[1e]|dva[1v]|vp0?[89]|vp09|av01|mp4v|theora)/i;
+    var AUDIO_CODEC_RE = /^(mp4a|opus|vorbis|flac|ac-3|ec-3|mp3|alac|dtsc)/i;
+    function notify(event, detail) {
+      try { if (typeof state.listener === 'function') state.listener(event, detail); } catch (e) {}
+    }
+    function rememberBuffer(buf, url) {
+      try {
+        if (state.bufferUrls && buf && typeof buf === 'object' && url && /^https?:/i.test(String(url))) {
+          state.bufferUrls.set(buf, String(url).slice(0, 2048));
+        }
+      } catch (e) {}
+    }
+    // A MediaSource carries no type property, so its methods identify it; a Blob is media by its type.
+    function objectUrlSourceKind(obj) {
+      try {
+        if (!obj) return null;
+        if (typeof obj.addSourceBuffer === 'function') return 'mse';
+        var ctor = obj.constructor && obj.constructor.name ? String(obj.constructor.name) : '';
+        if (ctor.indexOf('MediaSource') >= 0) return 'mse';
+        var type = obj.type ? String(obj.type).toLowerCase() : '';
+        if (type.indexOf('video') === 0 || type.indexOf('audio') === 0) return 'blob';
+        if (type.indexOf('application/vnd.apple.mpegurl') === 0 || type.indexOf('application/dash+xml') === 0) return 'blob';
+      } catch (e) {}
+      return null;
+    }
+    // The MIME type given to addSourceBuffer says whether one buffer carries video, audio or both.
+    function sourceBufferTrackKind(mime) {
+      try {
+        var text = String(mime || '').toLowerCase();
+        var m = /codecs\\s*=\\s*"?([^";]+)"?/.exec(text);
+        var video = false, audio = false;
+        if (m) {
+          var codecs = m[1].split(',');
+          for (var i = 0; i < codecs.length; i++) {
+            var c = codecs[i].replace(/^\\s+|\\s+$/g, '');
+            if (VIDEO_CODEC_RE.test(c)) video = true;
+            else if (AUDIO_CODEC_RE.test(c)) audio = true;
+          }
+        } else if (text.indexOf('audio/') === 0) {
+          audio = true;
+        }
+        if (video && audio) return 'av';
+        if (video) return 'v';
+        if (audio) return 'a';
+      } catch (e) {}
+      return null;
+    }
+    try {
+      if (window.Response && Response.prototype && typeof Response.prototype.arrayBuffer === 'function' &&
+          !Response.prototype.arrayBuffer.__vidoraxHooked) {
+        var _arrayBuffer = Response.prototype.arrayBuffer;
+        var arrayBufferHooked = function() {
+          var res = this;
+          return _arrayBuffer.apply(this, arguments).then(function(buf) {
+            rememberBuffer(buf, res && res.url);
+            return buf;
+          });
+        };
+        arrayBufferHooked.__vidoraxHooked = true;
+        Response.prototype.arrayBuffer = arrayBufferHooked;
+      }
+    } catch (e) {}
+    try {
+      var XP = window.XMLHttpRequest && XMLHttpRequest.prototype;
+      if (XP && typeof XP.send === 'function' && !XP.send.__vidoraxBuffers) {
+        var _send = XP.send;
+        var sendHooked = function() {
+          var xhr = this;
+          try {
+            xhr.addEventListener('load', function() {
+              try {
+                if (xhr.responseType === 'arraybuffer') rememberBuffer(xhr.response, xhr.responseURL || xhr.__vidoraxUrl);
+              } catch (e2) {}
+            }, { once: true });
+          } catch (e3) {}
+          return _send.apply(this, arguments);
+        };
+        sendHooked.__vidoraxBuffers = true;
+        XP.send = sendHooked;
+      }
+    } catch (e) {}
+    function isMediaResponse(res) {
+      try {
+        var type = String((res.headers && res.headers.get('content-type')) || '').toLowerCase();
+        if (type.indexOf('video/') === 0 || type.indexOf('audio/') === 0) return true;
+        var path = String(res.url || '').split('?')[0].split('#')[0].toLowerCase();
+        var dot = path.lastIndexOf('.');
+        var ext = dot >= 0 ? path.slice(dot + 1) : '';
+        return ext === 'mp4' || ext === 'm4s' || ext === 'm4v' || ext === 'm4a' || ext === 'webm' || ext === 'cmfv' ||
+          ext === 'cmfa';
+      } catch (e) { return false; }
+    }
+    function rememberStreamChunk(url, value) {
+      try {
+        if (!value || !value.byteLength) return;
+        var chunk = typeof ArrayBuffer === 'function' && value instanceof ArrayBuffer ? new Uint8Array(value) : value;
+        if (!chunk.buffer || typeof chunk.BYTES_PER_ELEMENT !== 'number') return;
+        if (chunk.BYTES_PER_ELEMENT !== 1) chunk = new Uint8Array(chunk.buffer, chunk.byteOffset, chunk.byteLength);
+        rememberBuffer(chunk.buffer, url);
+        state.streamChunks.push({ url: String(url).slice(0, 2048), bytes: chunk, length: chunk.byteLength });
+        state.streamBytes += chunk.byteLength;
+        while (state.streamChunks.length > MAX_STREAM_CHUNKS || state.streamBytes > MAX_STREAM_BYTES) {
+          state.streamBytes -= state.streamChunks.shift().length;
+        }
+      } catch (e) {}
+    }
+    // A media response's body stream, and the reader taken from it, carry the response URL; each chunk read is kept.
+    try {
+      var bodyDesc = window.Response && Response.prototype && Object.getOwnPropertyDescriptor(Response.prototype, 'body');
+      if (bodyDesc && typeof bodyDesc.get === 'function' && !bodyDesc.get.__vidoraxHooked) {
+        var getBody = bodyDesc.get;
+        var bodyHooked = function() {
+          var stream = getBody.call(this);
+          try {
+            if (stream && !stream.__vidoraxUrl && /^https?:/i.test(String(this.url || '')) && isMediaResponse(this)) {
+              stream.__vidoraxUrl = String(this.url);
+            }
+          } catch (e2) {}
+          return stream;
+        };
+        bodyHooked.__vidoraxHooked = true;
+        Object.defineProperty(Response.prototype, 'body', {
+          get: bodyHooked,
+          configurable: true,
+          enumerable: bodyDesc.enumerable
+        });
+      }
+      var RS = window.ReadableStream && ReadableStream.prototype;
+      if (RS && typeof RS.getReader === 'function' && !RS.getReader.__vidoraxHooked) {
+        var _getReader = RS.getReader;
+        var getReaderHooked = function() {
+          var reader = _getReader.apply(this, arguments);
+          try { if (reader && this.__vidoraxUrl) reader.__vidoraxUrl = this.__vidoraxUrl; } catch (e3) {}
+          return reader;
+        };
+        getReaderHooked.__vidoraxHooked = true;
+        RS.getReader = getReaderHooked;
+      }
+      // A body piped through a transform (a progress counter, a chunker) or teed is still that file's bytes.
+      if (RS && typeof RS.pipeThrough === 'function' && !RS.pipeThrough.__vidoraxHooked) {
+        var _pipeThrough = RS.pipeThrough;
+        var pipeThroughHooked = function() {
+          var out = _pipeThrough.apply(this, arguments);
+          try { if (out && this.__vidoraxUrl) out.__vidoraxUrl = this.__vidoraxUrl; } catch (e5) {}
+          return out;
+        };
+        pipeThroughHooked.__vidoraxHooked = true;
+        RS.pipeThrough = pipeThroughHooked;
+      }
+      // Piped into the page's own sink: the bytes never pass a reader, so the pipe goes through a pass-through tap that
+      // keeps each chunk (same bytes, same order, errors and cancellation still propagate).
+      if (RS && typeof RS.pipeTo === 'function' && typeof RS.pipeThrough === 'function' &&
+          typeof window.TransformStream === 'function' && !RS.pipeTo.__vidoraxHooked) {
+        var _pipeTo = RS.pipeTo;
+        var nativePipeThrough = _pipeThrough || RS.pipeThrough;
+        var pipeToHooked = function() {
+          var url = this.__vidoraxUrl;
+          var source = this;
+          if (url && !this.__vidoraxTapped) {
+            try {
+              var tap = new TransformStream({
+                transform: function(chunk, controller) {
+                  rememberStreamChunk(url, chunk);
+                  controller.enqueue(chunk);
+                }
+              });
+              source = nativePipeThrough.call(this, tap);
+              source.__vidoraxTapped = true;
+            } catch (e7) {
+              source = this;
+            }
+          }
+          return _pipeTo.apply(source, arguments);
+        };
+        pipeToHooked.__vidoraxHooked = true;
+        RS.pipeTo = pipeToHooked;
+      }
+      if (RS && typeof RS.tee === 'function' && !RS.tee.__vidoraxHooked) {
+        var _tee = RS.tee;
+        var teeHooked = function() {
+          var branches = _tee.apply(this, arguments);
+          try {
+            if (branches && this.__vidoraxUrl) {
+              for (var b = 0; b < branches.length; b++) branches[b].__vidoraxUrl = this.__vidoraxUrl;
+            }
+          } catch (e6) {}
+          return branches;
+        };
+        teeHooked.__vidoraxHooked = true;
+        RS.tee = teeHooked;
+      }
+      var RD = window.ReadableStreamDefaultReader && ReadableStreamDefaultReader.prototype;
+      if (RD && typeof RD.read === 'function' && !RD.read.__vidoraxHooked) {
+        var _read = RD.read;
+        var readHooked = function() {
+          var result = _read.apply(this, arguments);
+          var url = this.__vidoraxUrl;
+          if (!url || !result || typeof result.then !== 'function') return result;
+          return result.then(function(r) {
+            try { if (r && !r.done && r.value) rememberStreamChunk(url, r.value); } catch (e4) {}
+            return r;
+          });
+        };
+        readHooked.__vidoraxHooked = true;
+        RD.read = readHooked;
+      }
+    } catch (e) {}
+    // The whole file a ranged request reads (byte-range query parameters dropped), as split-tracks.ts wholeFileUrl.
+    function fileOf(url) {
+      try {
+        var parsed = new URL(String(url));
+        var names = ['bytestart', 'byteend', 'range', 'rn', 'rbuf'];
+        var keys = [];
+        parsed.searchParams.forEach(function(_v, k) { keys.push(k); });
+        for (var i = 0; i < keys.length; i++) {
+          if (names.indexOf(keys[i].toLowerCase()) >= 0) parsed.searchParams.delete(keys[i]);
+        }
+        parsed.hash = '';
+        return parsed.toString();
+      } catch (e) {
+        return String(url);
+      }
+    }
+    function chunkHolds(chunk, key) {
+      var n = key.length;
+      var first = key[0];
+      var last = chunk.length - n;
+      for (var i = 0; i <= last; i++) {
+        if (chunk[i] !== first) continue;
+        var j = 1;
+        while (j < n && chunk[i + j] === key[j]) j++;
+        if (j === n) return true;
+      }
+      return false;
+    }
+    // The streamed file the appended bytes were copied from: the one file (a byte range of it is the same file) whose
+    // recent chunks hold them. The same bytes in two files name neither.
+    function streamedFileOf(data) {
+      try {
+        var chunks = state.streamChunks;
+        if (!chunks.length) return null;
+        var isBuffer = typeof ArrayBuffer === 'function' && data instanceof ArrayBuffer;
+        var total = data.byteLength;
+        if (!(total >= MIN_STREAM_MATCH_BYTES)) return null;
+        var size = Math.min(STREAM_MATCH_BYTES, total);
+        var key = isBuffer ? new Uint8Array(data, 0, size) : new Uint8Array(data.buffer, data.byteOffset, size);
+        var found = null;
+        var foundFile = null;
+        for (var i = chunks.length - 1; i >= 0; i--) {
+          var c = chunks[i];
+          if (!c.bytes.byteLength) continue;
+          if (foundFile && fileOf(c.url) === foundFile) continue;
+          if (chunkHolds(c.bytes, key)) {
+            if (foundFile) return null;
+            found = c.url;
+            foundFile = fileOf(c.url);
+          }
+        }
+        return found;
+      } catch (e) {}
+      return null;
+    }
+    try {
+      if (window.URL && typeof URL.createObjectURL === 'function' && !URL.createObjectURL.__vidoraxHooked) {
+        var _create = URL.createObjectURL;
+        var createHooked = function(obj) {
+          var blobUrl = _create.apply(this, arguments);
+          try {
+            var kind = objectUrlSourceKind(obj);
+            if (kind) {
+              var key = String(blobUrl).slice(0, 512);
+              if (state.objectUrlKeys.length >= MAX_OBJECT_URLS) {
+                var evicted = state.objectUrlKeys.shift();
+                delete state.objectUrls[evicted];
+                delete state.sourcesByUrl[evicted];
+              }
+              if (!state.objectUrls[key]) state.objectUrlKeys.push(key);
+              state.objectUrls[key] = kind;
+              if (kind === 'mse') state.sourcesByUrl[key] = obj;
+              notify('object_url', { url: blobUrl, kind: kind });
+            }
+          } catch (e) {}
+          return blobUrl;
+        };
+        createHooked.__vidoraxHooked = true;
+        URL.createObjectURL = createHooked;
+      }
+    } catch (e) {}
+    function hookAddSourceBuffer(Ctor) {
+      try {
+        if (!Ctor || !Ctor.prototype || typeof Ctor.prototype.addSourceBuffer !== 'function') return;
+        if (Ctor.prototype.addSourceBuffer.__vidoraxHooked) return;
+        var _add = Ctor.prototype.addSourceBuffer;
+        var hooked = function(mime) {
+          var buffer = _add.apply(this, arguments);
+          try {
+            var kind = sourceBufferTrackKind(mime);
+            if (kind) {
+              if (!this.__vidoraxTracks) {
+                this.__vidoraxTracks = [];
+                if (state.recent.length >= MAX_SOURCES) state.recent.shift();
+                state.recent.push(this);
+              }
+              if (this.__vidoraxTracks.length < 8) this.__vidoraxTracks.push(kind);
+              if (buffer) {
+                buffer.__vidoraxKind = kind;
+                buffer.__vidoraxSource = this;
+              }
+              notify('tracks', null);
+            }
+          } catch (e) {}
+          return buffer;
+        };
+        hooked.__vidoraxHooked = true;
+        Ctor.prototype.addSourceBuffer = hooked;
+      } catch (e) {}
+    }
+    hookAddSourceBuffer(window.MediaSource);
+    hookAddSourceBuffer(window.ManagedMediaSource);
+    hookAddSourceBuffer(window.WebKitMediaSource);
+    function recordSourceBufferFile(buffer, data) {
+      try {
+        if (!state.bufferUrls || !buffer || !buffer.__vidoraxKind || !data) return;
+        var ms = buffer.__vidoraxSource;
+        var kind = buffer.__vidoraxKind === 'a' ? 'a' : buffer.__vidoraxKind === 'v' ? 'v' : null;
+        if (!ms || !kind) return;
+        var url = state.bufferUrls.get(data.buffer || data);
+        var streamed = false;
+        if (!url && state.streamChunks.length) {
+          // Bytes copied out of a streamed response: looked up in its chunks, often while the file is unknown, then
+          // now and then (a recycled player's buffer fed the next item's file).
+          var now = Date.now();
+          var known = ms.__vidoraxFiles && ms.__vidoraxFiles[kind];
+          if (now - (buffer.__vidoraxMatchedAt || 0) < (known ? STREAM_MATCH_KNOWN_MS : STREAM_MATCH_UNKNOWN_MS)) return;
+          buffer.__vidoraxMatchedAt = now;
+          url = streamedFileOf(data);
+          streamed = true;
+        }
+        if (!url) return;
+        if (!ms.__vidoraxFiles) ms.__vidoraxFiles = { v: null, a: null };
+        var current = ms.__vidoraxFiles[kind];
+        // Another byte range of the streamed file already named is the same file.
+        if (current !== url && !(streamed && current && fileOf(current) === fileOf(url))) {
+          ms.__vidoraxFiles[kind] = url;
+          notify('files', null);
+        }
+      } catch (e) {}
+    }
+    function hookAppendBuffer(Ctor) {
+      try {
+        if (!Ctor || !Ctor.prototype || typeof Ctor.prototype.appendBuffer !== 'function') return;
+        if (Ctor.prototype.appendBuffer.__vidoraxHooked) return;
+        var _append = Ctor.prototype.appendBuffer;
+        var hookedAppend = function(data) {
+          recordSourceBufferFile(this, data);
+          return _append.apply(this, arguments);
+        };
+        hookedAppend.__vidoraxHooked = true;
+        Ctor.prototype.appendBuffer = hookedAppend;
+      } catch (e) {}
+    }
+    hookAppendBuffer(window.SourceBuffer);
+    hookAppendBuffer(window.ManagedSourceBuffer);
+    try {
+      if (navigator && typeof navigator.requestMediaKeySystemAccess === 'function' &&
+          !navigator.requestMediaKeySystemAccess.__vidoraxHooked) {
+        var _rmksa = navigator.requestMediaKeySystemAccess;
+        var rmksaHooked = function() {
+          try {
+            state.emeRequested = true;
+            notify('eme', null);
+          } catch (e) {}
+          return _rmksa.apply(navigator, arguments);
+        };
+        rmksaHooked.__vidoraxHooked = true;
+        navigator.requestMediaKeySystemAccess = rmksaHooked;
+      }
+    } catch (e) {}
+    return state;
+  }
+`;
+
+/**
  * Build the injectable observer script.
  * Appended with `true;` so react-native-webview treats it as successful.
  */
@@ -45,12 +471,24 @@ export function buildMediaDetectionInjectedScript(): string {
   var disposed = false;
   /** True once the page has negotiated encrypted media — protection evidence, never a bypass. */
   var emeRequested = false;
+${MSE_OBSERVATION_SOURCE}
+  // MediaSource observation — usually installed at document start by the before-content script (so a player built
+  // while the page loads is seen), otherwise here. This script adopts its state.
+  var mseObservation = vidoraxMseObservation();
   /** blob: url -> 'mse' | 'blob', bounded, so an indicator can say what kind of source it stands for. */
-  var mseObjectUrls = Object.create(null);
-  var mseObjectUrlKeys = [];
-  var MAX_MSE_OBJECT_URLS = 24;
+  var mseObjectUrls = mseObservation.objectUrls;
+  // blob: URL -> the MediaSource behind it, so an element's SourceBuffer layout can be read (same bound).
+  var mseSourcesByUrl = mseObservation.sourcesByUrl;
+  // MediaSources seen through addSourceBuffer (newest last, bounded).
+  var recentMediaSources = mseObservation.recent;
+  if (mseObservation.emeRequested) emeRequested = true;
   /** True while this script's observers and listeners are live. */
   var attached = false;
+  /**
+   * True while the document is hidden: a parked tab (the app pauses its WebView), the Browser behind another screen,
+   * or the app in the background. Nothing is observed or posted then; becoming visible rescans everything.
+   */
+  var suspended = false;
   var batchTimer = null;
   var lastFlushAt = 0;
   var pageUrl = location.href;
@@ -64,7 +502,7 @@ export function buildMediaDetectionInjectedScript(): string {
   /** Returns false when the caller's payload was NOT delivered, so it can be retried. */
   function post(type, payload) {
     try {
-      if (disposed) return false;
+      if (disposed || suspended) return false;
       var now = Date.now();
       if (now - postWindowStart >= POST_WINDOW_MS) {
         postWindowStart = now;
@@ -210,7 +648,7 @@ export function buildMediaDetectionInjectedScript(): string {
   }
 
   function enqueue(candidate) {
-    if (disposed || !candidate || !candidate.url) return;
+    if (disposed || suspended || !candidate || !candidate.url) return;
     candidate.url = canonicalizePlaybackUrl(candidate.url);
     if (isBlobUrl(candidate.url)) {
       postBlobIndicator(candidate.url, null, null);
@@ -234,7 +672,7 @@ export function buildMediaDetectionInjectedScript(): string {
   }
 
   function scheduleFlush() {
-    if (disposed || batchTimer || !pending.length) return;
+    if (disposed || suspended || batchTimer || !pending.length) return;
     var delay = ${batchMs};
     var since = Date.now() - lastFlushAt;
     if (since < ${throttleMs}) delay = Math.max(delay, ${throttleMs} - since);
@@ -431,14 +869,32 @@ export function buildMediaDetectionInjectedScript(): string {
       blobUrl: String(rawUrl).slice(0, 512),
       elementIdentity: el && (el.tagName || '').toLowerCase() === 'video' ? ensureVideoIdentity(el) : null,
       isProtected: isProtectedElement(el),
-      sourceKind: sourceKind || (el && mseObjectUrls[String(rawUrl).slice(0, 512)] ? 'mse' : 'blob')
+      sourceKind: sourceKind || (el && (mseObjectUrls[String(rawUrl).slice(0, 512)] || mediaSourceFor(el, rawUrl)) ? 'mse' : 'blob'),
+      mseTracks: mseTrackLayoutOf(el, rawUrl),
+      mseFiles: mseFilesOf(el, rawUrl)
     });
+  }
+
+  /**
+   * The resource a media element holds right now. Chromium keeps currentSrc after a page removes the src and calls
+   * load() (a recycled feed player between items), so an element with no resource (NETWORK_EMPTY / NO_SOURCE) reports
+   * only a src it was just given, never the one it played before.
+   */
+  function currentSourceOf(el) {
+    try {
+      var ns = el.networkState;
+      if (ns === 0 || ns === 3) {
+        var assigned = el.getAttribute('src');
+        return assigned ? (el.src || assigned) : '';
+      }
+      return el.currentSrc || el.src || el.getAttribute('src') || '';
+    } catch (e) { return ''; }
   }
 
   function mediaFromElement(el, source) {
     if (!el) return;
     var tag = (el.tagName || '').toLowerCase();
-    var rawSrc = el.currentSrc || el.src || el.getAttribute('src');
+    var rawSrc = tag === 'video' || tag === 'audio' ? currentSourceOf(el) : (el.src || el.getAttribute('src'));
     if (isBlobUrl(rawSrc)) {
       // A blob is never downloadable. It is reported as evidence of a player whose real HTTP(S)
       // source has to be found through network observation instead.
@@ -646,64 +1102,99 @@ export function buildMediaDetectionInjectedScript(): string {
     };
   } catch (e) {}
 
-  // MediaSource / media Blob URL observation — indicator only, never a download target.
-  // A MediaSource carries no type property, so testing that alone missed every MSE player, which is the
-  // case that matters most: its real media arrives as separate HTTP(S) requests.
-  function objectUrlSourceKind(obj) {
+  // Page-side MediaSource events from the shared observation: a new media blob URL is reported as an indicator (never a
+  // download target); SourceBuffer layout, appended files and EME negotiation re-report the active video.
+  mseObservation.listener = function(event, detail) {
     try {
-      if (!obj) return null;
-      if (typeof obj.addSourceBuffer === 'function') return 'mse';
-      var ctor = obj.constructor && obj.constructor.name ? String(obj.constructor.name) : '';
-      if (ctor.indexOf('MediaSource') >= 0) return 'mse';
-      var type = obj.type ? String(obj.type).toLowerCase() : '';
-      if (type.indexOf('video') === 0 || type.indexOf('audio') === 0) return 'blob';
-      if (type.indexOf('application/vnd.apple.mpegurl') === 0 || type.indexOf('application/dash+xml') === 0) {
-        return 'blob';
+      if (event === 'object_url') {
+        postBlobIndicator(detail.url, null, detail.kind);
+        return;
       }
+      if (event === 'eme') emeRequested = true;
+      scheduleActiveVideo();
+    } catch (e) {}
+  };
+
+  // The MediaSource an element plays. Mapped from its blob: URL when createObjectURL was observed; otherwise (the page
+  // created it before this script ran) the only attached one, or the attached one whose duration is the element's.
+  function mediaSourceFor(el, src) {
+    try {
+      var ms = mseSourcesByUrl[String(src).slice(0, 512)];
+      if (ms) return ms;
+      var open = [];
+      for (var i = 0; i < recentMediaSources.length; i++) {
+        if (recentMediaSources[i].readyState !== 'closed') open.push(recentMediaSources[i]);
+      }
+      if (open.length === 1) return open[0];
+      var d = el && typeof el.duration === 'number' ? el.duration : NaN;
+      if (!isFinite(d)) return null;
+      var match = null;
+      for (var j = 0; j < open.length; j++) {
+        if (open[j].duration === d) {
+          if (match) return null;
+          match = open[j];
+        }
+      }
+      return match;
     } catch (e) {}
     return null;
   }
-
+  // The files feeding an element's MediaSource, per track: { video, audio } (the latest appended of each), or null.
+  function mseFilesOf(el, src) {
+    try {
+      var ms = mediaSourceFor(el, src);
+      var files = ms && ms.__vidoraxFiles;
+      if (!files || (!files.v && !files.a)) return null;
+      return { video: files.v || null, audio: files.a || null };
+    } catch (e) {}
+    return null;
+  }
+  function mseTrackLayoutOf(el, src) {
+    try {
+      var ms = mediaSourceFor(el, src);
+      var kinds = ms && ms.__vidoraxTracks;
+      if (!kinds || !kinds.length) return null;
+      var v = false, a = false, av = false;
+      for (var i = 0; i < kinds.length; i++) {
+        if (kinds[i] === 'av') av = true; else if (kinds[i] === 'v') v = true; else if (kinds[i] === 'a') a = true;
+      }
+      if (av) return 'muxed';
+      if (v && a) return 'split';
+      if (v) return 'video';
+      if (a) return 'audio';
+    } catch (e) {}
+    return null;
+  }
+  // Attaching MediaKeys to an element is protection evidence for that element. Pages that negotiated EME before this
+  // script was injected still attach their keys afterwards (the negotiation is asynchronous), so the player is
+  // re-reported once they are attached. Observation only: the original is called and its promise returned untouched.
   try {
-    if (window.URL && URL.createObjectURL) {
-      var _create = URL.createObjectURL;
-      URL.createObjectURL = function(obj) {
-        var blobUrl = _create.apply(this, arguments);
+    var MediaEl = window.HTMLMediaElement;
+    if (MediaEl && MediaEl.prototype && typeof MediaEl.prototype.setMediaKeys === 'function' &&
+        !MediaEl.prototype.setMediaKeys.__vidoraxHooked) {
+      var _setKeys = MediaEl.prototype.setMediaKeys;
+      var hookedSetKeys = function(keys) {
+        var el = this;
+        var result = _setKeys.apply(this, arguments);
         try {
-          var kind = objectUrlSourceKind(obj);
-          if (kind) {
-            var key = String(blobUrl).slice(0, 512);
-            if (mseObjectUrlKeys.length >= MAX_MSE_OBJECT_URLS) {
-              delete mseObjectUrls[mseObjectUrlKeys.shift()];
-            }
-            if (!mseObjectUrls[key]) mseObjectUrlKeys.push(key);
-            mseObjectUrls[key] = kind;
-            postBlobIndicator(blobUrl, null, kind);
+          if (keys) {
+            var mark = function() {
+              try { el.__vidoraxEncrypted = true; scheduleActiveVideo(); } catch (e2) {}
+            };
+            if (result && typeof result.then === 'function') result.then(mark, function() {});
+            else mark();
           }
         } catch (e) {}
-        return blobUrl;
+        return result;
       };
-    }
-  } catch (e) {}
-
-  // Encrypted-media negotiation is a protection signal. Observation only: the original is always
-  // called and its result returned untouched — no key system is used, created or inspected.
-  try {
-    if (navigator && typeof navigator.requestMediaKeySystemAccess === 'function') {
-      var _rmksa = navigator.requestMediaKeySystemAccess;
-      navigator.requestMediaKeySystemAccess = function() {
-        try {
-          emeRequested = true;
-          scheduleActiveVideo();
-        } catch (e) {}
-        return _rmksa.apply(navigator, arguments);
-      };
+      hookedSetKeys.__vidoraxHooked = true;
+      MediaEl.prototype.setMediaKeys = hookedSetKeys;
     }
   } catch (e) {}
 
   var scanTimer = null;
   function scheduleScanDom() {
-    if (disposed || scanTimer) return;
+    if (disposed || suspended || scanTimer) return;
     scanTimer = setTimeout(function() {
       scanTimer = null;
       scanDom();
@@ -898,10 +1389,26 @@ export function buildMediaDetectionInjectedScript(): string {
     } catch (e) { return 'v0'; }
   }
 
-  function readAssociatedContentId(el) {
+  /**
+   * True once an ancestor also holds another player: a feed/list container. Its labels, text and links describe the
+   * neighbouring posts too (a "Sponsored" post, another item's link), so nothing above it speaks for this element.
+   */
+  function isSharedMediaContainer(node, el) {
+    try {
+      if (node === el || !node.querySelectorAll) return false;
+      var players = node.querySelectorAll('video,iframe');
+      for (var i = 0; i < players.length && i < 64; i++) {
+        if (players[i] !== el) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+
+  function readAssociatedContentId(el, skipLocation) {
     try {
       var node = el;
       for (var depth = 0; depth < 16 && node; depth++) {
+        if (isSharedMediaContainer(node, el)) break;
         if (node.getAttribute) {
           var attrs = ['data-id', 'data-media-id', 'data-video-id', 'data-item-id', 'data-e2e-vid', 'data-shortcode'];
           for (var ai = 0; ai < attrs.length; ai++) {
@@ -926,6 +1433,9 @@ export function buildMediaDetectionInjectedScript(): string {
         }
         node = node.parentElement;
       }
+      if (skipLocation) return null;
+      var overlaid = readOverlaidContentId(el);
+      if (overlaid) return overlaid;
       try {
         var locHm = String(location.href).match(/\\/(?:video|watch|embed|media)\\/([A-Za-z0-9_-]{5,32})/i);
         if (locHm && locHm[1]) return String(locHm[1]).slice(0, 32);
@@ -934,10 +1444,77 @@ export function buildMediaDetectionInjectedScript(): string {
     return null;
   }
 
+  var CONTENT_ID_ATTRS = ['data-id', 'data-media-id', 'data-video-id', 'data-item-id', 'data-e2e-vid', 'data-shortcode'];
+  var CONTENT_LINK_RE = /\\/(?:reel|reels|p|video|videos|watch|embed|media|shorts)\\/([A-Za-z0-9_-]{5,32})/i;
+
+  /** The distinct content ids one DOM subtree names (its id attributes, its links); stops counting past two. */
+  function contentIdsWithin(node) {
+    var found = { id: null, count: 0 };
+    function add(value) {
+      if (!value || value === found.id) return;
+      if (found.id && found.count >= 1) { found.count = 2; return; }
+      found.id = value;
+      found.count = 1;
+    }
+    try {
+      if (node.getAttribute) {
+        for (var ai = 0; ai < CONTENT_ID_ATTRS.length; ai++) {
+          var val = node.getAttribute(CONTENT_ID_ATTRS[ai]);
+          if (val && /^[A-Za-z0-9_-]{5,32}$/.test(String(val))) add(String(val).slice(0, 32));
+        }
+      }
+      var links = node.querySelectorAll ? node.querySelectorAll('a[href]') : [];
+      if (node.tagName === 'A') links = [node].concat(Array.prototype.slice.call(links, 0, 47));
+      for (var li = 0; li < links.length && li < 48 && found.count < 2; li++) {
+        var hm = String(links[li].href || '').match(CONTENT_LINK_RE);
+        if (hm && hm[1]) add(String(hm[1]).slice(0, 32));
+      }
+    } catch (e) {}
+    return found;
+  }
+
+  /**
+   * The feed item a player is laid over, for a player that lives outside every item (one shared player the page moves
+   * over the card in view, a floating overlay). Only what is painted beneath the player counts — its own controls and
+   * captions are above it — and only the smallest block there that names exactly one item: a block naming two is the
+   * feed itself, and an ancestor of the player is the whole page.
+   */
+  function readOverlaidContentId(el) {
+    try {
+      if (!document.elementsFromPoint || !el.getBoundingClientRect) return null;
+      var r = el.getBoundingClientRect();
+      if (!r || r.width < 80 || r.height < 80) return null;
+      var vw = window.innerWidth || 0;
+      var vh = window.innerHeight || 0;
+      var left = Math.max(0, r.left);
+      var right = vw > 0 ? Math.min(vw, r.right) : r.right;
+      var top = Math.max(0, r.top);
+      var bottom = vh > 0 ? Math.min(vh, r.bottom) : r.bottom;
+      if (right - left < 40 || bottom - top < 40) return null;
+      var stack = document.elementsFromPoint((left + right) / 2, (top + bottom) / 2);
+      var below = false;
+      for (var i = 0; i < stack.length && i < 24; i++) {
+        var node = stack[i];
+        if (node === el) { below = true; continue; }
+        if (!below || el.contains(node) || node.contains(el)) continue;
+        for (var depth = 0; depth < 12 && node && node !== document.body && node !== document.documentElement; depth++) {
+          if (node.contains(el)) break;
+          var ids = contentIdsWithin(node);
+          if (ids.count === 1) return ids.id;
+          if (ids.count > 1) break;
+          node = node.parentElement;
+        }
+        return null;
+      }
+    } catch (e) {}
+    return null;
+  }
+
   function readExplicitAdMarker(el) {
     try {
       var node = el;
       for (var depth = 0; depth < 6 && node; depth++) {
+        if (isSharedMediaContainer(node, el)) break;
         var label = '';
         if (node.getAttribute) {
           label = (node.getAttribute('aria-label') || '') + ' ' + (node.getAttribute('data-ad') || '');
@@ -993,7 +1570,7 @@ export function buildMediaDetectionInjectedScript(): string {
   function collectActiveVideoPayload(el) {
     pageUrl = location.href;
     var rawSrc = '';
-    try { rawSrc = el.currentSrc || el.src || el.getAttribute('src') || ''; } catch (e) {}
+    rawSrc = currentSourceOf(el);
     var isBlob = typeof rawSrc === 'string' && rawSrc.toLowerCase().indexOf('blob:') === 0;
     var ratio = null;
     try {
@@ -1005,6 +1582,9 @@ export function buildMediaDetectionInjectedScript(): string {
         recentlyPlayed = recentPlayUntil.get(el) > Date.now();
       }
     } catch (e3) {}
+    // The size it is drawn at: a full-resolution video scaled into a thumbnail is still a preview.
+    var displayBox = null;
+    try { displayBox = el.getBoundingClientRect(); } catch (eBox) {}
     var currentTimeBucket = null;
     try {
       if (typeof el.currentTime === 'number' && isFinite(el.currentTime)) {
@@ -1031,13 +1611,18 @@ export function buildMediaDetectionInjectedScript(): string {
       currentTimeBucket: currentTimeBucket,
       intersectionRatio: ratio,
       viewportCenterDistance: viewportCenterDistance(el),
+      displayWidth: displayBox ? Math.round(displayBox.width) : null,
+      displayHeight: displayBox ? Math.round(displayBox.height) : null,
       isDisplayed: isElementDisplayed(el),
       isVisibleStyle: isVisibleStyle(el),
       recentlyPlayed: recentlyPlayed || (typeof el.paused === 'boolean' && !el.paused),
       explicitAdMarker: readExplicitAdMarker(el),
       associatedContentId: readAssociatedContentId(el),
       isProtected: isProtectedElement(el),
-      sourceKind: isBlob ? (mseObjectUrls[String(rawSrc).slice(0, 512)] || 'blob') : null
+      sourceKind: isBlob ? (mseObjectUrls[String(rawSrc).slice(0, 512)] || (mediaSourceFor(el, rawSrc) ? 'mse' : 'blob')) : null,
+      mseTracks: isBlob ? mseTrackLayoutOf(el, rawSrc) : null,
+      mseFiles: isBlob ? mseFilesOf(el, rawSrc) : null,
+      duration: typeof el.duration === 'number' && isFinite(el.duration) && el.duration > 0 ? el.duration : null
     };
   }
 
@@ -1170,6 +1755,8 @@ export function buildMediaDetectionInjectedScript(): string {
           if (locHm && locHm[1]) return String(locHm[1]).slice(0, 32);
           var q = rawSrc ? String(rawSrc).match(/[?&#](?:video|v)=([A-Za-z0-9_-]{5,32})(?:[&#]|$)/i) : null;
           if (q && q[1]) return String(q[1]).slice(0, 32);
+          // A player document that is told what to play (its src names nothing): the item it sits in or over.
+          return readAssociatedContentId(el, true) || readOverlaidContentId(el);
         } catch (e6) {}
         return null;
       })()
@@ -1203,7 +1790,9 @@ export function buildMediaDetectionInjectedScript(): string {
         var key = payload.elementIdentity + '|' + (payload.currentSrc || '') + '|' +
           String(payload.paused) + '|' + String(payload.intersectionRatio) + '|' +
           String(payload.recentlyPlayed) + '|' + String(payload.associatedContentId) + '|' +
-          String(payload.isProtected);
+          String(payload.isProtected) + '|' + String(payload.sourceKind) + '|' + String(payload.mseTracks) + '|' +
+          (payload.mseFiles ? String(payload.mseFiles.video) + '+' + String(payload.mseFiles.audio) : '') + '|' +
+          String(payload.duration);
         if (key === lastActiveVideoKey) return;
         lastActiveVideoKey = key;
         post('active_video', payload);
@@ -1227,7 +1816,9 @@ export function buildMediaDetectionInjectedScript(): string {
         var previewKey = previewPayload.elementIdentity + '|' + (previewPayload.currentSrc || '') + '|' +
           String(previewPayload.paused) + '|' + String(previewPayload.intersectionRatio) + '|' +
           String(previewPayload.recentlyPlayed) + '|' + String(previewPayload.associatedContentId) + '|' +
-          String(previewPayload.isProtected);
+          String(previewPayload.isProtected) + '|' + String(previewPayload.sourceKind) + '|' +
+          String(previewPayload.mseTracks) + '|' +
+          (previewPayload.mseFiles ? String(previewPayload.mseFiles.video) + '+' + String(previewPayload.mseFiles.audio) : '');
         if (previewKey === lastActiveVideoKey) return;
         lastActiveVideoKey = previewKey;
         post('active_video', previewPayload);
@@ -1236,7 +1827,7 @@ export function buildMediaDetectionInjectedScript(): string {
   }
 
   function scheduleActiveVideo() {
-    if (disposed || activeVideoTimer) return;
+    if (disposed || suspended || activeVideoTimer) return;
     activeVideoTimer = setTimeout(flushActiveVideo, Math.max(${batchMs}, ${throttleMs}));
   }
 
@@ -1291,6 +1882,13 @@ export function buildMediaDetectionInjectedScript(): string {
 
     attachMediaListeners(document);
     try { window.addEventListener('popstate', onPopState); } catch (e) {}
+    // A feed can move its one player over the next item without any DOM or visibility change the observers above
+    // see; the report after scrolling settles names the item it is over now. Capture: inner scrollers count too.
+    try { window.addEventListener('scroll', onScrollSettle, { passive: true, capture: true }); } catch (e) {}
+  }
+
+  function onScrollSettle() {
+    scheduleActiveVideo();
   }
 
   function detachObservers() {
@@ -1305,6 +1903,7 @@ export function buildMediaDetectionInjectedScript(): string {
       if (io) { io.disconnect(); io = null; }
       detachMediaListeners();
       window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('scroll', onScrollSettle, true);
     } catch (e) {}
   }
 
@@ -1379,10 +1978,33 @@ export function buildMediaDetectionInjectedScript(): string {
   // The app asks for this when the page's earlier reports could not be used — the Browser was hidden, or another
   // tab was in front while this page posted: report everything the page shows now, exactly as after a route change.
   window.__VIDORAX_MEDIA_RESCAN__ = function() {
-    if (disposed) return false;
+    if (disposed || suspended) return false;
     onPopState();
     return true;
   };
+
+  // A hidden document costs nothing: observers are detached and nothing is queued. Becoming visible again reports the
+  // page afresh, exactly like a route change, so the video in front is announced even if it changed meanwhile.
+  function setSuspended(next) {
+    if (disposed || next === suspended) return;
+    suspended = next;
+    if (next) {
+      pending = [];
+      detachObservers();
+      try { suspendedAt = performance.now(); } catch (e) { suspendedAt = 0; }
+      return;
+    }
+    attachObservers();
+    onPopState();
+    // Only what was requested while hidden: older entries can belong to a video the page has since replaced.
+    replayPerformanceEntries(suspendedAt);
+  }
+  var suspendedAt = 0;
+  try {
+    document.addEventListener('visibilitychange', function() {
+      setSuspended(document.visibilityState === 'hidden');
+    });
+  } catch (e) {}
 
   // History patching is per-document and must not be re-applied on a restore, or each navigation
   // would run onPopState once per stacked wrapper.
@@ -1421,6 +2043,12 @@ export function buildMediaDetectionInjectedScript(): string {
     try {
       if (!ev || !ev.persisted) return;
       window.__VIDORAX_MEDIA_DETECTION__ = true;
+      disposed = false;
+      if (document.visibilityState === 'hidden') {
+        suspended = true;
+        return;
+      }
+      suspended = false;
       attachObservers();
       onPopState();
     } catch (e) {}
@@ -1462,24 +2090,31 @@ export function buildMediaDetectionInjectedScript(): string {
     }
   } catch (e) {}
 
-  attachObservers();
-  readMeta();
-  scanDom();
-  harvestEmbeddedMedia();
-  flushActiveVideo();
-  scheduleActiveVideo();
+  if (document.visibilityState === 'hidden') {
+    // Injected into a parked tab (a reload or redirect while it was in the background): wait until it is shown.
+    suspended = true;
+  } else {
+    attachObservers();
+    readMeta();
+    scanDom();
+    harvestEmbeddedMedia();
+    flushActiveVideo();
+    scheduleActiveVideo();
+  }
 
-  try {
-    if (window.performance && performance.getEntriesByType) {
-      try {
-        var entries = performance.getEntriesByType('resource');
-        var start = Math.max(0, entries.length - 80);
-        for (var i = start; i < entries.length; i++) {
-          observePerfEntry(entries[i]);
-        }
-      } catch (err) {}
-    }
-  } catch (e) {}
+  // The newest resource entries (from sinceMs on): requests made before the observer existed, or while hidden.
+  function replayPerformanceEntries(sinceMs) {
+    try {
+      if (!window.performance || !performance.getEntriesByType) return;
+      var entries = performance.getEntriesByType('resource');
+      var start = Math.max(0, entries.length - 80);
+      for (var i = start; i < entries.length; i++) {
+        if (sinceMs && entries[i].startTime < sinceMs) continue;
+        observePerfEntry(entries[i]);
+      }
+    } catch (err) {}
+  }
+  if (!suspended) replayPerformanceEntries(0);
 
   // Narrow native-app promotion suppression — CSS only, no polling, no timer.
   // Hides elements whose href points to known native-app awakening schemes.
@@ -1515,9 +2150,12 @@ export function buildMediaDetectionRescanScript(): string {
 
 export function buildMediaDetectionBeforeContentScript(): string {
   return `(function(){
+${MSE_OBSERVATION_SOURCE}
   try {
     if (window.__VIDORAX_MEDIA_EARLY__) return true;
     window.__VIDORAX_MEDIA_EARLY__ = true;
+    // Before any page script: a player built while the page loads is observed from its first SourceBuffer.
+    vidoraxMseObservation();
     window.__VIDORAX_MEDIA_EARLY_RESOURCES__ = [];
     if (window.PerformanceObserver) {
       var po = new PerformanceObserver(function(list) {

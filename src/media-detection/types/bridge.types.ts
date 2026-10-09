@@ -69,6 +69,19 @@ export interface BridgeErrorPayload {
 /** What a blob: URL stands for. `mse` means the real media arrives as separate HTTP(S) requests. */
 export type BridgeMediaSourceKind = 'mse' | 'blob';
 
+/**
+ * How a MediaSource player's SourceBuffers carry the tracks, from the MIME types the page gave `addSourceBuffer`:
+ * `muxed` — one buffer with video and audio; `split` — separate video and audio buffers (two sources that would
+ * have to be muxed); `video` / `audio` — one track kind only.
+ */
+export type BridgeMseTrackLayout = 'muxed' | 'split' | 'video' | 'audio';
+
+/**
+ * The files a MediaSource's SourceBuffers were fed from (the latest appended to each), when the page read them as
+ * ArrayBuffers: the exact video file and audio file of a split player — never another video's prefetch.
+ */
+export type BridgeMseFiles = { video: string | null; audio: string | null };
+
 export interface BridgeBlobIndicatorPayload {
   pageUrl: string;
   blobUrl: string;
@@ -77,6 +90,8 @@ export interface BridgeBlobIndicatorPayload {
   /** Encrypted-playback evidence (MediaKeys / 'encrypted' event / EME negotiation). Observed only. */
   isProtected: boolean;
   sourceKind: BridgeMediaSourceKind | null;
+  mseTracks?: BridgeMseTrackLayout | null;
+  mseFiles?: BridgeMseFiles | null;
 }
 
 /**
@@ -99,6 +114,9 @@ export interface BridgeActiveVideoPayload {
   currentTimeBucket: number | null;
   intersectionRatio: number | null;
   viewportCenterDistance: number | null;
+  /** Rendered box in CSS px (not the intrinsic video size). */
+  displayWidth: number | null;
+  displayHeight: number | null;
   isDisplayed: boolean;
   isVisibleStyle: boolean;
   recentlyPlayed: boolean;
@@ -107,6 +125,12 @@ export interface BridgeActiveVideoPayload {
   /** Encrypted-playback evidence for this player. Observed only — never a bypass. */
   isProtected: boolean;
   sourceKind: BridgeMediaSourceKind | null;
+  /** SourceBuffer layout of this element's MediaSource, when it plays one. */
+  mseTracks?: BridgeMseTrackLayout | null;
+  /** Files feeding this element's SourceBuffers (split players). */
+  mseFiles?: BridgeMseFiles | null;
+  /** The element's duration in seconds, when finite. */
+  duration?: number | null;
 }
 
 export interface BridgeActiveIframePlayerPayload {

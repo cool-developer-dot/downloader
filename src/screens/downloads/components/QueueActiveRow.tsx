@@ -75,6 +75,7 @@ export const QueueActiveRow = memo(function QueueActiveRow({
     workerState: item.workerState,
     localState: transfer?.localState ?? null,
     downloadId: id,
+    processingStage: transfer?.processingStage ?? null,
   });
   const metaParts = [quality, size].filter(Boolean);
   const a11y = [

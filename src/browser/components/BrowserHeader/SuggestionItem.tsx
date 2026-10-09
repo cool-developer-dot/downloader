@@ -56,6 +56,8 @@ export const SuggestionItem = memo(function SuggestionItem({
   const theme = useTheme();
   const primary = primaryAlphas(theme.colors.primary);
   const [faviconFailed, setFaviconFailed] = useState(false);
+  const [pressed, setPressed] = useState(false);
+  const isGo = item.kind === 'exact_url';
   const meta = kindMeta(item.kind);
   const metaLine =
     item.kind === 'history' && item.visitedAt
@@ -72,6 +74,8 @@ export const SuggestionItem = memo(function SuggestionItem({
     <Pressable
       testID={testID}
       onPress={handlePress}
+      onPressIn={isGo ? () => setPressed(true) : undefined}
+      onPressOut={isGo ? () => setPressed(false) : undefined}
       accessibilityRole="button"
       accessibilityLabel={`${item.title}. ${item.subtitle}. ${meta.badge}`}
       accessibilityHint={t('browser.openSuggestionHint')}
@@ -116,6 +120,27 @@ export const SuggestionItem = memo(function SuggestionItem({
         />
       </Box>
 
+      {isGo ? (
+        // The typed address itself: a clear, rounded "Go →" action in the theme's primary colour.
+        <Box
+          testID={testID ? `${testID}-go` : undefined}
+          row
+          gap={4}
+          style={{
+            alignItems: 'center',
+            paddingLeft: 14,
+            paddingRight: 10,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: pressed ? theme.colors.primaryDark : theme.colors.primary,
+            transform: [{ scale: pressed ? 0.96 : 1 }],
+          }}>
+          <Text variant="button" color="textOnPrimary" numberOfLines={1}>
+            {t('browser.goAction')}
+          </Text>
+          <Icon name="arrow-right" size="xs" color="onPrimary" />
+        </Box>
+      ) : (
       <Box gap={4} style={{ alignItems: 'flex-end', maxWidth: 72 }}>
         <Box row gap={4} style={{ alignItems: 'center' }}>
           {item.bookmarked || item.kind === 'bookmark' ? (
@@ -131,6 +156,7 @@ export const SuggestionItem = memo(function SuggestionItem({
           </Text>
         ) : null}
       </Box>
+      )}
     </Pressable>
   );
 });

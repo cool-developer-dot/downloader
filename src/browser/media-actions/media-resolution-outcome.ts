@@ -35,6 +35,8 @@ const PROVEN_UNSUPPORTED_REASONS = new Set<string>([
   'PROTECTED_UNSUPPORTED',
   // A blob/MediaSource player proven to have no single downloadable source behind it.
   'MSE_UNSUPPORTED',
+  // A MediaSource player fed by separate video and audio SourceBuffers: two sources that would need muxing.
+  'SPLIT_AUDIO_VIDEO',
   'ENCRYPTED_HLS',
   'HLS_ENCRYPTED',
   'UNSUPPORTED_HLS_ENCRYPTION',
@@ -42,6 +44,9 @@ const PROVEN_UNSUPPORTED_REASONS = new Set<string>([
   'LIVE_HLS_UNSUPPORTED',
   'LIVE_UNSUPPORTED',
   'UNSUPPORTED_FORMAT',
+  // A split player's file proven (from its bytes) to have no picture / no sound.
+  'VIDEO_TRACK_MISSING',
+  'AUDIO_TRACK_MISSING',
 ]);
 
 const SESSION_REASONS = new Set<string>([
@@ -62,6 +67,9 @@ const STALE_REASONS = new Set<string>([
   'WRONG_TAB',
   'CLOSED_TAB',
   'EXPIRED_SOURCE',
+  // Two files that are not one video's (or not the element's): the player moved on, look again.
+  'TRACK_MISMATCH',
+  'SPLIT_LENGTH_NOT_ELEMENT',
 ]);
 
 /** The source may be fine; ownership evidence for the current content has not arrived yet. */

@@ -26,7 +26,10 @@ internal val DownloadState.isTerminal: Boolean
 /** Headers that must never be written to disk, even though the bridge already strips Cookie. */
 private val SECRET_HEADERS = setOf("cookie", "authorization", "proxy-authorization")
 
-/** A persisted `downloads` row. The legacy audio/manifest columns stay NULL; `variant_json` holds an HLS or DASH choice. */
+/**
+ * A persisted `downloads` row. `variant_json` holds an HLS or DASH choice; `audio_url` the audio file of a split
+ * download (the legacy manifest column stays NULL).
+ */
 internal data class DownloadRow(
   val id: String,
   val state: DownloadState,
@@ -52,6 +55,10 @@ internal data class DownloadRow(
   val filePath: String? = null,
   /** HLS only: which variant to download, so a resumed or restarted download selects the same one. */
   val variant: VariantChoice? = null,
+  /** Hashed identity of the video (DownloadIdentity): one live download per video. Null for pre-v4 rows until restore. */
+  val identityKey: String? = null,
+  /** [SourceKind.SPLIT] only: the audio file merged with the video file [url]. */
+  val audioUrl: String? = null,
 ) {
   /** The public record: libraryItemId equals id once completed (docs/VidoraMedia.types.ts). */
   fun toRecord(): DownloadRecord = DownloadRecord(
@@ -185,6 +192,8 @@ internal class SqliteDownloadStore(private val database: MediaDatabase) : Downlo
     put("updated_at", updatedAt)
     put("file_path", filePath)
     put("variant_json", variant?.let { VariantChoiceJson.encode(it) })
+    put("identity_key", identityKey)
+    put("audio_url", audioUrl)
   }
 
   private fun Cursor.readRows(): List<DownloadRow> = buildList(count) {
@@ -212,6 +221,8 @@ internal class SqliteDownloadStore(private val database: MediaDatabase) : Downlo
     updatedAt = long("updated_at"),
     filePath = textOrNull("file_path"),
     variant = VariantChoiceJson.decode(textOrNull("variant_json")),
+    identityKey = textOrNull("identity_key"),
+    audioUrl = textOrNull("audio_url"),
   )
 
   private companion object {
@@ -268,6 +279,7 @@ internal object VariantChoiceJson {
   fun encode(choice: VariantChoice): String {
     val json = JSONObject()
     choice.videoId?.let { json.put("videoId", persistedId(it)) }
+    choice.audioId?.let { json.put("audioId", persistedId(it)) }
     choice.maxHeight?.let { json.put("maxHeight", it) }
     return json.toString()
   }
@@ -281,7 +293,7 @@ internal object VariantChoiceJson {
       val json = JSONObject(raw)
       VariantChoice(
         videoId = json.optString("videoId").ifBlank { null },
-        audioId = null,
+        audioId = json.optString("audioId").ifBlank { null },
         maxHeight = if (json.has("maxHeight")) json.getInt("maxHeight") else null,
       )
     }.getOrNull()

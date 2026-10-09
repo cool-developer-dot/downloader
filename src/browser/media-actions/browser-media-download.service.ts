@@ -8,7 +8,8 @@ import {
 import { resolveDownloadTitle } from '@/downloads/quality/download-metadata';
 import type { AnalyzedMediaSelection, DownloadQualityOption } from '@/downloads/quality/types';
 import type { MediaRequestContext } from '@/downloads/types/request-context';
-import { getV2Engine, handOffVerifiedVariant } from '@/downloads/v2';
+import { findExistingDownload, getV2Engine, handOffVerifiedVariant, type V2DuplicateOutcome } from '@/downloads/v2';
+import type { V2DownloadEntry } from '@/downloads/v2/projection';
 import { resolveFreshSourceForEnqueue } from '@/downloads/v2/source-refresh';
 import { runPreDownloadGate } from '@/media-detection/services/pre-download-gate.service';
 import { stableResourcePath } from '@/media-detection/social-source/resource-identity';
@@ -18,11 +19,15 @@ import { useBrowserStore } from '@/browser/stores/browserStore';
 import { useDownloadsStore } from '@/store/downloads';
 
 import { pickDownloadTitle } from './download-title';
+import { refreshStaleDirectSource } from './direct-analysis.service';
 import { lookupLiveMediaTitle } from './live-media-title';
 
 export type BrowserDownloadResult =
-  /** `deduped`: this exact verified variant was already accepted, so nothing new was enqueued. */
-  | { ok: true; downloadId: string; deduped: boolean }
+  /**
+   * `deduped`: nothing new was enqueued. `duplicate` says why — the same video is already downloading, or already
+   * saved (then `downloadId` is its library item, null when only its gallery copy is left).
+   */
+  | { ok: true; downloadId: string | null; deduped: boolean; duplicate: V2DuplicateOutcome | null }
   | { ok: false; message: string; reason?: string };
 
 /**
@@ -133,25 +138,62 @@ export async function enqueueVerifiedBrowserVariant(
   const pageUrl = input.pageUrl ?? input.requestContext?.pageUrl ?? null;
   const isHls = input.option.isHls || input.option.streamType === 'HLS' || input.option.container === 'hls';
   const isDash = input.option.streamType === 'DASH';
+  // A video file with its separate audio file: the native classifier re-checks both right before the enqueue.
+  const isSplit = Boolean(input.option.audioSourceUrl);
+  const engineDeps = {
+    engine: getV2Engine(),
+    applyEntries: (entries: V2DownloadEntry[]) => useDownloadsStore.getState().applyEngineEntries(entries),
+  };
+
+  // A video the user already has — downloading, in the library, or as VidoraX's gallery copy — is answered at once,
+  // before the source is re-checked over the network: "Video already downloaded", never a second download.
+  const existing = await findExistingDownload(
+    {
+      option: input.option,
+      title: payload.title,
+      pageUrl,
+      thumbnailUrl: null,
+      requestContext: input.requestContext,
+    },
+    engineDeps,
+  );
+  if (existing) {
+    return existing;
+  }
+
+  // An offer the direct analyzer read from the page, tapped long after: its signed links are re-read from the page
+  // (nothing re-requested them the way a playing page does).
+  const direct = await refreshStaleDirectSource({
+    pageUrl,
+    sourceUrl: input.option.sourceUrl,
+    audioSourceUrl: input.option.audioSourceUrl ?? null,
+    verifiedAtMs: input.requestContext?.capturedAt ?? null,
+  });
+  const sourceOption = direct
+    ? { ...input.option, sourceUrl: direct.sourceUrl, ...(direct.audioSourceUrl ? { audioSourceUrl: direct.audioSourceUrl } : {}) }
+    : input.option;
+  const sourceContext =
+    direct && input.requestContext ? { ...input.requestContext, capturedAt: direct.verifiedAt } : input.requestContext;
 
   const fresh = await resolveFreshSourceForEnqueue(
     {
-      sourceUrl: input.option.sourceUrl,
+      sourceUrl: sourceOption.sourceUrl,
       pageUrl,
-      requestContext: input.requestContext,
+      requestContext: sourceContext,
     },
     {
       lookupLiveSource: lookupLiveBrowserSource,
       // A stream is classified by the native HLS/DASH planner right before it is enqueued (playlists or manifest,
-      // keys/ContentProtection, live, separate audio) — one classifier, not a second JS one here.
-      gate: isHls || isDash
+      // keys/ContentProtection, live, separate audio), and a split pair by the native split probe (both files, their
+      // roles and lengths) — one classifier, not a second JS one here that would see only the video half.
+      gate: isHls || isDash || isSplit
         ? async (gateInput) => ({
             ok: true,
             finalUrl: gateInput.sourceUrl,
-            mimeType: isHls ? 'application/vnd.apple.mpegurl' : 'application/dash+xml',
+            mimeType: isHls ? 'application/vnd.apple.mpegurl' : isDash ? 'application/dash+xml' : 'video/mp4',
             contentLength: null,
             requestContext: gateInput.requestContext,
-            transport: isHls ? 'HLS' : 'DASH',
+            transport: isHls ? 'HLS' : isDash ? 'DASH' : 'PROGRESSIVE',
           })
         : (gateInput) =>
             runPreDownloadGate({
@@ -167,9 +209,9 @@ export async function enqueueVerifiedBrowserVariant(
   }
 
   const option =
-    fresh.url === input.option.sourceUrl
-      ? input.option
-      : { ...input.option, sourceUrl: fresh.url };
+    fresh.url === sourceOption.sourceUrl
+      ? sourceOption
+      : { ...sourceOption, sourceUrl: fresh.url };
 
   // Detection may have built the offer before the page's title arrived; the tab showing the page knows it.
   const liveTitle = lookupLiveMediaTitle({ pageUrl, sourceUrl: input.option.sourceUrl });
@@ -185,19 +227,20 @@ export async function enqueueVerifiedBrowserVariant(
       title,
       pageUrl,
       thumbnailUrl: payload.thumbnailUrl || input.selection.thumbnailUrl || null,
-      requestContext: fresh.requestContext ?? input.requestContext,
+      requestContext: fresh.requestContext ?? sourceContext,
+      // The engine recognises the video by the source the offer carried, not by the refreshed/redirected link.
+      identityUrl: input.option.sourceUrl,
       // Keyed on the stable resource, so a refreshed signature is still the same one download.
       variantKey: variantKeyFor(input.option, input.contentIdentity, pageUrl),
     },
     {
-      engine: getV2Engine(),
-      applyEntries: (entries) => useDownloadsStore.getState().applyEngineEntries(entries),
+      ...engineDeps,
       statusOf: (id) => useDownloadsStore.getState().engineRowsById[id]?.status ?? null,
       isOfferCurrent: input.isOfferCurrent,
     },
   );
   return result.ok
-    ? { ok: true, downloadId: result.downloadId, deduped: result.deduped }
+    ? { ok: true, downloadId: result.downloadId, deduped: result.deduped, duplicate: result.duplicate }
     : { ok: false, message: result.message, reason: result.reason };
 }
 

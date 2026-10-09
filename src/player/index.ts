@@ -109,8 +109,11 @@ export {
   restoreSystemBars,
 } from './system-bars';
 export {
+  decideActivityStopped,
   decideAppLifecycleAction,
+  shouldArmPictureInPicture,
   shouldTreatAsBackground,
+  type PictureInPictureState,
 } from './app-lifecycle-policy';
 export {
   PREPARATION_TIMEOUT_MS,

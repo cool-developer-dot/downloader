@@ -53,7 +53,15 @@ const FAILURE_MESSAGES: Record<DownloadErrorCode, string> = {
   PROCESSING_FAILED: 'The downloaded file failed verification.',
   NO_SPACE: 'Not enough storage.',
   STORAGE_ERROR: 'The file couldn’t be saved to storage.',
+  DUPLICATE: 'Video already downloaded',
   UNKNOWN: 'The download failed.',
+  VIDEO_TRACK_MISSING: 'The video file has no picture, so it can’t be saved.',
+  AUDIO_TRACK_MISSING: 'The audio track of this video is missing.',
+  TRACK_MISMATCH: 'The audio doesn’t belong to this video. Reopen the page and download again.',
+  SEGMENT_FAILED: 'Part of the stream couldn’t be downloaded. Retry later.',
+  MUX_FAILED: 'Couldn’t merge the audio and video. Retry to try again.',
+  TRANSCODE_FAILED: 'Couldn’t convert this video on this device.',
+  INVALID_MEDIA: 'The finished file didn’t play back correctly.',
 };
 
 /** Existing catalog platform labels (formatPlatform title-cases them); generic websites stay OTHER. */
@@ -187,7 +195,18 @@ export function applyV2Progress(
   entry: V2DownloadEntry,
   event: DownloadProgressEvent,
 ): V2DownloadEntry | null {
-  if (entry.item.id !== event.id || entry.item.status !== 'DOWNLOADING' || entry.transfer.executionState !== 'DOWNLOADING') {
+  if (entry.item.id !== event.id || entry.item.status !== 'DOWNLOADING') {
+    return null;
+  }
+  // Merging / converting after the bytes are in: the row says which, the byte counts stay final.
+  if (event.phase === 'processing') {
+    const stage = event.stage ?? null;
+    if (entry.transfer.executionState !== 'FINALIZING' || entry.transfer.processingStage === stage) {
+      return null;
+    }
+    return { item: entry.item, transfer: { ...entry.transfer, processingStage: stage } };
+  }
+  if (entry.transfer.executionState !== 'DOWNLOADING') {
     return null;
   }
   const total = event.totalBytes ?? entry.transfer.totalBytes;

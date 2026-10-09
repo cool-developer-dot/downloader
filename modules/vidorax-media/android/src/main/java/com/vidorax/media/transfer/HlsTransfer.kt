@@ -15,6 +15,7 @@ import com.vidorax.media.plan.HlsPlan
 import com.vidorax.media.plan.HlsPlanner
 import com.vidorax.media.plan.HlsSegmentFormat
 import com.vidorax.media.plan.HlsSegmentRef
+import com.vidorax.media.plan.TrackRole
 import java.io.File
 import java.io.IOException
 import java.io.InputStream
@@ -31,7 +32,7 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-/** One HLS download: the plan to fetch, where the assembled file goes, and where its checkpoint lives. */
+/** One segment track download: the plan to fetch, where the assembled file goes, and where its checkpoint lives. */
 internal data class HlsTransferSpec(
   val plan: HlsPlan,
   val context: RequestContext,
@@ -39,12 +40,21 @@ internal data class HlsTransferSpec(
   val partFile: File,
   /** Resume point, next to the `.part`: how many segments are durably in it and how many bytes that is. */
   val checkpointFile: File,
+  /**
+   * What the track must be. An audio track may be HLS packed audio (ADTS/MP3 segments with an ID3 timestamp tag):
+   * the tags are removed so the file is one clean audio stream, and the first timestamp is kept for the merge.
+   */
+  val role: TrackRole = TrackRole.VIDEO,
 )
 
 internal data class HlsTransferOutcome(
   val bytesWritten: Long,
-  /** From the bytes, not the playlist: MPEG-TS or fragmented MP4. */
+  /** From the bytes, not the playlist: MPEG-TS, fragmented MP4 or WebM ([Container.UNKNOWN] for packed audio). */
   val container: Container,
+  /** The track is packed audio (ADTS without its ID3 tags). */
+  val packedAudio: Boolean = false,
+  /** Packed audio: the first segment's MPEG-TS presentation time (µs), which aligns it with the video. */
+  val timestampUs: Long? = null,
 )
 
 /**
@@ -64,6 +74,9 @@ internal data class HlsCheckpoint(
   /** fMP4 only: where the space reserved for the file's segment index sits (see [Fmp4Index]). */
   val indexOffset: Long? = null,
   val indexSize: Long? = null,
+  val packedAudio: Boolean = false,
+  /** Packed audio: the first segment's ID3 timestamp (µs). */
+  val timestampUs: Long? = null,
 ) {
   companion object {
     fun read(file: File): HlsCheckpoint? = runCatching {
@@ -77,6 +90,8 @@ internal data class HlsCheckpoint(
         container = json.optString("container").takeIf { it.isNotEmpty() }?.let { wireValueOf<Container>(it) },
         indexOffset = if (json.has("indexOffset")) json.getLong("indexOffset") else null,
         indexSize = if (json.has("indexSize")) json.getLong("indexSize") else null,
+        packedAudio = json.optBoolean("packedAudio", false),
+        timestampUs = if (json.has("timestampUs")) json.getLong("timestampUs") else null,
       )
     }.getOrNull()
 
@@ -90,6 +105,8 @@ internal data class HlsCheckpoint(
       checkpoint.container?.let { json.put("container", it.wire) }
       checkpoint.indexOffset?.let { json.put("indexOffset", it) }
       checkpoint.indexSize?.let { json.put("indexSize", it) }
+      if (checkpoint.packedAudio) json.put("packedAudio", true)
+      checkpoint.timestampUs?.let { json.put("timestampUs", it) }
       val tmp = File(file.parentFile, "${file.name}.tmp")
       RandomAccessFile(tmp, "rw").use { raf ->
         raf.setLength(0)
@@ -140,6 +157,8 @@ internal class HlsTransfer(private val http: HttpClient) {
     var container = saved?.container
     var indexOffset = saved?.indexOffset
     var indexSize = saved?.indexSize
+    var packedAudio = saved?.packedAudio ?: false
+    var timestampUs = saved?.timestampUs
     val durations = LongArray(plan.segments.size + 1).also { sums ->
       for (i in plan.segments.indices) sums[i + 1] = sums[i] + plan.segments[i].durationUs
     }
@@ -162,12 +181,12 @@ internal class HlsTransfer(private val http: HttpClient) {
 
         val initIndex = segment.initIndex
         if (initIndex != null && initIndex != lastInit) {
-          writeAt = append(raf, writeAt, plan.inits[initIndex], spec.context, tokenPropagation) { bytes ->
+          writeAt = append(raf, writeAt, plan.inits[initIndex], spec.context, tokenPropagation, stripId3 = false) { bytes ->
             onProgress(bytes, estimate(bytes))
           }
           if (container == null) {
             // The init section decides the container; an fMP4 file gets room for its one segment index here.
-            container = confirmContainer(raf, plan)
+            container = confirmContainer(raf, plan, spec.role)
             if (container == Container.MP4) {
               indexOffset = writeAt
               indexSize = Fmp4Index.placeholderSize(plan.segments.size)
@@ -175,11 +194,22 @@ internal class HlsTransfer(private val http: HttpClient) {
             }
           }
         }
+        if (container == null && completed == 0 && spec.role == TrackRole.AUDIO && initIndex == null) {
+          packedAudio = startsAsPackedAudio(segment.media, spec.context, tokenPropagation)
+        }
         val mediaStart = writeAt
-        writeAt = append(raf, writeAt, segment.media, spec.context, tokenPropagation) { bytes ->
+        writeAt = append(
+          raf,
+          writeAt,
+          segment.media,
+          spec.context,
+          tokenPropagation,
+          stripId3 = packedAudio,
+          onTimestamp = { if (timestampUs == null) timestampUs = it },
+        ) { bytes ->
           onProgress(bytes, estimate(bytes))
         }
-        if (container == null) container = confirmContainer(raf, plan)
+        if (container == null) container = if (packedAudio) Container.UNKNOWN else confirmContainer(raf, plan, spec.role)
         // A segment's own index describes that segment alone; in one file it would mislead the player.
         if (container == Container.MP4) Fmp4Index.neutralizeSegmentIndexes(raf, mediaStart, writeAt)
         raf.fd.sync()
@@ -189,7 +219,7 @@ internal class HlsTransfer(private val http: HttpClient) {
         if (initIndex != null) lastInit = initIndex
         HlsCheckpoint.write(
           spec.checkpointFile,
-          HlsCheckpoint(plan.fingerprint, completed, offset, lastInit, container, indexOffset, indexSize),
+          HlsCheckpoint(plan.fingerprint, completed, offset, lastInit, container, indexOffset, indexSize, packedAudio, timestampUs),
         )
         val total = if (completed == plan.segments.size) offset else estimateTotal(offset, durations[completed], plan)
         onProgress(offset, total)
@@ -203,16 +233,50 @@ internal class HlsTransfer(private val http: HttpClient) {
         raf.fd.sync()
       }
     }
-    return HlsTransferOutcome(bytesWritten = offset, container = container ?: plan.containerHint)
+    return HlsTransferOutcome(
+      bytesWritten = offset,
+      container = container ?: plan.containerHint,
+      packedAudio = packedAudio,
+      timestampUs = timestampUs,
+    )
   }
 
-  /** Fetches one resource and appends exactly its bytes at [writeAt]. Returns the new end offset. */
+  /** An audio rendition's first segment is ID3-tagged ADTS/MP3 (packed audio) rather than MPEG-TS or fMP4. */
+  private fun startsAsPackedAudio(ref: HlsSegmentRef, context: RequestContext, tokens: TokenPropagation): Boolean {
+    val offset = ref.byteRangeOffset ?: 0L
+    val response = try {
+      http.execute(
+        MediaRequest(url = tokens.urlFor(ref.url), context = context, rangeStart = offset, rangeEnd = offset + PEEK_BYTES - 1),
+      )
+    } catch (e: MediaRefusedException) {
+      return false
+    } catch (e: MediaNetworkException) {
+      throw e
+    }
+    return response.use {
+      val aligned = (it.status == 206 && it.contentRange?.start == offset) || (it.status == 200 && offset == 0L)
+      if (!aligned) return@use false
+      val head = try {
+        it.readPrefix(PEEK_BYTES.toInt())
+      } catch (e: IOException) {
+        return@use false
+      }
+      HlsSegmentFormat.isPackedAudio(head)
+    }
+  }
+
+  /**
+   * Fetches one resource and appends exactly its bytes at [writeAt] — without a leading ID3 tag when [stripId3]
+   * (packed audio), reporting that tag's MPEG-TS timestamp through [onTimestamp]. Returns the new end offset.
+   */
   private suspend fun append(
     raf: RandomAccessFile,
     writeAt: Long,
     ref: HlsSegmentRef,
     context: RequestContext,
     tokens: TokenPropagation,
+    stripId3: Boolean = false,
+    onTimestamp: (Long) -> Unit = {},
     onBytes: (Long) -> Unit,
   ): Long {
     val response = open(ref, context, tokens)
@@ -233,7 +297,7 @@ internal class HlsTransfer(private val http: HttpClient) {
         else -> throw MediaHttpException.of(status, ref.url)
       }
       val expected: Long? = ref.byteRangeLength ?: it.contentLength.takeIf { status == 200 }
-      return copy(raf, writeAt, it.byteStream(), skip, expected, ref.url, onBytes)
+      return copy(raf, writeAt, it.byteStream(), skip, expected, ref.url, stripId3, onTimestamp, onBytes)
     }
   }
 
@@ -265,6 +329,8 @@ internal class HlsTransfer(private val http: HttpClient) {
     skip: Long,
     expected: Long?,
     url: String,
+    stripId3: Boolean,
+    onTimestamp: (Long) -> Unit,
     onBytes: (Long) -> Unit,
   ): Long {
     // A pause must stop the network now, even mid-read: closing the body unblocks a read waiting on a stalled
@@ -282,22 +348,36 @@ internal class HlsTransfer(private val http: HttpClient) {
         toSkip -= read
       }
       currentCoroutineContext().ensureActive()
+      // [consumed] counts the segment's bytes (what a byte range or Content-Length promises); [onDisk] what was kept.
+      var consumed = 0L
+      var onDisk = 0L
       diskWrite { raf.seek(writeAt) }
-      var written = 0L
-      while (expected == null || written < expected) {
+      if (stripId3) {
+        // The ID3 tag belongs to the segment, not to the audio stream: read and dropped, its timestamp kept.
+        val tag = Id3Tags.read(input)
+        consumed += tag.consumed
+        tag.timestampUs?.let(onTimestamp)
+        if (tag.leftover.isNotEmpty()) {
+          diskWrite { raf.write(tag.leftover) }
+          consumed += tag.leftover.size
+          onDisk += tag.leftover.size
+        }
+      }
+      while (expected == null || consumed < expected) {
         currentCoroutineContext().ensureActive()
-        val want = if (expected == null) buffer.size else minOf(buffer.size.toLong(), expected - written).toInt()
+        val want = if (expected == null) buffer.size else minOf(buffer.size.toLong(), expected - consumed).toInt()
         val read = input.read(buffer, 0, want)
         if (read < 0) break
         diskWrite { raf.write(buffer, 0, read) }
-        written += read
-        onBytes(writeAt + written)
+        consumed += read
+        onDisk += read
+        onBytes(writeAt + onDisk)
       }
-      if (expected != null && written < expected) {
-        throw MediaNetworkException("truncated segment ${Redact.url(url)}: $written/$expected")
+      if (expected != null && consumed < expected) {
+        throw MediaNetworkException("truncated segment ${Redact.url(url)}: $consumed/$expected")
       }
-      if (written == 0L) throw MediaNetworkException("empty segment ${Redact.url(url)}")
-      return writeAt + written
+      if (onDisk == 0L) throw MediaNetworkException("empty segment ${Redact.url(url)}")
+      return writeAt + onDisk
     } catch (io: IOException) {
       // A stream closed by the cancellation above is a pause, not a transport failure.
       currentCoroutineContext().ensureActive()
@@ -312,12 +392,15 @@ internal class HlsTransfer(private val http: HttpClient) {
   }
 
   /** Reads what was just written and decides the real container; refuses a stream the product cannot keep. */
-  private fun confirmContainer(raf: RandomAccessFile, plan: HlsPlan): Container {
+  private fun confirmContainer(raf: RandomAccessFile, plan: HlsPlan, role: TrackRole): Container {
     val head = ByteArray(minOf(raf.length(), SNIFF_BYTES.toLong()).toInt())
     raf.seek(0)
     raf.readFully(head)
     val container = HlsSegmentFormat.containerOf(head)
-      ?: throw MediaRefusedException(ProbeFailure.UNSUPPORTED_FORMAT, HlsSegmentFormat.refusal(head))
+      ?: throw MediaRefusedException(
+        if (role == TrackRole.AUDIO) ProbeFailure.AUDIO_TRACK_MISSING else ProbeFailure.UNSUPPORTED_FORMAT,
+        HlsSegmentFormat.refusal(head),
+      )
     if (container == Container.MP4) {
       if (plan.inits.isEmpty()) {
         throw MediaRefusedException(ProbeFailure.UNSUPPORTED_FORMAT, "fMP4 segments without an init section")
@@ -351,6 +434,7 @@ internal class HlsTransfer(private val http: HttpClient) {
   private companion object {
     const val BUFFER_BYTES = 64 * 1024
     const val SNIFF_BYTES = 64 * 1024
+    const val PEEK_BYTES = 16L
     val AUTH_STATUS = setOf(401, 403)
 
     /** Daemon threads: aborting a socket read must not keep the process alive or block a caller. */
@@ -358,4 +442,77 @@ internal class HlsTransfer(private val http: HttpClient) {
       Thread(runnable, "vidorax-hls-close").apply { isDaemon = true }
     }
   }
+}
+
+/**
+ * The ID3v2 tag HLS packed audio puts at the start of every segment. Its `PRIV` frame
+ * `com.apple.streaming.transportStreamTimestamp` holds the MPEG-TS presentation time of the segment's first audio
+ * frame (33 bits, 90 kHz) — what ties an audio rendition to the video's timeline.
+ */
+internal object Id3Tags {
+  class Tag(
+    /** Bytes of the tag read from the stream (header + body); 0 when the stream does not start with one. */
+    val consumed: Long,
+    val timestampUs: Long?,
+    /** Bytes read that turned out not to be a tag: they belong to the stream and must be kept. */
+    val leftover: ByteArray,
+  )
+
+  private const val OWNER = "com.apple.streaming.transportStreamTimestamp"
+  private const val MAX_TAG_BYTES = 1 shl 20
+
+  fun read(input: InputStream): Tag {
+    val header = ByteArray(10)
+    val got = readFully(input, header)
+    if (got < 10 || header[0] != 'I'.code.toByte() || header[1] != 'D'.code.toByte() || header[2] != '3'.code.toByte()) {
+      return Tag(0, null, header.copyOf(got))
+    }
+    val version = header[3].toInt()
+    val size = syncsafe(header, 6)
+    if (size < 0 || size > MAX_TAG_BYTES) throw MediaNetworkException("oversized ID3 tag in a packed-audio segment")
+    val body = ByteArray(size)
+    if (readFully(input, body) < size) throw MediaNetworkException("packed-audio segment ended inside its ID3 tag")
+    return Tag(10L + size, timestamp(body, version), ByteArray(0))
+  }
+
+  /** The PRIV transport-stream timestamp in µs, or null when the tag carries none. */
+  fun timestamp(body: ByteArray, version: Int): Long? {
+    var at = 0
+    while (at + 10 <= body.size) {
+      val id = String(body, at, 4, Charsets.ISO_8859_1)
+      if (id[0] == '\u0000') return null // padding
+      val frameSize = if (version >= 4) syncsafe(body, at + 4) else u32(body, at + 4)
+      val start = at + 10
+      if (frameSize < 0 || start + frameSize > body.size) return null
+      if (id == "PRIV" && frameSize >= OWNER.length + 1 + 8) {
+        val owner = String(body, start, OWNER.length, Charsets.ISO_8859_1)
+        if (owner == OWNER && body[start + OWNER.length] == 0.toByte()) {
+          var pts = 0L
+          for (i in 0 until 8) pts = (pts shl 8) or (body[start + OWNER.length + 1 + i].toLong() and 0xFF)
+          pts = pts and 0x1FFFFFFFFL
+          return pts * 100 / 9
+        }
+      }
+      at = start + frameSize
+    }
+    return null
+  }
+
+  private fun readFully(input: InputStream, into: ByteArray): Int {
+    var total = 0
+    while (total < into.size) {
+      val read = input.read(into, total, into.size - total)
+      if (read < 0) break
+      total += read
+    }
+    return total
+  }
+
+  private fun syncsafe(data: ByteArray, at: Int): Int =
+    ((data[at].toInt() and 0x7F) shl 21) or ((data[at + 1].toInt() and 0x7F) shl 14) or
+      ((data[at + 2].toInt() and 0x7F) shl 7) or (data[at + 3].toInt() and 0x7F)
+
+  private fun u32(data: ByteArray, at: Int): Int =
+    ((data[at].toInt() and 0xFF) shl 24) or ((data[at + 1].toInt() and 0xFF) shl 16) or
+      ((data[at + 2].toInt() and 0xFF) shl 8) or (data[at + 3].toInt() and 0xFF)
 }

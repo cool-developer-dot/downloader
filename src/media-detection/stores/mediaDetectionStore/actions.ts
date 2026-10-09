@@ -7,6 +7,10 @@ import { socialPageContextStore } from '../../social/social-page-context';
 import { generalPageMediaContextStore } from '../../general-media/general-page-context';
 import { resolveSocialPlatform } from '../../social/social-content-identity';
 import { isSameDocumentUrl } from '../../utils/url';
+import { stableResourcePath } from '../../social-source/resource-identity';
+
+/** A playing file's candidates are refreshed at most this often (active-player evidence arrives several times a second). */
+const PLAYING_SOURCE_REFRESH_MS = 30_000;
 
 type SetState = StoreApi<MediaDetectionStore>['setState'];
 type GetState = StoreApi<MediaDetectionStore>['getState'];
@@ -155,6 +159,29 @@ export function createMediaDetectionActions(
           m.title === fromTitle && isSameDocumentUrl(m.pageUrl, pageUrl) ? { ...m, title: toTitle } : m,
         ),
       });
+    },
+
+    refreshPlayingSource: (sourceUrl, observedAt) => {
+      const key = stableResourcePath(sourceUrl);
+      if (!key) {
+        return 0;
+      }
+      const { detectedMedia } = get();
+      let refreshed = 0;
+      const next = detectedMedia.map((m) => {
+        if (
+          observedAt - (m.detectedAt ?? 0) < PLAYING_SOURCE_REFRESH_MS ||
+          stableResourcePath(m.finalUrl || m.url) !== key
+        ) {
+          return m;
+        }
+        refreshed += 1;
+        return { ...m, detectedAt: observedAt };
+      });
+      if (refreshed > 0) {
+        set({ detectedMedia: next });
+      }
+      return refreshed;
     },
 
     setScanning: (scanning, progress) => {

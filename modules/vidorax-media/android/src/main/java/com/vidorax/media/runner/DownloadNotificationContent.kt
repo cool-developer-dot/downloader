@@ -3,6 +3,7 @@ package com.vidorax.media.runner
 import com.vidorax.media.model.DownloadErrorCode
 import com.vidorax.media.model.DownloadRecord
 import com.vidorax.media.model.DownloadState
+import com.vidorax.media.model.ProcessingStage
 import kotlin.math.abs
 
 /**
@@ -73,6 +74,13 @@ internal object DownloadNotificationText {
   const val WAITING_NETWORK = "Waiting for network"
   const val WAITING_RETRY = "Retrying"
   const val PROCESSING = "Finishing up"
+
+  fun processing(stage: ProcessingStage?): String = when (stage) {
+    ProcessingStage.MERGING -> "Merging audio and video"
+    ProcessingStage.REMUXING -> "Preparing the video file"
+    ProcessingStage.TRANSCODING -> "Converting the video"
+    ProcessingStage.VERIFYING, null -> PROCESSING
+  }
   const val COMPLETED = "Download complete"
 
   /** Short, non-sensitive reasons; the Downloads row carries the fuller message. */
@@ -88,15 +96,29 @@ internal object DownloadNotificationText {
     DownloadErrorCode.PROCESSING_FAILED -> "Download failed: the file did not verify"
     DownloadErrorCode.NO_SPACE -> "Download failed: not enough storage"
     DownloadErrorCode.STORAGE_ERROR -> "Download failed: could not save the file"
+    // Not a failure: the finished file was a video the user already has, so nothing new was added.
+    DownloadErrorCode.DUPLICATE -> "Video already downloaded"
+    DownloadErrorCode.VIDEO_TRACK_MISSING -> "Download failed: no video track"
+    DownloadErrorCode.AUDIO_TRACK_MISSING -> "Download failed: no audio track"
+    DownloadErrorCode.TRACK_MISMATCH -> "Download failed: audio and video don't match"
+    DownloadErrorCode.SEGMENT_FAILED -> "Download failed: part of the stream is missing"
+    DownloadErrorCode.MUX_FAILED -> "Download failed: couldn't merge audio and video"
+    DownloadErrorCode.TRANSCODE_FAILED -> "Download failed: couldn't convert the video"
+    DownloadErrorCode.INVALID_MEDIA -> "Download failed: the file did not verify"
     else -> "Download failed"
   }
 }
 
-/** PROTECTED and UNSUPPORTED verdicts on the source itself: nothing a retry can change. */
+/** PROTECTED and UNSUPPORTED verdicts on the source itself, and a duplicate: nothing a retry can change. */
 internal val FINAL_FAILURES = setOf(
   DownloadErrorCode.DRM_PROTECTED,
   DownloadErrorCode.LIVE_UNSUPPORTED,
   DownloadErrorCode.UNSUPPORTED_FORMAT,
+  DownloadErrorCode.DUPLICATE,
+  // The tracks themselves are not one video: downloading them again cannot change that.
+  DownloadErrorCode.VIDEO_TRACK_MISSING,
+  DownloadErrorCode.AUDIO_TRACK_MISSING,
+  DownloadErrorCode.TRACK_MISMATCH,
 )
 
 internal fun percentOf(bytesDone: Long, totalBytes: Long?): Int? =
@@ -146,6 +168,8 @@ internal fun notificationContentFor(
   totalBytes: Long? = record.totalBytes,
   /** Current speed; shown only while bytes are actually moving (DOWNLOADING). */
   speedBps: Long = 0L,
+  /** What PROCESSING is doing (merging, converting…), from the engine's progress events. */
+  stage: ProcessingStage? = null,
 ): DownloadNotificationContent? {
   val detail = transferDetail(bytesDone, totalBytes)
   val speed = formatSpeed(speedBps).takeIf { record.state == DownloadState.DOWNLOADING }
@@ -181,7 +205,7 @@ internal fun notificationContentFor(
       content(DownloadNotificationText.WAITING_RETRY, active, progress = true, ongoing = true, actions = pauseAndCancel)
     // Finishing up is verify → finalize → library: stopping it there is not something the engine allows.
     DownloadState.PROCESSING ->
-      content(DownloadNotificationText.PROCESSING, active, progress = true, ongoing = true)
+      content(DownloadNotificationText.processing(stage), active, progress = true, ongoing = true)
     // Paused is not ongoing: the user stopped it, so the notification is theirs to dismiss.
     DownloadState.PAUSED ->
       content(

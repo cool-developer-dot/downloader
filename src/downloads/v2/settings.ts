@@ -10,6 +10,8 @@ import type { V2EnginePort } from './engine-port';
 export type V2SettingsInput = {
   wifiOnly: boolean;
   maxConcurrentDownloads: number;
+  /** Copy every completed download to the device gallery. Default true. */
+  saveToGallery?: boolean;
 };
 
 const MIN_CONCURRENT = 1;
@@ -23,8 +25,8 @@ export function v2DownloadSettings(input: V2SettingsInput): DownloadSettings {
   return {
     maxConcurrent: Math.min(MAX_CONCURRENT, Math.max(MIN_CONCURRENT, concurrent)),
     wifiOnly: input.wifiOnly === true,
-    // Saving to the gallery stays an explicit per-video action in this app; never automatic.
-    autoSaveToGallery: false,
+    // A finished video also appears in the device gallery, unless the user turned that off.
+    autoSaveToGallery: input.saveToGallery !== false,
     preferredMaxHeight: null,
   };
 }

@@ -9,6 +9,10 @@ import com.vidorax.media.plan.AndroidDecoderSupport
 import com.vidorax.media.plan.DashPlanner
 import com.vidorax.media.plan.HlsPlanner
 import com.vidorax.media.plan.Probe
+import com.vidorax.media.process.AndroidCodecSupport
+import com.vidorax.media.process.MediaProcessor
+import com.vidorax.media.process.Remuxer
+import com.vidorax.media.process.TransformerTranscoder
 import com.vidorax.media.runner.BackgroundDownloads
 import com.vidorax.media.transfer.HlsTransfer
 import com.vidorax.media.transfer.ProgressiveTransfer
@@ -38,11 +42,16 @@ object DownloadEngineProvider {
       prober = RealProber(probe),
       hls = RealHlsDownloads(planner, HlsTransfer(http)),
       dash = RealDashDownloads(probe),
+      split = RealSplitDownloads(probe),
+      // Lossless remux/merge with Media3's muxers; re-encoding only through the platform codecs (Transformer).
+      processing = RealMediaProcessing(MediaProcessor(Remuxer(), TransformerTranscoder(context), AndroidCodecSupport)),
       transfers = RealTransfers(ProgressiveTransfer(http)),
       verification = RealVerification,
       inspector = RealMediaInspector(services.mediaInfo),
       thumbnails = RealThumbnails(services.thumbnails),
       library = RealLibraryWriter(services.library),
+      savedVideos = RealSavedVideos(services.savedVideos),
+      gallery = RealGalleryPublisher(services.galleryExport),
       paths = services.paths,
       scope = services.scope,
       network = AndroidNetworkGate(context),

@@ -2,7 +2,9 @@
  * Adds the hooks modules/vidorax-web needs to react-native-webview's Android sources (docs/ARCHITECTURE.md, section 4):
  * WebView creation, every network request and file downloads call the static RNCWebViewHooks class, so the module
  * needs no reflection. It also keeps app schemes (snssdk://, intent:) contained when JS does not answer
- * onShouldStartLoadWithRequest in time.
+ * onShouldStartLoadWithRequest in time, and runs injectedJavaScriptBeforeContentLoaded at document start (the stock
+ * Android code evaluates it from onPageStarted, after the page's own scripts may already have run — too late for the
+ * media-detection hooks a player's MediaSource must be created under).
  *
  * Runs at postinstall and is idempotent. Every edit is an exact text replacement: when an anchor is missing, for example
  * after upgrading react-native-webview, it exits non-zero rather than shipping a browser without media detection.
@@ -18,6 +20,7 @@ const path = require('node:path');
 const SOURCE_DIR = path.join('android', 'src', 'main', 'java', 'com', 'reactnativecommunity', 'webview');
 const CLIENT = 'RNCWebViewClient.java';
 const MANAGER = 'RNCWebViewManagerImpl.kt';
+const VIEW = 'RNCWebView.java';
 const HOOKS = 'RNCWebViewHooks.java';
 
 const HOOKS_SOURCE = `package com.reactnativecommunity.webview;
@@ -27,8 +30,16 @@ import android.webkit.WebView;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
+import androidx.webkit.ScriptHandler;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.WebViewFeature;
 
 import com.facebook.common.logging.FLog;
+
+import java.util.Collections;
+import java.util.Map;
+import java.util.Set;
+import java.util.WeakHashMap;
 
 /**
  * Static hooks for the VidoraWeb module (modules/vidorax-web).
@@ -56,9 +67,13 @@ public final class RNCWebViewHooks {
     }
 
     private static final String TAG = "RNCWebViewHooks";
+    private static final Set<String> ALL_ORIGINS = Collections.singleton("*");
 
     // Read without a lock: observeRequest runs for every request on several network threads.
     private static volatile Listener listener;
+
+    // The document-start registration of each WebView's injectedJavaScriptBeforeContentLoaded (main thread only).
+    private static final Map<RNCWebView, ScriptHandler> documentStartScripts = new WeakHashMap<>();
 
     private RNCWebViewHooks() {}
 
@@ -114,6 +129,34 @@ public final class RNCWebViewHooks {
             logFailure("onDownloadStart", e);
             return false;
         }
+    }
+
+    /**
+     * Main thread. Registers the before-content-loaded script to run when each new main-frame document starts, before
+     * any of the page's scripts, replacing the previous one. Returns false when this WebView cannot (the
+     * DOCUMENT_START_SCRIPT feature is missing), in which case the stock onPageStarted evaluation still runs it.
+     */
+    public static boolean setDocumentStartScript(@NonNull RNCWebView webView, @Nullable String script) {
+        ScriptHandler previous = documentStartScripts.remove(webView);
+        if (previous != null) {
+            previous.remove();
+        }
+        if (script == null || script.isEmpty() || !WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
+            return false;
+        }
+        try {
+            String mainFrameOnly = "(function() {\\nif (window !== window.top) { return; }\\n" + script + ";\\n})();";
+            documentStartScripts.put(webView, WebViewCompat.addDocumentStartJavaScript(webView, mainFrameOnly, ALL_ORIGINS));
+            return true;
+        } catch (RuntimeException e) {
+            logFailure("setDocumentStartScript", e);
+            return false;
+        }
+    }
+
+    /** Main thread. True when the before-content-loaded script already runs at document start. */
+    public static boolean hasDocumentStartScript(@NonNull RNCWebView webView) {
+        return documentStartScripts.containsKey(webView);
     }
 
     /**
@@ -263,6 +306,27 @@ const EDITS = {
         return RNCWebViewWrapper(context, webView)
     }`,
     },
+    {
+      name: 'register the before-content-loaded script at document start',
+      from: `        view.injectedJSBeforeContentLoaded = value
+    }`,
+      to: `        view.injectedJSBeforeContentLoaded = value
+        RNCWebViewHooks.setDocumentStartScript(view, value)
+    }`,
+    },
+  ],
+  [VIEW]: [
+    {
+      name: 'skip the late evaluation when the script runs at document start',
+      from: `    public void callInjectedJavaScriptBeforeContentLoaded() {
+        if (getSettings().getJavaScriptEnabled() &&`,
+      to: `    public void callInjectedJavaScriptBeforeContentLoaded() {
+        if (RNCWebViewHooks.hasDocumentStartScript(this)) {
+            injectJavascriptObject();
+            return;
+        }
+        if (getSettings().getJavaScriptEnabled() &&`,
+    },
   ],
 };
 
@@ -310,7 +374,7 @@ function patchReactNativeWebView(packageDir) {
   const version = readPackageVersion(packageDir);
   const sourceDir = path.join(packageDir, SOURCE_DIR);
 
-  const results = [CLIENT, MANAGER].map((name) => {
+  const results = [CLIENT, MANAGER, VIEW].map((name) => {
     const file = path.join(sourceDir, name);
     if (!fs.existsSync(file)) {
       throw new Error(`${name} not found in ${sourceDir} (react-native-webview ${version}).`);

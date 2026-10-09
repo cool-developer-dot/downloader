@@ -90,7 +90,7 @@ export function validateExternalContentUri(uri: string): boolean {
 export const VIDORAX_EXPO_FILE_PROVIDER_AUTHORITY_SUFFIX =
   '.FileSystemFileProvider';
 
-export const DEFAULT_VIDORAX_PACKAGE_ID = 'com.anonymous.vidorax';
+export const DEFAULT_VIDORAX_PACKAGE_ID = 'com.vidorax.fast.videodownloader';
 
 /**
  * True only for VidoraX Expo FileSystem FileProvider content URIs.

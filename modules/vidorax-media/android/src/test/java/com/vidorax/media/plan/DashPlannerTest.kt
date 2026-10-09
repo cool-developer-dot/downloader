@@ -164,29 +164,38 @@ class DashPlannerTest {
     assertNotNull("codecs on the AdaptationSet say the file is muxed", plan.audio)
   }
 
-  @Test fun aMuxedRepresentationNextToASeparateAudioTrackIsStillDownloadableButVideoOnlyOnesAreNot() {
+  @Test fun aVideoOnlyRepresentationGetsTheSeparateAudioMergedInAndAMuxedOneKeepsItsOwn() {
     val videoOnly = rep("v-1080", 1920, 1080, 6_000_000, "avc1.640028")
     manifest("/dash/mixed.mpd", mpd("<Period>${videoSet(muxed720, videoOnly)}$audioSet</Period>"))
 
-    val plan = ready(plan("/dash/mixed.mpd"))
-    assertEquals("the muxed file, never the silent higher quality", "av-720", plan.selected.id)
-    assertEquals(listOf("av-720"), plan.variants.map { it.id })
+    val best = ready(plan("/dash/mixed.mpd"))
+    assertEquals("the best quality: its sound comes from the audio adaptation set", "v-1080", best.selected.id)
+    assertEquals(listOf("v-1080", "av-720"), best.variants.map { it.id })
+    assertEquals("a-128", best.audioTrack?.representationId)
+    assertEquals(DashTrackSource.File(url("/dash/a-128.m4a")), best.audioTrack?.source)
+    assertNull("two files to merge: no single file to download", best.mediaUrl)
 
-    val message = refused(plan("/dash/mixed.mpd", VariantChoice("v-1080", null, null)), ProbeFailure.UNSUPPORTED_FORMAT)
-    assertEquals("a chosen quality is refused, never swapped", DashPlanner.SEPARATE_AUDIO, message)
+    val muxed = ready(plan("/dash/mixed.mpd", VariantChoice("av-720", null, null)))
+    assertNull("the muxed file carries its own sound", muxed.audioTrack)
+    assertEquals(url("/dash/av-720.mp4"), muxed.mediaUrl)
   }
 
-  // ---------- unsupported ----------
-
-  @Test fun separateVideoAndAudioFilesNeedMuxingAndAreUnsupported() {
+  @Test fun separateVideoAndAudioFilesAreMerged() {
     val v360 = rep("v-360", 640, 360, 700_000, "avc1.42c01e")
     val v720 = rep("v-720", 1280, 720, 2_000_000, "avc1.64001f")
     manifest("/dash/split.mpd", mpd("<Period>${videoSet(v360, v720)}$audioSet</Period>"))
 
-    assertEquals(DashPlanner.SEPARATE_AUDIO, refused(plan("/dash/split.mpd"), ProbeFailure.UNSUPPORTED_FORMAT))
+    val plan = ready(plan("/dash/split.mpd"))
+    assertEquals("v-720", plan.selected.id)
+    assertEquals(DashTrackSource.File(url("/dash/v-720.mp4")), plan.video.source)
+    assertEquals(DashTrackSource.File(url("/dash/a-128.m4a")), plan.audioTrack?.source)
+    assertEquals("mp4a.40.2", plan.audio?.codec)
+    val picked = ready(plan("/dash/split.mpd", VariantChoice("v-360", "a-128", null)))
+    assertEquals("the chosen quality, exactly", "v-360", picked.selected.id)
+    assertEquals("a-128", picked.audioTrack?.representationId)
   }
 
-  @Test fun segmentedSeparateAudioAndVideoIsUnsupported() {
+  @Test fun segmentedSeparateAudioAndVideoArePlannedSegmentBySegment() {
     val body = mpd(
       """
       <Period>
@@ -203,10 +212,17 @@ class DashPlannerTest {
     )
     manifest("/dash/segmented-split.mpd", body)
 
-    assertEquals(DashPlanner.SEPARATE_AUDIO, refused(plan("/dash/segmented-split.mpd"), ProbeFailure.UNSUPPORTED_FORMAT))
+    val plan = ready(plan("/dash/segmented-split.mpd"))
+    val video = (plan.video.source as DashTrackSource.Segments).plan
+    assertEquals(listOf(url("/dash/v1/init.mp4")), video.inits.map { it.url })
+    assertEquals((1..5).map { url("/dash/v1/$it.m4s") }, video.segments.map { it.media.url })
+    assertEquals(10_000_000L, video.durationUs)
+    val audio = (plan.audioTrack!!.source as DashTrackSource.Segments).plan
+    assertEquals((1..5).map { url("/dash/a1/$it.m4s") }, audio.segments.map { it.media.url })
+    assertTrue("each track has its own resume identity", video.fingerprint != audio.fingerprint)
   }
 
-  @Test fun segmentedMuxedDashNeedsFragmentReassemblyAndIsUnsupported() {
+  @Test fun segmentedMuxedDashIsReassembledFromItsSegments() {
     val body = mpd(
       """
       <Period>
@@ -219,7 +235,12 @@ class DashPlannerTest {
     )
     manifest("/dash/segmented.mpd", body)
 
-    assertEquals(DashPlanner.SEGMENTED, refused(plan("/dash/segmented.mpd"), ProbeFailure.UNSUPPORTED_FORMAT))
+    val plan = ready(plan("/dash/segmented.mpd"))
+    assertNull(plan.audioTrack)
+    val video = (plan.video.source as DashTrackSource.Segments).plan
+    assertEquals(5, video.segments.size)
+    assertEquals(url("/dash/seg-1.m4s"), video.segments.first().media.url)
+    assertTrue(video.segments.all { it.initIndex == 0 })
   }
 
   @Test fun anAudioOnlyManifestIsNotAVideo() {

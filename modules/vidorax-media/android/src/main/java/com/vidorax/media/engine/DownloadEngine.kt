@@ -1,5 +1,6 @@
 package com.vidorax.media.engine
 
+import com.vidorax.media.AlreadyDownloadedException
 import com.vidorax.media.InvalidStateException
 import com.vidorax.media.NotFoundException
 import com.vidorax.media.library.MediaMetadata
@@ -12,6 +13,7 @@ import com.vidorax.media.model.DownloadRecord
 import com.vidorax.media.model.DownloadSettings
 import com.vidorax.media.model.DownloadState
 import com.vidorax.media.model.EnqueueRequest
+import com.vidorax.media.model.EnqueueResult
 import com.vidorax.media.model.LibraryItem
 import com.vidorax.media.model.ProbeFailure
 import com.vidorax.media.model.ProbeRequest
@@ -28,6 +30,19 @@ import com.vidorax.media.plan.HlsPlanResult
 import com.vidorax.media.transfer.HlsCheckpoint
 import com.vidorax.media.transfer.HlsTransferSpec
 import com.vidorax.media.plan.DashResolution
+import com.vidorax.media.plan.DashTrack
+import com.vidorax.media.plan.DashTrackSource
+import com.vidorax.media.plan.SplitResolution
+import com.vidorax.media.plan.TrackRole
+import com.vidorax.media.process.MediaProcessor
+import com.vidorax.media.process.ProcessingInput
+import com.vidorax.media.process.ProcessingOperation
+import com.vidorax.media.process.ProcessingResult
+import com.vidorax.media.process.TrackContainer
+import com.vidorax.media.process.TrackContainers
+import com.vidorax.media.process.TrackFile
+import com.vidorax.media.transfer.TrackDone
+import com.vidorax.media.transfer.TransferOutcome
 import com.vidorax.media.transfer.TransferSpec
 import com.vidorax.media.verify.VerifyExpectation
 import com.vidorax.media.verify.VerifyResult
@@ -86,6 +101,14 @@ internal class DownloadEngine(
   private val onSettingsChanged: (DownloadSettings) -> Unit = {},
   private val hls: HlsDownloads = HlsDownloads.UNSUPPORTED,
   private val dash: DashDownloads = DashDownloads.UNSUPPORTED,
+  /** Separate video and audio files (a split source): both classified for their role before anything downloads. */
+  private val split: SplitDownloads = SplitDownloads.UNSUPPORTED,
+  /** Keep / remux / merge / transcode of what the transfers downloaded, before it becomes a library file. */
+  private val processing: MediaProcessing = MediaProcessing.PASSTHROUGH,
+  /** Videos the user already has: a second download of one of them is refused as a duplicate. */
+  private val savedVideos: SavedVideos = SavedVideos.NONE,
+  /** The automatic device-gallery copy of each completed download. */
+  private val gallery: GalleryPublisher = GalleryPublisher.NONE,
   /** Backoff sleeps; injectable so tests do not wait in real time. */
   private val retryDelay: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
   private val now: () -> Long = System::currentTimeMillis,
@@ -102,6 +125,12 @@ internal class DownloadEngine(
 
   /** Serializes all state/generation reads and writes. */
   private val mutex = Mutex()
+
+  /**
+   * One finalization at a time, from the duplicate-content check to the library insert, so two downloads of the same
+   * bytes cannot both pass the check. Held apart from [mutex]: hashing a large file never blocks pause or progress.
+   */
+  private val finalizeLock = Mutex()
 
   /** Bumped whenever a worker starts or a user action supersedes one; stale generations' writes are dropped. */
   private val generations = HashMap<String, Long>()
@@ -126,8 +155,9 @@ internal class DownloadEngine(
    */
   internal suspend fun restore() {
     if (!restoreStarted.compareAndSet(false, true)) return
-    for (row in store.list(now())) {
-      if (activeJobs.containsKey(row.id)) continue
+    for (listed in store.list(now())) {
+      if (activeJobs.containsKey(listed.id)) continue
+      val row = withIdentity(listed)
       when (row.state) {
         DownloadState.PAUSED -> reconcilePausedBytes(row)
         DownloadState.QUEUED,
@@ -140,6 +170,22 @@ internal class DownloadEngine(
         DownloadState.COMPLETED, DownloadState.FAILED, DownloadState.CANCELLED -> Unit
       }
     }
+    // Library items saved by an older version get their identity; gallery copies a process death interrupted are made.
+    scope.launch {
+      runCatching { savedVideos.backfillIdentities() }
+      gallery.resumePending()
+    }
+  }
+
+  /** A row written before identities existed gets the identity of its source, so it is found as a duplicate too. */
+  private suspend fun withIdentity(row: DownloadRow): DownloadRow {
+    if (row.identityKey != null) return row
+    val identity = DownloadIdentity.of(row.url, row.variant, row.pageUrl) ?: return row
+    return mutex.withLock {
+      val current = store.find(row.id) ?: return row
+      if (current.identityKey != null) return current
+      save(current.copy(identityKey = identity))
+    }
   }
 
   private fun partFileFor(id: String): File = File(paths.workDir(id), PART_NAME)
@@ -148,10 +194,20 @@ internal class DownloadEngine(
 
   private fun physicalPartBytes(id: String): Long = partFileFor(id).let { if (it.isFile) it.length() else 0L }
 
-  /** Bytes a resume really continues from: the `.part` for a progressive file, the checkpoint for HLS. */
-  private fun resumableBytes(row: DownloadRow): Long =
-    if (row.kind == SourceKind.HLS) HlsCheckpoint.read(checkpointFileFor(row.id))?.partBytes ?: 0L
-    else physicalPartBytes(row.id)
+  private fun audioPartFor(id: String): File = File(paths.workDir(id), AUDIO_PART_NAME)
+
+  private fun audioCheckpointFor(id: String): File = File(paths.workDir(id), AUDIO_CHECKPOINT_NAME)
+
+  /**
+   * Bytes a resume really continues from: the `.part` for a file, the checkpoint for segments — summed over the video
+   * and the separate audio track of a stream or split download.
+   */
+  private fun resumableBytes(row: DownloadRow): Long = when (row.kind) {
+    SourceKind.HLS ->
+      (HlsCheckpoint.read(checkpointFileFor(row.id))?.partBytes ?: 0L) + (HlsCheckpoint.read(audioCheckpointFor(row.id))?.partBytes ?: 0L)
+    SourceKind.DASH, SourceKind.SPLIT -> physicalPartBytes(row.id) + audioPartFor(row.id).let { if (it.isFile) it.length() else 0L }
+    else -> physicalPartBytes(row.id)
+  }
 
   /** Paused work stays paused; only its byte counter is corrected to what is on disk so a later resume is truthful. */
   private suspend fun reconcilePausedBytes(row: DownloadRow) {
@@ -199,19 +255,43 @@ internal class DownloadEngine(
     if (verification.verify(dest, expectation) is VerifyResult.Invalid) {
       return false
     }
+    // The crash may have come before the finished file was compared with the videos the user already has.
+    val audioOnly = MediaTypes.forContainer(container)?.mimeType?.startsWith("audio/") == true
+    val same = finalizeLock.withLock {
+      runCatching { savedVideos.findByContent(dest, excludeId = row.id, audioOnly = audioOnly) }.getOrNull()
+    }
+    if (same != null) {
+      dest.delete()
+      val failed = mutex.withLock {
+        val current = store.find(row.id) ?: return@withLock null
+        if (current.state.isTerminal) return@withLock null
+        save(current.copy(state = DownloadState.FAILED, errorCode = DownloadErrorCode.DUPLICATE, errorMessage = DUPLICATE_MESSAGE, updatedAt = now()))
+      }
+      failed?.let { stateFlow.tryEmit(it.toRecord()) }
+      cleanupWork(row.id)
+      return true
+    }
     val metadata = runCatching { inspector.inspect(dest) }.getOrNull()
     // Same library item a normal completion writes, thumbnail included; a missing thumbnail is only cosmetic.
     val thumbnail = metadata?.let { runCatching { thumbnails.create(row.id, dest, it) }.getOrNull() }
-    val item = buildLibraryItem(row, container, null, dest, metadata, thumbnail)
+    val toGallery = wantsGallery(row)
+    val item = buildLibraryItem(row, container, null, dest, metadata, thumbnail, galleryPending = toGallery)
     val completed = mutex.withLock {
       val current = store.find(row.id) ?: return@withLock null
       if (current.state.isTerminal) return@withLock null // already resolved by a concurrent path
       library.insertCompleted(item) // idempotent: a pre-existing library row makes this a no-op
       saveCompleted(current.copy(state = DownloadState.COMPLETED, bytesDone = dest.length(), totalBytes = dest.length(), errorCode = null, errorMessage = null, updatedAt = now()))
     }
-    completed?.let { stateFlow.tryEmit(it.toRecord()); cleanupWork(row.id) }
+    completed?.let {
+      stateFlow.tryEmit(it.toRecord())
+      cleanupWork(row.id)
+      if (toGallery) gallery.publish(row.id)
+    }
     return true
   }
+
+  /** The download's own choice, else the setting: a finished video also goes to the device gallery. */
+  private fun wantsGallery(row: DownloadRow): Boolean = row.saveToGallery ?: settings.autoSaveToGallery
 
   // --- probing ---
 
@@ -247,7 +327,59 @@ internal class DownloadEngine(
 
   // --- enqueue / lifecycle ---
 
-  override suspend fun enqueue(request: EnqueueRequest): DownloadRecord {
+  /** Like [enqueueUnique]; a video that is already saved is refused with ERR_ALREADY_DOWNLOADED. */
+  override suspend fun enqueue(request: EnqueueRequest): DownloadRecord =
+    when (val result = enqueueUnique(request)) {
+      is EnqueueResult.Enqueued -> result.record
+      is EnqueueResult.AlreadyDownloading -> result.record
+      is EnqueueResult.AlreadyDownloaded -> throw AlreadyDownloadedException("This video is already downloaded")
+    }
+
+  override suspend fun findDuplicate(request: EnqueueRequest): EnqueueResult? {
+    val identity = identityOf(request) ?: return null
+    return mutex.withLock { duplicateLocked(identity) }
+  }
+
+  /**
+   * Starts a download unless the same video is already downloading or already saved. The check and the new row are
+   * one step under [mutex], so two taps racing each other — or two entry points, or a tap and a restart — can never
+   * create two downloads of one video. A paused duplicate is resumed: the user asked for this video again.
+   */
+  override suspend fun enqueueUnique(request: EnqueueRequest): EnqueueResult {
+    val identity = identityOf(request)
+    val result = mutex.withLock {
+      identity?.let { duplicateLocked(it) }?.let { return@withLock it }
+      EnqueueResult.Enqueued(createRow(request, identity).toRecord())
+    }
+    when (result) {
+      is EnqueueResult.Enqueued -> {
+        stateFlow.tryEmit(result.record)
+        launchWorker(result.record.id)
+      }
+      is EnqueueResult.AlreadyDownloading ->
+        if (result.record.state == DownloadState.PAUSED) runCatching { resume(result.record.id) }
+      is EnqueueResult.AlreadyDownloaded -> Unit
+    }
+    return result
+  }
+
+  /** The identity of the video a request is for, with the variant exactly as the row would store it. */
+  private fun identityOf(request: EnqueueRequest): String? = DownloadIdentity.of(
+    url = request.identityUrl ?: request.url,
+    variant = if (request.kind.isStream()) streamChoice(request.variant) else null,
+    pageUrl = request.pageUrl,
+  )
+
+  /** Must be called while holding [mutex]. A live download of the video first, then a saved copy of it. */
+  private suspend fun duplicateLocked(identity: String): EnqueueResult? {
+    store.list(now()).firstOrNull { it.identityKey == identity && !it.state.isTerminal }
+      ?.let { return EnqueueResult.AlreadyDownloading(it.toRecord()) }
+    val saved = runCatching { savedVideos.findByIdentity(identity) }.getOrNull() ?: return null
+    return EnqueueResult.AlreadyDownloaded(saved.libraryItemId, saved.galleryUri)
+  }
+
+  /** Must be called while holding [mutex]. */
+  private suspend fun createRow(request: EnqueueRequest, identity: String?): DownloadRow {
     val id = idFactory()
     val ts = now()
     val row = DownloadRow(
@@ -270,11 +402,11 @@ internal class DownloadEngine(
       createdAt = ts,
       updatedAt = ts,
       variant = if (request.kind.isStream()) streamChoice(request.variant) else null,
+      identityKey = identity,
+      audioUrl = request.audioUrl.takeIf { request.kind == SourceKind.SPLIT },
     )
     store.create(row)
-    stateFlow.tryEmit(row.toRecord())
-    launchWorker(id)
-    return row.toRecord()
+    return row
   }
 
   private fun SourceKind?.isStream(): Boolean = this == SourceKind.HLS || this == SourceKind.DASH
@@ -285,8 +417,8 @@ internal class DownloadEngine(
    */
   private fun streamChoice(requested: VariantChoice?): VariantChoice? {
     val maxHeight = requested?.maxHeight ?: settings.preferredMaxHeight
-    if (requested?.videoId == null && maxHeight == null) return null
-    return VariantChoice(videoId = requested?.videoId, audioId = null, maxHeight = maxHeight)
+    if (requested?.videoId == null && requested?.audioId == null && maxHeight == null) return null
+    return VariantChoice(videoId = requested?.videoId, audioId = requested?.audioId, maxHeight = maxHeight)
   }
 
   override suspend fun pause(id: String) {
@@ -446,6 +578,7 @@ internal class DownloadEngine(
     when (start.kind) {
       SourceKind.HLS -> return runHls(id, gen, start)
       SourceKind.DASH -> return runDash(id, gen, start)
+      SourceKind.SPLIT -> return runSplit(id, gen, start)
       else -> Unit
     }
     val probe = probeOrFail(id, gen, start) ?: return
@@ -479,7 +612,11 @@ internal class DownloadEngine(
     val partFile = File(workDir, PART_NAME)
     if (!hasRoomFor(id, gen, probe.sizeBytes, partFile)) return
 
-    val outcome = transferWithRecovery(
+    // A file already downloaded whole by an earlier run (a crash while processing it) is not fetched again.
+    val alreadyDone = TrackDone.length(partFile)
+    val outcome = if (alreadyDone != null) {
+      TransferOutcome.Completed(bytesWritten = alreadyDone, totalBytes = alreadyDone, validator = null, finalUrl = probe.finalUrl)
+    } else transferWithRecovery(
       id = id,
       gen = gen,
       progressBytes = { physicalPartBytes(id) },
@@ -505,7 +642,7 @@ internal class DownloadEngine(
       // The transfer resumes against the validator it recorded beside the `.part`, so If-Range also holds after a
       // process death, a reboot or a renewed (re-signed) link.
       val spec = TransferSpec(url = probe.finalUrl, context = currentRequest(id, start), partFile = partFile)
-      streamWithProgress(id, gen) { onProgress -> transfers.transfer(spec, onProgress) }
+      streamWithProgress(id, gen) { onProgress -> transfers.transfer(spec, onProgress) }.also { TrackDone.mark(partFile) }
     } ?: return
 
     persistProgress(id, gen, outcome.bytesWritten, outcome.totalBytes)
@@ -519,7 +656,15 @@ internal class DownloadEngine(
     val expectation = VerifyExpectation(container = probe.container, expectedBytes = probe.sizeBytes ?: outcome.totalBytes)
     if (!verifiedOrFail(id, gen, partFile, expectation)) return
     if (failedAsAudioOnly(id, gen, partFile, "This file has no video")) return
-    finalizeAndComplete(id, gen, start, partFile, probe.container, probe.contentType)
+    // Kept byte for byte when it already is a playable file; a fragmented MP4, AVI or FLV is remuxed into an MP4.
+    processAndFinalize(
+      id,
+      gen,
+      start,
+      ProcessingInput.Single(TrackFile(partFile, MediaProcessor.trackContainer(probe.container))),
+      keptContainer = probe.container,
+      contentType = probe.contentType,
+    )
   }
 
   // --- DASH ---
@@ -530,22 +675,72 @@ internal class DownloadEngine(
    * choice, so a restart or an expired link is resolved again from the manifest, never from a stale file URL.
    */
   private suspend fun runDash(id: String, gen: Long, start: DownloadRow) {
-    val media = dashOrFail(id, gen, start) ?: return
-    runProgressive(id, gen, start, media, reprobe = { dashOrFail(id, gen, start, expired = true) })
+    when (val resolved = dashOrFail(id, gen, start) ?: return) {
+      is DashResolution.Ready -> runProgressive(
+        id,
+        gen,
+        start,
+        resolved.media,
+        reprobe = {
+          when (val again = dashOrFail(id, gen, start, expired = true)) {
+            is DashResolution.Ready -> again.media
+            null -> null
+            else -> {
+              fail(id, gen, DownloadErrorCode.UNSUPPORTED_FORMAT, "The source changed format")
+              null
+            }
+          }
+        },
+      )
+      is DashResolution.Tracks -> runTracks(
+        id,
+        gen,
+        start,
+        dashJobs(id, resolved),
+        reResolve = {
+          when (val again = dashOrFail(id, gen, start, expired = true)) {
+            is DashResolution.Tracks -> dashJobs(id, again)
+            null -> null
+            else -> {
+              fail(id, gen, DownloadErrorCode.UNSUPPORTED_FORMAT, "The source changed format")
+              null
+            }
+          }
+        },
+      )
+      is DashResolution.Refused -> Unit
+    }
   }
 
-  /** The DASH counterpart of [probeOrFail]: the persisted representation choice resolved to its classified file. */
-  private suspend fun dashOrFail(id: String, gen: Long, row: DownloadRow, expired: Boolean = false): ProbeResult.Success? {
+  /** A DASH download's tracks: the video representation and, when separate, its audio — each a file or segments. */
+  private fun dashJobs(id: String, resolved: DashResolution.Tracks): List<TrackJob> {
+    val plan = resolved.plan
+    val video = dashJob(plan.video, TrackRole.VIDEO, partFileFor(id), checkpointFileFor(id), resolved.video?.sizeBytes)
+    val audio = plan.audioTrack?.let { dashJob(it, TrackRole.AUDIO, audioPartFor(id), audioCheckpointFor(id), resolved.audio?.sizeBytes) }
+    return listOfNotNull(video, audio)
+  }
+
+  private fun dashJob(track: DashTrack, role: TrackRole, part: File, checkpoint: File, size: Long?): TrackJob =
+    when (val source = track.source) {
+      is DashTrackSource.File -> TrackJob.Whole(role, source.url, part, size, track.timeOffsetUs)
+      is DashTrackSource.Segments -> TrackJob.Segmented(role, source.plan, part, checkpoint, track.timeOffsetUs)
+    }
+
+  /**
+   * The DASH counterpart of [probeOrFail]: the persisted representation choice resolved to its classified file or
+   * tracks (never [DashResolution.Refused]: a refusal fails the download and returns null).
+   */
+  private suspend fun dashOrFail(id: String, gen: Long, row: DownloadRow, expired: Boolean = false): DashResolution? {
     var attempt = 0
     while (true) {
       val context = currentRequest(id, row)
       var result = dash.resolve(row.url, context, row.variant)
       if (result is DashResolution.Refused && needsSession(result.failure, context)) {
         result = dash.resolve(row.url, context.copy(useCookies = true), row.variant)
-        if (result is DashResolution.Ready && adoptSession(id, gen) == null) return null
+        if (result !is DashResolution.Refused && adoptSession(id, gen) == null) return null
       }
       when (result) {
-        is DashResolution.Ready -> return result.media
+        is DashResolution.Ready, is DashResolution.Tracks -> return result
         is DashResolution.Refused -> {
           if (isTransient(result.failure) && attempt < CLASSIFY_RETRY_DELAYS_MS.size) {
             if (!waitBeforeRetry(id, gen, CLASSIFY_RETRY_DELAYS_MS[attempt++], DownloadState.PROBING)) return null
@@ -566,46 +761,267 @@ internal class DownloadEngine(
    * the finished file is a valid, single, playable stream.
    */
   private suspend fun runHls(id: String, gen: Long, start: DownloadRow) {
-    var plan = planOrFail(id, gen, start) ?: return
-    if (setState(id, gen, DownloadState.DOWNLOADING) { it.copy(totalBytes = plan.estimatedBytes ?: it.totalBytes) } == null) {
-      return
-    }
-    val workDir = paths.workDir(id).apply { mkdirs() }
-    val partFile = File(workDir, PART_NAME)
-    val checkpoint = File(workDir, HLS_CHECKPOINT_NAME)
-    if (!hasRoomFor(id, gen, plan.estimatedBytes, partFile)) return
+    val plan = planOrFail(id, gen, start) ?: return
+    runTracks(
+      id,
+      gen,
+      start,
+      hlsJobs(id, plan),
+      // Segment links expired: re-read the playlists (fresh tokens) and continue from the checkpoints. A playlist
+      // that no longer describes the same stream restarts that track from zero instead of splicing another one in.
+      reResolve = { planOrFail(id, gen, start, expired = true)?.let { hlsJobs(id, it) } },
+      // One timeline split by discontinuities cannot be rewritten as one MP4: such a stream is kept as it downloaded.
+      keepAsDownloaded = plan.hasDiscontinuities,
+    )
+  }
 
-    val outcome = transferWithRecovery(
+  /** The variant's media playlist and, when its sound is a separate rendition, that rendition's playlist. */
+  private fun hlsJobs(id: String, plan: HlsPlan): List<TrackJob> = listOfNotNull(
+    TrackJob.Segmented(TrackRole.VIDEO, plan, partFileFor(id), checkpointFileFor(id)),
+    plan.audio?.let { TrackJob.Segmented(TrackRole.AUDIO, it, audioPartFor(id), audioCheckpointFor(id)) },
+  )
+
+  // --- split video + audio files ---
+
+  /**
+   * A video file and an audio file of one video (a player fed from separate tracks): both classified for their role
+   * and checked to be one video's, downloaded one after the other (each resumable), then merged into one file.
+   */
+  private suspend fun runSplit(id: String, gen: Long, start: DownloadRow) {
+    val resolved = splitOrFail(id, gen, start) ?: return
+    runTracks(
+      id,
+      gen,
+      start,
+      splitJobs(id, resolved),
+      reResolve = { splitOrFail(id, gen, start, expired = true)?.let { splitJobs(id, it) } },
+    )
+  }
+
+  private fun splitJobs(id: String, resolved: SplitResolution.Ready): List<TrackJob> = listOf(
+    TrackJob.Whole(TrackRole.VIDEO, resolved.video.finalUrl, partFileFor(id), resolved.video.sizeBytes),
+    TrackJob.Whole(TrackRole.AUDIO, resolved.audio.finalUrl, audioPartFor(id), resolved.audio.sizeBytes),
+  )
+
+  private suspend fun splitOrFail(id: String, gen: Long, row: DownloadRow, expired: Boolean = false): SplitResolution.Ready? {
+    val audioUrl = row.audioUrl ?: run {
+      fail(id, gen, DownloadErrorCode.AUDIO_TRACK_MISSING, "No audio file for this video")
+      return null
+    }
+    var attempt = 0
+    while (true) {
+      val context = currentRequest(id, row)
+      var result = split.resolve(row.url, audioUrl, context)
+      if (result is SplitResolution.Refused && needsSession(result.failure, context)) {
+        result = split.resolve(row.url, audioUrl, context.copy(useCookies = true))
+        if (result is SplitResolution.Ready && adoptSession(id, gen) == null) return null
+      }
+      when (result) {
+        is SplitResolution.Ready -> return result
+        is SplitResolution.Refused -> {
+          if (isTransient(result.failure) && attempt < CLASSIFY_RETRY_DELAYS_MS.size) {
+            if (!waitBeforeRetry(id, gen, CLASSIFY_RETRY_DELAYS_MS[attempt++], DownloadState.PROBING)) return null
+            continue
+          }
+          failClassification(id, gen, result.failure, expired)
+          return null
+        }
+      }
+    }
+  }
+
+  // --- track downloads (HLS, DASH, split) ---
+
+  /** One file of a download's work folder: the video or the separate audio, fetched whole or as segments. */
+  private sealed interface TrackJob {
+    val role: TrackRole
+    val partFile: File
+    /** A size to show progress against (a probe's length, a bitrate estimate); null when unknown. */
+    val expectedBytes: Long?
+    /** See [TrackFile.timeOffsetUs]. */
+    val timeOffsetUs: Long
+
+    data class Whole(
+      override val role: TrackRole,
+      val url: String,
+      override val partFile: File,
+      override val expectedBytes: Long?,
+      override val timeOffsetUs: Long = 0,
+    ) : TrackJob
+
+    data class Segmented(
+      override val role: TrackRole,
+      val plan: HlsPlan,
+      override val partFile: File,
+      val checkpoint: File,
+      override val timeOffsetUs: Long = 0,
+    ) : TrackJob {
+      override val expectedBytes: Long? get() = plan.estimatedBytes
+    }
+  }
+
+  private data class TrackResult(val job: TrackJob, val bytes: Long, val container: TrackContainer, val timeOffsetUs: Long)
+
+  /** What is durably on disk for [job] right now (progress and the retry budget's high-water mark). */
+  private fun onDisk(job: TrackJob): Long = when (job) {
+    is TrackJob.Whole -> if (job.partFile.isFile) job.partFile.length() else 0L
+    is TrackJob.Segmented -> HlsCheckpoint.read(job.checkpoint)?.partBytes ?: 0L
+  }
+
+  /**
+   * Downloads every track of a stream or split download, one after the other, into its own file in the work folder —
+   * each resumable (a file from its `.part`, segments from their checkpoint; a finished track is never fetched
+   * again) — then verifies the video, and merges or remuxes them into the one file the library keeps. An expired
+   * link re-resolves the source through [reResolve] once and continues from the bytes on disk.
+   */
+  private suspend fun runTracks(
+    id: String,
+    gen: Long,
+    start: DownloadRow,
+    first: List<TrackJob>,
+    reResolve: suspend () -> List<TrackJob>?,
+    keepAsDownloaded: Boolean = false,
+  ) {
+    var jobs = first
+    val estimate = jobs.mapNotNull { it.expectedBytes }.takeIf { it.size == jobs.size }?.sum()
+    if (setState(id, gen, DownloadState.DOWNLOADING) { it.copy(totalBytes = estimate ?: it.totalBytes) } == null) return
+    paths.workDir(id).mkdirs()
+    if (!hasRoomFor(id, gen, estimate, partFileFor(id))) return
+
+    val results = transferWithRecovery(
       id = id,
       gen = gen,
-      progressBytes = { HlsCheckpoint.read(checkpoint)?.partBytes ?: 0L },
+      progressBytes = { jobs.sumOf { onDisk(it) } },
       refresh = { status ->
-        // Segment links expired: re-read the playlist (fresh tokens) and continue from the checkpoint. A playlist
-        // that no longer describes the same stream restarts from zero instead of splicing another one in. A
-        // segment refused without the browsing session first adopts the session.
         if (status in SESSION_STATUS && adoptSession(id, gen) == null) return@transferWithRecovery false
-        val again = setState(id, gen, DownloadState.PROBING)?.let { planOrFail(id, gen, start, expired = true) }
+        val again = setState(id, gen, DownloadState.PROBING)?.let { reResolve() }
         if (again == null) {
           false
         } else {
-          plan = again
+          jobs = again
           setState(id, gen, DownloadState.DOWNLOADING) != null
         }
       },
+      segmented = jobs.any { it is TrackJob.Segmented },
     ) {
       val context = currentRequest(id, start)
       streamWithProgress(id, gen) { onProgress ->
-        hls.transfer(HlsTransferSpec(plan, context, partFile, checkpoint), onProgress)
+        val done = ArrayList<TrackResult>(jobs.size)
+        var before = 0L
+        for ((index, job) in jobs.withIndex()) {
+          val later = jobs.drop(index + 1).sumOf { it.expectedBytes ?: 0L }
+          val result = runJob(job, context) { bytes, total ->
+            onProgress(before + bytes, total?.let { before + it + later })
+          }
+          done += result
+          before += result.bytes
+        }
+        done
       }
     } ?: return
 
-    persistProgress(id, gen, outcome.bytesWritten, outcome.bytesWritten)
+    val bytes = results.sumOf { it.bytes }
+    persistProgress(id, gen, bytes, bytes)
     if (setState(id, gen, DownloadState.PROCESSING) == null) return
 
-    val expectation = VerifyExpectation(container = outcome.container, expectedBytes = outcome.bytesWritten)
-    if (!verifiedOrFail(id, gen, partFile, expectation)) return
-    if (failedAsAudioOnly(id, gen, partFile, "This stream has no video")) return
-    finalizeAndComplete(id, gen, start, partFile, outcome.container, contentType = null)
+    val video = results.first { it.job.role == TrackRole.VIDEO }
+    val audio = results.firstOrNull { it.job.role == TrackRole.AUDIO }
+    // The video track is checked like any finished download (clean container, no encrypted track, a picture).
+    val videoContainer = MediaProcessor.keptContainer(video.container)
+    val expectation = VerifyExpectation(
+      container = videoContainer.takeIf { it == Container.TS || it == Container.MP4 || it == Container.WEBM },
+      expectedBytes = if (video.job is TrackJob.Segmented) video.bytes else null,
+    )
+    if (!verifiedOrFail(id, gen, video.job.partFile, expectation)) return
+    if (failedAsAudioOnly(id, gen, video.job.partFile, "This stream has no video")) return
+
+    val videoFile = TrackFile(video.job.partFile, video.container, video.timeOffsetUs)
+    val input = if (audio != null) {
+      ProcessingInput.Split(videoFile, TrackFile(audio.job.partFile, audio.container, audio.timeOffsetUs))
+    } else {
+      ProcessingInput.Single(videoFile)
+    }
+    if (keepAsDownloaded && audio == null) {
+      finalizeAndComplete(id, gen, start, video.job.partFile, videoContainer, contentType = null)
+      return
+    }
+    processAndFinalize(id, gen, start, input, keptContainer = videoContainer, contentType = null)
+  }
+
+  private suspend fun runJob(job: TrackJob, context: RequestContext, onProgress: (Long, Long?) -> Unit): TrackResult =
+    when (job) {
+      is TrackJob.Whole -> {
+        val bytes = TrackDone.length(job.partFile) ?: run {
+          val outcome = transfers.transfer(TransferSpec(url = job.url, context = context, partFile = job.partFile), onProgress)
+          TrackDone.mark(job.partFile)
+          outcome.bytesWritten
+        }
+        TrackResult(job, bytes, TrackContainers.sniff(job.partFile), job.timeOffsetUs)
+      }
+      is TrackJob.Segmented -> {
+        val outcome = hls.transfer(HlsTransferSpec(job.plan, context, job.partFile, job.checkpoint, job.role), onProgress)
+        val container = if (outcome.packedAudio) TrackContainer.PACKED_AUDIO else MediaProcessor.trackContainer(outcome.container)
+        // Packed audio carries its position on the stream clock in its ID3 tag; everything else in its samples.
+        TrackResult(job, outcome.bytesWritten, container, outcome.timestampUs ?: job.timeOffsetUs)
+      }
+    }
+
+  /**
+   * Turns the downloaded file(s) into the library file ([MediaProcessing]): kept as downloaded, remuxed, merged or
+   * transcoded; a produced file is verified like any download before it is finalized. Progress events carry the
+   * stage. A failed merge or conversion keeps the downloaded tracks, so Retry only has to process them again.
+   */
+  private suspend fun processAndFinalize(
+    id: String,
+    gen: Long,
+    start: DownloadRow,
+    input: ProcessingInput,
+    keptContainer: Container,
+    contentType: String?,
+  ) {
+    val total = when (input) {
+      is ProcessingInput.Single -> input.track.file.length()
+      is ProcessingInput.Split -> input.video.file.length() + input.audio.file.length()
+    }
+    val result = try {
+      processing.process(input, paths.workDir(id)) { stage, fraction ->
+        progressFlow.tryEmit(
+          DownloadProgress(
+            id = id,
+            phase = ProgressPhase.PROCESSING,
+            bytesDone = total,
+            totalBytes = total,
+            fraction = fraction,
+            speedBps = 0,
+            etaSeconds = null,
+            stage = stage,
+          ),
+        )
+      }
+    } catch (c: kotlinx.coroutines.CancellationException) {
+      throw c
+    } catch (e: Exception) {
+      ProcessingResult.Failed(DownloadErrorCode.MUX_FAILED, "Processing failed: ${e.message}")
+    }
+    when (result) {
+      is ProcessingResult.Failed -> {
+        fail(id, gen, result.code, result.message)
+        if (result.code !in RETRYABLE_PROCESSING) cleanupWork(id)
+      }
+      is ProcessingResult.Done -> {
+        val container = if (result.operation == ProcessingOperation.KEEP) keptContainer else result.container
+        if (result.operation != ProcessingOperation.KEEP) {
+          val verdict = verification.verify(result.file, VerifyExpectation(container = container, expectedBytes = null))
+          if (verdict is VerifyResult.Invalid) {
+            val code = if (verdict.reason == ProbeFailure.DRM_PROTECTED) DownloadErrorCode.DRM_PROTECTED else DownloadErrorCode.INVALID_MEDIA
+            fail(id, gen, code, "The processed file failed verification")
+            cleanupWork(id)
+            return
+          }
+        }
+        finalizeAndComplete(id, gen, start, result.file, container, if (result.operation == ProcessingOperation.KEEP) contentType else null)
+      }
+    }
   }
 
   // --- classification with transient retry ---
@@ -708,6 +1124,8 @@ internal class DownloadEngine(
     progressBytes: () -> Long,
     /** Re-resolves the source after a refused/expired link ([MediaHttpException.statusCode]); false stops. */
     refresh: suspend (status: Int) -> Boolean,
+    /** A segmented stream: a segment the server will not serve is [DownloadErrorCode.SEGMENT_FAILED]. */
+    segmented: Boolean = false,
     attempt: suspend () -> T,
   ): T? {
     var failures = 0
@@ -728,7 +1146,12 @@ internal class DownloadEngine(
           continue
         }
         if (!e.isTransient) {
-          fail(id, gen, mapHttpStatus(e.statusCode), "Server returned HTTP ${e.statusCode}")
+          val code = mapHttpStatus(e.statusCode)
+          if (segmented && code != DownloadErrorCode.SOURCE_EXPIRED) {
+            fail(id, gen, DownloadErrorCode.SEGMENT_FAILED, "A segment of the stream is missing (HTTP ${e.statusCode})")
+          } else {
+            fail(id, gen, code, "Server returned HTTP ${e.statusCode}")
+          }
           return null
         }
         transientCode = DownloadErrorCode.HTTP_ERROR
@@ -818,31 +1241,54 @@ internal class DownloadEngine(
       return
     }
 
-    val metadata = runCatching { inspector.inspect(dest) }.getOrNull()
-    // A missing thumbnail is a cosmetic gap, never a reason to fail a verified download.
-    val thumbnail = metadata?.let { runCatching { thumbnails.create(id, dest, it) }.getOrNull() }
-    val item = buildLibraryItem(start, container, contentType, dest, metadata, thumbnail)
-
-    // Atomically: only if still the current, non-terminal owner do we insert the library item AND mark COMPLETED.
-    val completed = try {
-      mutex.withLock {
-        val row = store.find(id) ?: return@withLock null
-        if (generations[id] != gen || row.state.isTerminal) return@withLock null
-        library.insertCompleted(item) // idempotent: a re-run finds the item already there
-        saveCompleted(row.copy(state = DownloadState.COMPLETED, bytesDone = dest.length(), totalBytes = dest.length(), errorCode = null, errorMessage = null, updatedAt = now()))
+    val toGallery = wantsGallery(start)
+    val completed = finalizeLock.withLock {
+      // The same bytes reached through another link (another page, a rotated CDN path): the user already has this
+      // video. The new copy is discarded — never a second library item, never a `video (1).mp4` in the gallery.
+      val audioOnly = mediaType?.mimeType?.startsWith("audio/") == true
+      val same = try {
+        savedVideos.findByContent(dest, excludeId = id, audioOnly = audioOnly)
+      } catch (c: kotlinx.coroutines.CancellationException) {
+        throw c
+      } catch (e: Exception) {
+        null // an unreadable candidate is not a duplicate; the download completes as usual
       }
-    } catch (c: kotlinx.coroutines.CancellationException) {
-      throw c
-    } catch (e: Exception) {
-      // Library persistence genuinely failed: never claim COMPLETED, and drop the finalized file so it is not orphaned.
-      dest.delete()
-      cleanupWork(id)
-      fail(id, gen, DownloadErrorCode.STORAGE_ERROR, "Could not record the finished file in the library")
-      return
+      if (same != null) {
+        dest.delete()
+        cleanupWork(id)
+        fail(id, gen, DownloadErrorCode.DUPLICATE, DUPLICATE_MESSAGE)
+        return
+      }
+
+      val metadata = runCatching { inspector.inspect(dest) }.getOrNull()
+      // A missing thumbnail is a cosmetic gap, never a reason to fail a verified download.
+      val thumbnail = metadata?.let { runCatching { thumbnails.create(id, dest, it) }.getOrNull() }
+      val item = buildLibraryItem(start, container, contentType, dest, metadata, thumbnail, galleryPending = toGallery)
+
+      // Atomically: only if still the current, non-terminal owner do we insert the library item AND mark COMPLETED.
+      try {
+        mutex.withLock {
+          val row = store.find(id) ?: return@withLock null
+          if (generations[id] != gen || row.state.isTerminal) return@withLock null
+          library.insertCompleted(item) // idempotent: a re-run finds the item already there
+          saveCompleted(row.copy(state = DownloadState.COMPLETED, bytesDone = dest.length(), totalBytes = dest.length(), errorCode = null, errorMessage = null, updatedAt = now()))
+        }
+      } catch (c: kotlinx.coroutines.CancellationException) {
+        throw c
+      } catch (e: Exception) {
+        // Library persistence genuinely failed: never claim COMPLETED, and drop the finalized file so it is not orphaned.
+        dest.delete()
+        cleanupWork(id)
+        fail(id, gen, DownloadErrorCode.STORAGE_ERROR, "Could not record the finished file in the library")
+        return
+      }
     }
     if (completed != null) {
       stateFlow.tryEmit(completed.toRecord())
       cleanupWork(id)
+      // After COMPLETED, never before: only the final verified file is ever published, and a gallery failure can
+      // no longer touch the download or its library item.
+      if (toGallery) gallery.publish(id)
     } else {
       // Lost the race to pause/cancel: no library insert happened, so drop the finalized file we produced.
       dest.delete()
@@ -1074,6 +1520,7 @@ internal class DownloadEngine(
     dest: File,
     metadata: MediaMetadata?,
     thumbnail: File? = null,
+    galleryPending: Boolean = false,
   ): LibraryItem = LibraryItem(
     id = row.id,
     title = row.title,
@@ -1097,6 +1544,8 @@ internal class DownloadEngine(
     galleryUri = null,
     createdAt = row.createdAt,
     completedAt = now(),
+    identityKey = row.identityKey,
+    galleryPending = galleryPending,
   )
 
   private fun buildProgress(id: String, bytes: Long, total: Long?, speedBps: Long): DownloadProgress {
@@ -1135,6 +1584,9 @@ internal class DownloadEngine(
     ProbeFailure.UNSUPPORTED_FORMAT -> DownloadErrorCode.UNSUPPORTED_FORMAT
     ProbeFailure.NOT_MEDIA -> DownloadErrorCode.NOT_MEDIA
     ProbeFailure.POLICY_BLOCKED -> DownloadErrorCode.UNSUPPORTED_FORMAT
+    ProbeFailure.VIDEO_TRACK_MISSING -> DownloadErrorCode.VIDEO_TRACK_MISSING
+    ProbeFailure.AUDIO_TRACK_MISSING -> DownloadErrorCode.AUDIO_TRACK_MISSING
+    ProbeFailure.TRACK_MISMATCH -> DownloadErrorCode.TRACK_MISMATCH
   }
 
   private fun mapHttpStatus(status: Int): DownloadErrorCode = when (status) {
@@ -1156,6 +1608,15 @@ internal class DownloadEngine(
   internal companion object {
     const val PART_NAME = "download.part"
     const val HLS_CHECKPOINT_NAME = "hls.checkpoint"
+    /** The separate audio track of a stream or split download, next to the video's `.part`. */
+    const val AUDIO_PART_NAME = "audio.part"
+    const val AUDIO_CHECKPOINT_NAME = "audio.checkpoint"
+
+    /**
+     * Processing failures a Retry can fix by processing the kept tracks again (codec or muxer hiccups, or a disk that
+     * filled up while the merged copy was written — the downloaded tracks stay for when there is room).
+     */
+    val RETRYABLE_PROCESSING = setOf(DownloadErrorCode.MUX_FAILED, DownloadErrorCode.TRANSCODE_FAILED, DownloadErrorCode.NO_SPACE)
     const val PROGRESS_PERSIST_MS = 500L
     /** Progress events at most 4 times a second per download: enough for a smooth bar, cheap for the bridge. */
     const val PROGRESS_EMIT_MS = 250L
@@ -1201,6 +1662,8 @@ internal class DownloadEngine(
     val EXPIRY_FAILURES = setOf(ProbeFailure.HTTP_403, ProbeFailure.HTTP_404, ProbeFailure.HTTP_ERROR)
 
     const val EXPIRED_MESSAGE = "This link expired. Open the page again and start the download from there."
+
+    const val DUPLICATE_MESSAGE = "Video already downloaded"
 
     /** Space kept free beyond the file itself, for the finalized copy's directory entry and the database. */
     const val FREE_SPACE_MARGIN_BYTES = 32L * 1024 * 1024

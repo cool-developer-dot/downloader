@@ -7,12 +7,12 @@ export type PlatformBrandIconProps = {
 };
 
 export type PlatformHubItemId =
-  | 'instagram'
-  | 'tiktok'
-  | 'facebook'
-  | 'vimeo'
-  | 'dailymotion'
-  | 'reddit'
+  | 'video'
+  | 'social'
+  | 'media'
+  | 'player'
+  | 'library'
+  | 'private'
   | 'browser'
   | 'pasteLink'
   | 'download';

@@ -20,6 +20,7 @@ import {
 import { assessLocalFile } from '@/downloads/engine/local-file-state';
 import { getLocalRecord } from '@/downloads/engine/persistence';
 import {
+  ensureV2LibraryItem,
   isV2LibraryFileUri,
   reconcileV2LibraryIds,
   v2LibraryPlaybackRecord,
@@ -57,7 +58,9 @@ export function ensurePlaybackSourceRuntime(): void {
             }
           : null;
       }
-      // A completed v2 download plays from the library file its engine verified and finalized.
+      // A completed v2 download plays from the library file its engine verified and finalized. The whole library
+      // loads a moment after launch; a Player opened before that reads this one item first.
+      await ensureV2LibraryItem(mediaId);
       const engineRecord = v2LibraryPlaybackRecord(mediaId);
       if (engineRecord) {
         return engineRecord;

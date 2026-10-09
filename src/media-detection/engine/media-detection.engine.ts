@@ -23,6 +23,8 @@ import {
   recordMseSourceObservation,
   setMseActiveTab,
   type MseSourceKind,
+  type MseTrackFiles,
+  type MseTrackLayout,
 } from './mse-playback-context';
 import { useMediaDetectionStore } from '../stores';
 import type {
@@ -48,8 +50,10 @@ import { generalPageMediaContextStore } from '../general-media';
 import { extractGeneralPageVideoId } from '../general-media/general-content-identity';
 import { isSameGeneralContentNavigation } from '../general-media/general-content-navigation';
 import { isInitOrFragmentMediaPath } from '../general-media/general-network-resource';
+import { canonicalizeObservedMediaUrl } from '../general-media/playback-media-evidence';
 import { isLikelyMediaSegment } from '../services/false-positive.filter';
 import { logGeneralNetworkTrace, logGeneralOwnerTrace, requestFrameClass } from '../general-media/general-media-diagnostics';
+import { recordPipelineOutcome } from '../pipeline/pipeline-outcome';
 
 /**
  * Media Detection Engine — passive observer of browser activity.
@@ -357,11 +361,33 @@ class MediaDetectionEngine {
   /** Keeps an observation that is ahead of the engine's navigation; replayed once the navigation arrives. */
   private defer(observation: DeferredEntry): void {
     const now = Date.now();
-    this.deferred = this.deferred.filter((entry) => now - entry.at < DEFERRED_TTL_MS);
+    this.deferred = this.deferred.filter((entry) => {
+      const live = now - entry.at < DEFERRED_TTL_MS;
+      if (!live && entry.kind === 'native') {
+        this.recordNativeDrop(entry.native, 'deferred_expired');
+      }
+      return live;
+    });
     this.deferred.push({ ...observation, at: now });
     if (this.deferred.length > MAX_DEFERRED) {
-      this.deferred.splice(0, this.deferred.length - MAX_DEFERRED);
+      for (const dropped of this.deferred.splice(0, this.deferred.length - MAX_DEFERRED)) {
+        if (dropped.kind === 'native') {
+          this.recordNativeDrop(dropped.native, 'deferred_expired');
+        }
+      }
     }
+  }
+
+  /** A native media request that never reached correlation, with the reason (see pipeline-outcome). */
+  private recordNativeDrop(input: NativeObservationInput, reason: string): void {
+    recordPipelineOutcome({
+      tabId: input.tabId ?? null,
+      pageUrl: input.pageUrl ?? null,
+      mediaUrl: input.url,
+      stage: 'detector',
+      outcome: 'REJECTED',
+      reason,
+    });
   }
 
   private replayDeferred(): void {
@@ -369,7 +395,13 @@ class MediaDetectionEngine {
       return;
     }
     const now = Date.now();
-    const pending = this.deferred.filter((entry) => now - entry.at < DEFERRED_TTL_MS);
+    const pending = this.deferred.filter((entry) => {
+      const live = now - entry.at < DEFERRED_TTL_MS;
+      if (!live && entry.kind === 'native') {
+        this.recordNativeDrop(entry.native, 'deferred_expired');
+      }
+      return live;
+    });
     this.deferred = [];
     for (const entry of pending) {
       if (entry.kind === 'native') {
@@ -493,6 +525,10 @@ class MediaDetectionEngine {
     }
     // Never attribute process-global or parked WebView traffic to the active tab.
     if (input.tabId !== this.activeTabId || input.navigationEpoch !== this.navigationEpoch) {
+      this.recordNativeDrop(
+        input,
+        !input.tabId ? 'NO_CURRENT_OWNER' : input.tabId !== this.activeTabId ? 'STALE_TAB' : 'STALE_GENERATION',
+      );
       logGeneralNetworkTrace('RESOURCE_REJECTED', {
         candidateFingerprintHash: input.resourceFingerprint ?? null,
         frameClass: requestFrameClass(input.isForMainFrame),
@@ -527,6 +563,16 @@ class MediaDetectionEngine {
       // the browser state): replayed when the engine reaches that page, dropped after a few seconds otherwise.
       if (!options?.replay) {
         this.defer({ kind: 'native', native: input });
+        recordPipelineOutcome({
+          tabId: input.tabId ?? null,
+          pageUrl: input.pageUrl ?? null,
+          mediaUrl: input.url,
+          stage: 'detector',
+          outcome: 'OBSERVED',
+          reason: 'DEFERRED_OTHER_PAGE',
+        });
+      } else {
+        this.recordNativeDrop(input, 'page_mismatch');
       }
       return;
     }
@@ -540,6 +586,7 @@ class MediaDetectionEngine {
         acceptedIntoIngest: false,
         rejectionReason: 'departed_document',
       });
+      this.recordNativeDrop(input, 'departed_document');
       return;
     }
     // A blob/MSE player is explained by the traffic it produces: repeated init/fragment requests mean
@@ -550,13 +597,26 @@ class MediaDetectionEngine {
         tabId: this.activeTabId,
         navigationEpoch: this.navigationEpoch,
         kind: isSegmentOrFragmentUrl(input.url) ? 'segment' : 'whole',
+        resourceKey: fileResourceKey(input.url),
+        url: input.url,
+        isManifest: isManifestRequest(input.url, input.mimeType),
       });
     }
     if (mediaDetectionPipeline.isSegmentBlocked(input.url)) {
+      this.recordNativeDrop(input, 'SEGMENT_RESOURCE');
       return;
     }
 
     const epoch = this.navigationEpoch;
+    // The user asked for this very resource: it is the page's current media from now on (general pages; a social
+    // page's current video is its content id).
+    if (input.userRequested && this.activeTabId && !social) {
+      generalPageMediaContextStore.adoptUserRequestedMedia({
+        tabId: this.activeTabId,
+        navigationEpoch: this.navigationEpoch,
+        mediaUrl: input.url,
+      });
+    }
     const store = useMediaDetectionStore.getState();
     // Stamped before dedupe: a resource already on record (rotated signed URL, or the same URL after a reload)
     // moves to the scope it was just observed in, including when it only lands after a MIME probe.
@@ -565,6 +625,7 @@ class MediaDetectionEngine {
       observedTabId: input.tabId,
       observedNavigationEpoch: input.navigationEpoch,
       observedPageGeneration: this.activeTabId ? generalPageMediaContextStore.get(this.activeTabId)?.pageGeneration : undefined,
+      ...(input.userRequested ? { userRequested: true } : {}),
     };
     const result = mediaDetectionPipeline.processNetworkUrl(
       store.detectedMedia,
@@ -734,6 +795,9 @@ class MediaDetectionEngine {
       elementIdentity: payload.elementIdentity,
       sourceKind: payload.sourceKind,
       isProtected: payload.isProtected,
+      trackLayout: payload.mseTracks ?? null,
+      trackFiles: payload.mseFiles ?? null,
+      blobUrl: payload.blobUrl,
     });
     logMediaDiagnostic('page_load', {
       pageUrl: payload.pageUrl,
@@ -749,11 +813,19 @@ class MediaDetectionEngine {
     elementIdentity: string | null;
     sourceKind: MseSourceKind | null;
     isProtected: boolean;
+    trackLayout?: MseTrackLayout | null;
+    trackFiles?: MseTrackFiles | null;
+    durationSec?: number | null;
+    blobUrl?: string | null;
   }): void {
     if (!this.activeTabId || !this.pageUrl) {
       return;
     }
     const state = markMsePlayback({
+      trackLayout: input.trackLayout ?? null,
+      trackFiles: input.trackFiles ?? null,
+      durationSec: input.durationSec ?? null,
+      blobUrl: input.blobUrl ?? null,
       tabId: this.activeTabId,
       navigationEpoch: this.navigationEpoch,
       pageGeneration: generalPageMediaContextStore.get(this.activeTabId)?.pageGeneration ?? null,
@@ -789,6 +861,10 @@ class MediaDetectionEngine {
       String(payload.videoWidth), String(payload.videoHeight),
       // Protection appearing on a player already on record must never be deduped away.
       String(payload.isProtected),
+      payload.mseTracks ?? '',
+      payload.mseFiles?.video ?? '',
+      payload.mseFiles?.audio ?? '',
+      String(payload.duration ?? ''),
     ].join('|');
     if (videoKey === this.lastActiveVideoKey) {
       return;
@@ -817,11 +893,19 @@ class MediaDetectionEngine {
       currentTimeBucket: payload.currentTimeBucket,
       intersectionRatio: payload.intersectionRatio,
       viewportCenterDistance: payload.viewportCenterDistance,
+      displayWidth: payload.displayWidth,
+      displayHeight: payload.displayHeight,
       isDisplayed: payload.isDisplayed,
       isVisibleStyle: payload.isVisibleStyle,
       recentlyPlayed: payload.recentlyPlayed,
       explicitAdMarker: payload.explicitAdMarker,
       associatedContentId: payload.associatedContentId,
+      // Canonical like every observed candidate (a byte range of a file is that file).
+      playingFiles: payload.isBlob
+        ? [payload.mseFiles?.video, payload.mseFiles?.audio]
+            .filter((url): url is string => Boolean(url))
+            .map(canonicalizeObservedMediaUrl)
+        : null,
       observedAt: Date.now(),
     };
 
@@ -831,6 +915,10 @@ class MediaDetectionEngine {
         elementIdentity: payload.elementIdentity,
         sourceKind: payload.sourceKind,
         isProtected: payload.isProtected,
+        trackLayout: payload.mseTracks ?? null,
+        trackFiles: payload.mseFiles ?? null,
+        durationSec: payload.duration ?? null,
+        blobUrl: payload.currentSrc,
       });
     } else if (payload.isProtected && this.pageUrl) {
       // A protected player with a plain src is still protected; record it so nothing is offered for it.
@@ -840,6 +928,27 @@ class MediaDetectionEngine {
         sourceKind: null,
         isProtected: true,
       });
+    }
+
+    // A video the page shows again (scrolled back to, replayed from cache) sends no new request; the file it plays is
+    // still the page's current source, so its candidate must not age out of verification meanwhile. Refreshed before
+    // the owner changes, so the verification the change starts sees it fresh. The engine's own probe still decides
+    // whether the link itself is valid.
+    // A MediaSource player replaying from the page's own cache the same way: the files the page named for its buffers.
+    const playingSrc = evidence.currentSrc || evidence.src;
+    const playingFiles = evidence.isBlob ? (evidence.playingFiles ?? []) : playingSrc ? [playingSrc] : [];
+    if (
+      playingFiles.length > 0 &&
+      evidence.isDisplayed &&
+      (evidence.paused === false ||
+        evidence.recentlyPlayed ||
+        (evidence.intersectionRatio != null && evidence.intersectionRatio >= 0.5))
+    ) {
+      for (const file of playingFiles) {
+        if (/^https?:/i.test(file)) {
+          useMediaDetectionStore.getState().refreshPlayingSource(file, evidence.observedAt);
+        }
+      }
     }
 
     if (resolveSocialPlatform(payload.pageUrl)) {
@@ -1275,6 +1384,7 @@ type NativeObservationInput = {
   isForMainFrame?: boolean;
   resourceFingerprint?: string | null;
   observationSource?: string | null;
+  userRequested?: boolean;
 };
 
 type DeferredEntry = { kind: 'native'; native: NativeObservationInput } | { kind: 'page'; raw: string };
@@ -1320,6 +1430,21 @@ function pageUrlOfMessage(message: ParsedBridgeMessage): string | null {
 }
 
 /** Init segments, media fragments and playlist segments — never a standalone downloadable file. */
+/** Host + path: every byte range and every re-signed URL of one file is the same file. */
+function fileResourceKey(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.host}${parsed.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+function isManifestRequest(url: string, mimeType: string | null | undefined): boolean {
+  const mime = (mimeType ?? '').toLowerCase();
+  return mime.includes('mpegurl') || mime.includes('dash+xml') || /\.(m3u8|mpd)(?:[?#]|$)/i.test(url);
+}
+
 function isSegmentOrFragmentUrl(url: string): boolean {
   return isLikelyMediaSegment(url) || isInitOrFragmentMediaPath(url);
 }

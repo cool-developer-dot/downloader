@@ -8,11 +8,12 @@
 
 import { resolveSocialPlatform } from '../social/social-content-identity';
 import type { ActiveVideoEvidence } from '../social/types';
-import { buildGeneralCurrentMediaIdentity } from './general-content-identity';
+import { buildGeneralCurrentMediaIdentity, extractGeneralPageVideoId } from './general-content-identity';
 import { classifyGeneralContentNavigation } from './general-content-navigation';
 import { stableResourcePath } from '../social-source/resource-identity';
 import {
   looksLikeGeneralPlayerIframe,
+  IFRAME_OWNER_MIN_INTERSECTION,
   resolveIframeOwnerStrength,
   shouldAcceptIframeAsCurrentOwner,
   type GeneralFrameClass,
@@ -33,6 +34,8 @@ import {
 import type { GeneralPageMediaContext } from './types';
 
 const MAX_TAB_CONTEXTS = 8;
+/** How long before a recycled blob player's next source appears its library may have requested that source. */
+const MSE_SOURCE_HANDOVER_MS = 4_000;
 /** Keep one previous generation snapshot per tab for stale-event checks. */
 const MAX_PREVIOUS_PER_TAB = 1;
 
@@ -148,6 +151,93 @@ function buildMediaIdentity(
   });
 }
 
+/** A rendered player below this area (CSS px²) is a thumbnail preview, never what the page URL names. */
+const PAGE_ID_MIN_DISPLAY_AREA = 40_000;
+
+/**
+ * Which file a player shows, for binding the page URL's video id: the object path without host or query, so the same
+ * file served by another CDN edge or with a rotated signature stays the same; a blob is its own URL.
+ */
+function pageIdResourceKey(url: string | null | undefined): string | null {
+  if (!url) {
+    return null;
+  }
+  if (url.toLowerCase().startsWith('blob:')) {
+    return url.slice(0, 160);
+  }
+  try {
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return null;
+    }
+    // A short path (`/video.mp4`, `/stream`) names its file only together with its host and selectors.
+    return parsed.pathname.length >= 12 ? parsed.pathname : resourcePathKey(url);
+  } catch {
+    return null;
+  }
+}
+
+type PageIdBinding = {
+  identity: string | null;
+  pageIdResource: string | null;
+};
+
+/**
+ * The current media identity on a page whose URL names a video id. That id describes the first resource the page's
+ * main player showed under it; a player showing any other resource — the next reel of a viewer that never changes its
+ * address, a recycled feed player, the item that was still playing when the URL switched — is identified by its own
+ * element and resource, so every new video is a new offer and the previous one can never stand for it.
+ */
+function resolvePageIdIdentity(input: {
+  current: GeneralPageMediaContext;
+  pageVideoId: string;
+  evidence: ActiveVideoEvidence;
+  src: string | null;
+  ownerStrength: GeneralOwnerStrength | null;
+}): PageIdBinding {
+  const { current, evidence } = input;
+  const resource = pageIdResourceKey(input.src);
+  let bound = current.pageIdResource ?? null;
+  const excluded = current.pageIdExcludedResource ?? null;
+  const pageIdentity = `video:${input.pageVideoId}`.slice(0, 160);
+  const own = (): string | null =>
+    buildGeneralCurrentMediaIdentity({
+      pageUrl: null,
+      elementIdentity: evidence.elementIdentity,
+      src: input.src,
+    });
+
+  if (resource && excluded && resource === excluded) {
+    return { identity: own(), pageIdResource: bound };
+  }
+  if (!bound) {
+    const area =
+      evidence.displayWidth != null && evidence.displayHeight != null
+        ? evidence.displayWidth * evidence.displayHeight
+        : null;
+    const eligible =
+      resource != null &&
+      input.ownerStrength != null &&
+      evidence.isDisplayed &&
+      !evidence.explicitAdMarker &&
+      (area == null || area <= 0 || area >= PAGE_ID_MIN_DISPLAY_AREA);
+    if (eligible) {
+      bound = resource;
+    }
+    // Nothing shown under this id yet (no source, a preview, an ad): nothing else can be what it names.
+    return {
+      identity: eligible || resource == null ? pageIdentity : own(),
+      pageIdResource: bound,
+    };
+  }
+  // A player with no source after the bound one (a recycled player between items) shows nothing the id names.
+  const attached = resource != null && resource === bound;
+  return {
+    identity: attached ? pageIdentity : own(),
+    pageIdResource: bound,
+  };
+}
+
 function resolveVideoOwnerStrength(evidence: ActiveVideoEvidence): GeneralOwnerStrength | null {
   if (!evidence.isDisplayed || evidence.isVisibleStyle === false) {
     return null;
@@ -178,6 +268,54 @@ function identityKindOf(identity: string | null): string | null {
     return 'element-blob';
   }
   return 'element-resource';
+}
+
+/**
+ * Nothing of this player's video is on screen: it is not displayed, or it is wholly outside the viewport — an iframe
+ * player (whose playback is not visible to the page), or a video element that is not playing. A playing video scrolled
+ * out of view (the article the user reads on below it) is still the video the user is watching.
+ */
+function isOwnerOffScreen(
+  evidence: Pick<ActiveVideoEvidence, 'isDisplayed' | 'isVisibleStyle' | 'intersectionRatio' | 'paused' | 'playerKind'>,
+): boolean {
+  if (!evidence.isDisplayed || evidence.isVisibleStyle === false) {
+    return true;
+  }
+  const ratio = evidence.intersectionRatio;
+  if (ratio == null) {
+    return false;
+  }
+  // An iframe player below the share of it that makes it the page's current player at all.
+  if (evidence.playerKind === 'iframe') {
+    return ratio < IFRAME_OWNER_MIN_INTERSECTION;
+  }
+  return ratio === 0 && evidence.paused !== false;
+}
+
+/** Positively in view: displayed, and a known share of it inside the viewport (an unknown share proves nothing). */
+function isOwnerOnScreen(
+  evidence: Pick<ActiveVideoEvidence, 'isDisplayed' | 'isVisibleStyle' | 'intersectionRatio' | 'paused' | 'playerKind'>,
+): boolean {
+  return evidence.intersectionRatio != null && evidence.intersectionRatio > 0 && !isOwnerOffScreen(evidence);
+}
+
+/** The current video's own player, seen on screen before, reported itself off screen (see activeOwnerHidden). */
+function markActiveOwnerHidden(tabId: string, navigationEpoch: number, elementIdentity: string | null | undefined): void {
+  const state = byTab.get(tabId);
+  const current = state?.current;
+  if (
+    !state ||
+    !current ||
+    !elementIdentity ||
+    current.navigationEpoch !== navigationEpoch ||
+    current.activeMediaElementIdentity !== elementIdentity ||
+    !current.activeOwnerSeenOnScreen ||
+    current.activeOwnerHidden
+  ) {
+    return;
+  }
+  state.current = { ...current, activeOwnerHidden: true };
+  notifyOwnerListeners();
 }
 
 export const generalPageMediaContextStore = {
@@ -289,6 +427,7 @@ export const generalPageMediaContextStore = {
       currentMediaIdentity: shouldBump ? null : (prev?.currentMediaIdentity ?? null),
       activeVideoCurrentSrc: shouldBump ? null : (prev?.activeVideoCurrentSrc ?? null),
       activeVideoIsBlob: shouldBump ? false : (prev?.activeVideoIsBlob ?? false),
+      activeVideoPlayingFiles: shouldBump ? null : (prev?.activeVideoPlayingFiles ?? null),
       activeVideoIntersectionRatio: shouldBump
         ? null
         : (prev?.activeVideoIntersectionRatio ?? null),
@@ -299,6 +438,10 @@ export const generalPageMediaContextStore = {
       activeVideoMuted: shouldBump ? null : (prev?.activeVideoMuted ?? null),
       activeVideoWidth: shouldBump ? null : (prev?.activeVideoWidth ?? null),
       activeVideoHeight: shouldBump ? null : (prev?.activeVideoHeight ?? null),
+      activeVideoDisplayWidth: shouldBump ? null : (prev?.activeVideoDisplayWidth ?? null),
+      activeVideoDisplayHeight: shouldBump ? null : (prev?.activeVideoDisplayHeight ?? null),
+      carryFromGeneration: shouldBump ? null : (prev?.carryFromGeneration ?? null),
+      carryObservedSince: shouldBump ? null : (prev?.carryObservedSince ?? null),
       explicitAdMarker: false,
       userInteractionSignal: shouldBump
         ? false
@@ -307,6 +450,17 @@ export const generalPageMediaContextStore = {
       frameClass: shouldBump ? null : (prev?.frameClass ?? null),
       iframeIdentity: shouldBump ? null : (prev?.iframeIdentity ?? null),
       ownerStrength: shouldBump ? null : (prev?.ownerStrength ?? null),
+      requestedMediaIdentity: shouldBump ? null : (prev?.requestedMediaIdentity ?? null),
+      pageIdResource: shouldBump ? null : (prev?.pageIdResource ?? null),
+      // An SPA route to another id while the previous item still plays: that item is not what the new id names.
+      pageIdExcludedResource: shouldBump
+        ? navigationChanged
+          ? null
+          : pageIdResourceKey(prev?.activeVideoCurrentSrc)
+        : (prev?.pageIdExcludedResource ?? null),
+      activeAssociatedContentId: shouldBump ? null : (prev?.activeAssociatedContentId ?? null),
+      activeOwnerHidden: shouldBump ? false : (prev?.activeOwnerHidden ?? false),
+      activeOwnerSeenOnScreen: shouldBump ? false : (prev?.activeOwnerSeenOnScreen ?? false),
       observedAt: Date.now(),
     };
 
@@ -378,15 +532,27 @@ export const generalPageMediaContextStore = {
     const recycledOwnershipChange =
       prevElement === input.evidence.elementIdentity && Boolean(prevSrc) && srcPathChanged;
 
+    // The feed item the player shows. A report without one keeps the item the same player showed (the player is
+    // between cards, nothing is laid under it for a moment) unless its source moved.
+    const reportedAssociated = input.evidence.associatedContentId?.trim() || null;
+    const priorAssociated = current.activeAssociatedContentId ?? null;
+    const sameElement = Boolean(prevElement) && prevElement === input.evidence.elementIdentity;
+    const associatedContentId =
+      reportedAssociated ?? (sameElement && !srcPathChanged ? priorAssociated : null);
+    // The same player now shows another feed item (an overlay player moved over the next card, a recycled iframe
+    // player told to load the next video): what it showed before is not current, even with an unchanged src.
+    const associatedContentChange =
+      sameElement && priorAssociated != null && reportedAssociated != null && priorAssociated !== reportedAssociated;
+
     const visibleOwnershipChange =
-      (elementChanged || recycledOwnershipChange) &&
+      (elementChanged || recycledOwnershipChange || associatedContentChange) &&
       input.evidence.isDisplayed &&
       (input.evidence.intersectionRatio == null ||
         input.evidence.intersectionRatio >= 0.35);
 
     const shouldBump = Boolean(
       visibleOwnershipChange &&
-        (recycledOwnershipChange || elementChanged),
+        (recycledOwnershipChange || elementChanged || associatedContentChange),
     );
 
     if (shouldBump && state) {
@@ -394,12 +560,8 @@ export const generalPageMediaContextStore = {
     }
 
     const resourceIdentity = resourcePathKey(nextSrc);
-    const mediaIdentity = buildMediaIdentity(
-      input.evidence.elementIdentity,
-      nextSrc,
-      input.evidence.pageUrl || current.pageUrl,
-      input.evidence.associatedContentId,
-    );
+    const evidencePageUrl = input.evidence.pageUrl || current.pageUrl;
+    const pageVideoId = extractGeneralPageVideoId(evidencePageUrl);
 
     const userInteraction =
       input.evidence.recentlyPlayed ||
@@ -438,7 +600,10 @@ export const generalPageMediaContextStore = {
         frameClass,
         reason: 'HIDDEN_VIDEO',
       });
-      return current;
+      if (isOwnerOffScreen(input.evidence)) {
+        markActiveOwnerHidden(input.tabId, input.navigationEpoch, input.evidence.elementIdentity);
+      }
+      return this.get(input.tabId);
     }
 
     if (playerKind === 'video' && !input.evidence.isDisplayed && !input.evidence.recentlyPlayed) {
@@ -451,25 +616,51 @@ export const generalPageMediaContextStore = {
           frameClass,
           reason: 'HIDDEN_VIDEO',
         });
-        return current;
+        markActiveOwnerHidden(input.tabId, input.navigationEpoch, input.evidence.elementIdentity);
+        return this.get(input.tabId);
       }
     }
 
+    const binding = pageVideoId
+      ? resolvePageIdIdentity({ current, pageVideoId, evidence: input.evidence, src: nextSrc, ownerStrength })
+      : null;
+    const mediaIdentity =
+      binding?.identity ??
+      buildMediaIdentity(
+        input.evidence.elementIdentity,
+        nextSrc,
+        evidencePageUrl,
+        associatedContentId,
+      );
+
+    // Off screen only after having been on screen: the same player, seen before, now out of view.
+    const ownerOffScreen = isOwnerOffScreen(input.evidence);
+    const ownerSeenBefore = sameElement && Boolean(current.activeOwnerSeenOnScreen);
     const prevIdentity = current.currentMediaIdentity;
+    // A resource the user asked for stays current while the player keeps showing what it showed then.
+    const requestedMediaIdentity = shouldBump ? null : (current.requestedMediaIdentity ?? null);
     const next: GeneralPageMediaContext = {
       ...current,
+      pageIdResource: binding ? binding.pageIdResource : (current.pageIdResource ?? null),
+      activeAssociatedContentId: associatedContentId,
+      activeOwnerHidden: ownerOffScreen && ownerSeenBefore,
+      activeOwnerSeenOnScreen: isOwnerOnScreen(input.evidence) || ownerSeenBefore,
       pageUrl: input.evidence.pageUrl || current.pageUrl,
       activeMediaElementIdentity: input.evidence.elementIdentity,
       activeMediaResourceIdentity: resourceIdentity,
-      currentMediaIdentity: mediaIdentity,
+      currentMediaIdentity: requestedMediaIdentity ?? mediaIdentity,
+      requestedMediaIdentity,
       activeVideoCurrentSrc: nextSrc,
       activeVideoIsBlob: input.evidence.isBlob,
+      activeVideoPlayingFiles: input.evidence.isBlob ? (input.evidence.playingFiles ?? null) : null,
       activeVideoIntersectionRatio: input.evidence.intersectionRatio,
       activeVideoPaused: input.evidence.paused,
       activeVideoRecentlyPlayed: input.evidence.recentlyPlayed,
       activeVideoMuted: input.evidence.muted,
       activeVideoWidth: input.evidence.videoWidth,
       activeVideoHeight: input.evidence.videoHeight,
+      activeVideoDisplayWidth: input.evidence.displayWidth ?? null,
+      activeVideoDisplayHeight: input.evidence.displayHeight ?? null,
       explicitAdMarker: input.evidence.explicitAdMarker,
       userInteractionSignal: userInteraction,
       playerKind,
@@ -479,6 +670,16 @@ export const generalPageMediaContextStore = {
       pageGeneration: shouldBump
         ? current.pageGeneration + 1
         : current.pageGeneration,
+      // The player's library requested the next item's source moments before it showed it (a recycled blob, an
+      // iframe player given the next video): requests of the previous generation just before the change carry over.
+      ...(shouldBump
+        ? (recycledOwnershipChange && input.evidence.isBlob) || (associatedContentChange && !elementChanged)
+          ? {
+              carryFromGeneration: current.pageGeneration,
+              carryObservedSince: Date.now() - MSE_SOURCE_HANDOVER_MS,
+            }
+          : { carryFromGeneration: null, carryObservedSince: null }
+        : null),
       observedAt: input.evidence.observedAt,
     };
 
@@ -495,7 +696,8 @@ export const generalPageMediaContextStore = {
       current.activeVideoPaused !== next.activeVideoPaused ||
       current.activeVideoRecentlyPlayed !== next.activeVideoRecentlyPlayed ||
       current.ownerStrength !== next.ownerStrength ||
-      current.playerKind !== next.playerKind;
+      current.playerKind !== next.playerKind ||
+      Boolean(current.activeOwnerHidden) !== Boolean(next.activeOwnerHidden);
     if (ownershipRelevant) {
       notifyOwnerListeners();
       const kind = identityKindOf(next.currentMediaIdentity);
@@ -658,6 +860,9 @@ export const generalPageMediaContextStore = {
         frameClass: input.evidence.frameClass,
         reason: input.evidence.isDisplayed ? 'LOW_CORRELATION' : 'HIDDEN_VIDEO',
       });
+      if (isOwnerOffScreen({ ...input.evidence, paused: null, playerKind: 'iframe' })) {
+        markActiveOwnerHidden(input.tabId, input.navigationEpoch, input.evidence.iframeIdentity);
+      }
       return this.get(input.tabId);
     }
 
@@ -710,6 +915,48 @@ export const generalPageMediaContextStore = {
       return true;
     }
     return pageGeneration !== current.pageGeneration;
+  },
+
+  /**
+   * The user asked the browser for this exact resource on the current page (a WebView download). It becomes the
+   * page's current media — a new generation, so work started for the previous one is stale — whatever the page's
+   * player is showing, until that player moves to another element or source.
+   */
+  adoptUserRequestedMedia(input: {
+    tabId: string;
+    navigationEpoch: number;
+    mediaUrl: string;
+  }): GeneralPageMediaContext | null {
+    const state = byTab.get(input.tabId);
+    const current = state?.current;
+    if (!state || !current || current.navigationEpoch !== input.navigationEpoch) {
+      return null;
+    }
+    const identity = `requested:${resourcePathKey(input.mediaUrl) ?? input.mediaUrl}`;
+    if (current.requestedMediaIdentity === identity && current.currentMediaIdentity === identity) {
+      return current;
+    }
+    pushPrevious(state, current);
+    const next: GeneralPageMediaContext = {
+      ...current,
+      currentMediaIdentity: identity,
+      requestedMediaIdentity: identity,
+      activeOwnerHidden: false,
+      pageGeneration: current.pageGeneration + 1,
+      carryFromGeneration: null,
+      carryObservedSince: null,
+      observedAt: Date.now(),
+    };
+    state.current = next;
+    notifyOwnerListeners();
+    logGeneralMedia('generation_changed', {
+      tabId: next.tabId,
+      navigationEpoch: next.navigationEpoch,
+      pageGeneration: next.pageGeneration,
+      pageUrlHash: hashSafeId(next.pageUrl),
+      reason: 'user_requested_media',
+    });
+    return next;
   },
 
   clearTab(tabId: string): void {

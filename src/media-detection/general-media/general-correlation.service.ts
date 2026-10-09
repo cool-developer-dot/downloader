@@ -24,6 +24,12 @@ import { hashSafeId, logGeneralMedia, logGeneralCorrelationTrace } from './gener
 import { generalPageMediaContextStore } from './general-page-context';
 import { stableResourcePath } from '../social-source/resource-identity';
 import { isSameGeneralContentNavigation } from './general-content-navigation';
+import {
+  contentIdOfGeneralIdentity,
+  extractMediaUrlContentId,
+  sameContentIdShape,
+} from './general-content-identity';
+import { recordPipelineOutcome } from '../pipeline/pipeline-outcome';
 import type {
   CorrelatedGeneralMediaCandidateSet,
   GeneralCandidateCorrelation,
@@ -38,6 +44,8 @@ const MAX_ACTIVE_GENERAL_CANDIDATES = 6;
 
 /** Soft ceiling for "tiny preview" intrinsic dimensions (combined evidence only). */
 const TINY_DIM_PX = 240;
+/** A player drawn smaller than this (CSS px², e.g. 200×200) is a thumbnail preview. */
+const TINY_DISPLAY_AREA_CSS_PX = 40_000;
 
 export type GeneralCorrelationInput = {
   candidates: DetectedMedia[];
@@ -144,10 +152,14 @@ export function isUnsupportedScheme(media: DetectedMedia): boolean {
 export function isTinyPreviewContext(context: GeneralPageMediaContext): boolean {
   const w = context.activeVideoWidth;
   const h = context.activeVideoHeight;
+  const dw = context.activeVideoDisplayWidth;
+  const dh = context.activeVideoDisplayHeight;
   const smallDims =
     (w != null && w > 0 && w < TINY_DIM_PX) ||
     (h != null && h > 0 && h < TINY_DIM_PX) ||
-    (w != null && h != null && w > 0 && h > 0 && w * h < TINY_DIM_PX * TINY_DIM_PX);
+    (w != null && h != null && w > 0 && h > 0 && w * h < TINY_DIM_PX * TINY_DIM_PX) ||
+    // Drawn as a thumbnail (the page detector's own preview bound), whatever its intrinsic resolution.
+    (dw != null && dh != null && dw > 0 && dh > 0 && dw * dh < TINY_DISPLAY_AREA_CSS_PX);
 
   if (!smallDims) {
     return false;
@@ -169,15 +181,30 @@ function matchesActiveCurrentSrc(
     // Iframe src is the player document, never the executable media URL.
     return null;
   }
-  if (media.ownerElementIdentity && media.ownerElementIdentity === context.activeMediaElementIdentity) return true;
   const active = context.activeVideoCurrentSrc;
+  const ownedByActiveElement =
+    Boolean(media.ownerElementIdentity) && media.ownerElementIdentity === context.activeMediaElementIdentity;
   if (!active) {
-    return null;
+    // The active element shows nothing right now (a recycled player between items): what it held before is not
+    // current, so its own earlier sources prove nothing.
+    return ownedByActiveElement ? false : null;
   }
   if (active.toLowerCase().startsWith('blob:')) {
-    // Blob indicates active player — network candidate may still correlate.
-    return null;
+    // A file the page named for this player's buffers is what it plays — its currentSrc, in effect — whenever it was
+    // requested (a video scrolled back to replays from the page's own cache).
+    const playing = context.activeVideoPlayingFiles ?? [];
+    if (
+      playing.some(
+        (file) => urlsShareResourcePath(media.url, file) || urlsShareResourcePath(media.finalUrl || media.url, file),
+      )
+    ) {
+      return true;
+    }
+    // Blob indicates active player — network candidate may still correlate. An http source this element reported
+    // earlier is not what it plays now.
+    return ownedByActiveElement ? false : null;
   }
+  // Same element is not enough: a recycled player keeps its identity while its source moves to the next item.
   return (
     urlsShareResourcePath(media.url, active) ||
     urlsShareResourcePath(media.finalUrl || media.url, active) ||
@@ -244,7 +271,32 @@ function buildEvidence(
   const pageGenerationMatch =
     input.pageGeneration == null ||
     input.pageGeneration === context.pageGeneration;
-  const candidateGenerationMatch = media.observedPageGeneration == null || media.observedPageGeneration === context.pageGeneration;
+  // A recycled blob player's new source was requested just before it was attached, and an iframe player given the next
+  // feed item requested it just before the page reported the change (see carryFromGeneration).
+  const carriedIntoGeneration =
+    (context.activeVideoIsBlob || context.playerKind === 'iframe') &&
+    !media.ownerElementIdentity &&
+    context.carryFromGeneration != null &&
+    media.observedPageGeneration === context.carryFromGeneration &&
+    context.carryObservedSince != null &&
+    media.detectedAt >= context.carryObservedSince;
+  // A request naming the item the player shows is that item's source whenever it was made (the item was shown
+  // before and is scrolled back to, or its manifest came before the change was reported); one naming another item
+  // is never current.
+  const currentContentId = contentIdOfGeneralIdentity(context.currentMediaIdentity);
+  const urlContentId =
+    extractMediaUrlContentId(media.finalUrl || media.url) ?? extractMediaUrlContentId(media.url);
+  const contentIdMatch = currentContentId != null && urlContentId === currentContentId;
+  const contentIdMismatch =
+    currentContentId != null &&
+    urlContentId != null &&
+    urlContentId !== currentContentId &&
+    sameContentIdShape(urlContentId, currentContentId);
+  const candidateGenerationMatch =
+    media.observedPageGeneration == null ||
+    media.observedPageGeneration === context.pageGeneration ||
+    carriedIntoGeneration ||
+    contentIdMatch;
 
   const currentPageMatch =
     Boolean(input.pageUrl) && isSameGeneralContentNavigation(media.pageUrl, context.pageUrl) &&
@@ -273,6 +325,10 @@ function buildEvidence(
     !context.userInteractionSignal;
   const hidden = idleElement && intersection != null && intersection < 0.15;
   const visibilityUnknown = idleElement && intersection == null;
+  const emptyPlayer =
+    context.playerKind !== 'iframe' &&
+    Boolean(context.activeMediaElementIdentity) &&
+    !context.activeVideoCurrentSrc;
 
   const preload =
     Boolean(context.activeMediaElementIdentity) &&
@@ -298,9 +354,11 @@ function buildEvidence(
     recentObservation: Date.now() - media.detectedAt < RECENT_MS,
     currentPageMatch,
     userInteractionMatch: context.userInteractionSignal && srcMatch === true,
+    userRequestedMatch: media.userRequested === true && tabMatch && navigationMatch && currentPageMatch,
     preloadPenalty: preload,
     hiddenElementPenalty: hidden,
     visibilityUnknownPenalty: visibilityUnknown,
+    emptyPlayerPenalty: emptyPlayer,
     tinyPreviewPenalty: tinyPreview,
     adPenalty: context.explicitAdMarker,
     // A resource first seen in an earlier generation (preloaded) is current once the active element plays it.
@@ -311,6 +369,8 @@ function buildEvidence(
     thumbnailPenalty: thumbnail,
     blobOnlyPenalty: isBlobOnlyResource(media),
     unsupportedSchemePenalty: isUnsupportedScheme(media),
+    contentIdMatch,
+    contentIdMismatch,
   };
 }
 
@@ -347,6 +407,9 @@ function confidenceFromEvidence(
   if (evidence.segmentPenalty) {
     return { confidence: 'REJECTED', reason: 'SEGMENT_RESOURCE', rank: -900 };
   }
+  if (evidence.contentIdMismatch) {
+    return { confidence: 'REJECTED', reason: 'OTHER_CONTENT', rank: -750 };
+  }
   if (evidence.adPenalty && evidence.currentSrcMatch !== true) {
     return { confidence: 'REJECTED', reason: 'ADVERTISEMENT', rank: -800 };
   }
@@ -368,6 +431,12 @@ function confidenceFromEvidence(
     };
   }
 
+  // The user navigated to (or clicked) exactly this resource and the WebView could not render it: that request is
+  // the ownership proof. The page's own player, whatever it shows, says nothing about it.
+  if (evidence.userRequestedMatch && !evidence.segmentPenalty && !evidence.imagePenalty && !evidence.blobOnlyPenalty) {
+    return { confidence: 'STRONG', reason: null, rank: 1000 };
+  }
+
   if (evidence.hiddenElementPenalty) {
     return {
       confidence: 'REJECTED',
@@ -380,6 +449,11 @@ function confidenceFromEvidence(
     return { confidence: 'REJECTED', reason: 'OFFSCREEN_PRELOAD', rank: -650 };
   }
 
+  // The request names the very item the current player shows.
+  if (evidence.contentIdMatch && !evidence.emptyPlayerPenalty && !evidence.tinyPreviewPenalty) {
+    return { confidence: 'STRONG', reason: null, rank: 930 };
+  }
+
   // Tiny muted loops: never STRONG — keep WEAK so a meaningful player can win.
   if (evidence.tinyPreviewPenalty) {
     return { confidence: 'WEAK', reason: 'TINY_PREVIEW', rank: 80 };
@@ -388,6 +462,12 @@ function confidenceFromEvidence(
   // Idle element not yet reported visible: WEAK until visibility evidence arrives (it re-runs selection).
   if (evidence.visibilityUnknownPenalty) {
     return { confidence: 'WEAK', reason: null, rank: 150 };
+  }
+
+  // The player in front shows nothing yet — its next source re-runs selection. Until then nothing (least of all what
+  // it played before) may be offered as the current video.
+  if (evidence.emptyPlayerPenalty) {
+    return { confidence: 'WEAK', reason: null, rank: 100 };
   }
 
   // STRONG: active visible currentSrc match + user-facing playback evidence
@@ -434,6 +514,22 @@ function confidenceFromEvidence(
 }
 
 /**
+ * A source carried over from the previous generation (a recycled blob player's next source, requested just before it
+ * was attached) ranks below anything observed for the current one, and the most recent carried request first: a
+ * prefetch of a later item was requested earlier than the source the player attached last.
+ */
+function carriedSourceRankAdjustment(media: DetectedMedia, context: GeneralPageMediaContext): number {
+  if (
+    context.carryFromGeneration == null ||
+    context.carryObservedSince == null ||
+    media.observedPageGeneration !== context.carryFromGeneration
+  ) {
+    return 0;
+  }
+  return -12 + Math.max(0, Math.min(10, (media.detectedAt - context.carryObservedSince) / 400));
+}
+
+/**
  * Correlate one candidate against current general page media context.
  */
 export function correlateGeneralCandidate(
@@ -446,12 +542,16 @@ export function correlateGeneralCandidate(
   const evidence = buildEvidence(media, { ...input, candidates: [] }, context);
   // New production observations must prove which document requested them.
   // Older fixture/legacy records without provenance retain their existing scoring.
-  if (media.observedTabId && (context.playerKind === 'iframe' || (context.activeVideoIsBlob && !media.ownerElementIdentity))) {
+  if (
+    media.observedTabId &&
+    !media.userRequested &&
+    (context.playerKind === 'iframe' || (context.activeVideoIsBlob && !media.ownerElementIdentity))
+  ) {
     const provenance = resolveGeneralRequestProvenance(media, context);
     const expected = context.playerKind === 'iframe' ? 'OWNER_FRAME' : 'TOP_DOCUMENT';
     const rejectionReason: GeneralRejectionReason | null =
       provenance === expected
-        ? context.playerKind === 'iframe' || evidence.recentObservation
+        ? context.playerKind === 'iframe' || evidence.recentObservation || evidence.currentSrcMatch === true
           ? null
           : 'WEAK_UNCORRELATED_MEDIA'
         : provenance === 'UNKNOWN'
@@ -495,7 +595,7 @@ export function correlateGeneralCandidate(
         confidence: 'MEDIUM',
         rejectionReason: null,
         evidence,
-        rank: Math.max(ranked.rank, 550) + Math.min(legacy.score, 1) * 20,
+        rank: Math.max(ranked.rank, 550) + Math.min(legacy.score, 1) * 20 + carriedSourceRankAdjustment(media, context),
       };
     }
   }
@@ -540,7 +640,7 @@ export function correlateGeneralCandidate(
   const rank =
     ranked.confidence === 'REJECTED'
       ? ranked.rank
-      : ranked.rank + Math.min(legacy.score, 1.2) * 15 + familyBoost;
+      : ranked.rank + Math.min(legacy.score, 1.2) * 15 + familyBoost + carriedSourceRankAdjustment(media, context);
 
   return {
     confidence: ranked.confidence,
@@ -631,6 +731,14 @@ export function selectCurrentGeneralMedia(
     if (correlation.confidence === 'REJECTED') {
       rejected.push({
         candidateId: candidate.id,
+        reason: correlation.rejectionReason ?? 'LOW_CORRELATION',
+      });
+      recordPipelineOutcome({
+        tabId: context.tabId,
+        pageUrl: context.pageUrl,
+        mediaUrl: candidate.finalUrl || candidate.url,
+        stage: 'correlation',
+        outcome: 'REJECTED',
         reason: correlation.rejectionReason ?? 'LOW_CORRELATION',
       });
       logGeneralMedia('candidate_rejected', {
@@ -747,8 +855,12 @@ export function selectCurrentGeneralMedia(
     }
   }
 
+  // Once a request names the item the player shows, requests naming nothing (an ad break's stream, another player's
+  // file) are not offered in its place; the files a named manifest lists are claimed by that manifest anyway.
+  const named = ranked.filter((item) => item.correlation.evidence.contentIdMatch);
+  const offered = named.length > 0 ? named : ranked;
   if (best) {
-    for (const item of ranked.slice(0, MAX_ACTIVE_GENERAL_CANDIDATES)) {
+    for (const item of offered.slice(0, MAX_ACTIVE_GENERAL_CANDIDATES)) {
       activeCandidateIds.push(item.media.id);
       logGeneralCorrelationTrace('CANDIDATE_RANKED', {
         tabId: context.tabId,
@@ -844,3 +956,45 @@ export function selectCurrentMediaForActiveGeneralTab(input: {
 
   return { ...result, usedGeneralCorrelation: true };
 }
+
+/**
+ * Whether the page's current correlation rejects the candidate a verified file came from — an item preloaded ahead,
+ * the item scrolled past, another item's stream. Verification takes seconds and the offer it builds may draw on the
+ * candidates ownership allowed when it started; the page may since have shown which of them is not current. Such a
+ * file is never published as the current video's offer. A file no candidate names (a manifest's rendition) is not
+ * judged here: the manifest it came from was.
+ */
+export function isOfferedSourceRejectedNow(input: {
+  sourceUrl: string;
+  candidates: DetectedMedia[];
+  tabId: string | null;
+  navigationEpoch: number;
+  pageUrl: string | null;
+}): boolean {
+  const keyOf = (url: string | null | undefined) => (url ? (stableResourcePath(url) ?? url) : null);
+  const key = keyOf(input.sourceUrl);
+  const source = input.candidates.find(
+    (c) => keyOf(c.finalUrl || c.url) === key || keyOf(c.url) === key,
+  );
+  if (!source) {
+    return false;
+  }
+  const pick = selectCurrentMediaForActiveGeneralTab({
+    candidates: input.candidates,
+    tabId: input.tabId,
+    navigationEpoch: input.navigationEpoch,
+    pageUrl: input.pageUrl,
+  });
+  return pick.group.rejected.some((r) => r.candidateId === source.id && OTHER_VIDEO_REJECTIONS.has(r.reason));
+}
+
+/**
+ * Rejections that say a candidate is another video than the one shown (not merely old or unproven: a manifest's
+ * rendition fetched when the item was first shown is the same video when it is scrolled back to).
+ */
+const OTHER_VIDEO_REJECTIONS: ReadonlySet<GeneralRejectionReason> = new Set<GeneralRejectionReason>([
+  'OFFSCREEN_PRELOAD',
+  'OTHER_CONTENT',
+  'ADVERTISEMENT',
+  'TINY_PREVIEW',
+]);

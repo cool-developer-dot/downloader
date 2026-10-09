@@ -10,6 +10,7 @@ import {
 import { useDownloadsStore } from '@/store/downloads';
 
 import { SEARCH_DEBOUNCE_MS } from '../constants/favorites.constants';
+import { ensureV2LibraryHydrated } from '@/downloads/v2';
 
 function findDownloadIdInStore(sourceUrl: string): string | null {
   const key = normalizeFavoriteSourceKey(sourceUrl);
@@ -87,6 +88,10 @@ export function useFavoritesScreen() {
     remove,
   } = useFavorites({ autoLoad: true });
 
+  // Library rows load a moment after launch; this screen may open before that.
+  useEffect(() => {
+    void ensureV2LibraryHydrated();
+  }, []);
   const [removeTargetId, setRemoveTargetId] = useState<string | null>(null);
   const [removing, setRemoving] = useState(false);
   const [searchDraft, setSearchDraft] = useState('');

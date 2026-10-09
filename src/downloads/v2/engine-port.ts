@@ -5,9 +5,12 @@ import type {
   DownloadRecord,
   DownloadSettings,
   EnqueueRequest,
+  EnqueueResult,
   LibraryItem,
   LibraryPage,
   LibraryQuery,
+  PageFetchRequest,
+  PageFetchResult,
   ProbeRequest,
   ProbeResult,
   VidoraMediaEvents,
@@ -20,7 +23,13 @@ import type {
 export type V2EnginePort = {
   /** The native classifier: DOWNLOADABLE, or why not (protected, live, unsupported, or a transient failure). */
   probe(request: ProbeRequest): Promise<ProbeResult>;
+  /** Reads a pasted/shared link's page for the direct analyzer. Missing on older native builds (no direct analysis). */
+  fetchPage?(request: PageFetchRequest): Promise<PageFetchResult>;
   enqueue(request: EnqueueRequest): Promise<DownloadRecord>;
+  /** One download per video (atomic duplicate check). Missing on older native builds: `enqueue` is used then. */
+  enqueueUnique?(request: EnqueueRequest): Promise<EnqueueResult>;
+  /** The duplicate check alone, before any network request. Missing on older native builds. */
+  findDuplicate?(request: EnqueueRequest): Promise<EnqueueResult | null>;
   pause(id: string): Promise<void>;
   resume(id: string): Promise<void>;
   retry(id: string): Promise<void>;

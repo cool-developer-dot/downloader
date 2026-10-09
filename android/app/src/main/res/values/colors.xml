@@ -1,6 +1,11 @@
 <resources>
-  <!-- The launch screen is plain white in every configuration: white background, VidoraX logo, nothing else. -->
+  <!-- The launch screen follows the app's theme: white here (Light / Logo, colors.ts palette.neutralWhite), #0D0D0D in
+       values-night (Dark). The app's choice reaches these resources before the first frame (AppNightMode: per-app night
+       mode on Android 12+, AppCompat in MainApplication), and the in-app splash that follows paints the same colour, so
+       the launch never flashes. splashscreen_logo is the transparent VidoraX logo with the "VidoraX" wordmark
+       underneath (#171717 here, #F5F5F5 in drawable-night-*), rendered by scripts/dev/render-native-splash.py. -->
   <color name="splashscreen_background">#FFFFFF</color>
+  <bool name="launch_light_system_bars">true</bool>
   <!-- The frame between the splash and the first React paint follows the app's own background, so the app
        never opens on a colour it is about to replace. -->
   <color name="window_background">#FFFFFF</color>

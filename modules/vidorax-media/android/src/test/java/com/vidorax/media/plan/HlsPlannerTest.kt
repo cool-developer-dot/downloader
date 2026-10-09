@@ -353,7 +353,7 @@ class HlsPlannerTest {
     assertEquals(360, ready(plan("/m/master.m3u8", choice)).selected!!.height)
   }
 
-  @Test fun aVariantThatNeedsSeparateAudioIsNeverChosenNorSubstituted() {
+  @Test fun aVariantWithSeparateAudioIsPlannedWithItsAudioRendition() {
     playlist(
       "/a/master.m3u8",
       """
@@ -366,25 +366,75 @@ class HlsPlannerTest {
       """,
     )
     playlist("/a/low/index.m3u8", vod)
+    playlist("/a/hi/index.m3u8", vod)
+    playlist("/a/audio/index.m3u8", vod)
     val auto = ready(plan("/a/master.m3u8"))
-    assertEquals("the muxed variant is taken over the video-only one", 360, auto.selected!!.height)
-    assertTrue(auto.variants.first { it.height == 1080 }.needsAudioMux)
+    assertEquals("the best quality, its sound merged from the rendition", 1080, auto.selected!!.height)
+    val audio = checkNotNull(auto.audio)
+    assertEquals(url("/a/audio/index.m3u8"), audio.mediaPlaylistUrl)
+    assertEquals(url("/a/audio/seg0.ts?token=abc"), audio.segments.first().media.url)
+    assertEquals("en", auto.audioInfo?.label)
+    assertTrue(HlsPlanner.toProbeResult(auto).mergesAudio)
 
-    val explicit = plan("/a/master.m3u8", VariantChoice(videoId = url("/a/hi/index.m3u8"), audioId = null, maxHeight = null))
-    assertEquals(HlsPlanner.SEPARATE_AUDIO, refused(explicit, ProbeFailure.UNSUPPORTED_FORMAT))
+    val muxed = ready(plan("/a/master.m3u8", VariantChoice(videoId = url("/a/low/index.m3u8"), audioId = null, maxHeight = null)))
+    assertNull("a variant with its own sound needs no rendition", muxed.audio)
   }
 
-  @Test fun onlySeparateAudioVariantsMeansUnsupported() {
+  @Test fun onlySeparateAudioVariantsDownloadTheDefaultRendition() {
     playlist(
       "/sep/master.m3u8",
       """
       #EXTM3U
-      #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="en",URI="audio.m3u8"
+      #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="fr",URI="fr.m3u8"
+      #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="en",DEFAULT=YES,URI="en.m3u8"
       #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,CODECS="avc1.640028",AUDIO="aud"
       v.m3u8
       """,
     )
-    assertEquals(HlsPlanner.SEPARATE_AUDIO, refused(plan("/sep/master.m3u8"), ProbeFailure.UNSUPPORTED_FORMAT))
+    playlist("/sep/v.m3u8", vod)
+    playlist("/sep/en.m3u8", vod)
+    playlist("/sep/fr.m3u8", vod)
+    assertEquals(url("/sep/en.m3u8"), ready(plan("/sep/master.m3u8")).audio?.mediaPlaylistUrl)
+    val french = VariantChoice(videoId = null, audioId = url("/sep/fr.m3u8"), maxHeight = null)
+    assertEquals("the rendition asked for", url("/sep/fr.m3u8"), ready(plan("/sep/master.m3u8", french)).audio?.mediaPlaylistUrl)
+  }
+
+  @Test fun ofEqualQualitiesTheVariantWhoseSoundAnMp4CarriesWins() {
+    // A stream offering each quality with AAC and with AC-3 sound (the AC-3 one at a higher bandwidth).
+    playlist(
+      "/ac3/master.m3u8",
+      """
+      #EXTM3U
+      #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aac",NAME="English",DEFAULT=YES,URI="aac.m3u8"
+      #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="ac3",NAME="English",DEFAULT=YES,URI="ac3.m3u8"
+      #EXT-X-STREAM-INF:BANDWIDTH=8000000,RESOLUTION=1920x1080,CODECS="avc1.64002a,ac-3",AUDIO="ac3"
+      v1080-ac3.m3u8
+      #EXT-X-STREAM-INF:BANDWIDTH=7600000,RESOLUTION=1920x1080,CODECS="avc1.64002a,mp4a.40.2",AUDIO="aac"
+      v1080-aac.m3u8
+      """,
+    )
+    playlist("/ac3/v1080-ac3.m3u8", vod)
+    playlist("/ac3/v1080-aac.m3u8", vod)
+    playlist("/ac3/aac.m3u8", vod)
+    playlist("/ac3/ac3.m3u8", vod)
+    assertEquals(url("/ac3/aac.m3u8"), ready(plan("/ac3/master.m3u8")).audio?.mediaPlaylistUrl)
+  }
+
+  @Test fun aLiveOrEncryptedAudioRenditionRefusesTheStream() {
+    playlist(
+      "/lv/master.m3u8",
+      """
+      #EXTM3U
+      #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="en",DEFAULT=YES,URI="a.m3u8"
+      #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,CODECS="avc1.640028",AUDIO="aud"
+      v.m3u8
+      """,
+    )
+    playlist("/lv/v.m3u8", vod)
+    playlist("/lv/a.m3u8", vod.replace("#EXT-X-ENDLIST", ""))
+    refused(plan("/lv/master.m3u8"), ProbeFailure.LIVE_UNSUPPORTED)
+    playlist("/lv/a.m3u8", vod.replace("#EXT-X-MEDIA-SEQUENCE:0", "#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-KEY:METHOD=AES-128,URI=\"k\""))
+    refused(plan("/lv/master.m3u8"), ProbeFailure.DRM_PROTECTED)
   }
 
   @Test fun anAudioGroupWithoutItsOwnPlaylistIsMuxedAudio() {

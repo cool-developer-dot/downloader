@@ -16,10 +16,16 @@ enum class SourceKind(override val wire: String) : WireEnum {
   HLS("hls"),
 
   /**
-   * An MPD. Downloadable only when the chosen representation is one complete file (muxed audio and video, or video
-   * in a manifest without audio); it is then fetched as that progressive file. Everything else is refused.
+   * An MPD (VOD, unprotected, one period): the chosen video representation — one file or init + segments — and, when
+   * the stream keeps its sound in a separate adaptation set, one audio representation, merged into one file.
    */
   DASH("dash"),
+
+  /**
+   * One video file and one audio file of the same video (a player fed from separate tracks, e.g. MediaSource with a
+   * video and an audio SourceBuffer): both are downloaded, verified and merged into one file.
+   */
+  SPLIT("split"),
 }
 
 enum class SiteId(override val wire: String, val folderName: String) : WireEnum {
@@ -76,7 +82,30 @@ enum class DownloadErrorCode : WireEnum {
   PROCESSING_FAILED,
   NO_SPACE,
   STORAGE_ERROR,
+  /** The finished file is byte-for-byte a video the user already has: it was discarded, nothing was added. */
+  DUPLICATE,
   UNKNOWN,
+
+  /** A split download's "video" file has no video track. */
+  VIDEO_TRACK_MISSING,
+
+  /** A stream or split download's audio track is missing (the audio file or rendition has no sound). */
+  AUDIO_TRACK_MISSING,
+
+  /** The video and audio tracks do not belong to the same video (their durations disagree). */
+  TRACK_MISMATCH,
+
+  /** A segment of an HLS/DASH stream could not be downloaded (missing on the server, refused, malformed). */
+  SEGMENT_FAILED,
+
+  /** Merging or re-containering the downloaded tracks failed. */
+  MUX_FAILED,
+
+  /** Converting a track the output container cannot hold failed (no decoder/encoder, codec error). */
+  TRANSCODE_FAILED,
+
+  /** The finished file is not the media it should be (unreadable, wrong duration, a track missing after merging). */
+  INVALID_MEDIA,
   ;
 
   override val wire: String get() = name
@@ -92,6 +121,15 @@ enum class ProbeFailure : WireEnum {
   HTTP_ERROR,
   NETWORK,
   POLICY_BLOCKED,
+
+  /** Split source: the video file has no video track. */
+  VIDEO_TRACK_MISSING,
+
+  /** Split source: the audio file has no audio track. */
+  AUDIO_TRACK_MISSING,
+
+  /** Split source: the two files are not tracks of the same video. */
+  TRACK_MISMATCH,
   ;
 
   override val wire: String get() = name
@@ -100,6 +138,21 @@ enum class ProbeFailure : WireEnum {
 enum class ProgressPhase(override val wire: String) : WireEnum {
   DOWNLOAD("download"),
   PROCESSING("processing"),
+}
+
+/** What the `processing` phase is doing right now (progress events only; never persisted). */
+enum class ProcessingStage(override val wire: String) : WireEnum {
+  /** Separately downloaded video and audio are written into one file. */
+  MERGING("merging"),
+
+  /** The tracks are moved into a better container without re-encoding (e.g. MPEG-TS or fragmented MP4 → MP4). */
+  REMUXING("remuxing"),
+
+  /** A track the output container cannot hold is re-encoded. */
+  TRANSCODING("transcoding"),
+
+  /** The finished file is checked before it enters the library. */
+  VERIFYING("verifying"),
 }
 
 enum class LibrarySort(override val wire: String) : WireEnum {

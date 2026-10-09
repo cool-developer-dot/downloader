@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -27,9 +27,10 @@ import type { PlaybackSummary } from '@/playback/domain/merge';
 import { clampProgressPercent } from '@/playback/domain/progress';
 import { usePlaybackHistoryInfiniteQuery } from '@/playback/hooks';
 import {
-  selectDownloadCatalogIdentitySignature,
+  selectDownloadCatalogIdentityRevision,
   useDownloadsStore,
 } from '@/store/downloads';
+import { ensureV2LibraryHydrated } from '@/downloads/v2';
 import { useLibraryStore } from '@/store/library';
 
 type HistoryRow = PlaybackSummary & {
@@ -144,8 +145,12 @@ export const WatchHistoryScreen = memo(function WatchHistoryScreen() {
   } = usePlaybackHistoryInfiniteQuery();
 
   const availabilityById = useLibraryStore((s) => s.availabilityById);
+  // Library rows load a moment after launch; this screen may open before that.
+  useEffect(() => {
+    void ensureV2LibraryHydrated();
+  }, []);
   const catalogIdentity = useDownloadsStore(
-    selectDownloadCatalogIdentitySignature,
+    selectDownloadCatalogIdentityRevision,
   );
 
   const rows = useMemo<HistoryRow[]>(() => {
@@ -170,8 +175,11 @@ export const WatchHistoryScreen = memo(function WatchHistoryScreen() {
     if (item.missing) {
       return;
     }
-    openPlayer(item.mediaId);
-  }, []);
+    openPlayer(
+      item.mediaId,
+      rows.filter((row) => !row.missing).map((row) => row.mediaId),
+    );
+  }, [rows]);
 
   const keyExtractor = useCallback((item: HistoryRow) => item.mediaId, []);
 

@@ -25,9 +25,21 @@ describe('v2 download settings', () => {
     assert.deepEqual(v2DownloadSettings({ wifiOnly: true, maxConcurrentDownloads: 3 }), {
       maxConcurrent: 3,
       wifiOnly: true,
-      autoSaveToGallery: false,
+      autoSaveToGallery: true,
       preferredMaxHeight: null,
     });
+  });
+
+  test('finished videos go to the gallery unless the user turned it off', () => {
+    assert.equal(v2DownloadSettings({ wifiOnly: false, maxConcurrentDownloads: 2 }).autoSaveToGallery, true);
+    assert.equal(
+      v2DownloadSettings({ wifiOnly: false, maxConcurrentDownloads: 2, saveToGallery: true }).autoSaveToGallery,
+      true,
+    );
+    assert.equal(
+      v2DownloadSettings({ wifiOnly: false, maxConcurrentDownloads: 2, saveToGallery: false }).autoSaveToGallery,
+      false,
+    );
   });
 
   test('a concurrency the engine would refuse is clamped, never sent as-is', () => {

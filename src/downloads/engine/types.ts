@@ -116,6 +116,8 @@ export type TransferProgressSnapshot = {
   supportsResume?: boolean;
   errorCode: DownloadEngineErrorCode | null;
   errorMessage: string | null;
+  /** v2 `processing` phase: what the engine is doing with the downloaded tracks (merging, converting…). */
+  processingStage?: import('@modules/vidorax-media/src/VidoraMedia.types').ProcessingStage | null;
 };
 
 export type LocalDownloadRecord = {

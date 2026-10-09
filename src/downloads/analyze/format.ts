@@ -90,6 +90,15 @@ export function isNonMediaDocumentMime(mime: string | null): boolean {
   );
 }
 
+/** A direct analysis that got an HTML document back: the link is a web page, not a media file. */
+export function isWebPageAnalysis(analysis: Pick<MediaAnalysisResult, 'downloadable' | 'mimeType' | 'unsupportedReason'>): boolean {
+  if (analysis.downloadable || analysis.unsupportedReason !== 'NO_MEDIA') {
+    return false;
+  }
+  const mime = analysis.mimeType?.toLowerCase() ?? '';
+  return mime.startsWith('text/html') || mime.startsWith('application/xhtml+xml');
+}
+
 export function resolveExtension(
   url: string,
   mime: string | null,
@@ -389,6 +398,8 @@ export function createVariant(input: {
   originalIndex: number;
   /** DASH only: the representation this variant downloads. */
   representationId?: string | null;
+  /** Split tracks: the audio file merged with this video-only file. */
+  audioSourceUrl?: string | null;
 }): MediaAnalysisVariant {
   const width =
     typeof input.width === 'number' && input.width > 0
@@ -416,6 +427,7 @@ export function createVariant(input: {
       String(input.bitrate ?? ''),
       String(input.originalIndex),
       input.representationId ?? '',
+      input.audioSourceUrl ?? '',
     ]),
     sourceUrl: input.sourceUrl,
     streamType: input.streamType,
@@ -437,6 +449,7 @@ export function createVariant(input: {
     downloadable: input.downloadable,
     unsupportedReason: input.unsupportedReason ?? null,
     ...(input.representationId ? { representationId: input.representationId } : {}),
+    ...(input.audioSourceUrl ? { audioSourceUrl: input.audioSourceUrl } : {}),
   };
 }
 

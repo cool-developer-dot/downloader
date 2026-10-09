@@ -3,6 +3,7 @@ import { useFocusEffect } from 'expo-router';
 
 import { logBrowserWebView } from '@/browser/diagnostics';
 import { useBrowserStore } from '@/browser/stores';
+import { setBrowserRouteVisible } from '@/browser/webview/webview-activity';
 import { mediaDetectionEngine } from '@/media-detection';
 
 /**
@@ -16,16 +17,19 @@ import { mediaDetectionEngine } from '@/media-detection';
  *
  * On blur the pool is clamped to the active tab (parked WebViews unmount, their
  * in-flight verification is cancelled by the store) and the engine's
- * high-frequency rescan path is paused. The visible tab's WebView, open tabs,
- * history and bookmarks are untouched.
+ * high-frequency rescan path is paused. The active tab's WebView stays mounted
+ * but is paused natively (its page is hidden: no playback, no frames) until the
+ * Browser is back in front. Open tabs, history and bookmarks are untouched.
  */
 export function useBrowserRouteLifecycle(): void {
   useFocusEffect(
     useCallback(() => {
       mediaDetectionEngine.setBrowserVisible(true);
+      setBrowserRouteVisible(true);
 
       return () => {
         mediaDetectionEngine.setBrowserVisible(false);
+        setBrowserRouteVisible(false);
         const before = useBrowserStore.getState().mountedTabIds.length;
         useBrowserStore.getState().setMountBudget(1);
         const after = useBrowserStore.getState().mountedTabIds.length;

@@ -1,6 +1,6 @@
 import { memo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Check } from 'lucide-react-native';
+import Check from 'lucide-react-native/icons/check';
 import Animated, { type SharedValue, useAnimatedStyle } from 'react-native-reanimated';
 
 import { useTranslation } from '@/localization';

@@ -29,6 +29,9 @@ dependencies {
   implementation "androidx.media3:media3-exoplayer-hls:${media3Version}"
   implementation "androidx.media3:media3-exoplayer-dash:${media3Version}"
   implementation "androidx.media3:media3-datasource-okhttp:${media3Version}"
+  // Re-encodes only the tracks an MP4 cannot carry (MP3/AC-3 audio, MPEG-2/H.263 video) with the platform's
+  // MediaCodec encoders; lossless remux and A/V merge use media3-muxer directly (process/Remuxer.kt).
+  implementation "androidx.media3:media3-transformer:${media3Version}"
 
   implementation "com.squareup.okhttp3:okhttp:4.12.0"
 

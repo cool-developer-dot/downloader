@@ -31,6 +31,8 @@ export type PlayerDiagnosticEvent =
   | 'player.pause'
   | 'player.seek'
   | 'player.background_pause'
+  | 'player.pip_start'
+  | 'player.pip_stop'
   | 'player.fullscreen_enter'
   | 'player.fullscreen_exit'
   | 'player.error'

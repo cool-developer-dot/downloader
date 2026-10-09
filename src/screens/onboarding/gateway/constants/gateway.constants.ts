@@ -5,7 +5,7 @@ export const GATEWAY_LOGO = VIDORAX_LOGO;
 
 export const GATEWAY_COPY = {
   titleLead: 'Download',
-  titleAccent: 'Without Limits',
+  titleAccent: 'Supported Media',
   subtitle:
     'Browse your favorite websites or paste a link.\nVidoraX intelligently detects compatible downloadable videos.',
 } as const;

@@ -4,6 +4,8 @@ import com.vidorax.media.engine.DownloadEngineApi
 import com.vidorax.media.model.DownloadProgress
 import com.vidorax.media.model.DownloadRecord
 import com.vidorax.media.model.DownloadState
+import com.vidorax.media.model.ProcessingStage
+import com.vidorax.media.model.ProgressPhase
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -45,6 +47,8 @@ internal class DownloadRunner(
     var postedPercent: Int?,
     /** From the engine's progress events; only meaningful while DOWNLOADING. */
     var speedBps: Long = 0L,
+    /** From the engine's progress events; only meaningful while PROCESSING. */
+    var stage: ProcessingStage? = null,
   )
 
   private val lock = Any()
@@ -98,6 +102,7 @@ internal class DownloadRunner(
           it.totalBytes = record.totalBytes
           // A speed belongs to bytes moving now: waiting, paused or finishing up shows none.
           if (record.state != DownloadState.DOWNLOADING) it.speedBps = 0L
+          if (record.state != DownloadState.PROCESSING) it.stage = null
         } ?: Tracked(
           state = record.state,
           record = record,
@@ -128,10 +133,12 @@ internal class DownloadRunner(
       entry.bytesDone = progress.bytesDone
       entry.totalBytes = progress.totalBytes ?: entry.totalBytes
       entry.speedBps = progress.speedBps
+      val stageBefore = entry.stage
+      entry.stage = if (progress.phase == ProgressPhase.PROCESSING) progress.stage else null
       val next = contentOf(entry) ?: return
       val now = clock()
       // The engine already throttles; this only keeps the system's notification rate limit out of reach.
-      if (now - entry.postedAt < MIN_POST_INTERVAL_MS && next.percent == entry.postedPercent) return
+      if (now - entry.postedAt < MIN_POST_INTERVAL_MS && next.percent == entry.postedPercent && entry.stage == stageBefore) return
       entry.postedAt = now
       entry.postedPercent = next.percent
       Plan(
@@ -183,7 +190,7 @@ internal class DownloadRunner(
   }
 
   private fun contentOf(entry: Tracked): DownloadNotificationContent? =
-    notificationContentFor(entry.record, entry.bytesDone, entry.totalBytes, entry.speedBps)
+    notificationContentFor(entry.record, entry.bytesDone, entry.totalBytes, entry.speedBps, entry.stage)
 
   /** Decided under the lock, run outside it: the host talks to the platform and may call back in. */
   private fun interface HostAction {

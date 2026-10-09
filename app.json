@@ -19,7 +19,7 @@
         "monochromeImage": "./assets/logos/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.vidorax",
+      "package": "com.vidorax.fast.videodownloader",
       "versionCode": 1,
       "permissions": [
         "android.permission.INTERNET",
@@ -51,9 +51,13 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#ffffff",
+          "backgroundColor": "#FFFFFF",
           "image": "./assets/logos/splash-icon.png",
-          "imageWidth": 120
+          "imageWidth": 288,
+          "dark": {
+            "backgroundColor": "#0D0D0D",
+            "image": "./assets/logos/splash-icon-dark.png"
+          }
         }
       ],
       [
@@ -64,12 +68,11 @@
       ],
       "expo-image",
       "expo-status-bar",
-      "expo-web-browser",
       [
         "expo-video",
         {
           "supportsPictureInPicture": true,
-          "supportsBackgroundPlayback": true
+          "supportsBackgroundPlayback": false
         }
       ],
       "expo-screen-orientation",

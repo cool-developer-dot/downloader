@@ -1,5 +1,5 @@
 /** Phase 3A freeze — hard caps. */
-export const MAX_OPEN_TABS = 8 as const;
+export const MAX_OPEN_TABS = 10 as const;
 export const MAX_MOUNTED_WEBVIEWS = 2 as const;
 
 /** Local schema version for tab persistence envelope. */

@@ -68,6 +68,11 @@ export type DownloadQualityOption = {
   unavailableReason: AnalysisUnsupportedReason | null;
   /** DASH only: the manifest representation this option downloads (sent to the engine as `variant.videoId`). */
   representationId?: string | null;
+  /**
+   * Split tracks: this option's `sourceUrl` is a video-only file and this is its audio file; the engine downloads
+   * both and merges them (`kind: 'split'`).
+   */
+  audioSourceUrl?: string | null;
 };
 
 /** @deprecated Prefer DownloadQualityOption — alias retained for Week 6 callers. */

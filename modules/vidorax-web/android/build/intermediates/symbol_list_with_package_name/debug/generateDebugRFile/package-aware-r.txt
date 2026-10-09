@@ -1,2 +1,0 @@
-com.vidorax.web
-id vidorax_web_document_start_script

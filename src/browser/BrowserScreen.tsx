@@ -1,7 +1,6 @@
 import { memo, useCallback, useEffect, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Box } from '@/components/base/Box';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -216,12 +215,18 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   );
 });
 
+/** Thin page-coloured gap between the browser toolbar and the tab bar, so the two bars read as separate. */
+const TOOLBAR_DOCK_GAP = 6;
+
+/**
+ * The tab bar below already pads for the bottom safe area, so the dock adds none of that — only a thin gap
+ * (TOOLBAR_DOCK_GAP) that keeps the toolbar and the tab bar from merging into one block.
+ */
 const BrowserToolbarDock = memo(function BrowserToolbarDock() {
-  const insets = useSafeAreaInsets();
   const theme = useTheme();
 
   return (
-    <Box style={{ paddingBottom: insets.bottom, backgroundColor: theme.colors.background }}>
+    <Box style={{ paddingBottom: TOOLBAR_DOCK_GAP, backgroundColor: theme.colors.background }}>
       <BrowserToolbar />
     </Box>
   );

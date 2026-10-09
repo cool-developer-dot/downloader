@@ -6,6 +6,8 @@ export interface SettingsState {
   language: string;
   /** Local-only field — not synced to a VidoraX cloud account. */
   maxConcurrentDownloads: number;
+  /** Copy every completed download to the device gallery (default on). */
+  saveToGallery: boolean;
 }
 
 export type SettingsKey = keyof SettingsState;

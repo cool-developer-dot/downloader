@@ -3,6 +3,8 @@ import { Keyboard, type TextInput } from 'react-native';
 
 import { useOmniboxSuggestions } from '@/browser/hooks/useOmniboxSuggestions';
 import { loadUrlActiveTab, navigationService } from '@/browser/services';
+import { isYouTubeLink, openPastedLink } from '@/browser/services/pasted-link.service';
+import { announceYouTubeNotSupported } from '@/browser/services/youtube-refusal';
 import type { OmniboxSuggestion } from '@/browser/suggestions';
 import {
   selectActiveTabId,
@@ -71,10 +73,18 @@ export function useAddressBar() {
   }, [clearSuggestions]);
 
   const navigateTo = useCallback(
-    (url: string, options?: { recordSearchQuery?: string }) => {
+    (url: string, options?: { recordSearchQuery?: string; typedLink?: boolean }) => {
       setValidationMessage(null);
-      // Canonical path: same owner as home shortcut icons (registry loadUrl).
-      const loaded = loadUrlActiveTab(url);
+      // A typed or pasted YouTube link is refused where it was entered: no navigation, no page fetch.
+      if (options?.typedLink && isYouTubeLink(url)) {
+        // The suggestion list covers the message under the field: close it so the message shows.
+        clearSuggestions();
+        setValidationMessage(announceYouTubeNotSupported());
+        return false;
+      }
+      // Canonical path: same owner as home shortcut icons (registry loadUrl). A link the user typed or pasted is read
+      // by the direct analyzer first (see pasted-link.service), then loaded the same way.
+      const loaded = options?.typedLink ? openPastedLink(url, { source: 'omnibox' }) : loadUrlActiveTab(url);
       if (!loaded) {
         setValidationMessage(translate('browser.addressInvalid'));
         return false;
@@ -87,7 +97,7 @@ export function useAddressBar() {
       }
       return true;
     },
-    [dismissEditing, recordRecentSearch],
+    [clearSuggestions, dismissEditing, recordRecentSearch],
   );
 
   const onChangeText = useCallback((text: string) => {
@@ -135,6 +145,7 @@ export function useAddressBar() {
     const shouldRecordSearch = result.intent.kind === 'search';
     const ok = navigateTo(result.url, {
       recordSearchQuery: shouldRecordSearch ? draft : undefined,
+      typedLink: result.intent.kind === 'navigate',
     });
     if (!ok) {
       submitLockRef.current = false;
@@ -161,6 +172,8 @@ export function useAddressBar() {
             ? item.title
             : draft
           : undefined,
+        // The row for exactly what was typed or pasted.
+        typedLink: item.kind === 'exact_url',
       });
       if (!ok) {
         submitLockRef.current = false;

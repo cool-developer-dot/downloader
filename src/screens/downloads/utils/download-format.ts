@@ -14,6 +14,7 @@ import {
   type DownloadExecutionDisplayState,
 } from '@/downloads/execution';
 import type { QueueWaitingReason } from '@/downloads/scheduler';
+import type { ProcessingStage } from '@modules/vidorax-media/src/VidoraMedia.types';
 
 import { translate } from '@/localization/translate';
 import type { TranslationKey } from '@/localization/types';
@@ -190,6 +191,13 @@ export function getStatusLabel(status: DownloadStatus): string {
  * Customer-facing execution label — never exposes raw WorkerState enums.
  * "Downloading in background" only when Android FGS is protecting this job.
  */
+const PROCESSING_STAGE_KEYS: Record<ProcessingStage, TranslationKey> = {
+  merging: 'downloads.processingMerging',
+  remuxing: 'downloads.processingRemuxing',
+  transcoding: 'downloads.processingTranscoding',
+  verifying: 'downloads.processingVerifying',
+};
+
 export function getExecutionStatusLabel(options: {
   status: DownloadStatus;
   workerState?: string | null;
@@ -197,6 +205,8 @@ export function getExecutionStatusLabel(options: {
   waitingReason?: QueueWaitingReason | null;
   downloadId?: string;
   retryDelay?: boolean;
+  /** v2 processing phase: shown instead of "Finalizing" (e.g. "Merging audio and video"). */
+  processingStage?: ProcessingStage | null;
 }): string {
   const downloadId = options.downloadId;
   let hasActiveExecution = false;
@@ -241,6 +251,9 @@ export function getExecutionStatusLabel(options: {
     retryDelay,
   });
 
+  if (state === 'FINALIZING' && options.processingStage) {
+    return translate(PROCESSING_STAGE_KEYS[options.processingStage]);
+  }
   return translate(DOWNLOAD_EXECUTION_KEYS[state]);
 }
 

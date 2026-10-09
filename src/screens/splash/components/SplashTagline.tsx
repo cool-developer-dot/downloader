@@ -61,7 +61,7 @@ const TaglineWord = memo(function TaglineWord({
           { fontFamily: fontFamilies.bodySemiBold, opacity: 0 },
           wordStyle,
         ]}>
-        {word.toUpperCase()}
+        {word}
       </Animated.Text>
     </View>
   );

@@ -26,10 +26,15 @@ export default function AuthLayout() {
   );
 
   const fadeOptions = useMemo(() => createFadeScreenOptions(), []);
+  // The branded splash paints the theme's intro background (the native launch screen's colour) from its first frame.
+  const splashOptions = useMemo(
+    () => ({ ...fadeOptions, ...createContentStyleOptions(introBackground) }),
+    [fadeOptions, introBackground],
+  );
 
   return (
     <Stack screenOptions={screenOptions}>
-      <Stack.Screen name={authRouteNames.splash} options={fadeOptions} />
+      <Stack.Screen name={authRouteNames.splash} options={splashOptions} />
       <Stack.Screen name={authRouteNames.onboarding} options={fadeOptions} />
     </Stack>
   );

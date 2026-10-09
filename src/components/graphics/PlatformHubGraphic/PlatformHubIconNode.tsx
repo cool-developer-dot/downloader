@@ -65,7 +65,7 @@ export const PlatformHubIconNode = memo(function PlatformHubIconNode({
       <Icon
         size={spec.iconSize}
         color={iconColor}
-        strokeWidth={kind === 'capability' ? spec.iconStroke : undefined}
+        strokeWidth={spec.iconStroke}
       />
     </View>
   );

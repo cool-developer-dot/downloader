@@ -168,3 +168,19 @@ describe('removing a finished download from the list', () => {
     assert.deepEqual(page.orderedIds, [], 'and it does not come back when the page reloads');
   });
 });
+
+describe('a large library mirrors in linear time', () => {
+  test('hydrating thousands of library-only videos marks each once and lists none of them', () => {
+    const entries = Array.from({ length: 5_000 }, (_, i) =>
+      projectV2LibraryItem(libraryItem({ id: `lib-${i}` })),
+    );
+    const started = performance.now();
+    const next = reduceEngineEntries(emptyState(), entries);
+    const elapsed = performance.now() - started;
+    assert.equal(Object.keys(next.libraryOnlyIds).length, 5_000);
+    assert.equal(Object.keys(next.engineRowsById).length, 5_000);
+    assert.deepEqual(next.orderedIds, []);
+    // Before: every entry copied the whole libraryOnlyIds map (12.5 M key copies for 5,000 videos).
+    assert.ok(elapsed < 1_500, `took ${elapsed} ms`);
+  });
+});

@@ -140,6 +140,7 @@ class DownloadStoreTest {
           "DEFAULT 0, total_bytes INTEGER, error_code TEXT, error_message TEXT, attempts INTEGER NOT NULL DEFAULT 0, " +
           "next_retry_at INTEGER, save_to_gallery INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)",
       )
+      raw.execSQL(V1_LIBRARY_TABLE)
       raw.execSQL(
         "INSERT INTO downloads (id,state,kind,url,request_json,title,site,bytes_done,total_bytes,attempts,created_at,updated_at) " +
           "VALUES ('legacy','downloading','progressive','https://cdn.example/x.mp4','{}','Old','web',5,10,0,1,1)",
@@ -200,6 +201,7 @@ class DownloadStoreTest {
           "next_retry_at INTEGER, save_to_gallery INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, " +
           "file_path TEXT)",
       )
+      raw.execSQL(V1_LIBRARY_TABLE)
       raw.execSQL(
         "INSERT INTO downloads (id,state,kind,url,request_json,title,site,bytes_done,total_bytes,attempts,created_at,updated_at) " +
           "VALUES ('before','processing','progressive','https://cdn.example/x.mp4','{}','Old','web',10,10,0,1,1)",
@@ -212,6 +214,53 @@ class DownloadStoreTest {
     val existing = upgraded.find("before")!!
     upgraded.saveCompleted(existing.copy(state = DownloadState.COMPLETED, updatedAt = 42L))
     assertEquals(listOf(CompletionRecord("before", 42L)), upgraded.listCompletions())
+  }
+
+  @Test fun migratesV3DatabaseKeepingEveryRowAndRecordingExistingGalleryCopies() = runBlocking {
+    database.close()
+    val dbFile = File(context.noBackupFilesDir, MediaDatabase.NAME)
+    dbFile.delete()
+    SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { raw ->
+      raw.execSQL(
+        "CREATE TABLE downloads (id TEXT PRIMARY KEY, state TEXT NOT NULL, kind TEXT NOT NULL, url TEXT NOT NULL, " +
+          "audio_url TEXT, manifest_text TEXT, variant_json TEXT, request_json TEXT NOT NULL, title TEXT NOT NULL, " +
+          "site TEXT NOT NULL, page_url TEXT, thumbnail_url TEXT, quality_label TEXT, bytes_done INTEGER NOT NULL " +
+          "DEFAULT 0, total_bytes INTEGER, error_code TEXT, error_message TEXT, attempts INTEGER NOT NULL DEFAULT 0, " +
+          "next_retry_at INTEGER, save_to_gallery INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, " +
+          "file_path TEXT)",
+      )
+      raw.execSQL(V1_LIBRARY_TABLE)
+      raw.execSQL("CREATE TABLE completions (download_id TEXT PRIMARY KEY, completed_at INTEGER NOT NULL)")
+      raw.execSQL(
+        "INSERT INTO downloads (id,state,kind,url,request_json,title,site,bytes_done,total_bytes,attempts,created_at,updated_at) " +
+          "VALUES ('active','paused','progressive','https://cdn.example/x.mp4','{}','Old','web',5,10,0,1,1)",
+      )
+      raw.execSQL(
+        "INSERT INTO library (id,title,site,source_url,file_path,mime_type,container,has_audio,size_bytes,gallery_uri,created_at,completed_at) " +
+          "VALUES ('saved','Saved','web','https://cdn.example/s.mp4','library/web/s.mp4','video/mp4','mp4',1,100," +
+          "'content://media/external/video/media/7',1,5)",
+      )
+      raw.execSQL(
+        "INSERT INTO library (id,title,site,file_path,mime_type,container,has_audio,size_bytes,created_at,completed_at) " +
+          "VALUES ('private','Private','web','library/web/p.mp4','video/mp4','mp4',1,100,1,6)",
+      )
+      raw.version = 3
+    }
+
+    val upgraded = MediaDatabase(context)
+    val store = SqliteDownloadStore(upgraded)
+    val row = store.find("active")!!
+    assertEquals(DownloadState.PAUSED, row.state)
+    assertNull("an old row gets its identity at the next engine start, not from the migration", row.identityKey)
+    val paths = StoragePaths(context.filesDir, context.noBackupFilesDir)
+    val library = LibraryStore(upgraded, paths)
+    assertEquals(listOf("private", "saved"), library.getMany(listOf("private", "saved")).map { it.id })
+    assertTrue(library.pendingGalleryIds().isEmpty())
+    // The copy an older version saved is recorded, so it still counts once its library item is gone.
+    library.backfillIdentities { source, _ -> if (source.endsWith("s.mp4")) "identity-s" else null }
+    assertEquals(listOf("content://media/external/video/media/7"), library.galleryCopiesFor("identity-s"))
+    assertEquals("identity-s", library.get("saved")!!.identityKey)
+    upgraded.close()
   }
 
   @Test fun realLibraryWriterIsIdempotentOnDuplicateCompletion() = runBlocking {
@@ -246,3 +295,11 @@ class DownloadStoreTest {
     completedAt = 2,
   )
 }
+
+/** The `library` table as every schema version before v4 created it. */
+private const val V1_LIBRARY_TABLE =
+  "CREATE TABLE library (id TEXT PRIMARY KEY, title TEXT NOT NULL, site TEXT NOT NULL, page_url TEXT, " +
+    "source_url TEXT, file_path TEXT NOT NULL, mime_type TEXT NOT NULL, container TEXT NOT NULL, video_codec TEXT, " +
+    "audio_codec TEXT, has_audio INTEGER NOT NULL, width INTEGER, height INTEGER, duration_ms INTEGER, " +
+    "size_bytes INTEGER NOT NULL, thumb_path TEXT, favorite INTEGER NOT NULL DEFAULT 0, gallery_uri TEXT, " +
+    "created_at INTEGER NOT NULL, completed_at INTEGER NOT NULL)"

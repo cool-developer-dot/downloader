@@ -8,7 +8,7 @@ export type QuickSite = {
   url: string;
   hostname: string;
   category: QuickSiteCategory;
-  /** MaterialCommunityIcons fallback when favicon fails to load. */
+  /** Generic MaterialCommunityIcons glyph shown on the tile. Never a third-party brand logo. */
   icon: string;
   /** Subtle tile accent from the VidoraX palette. */
   accent: ColorTokenKey;
@@ -17,7 +17,8 @@ export type QuickSite = {
 /**
  * Central quick-access site registry — VidoraX-owned promoted shortcuts.
  * Unsupported video hosts are omitted from promotion (generic browsing still allowed).
- * Icons use domain favicons at render time; `icon` is the offline fallback only.
+ * Tiles show a generic glyph (`icon`) and the site name only: no brand logos or favicons (store-review and
+ * trademark safety, and no favicon request leaves the device from the start page).
  */
 export const QUICK_SITES: readonly QuickSite[] = [
   {
@@ -26,7 +27,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     url: 'https://www.instagram.com/',
     hostname: 'instagram.com',
     category: 'social',
-    icon: 'instagram',
+    icon: 'account-group-outline',
     accent: 'primary',
   },
   {
@@ -35,7 +36,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     url: 'https://www.tiktok.com/',
     hostname: 'tiktok.com',
     category: 'video',
-    icon: 'music-note',
+    icon: 'video-outline',
     accent: 'textPrimary',
   },
   {
@@ -44,7 +45,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     url: 'https://www.facebook.com/',
     hostname: 'facebook.com',
     category: 'social',
-    icon: 'facebook',
+    icon: 'forum-outline',
     accent: 'info',
   },
   {
@@ -53,7 +54,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     url: 'https://vimeo.com/',
     hostname: 'vimeo.com',
     category: 'video',
-    icon: 'vimeo',
+    icon: 'filmstrip',
     accent: 'info',
   },
   {
@@ -71,7 +72,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     url: 'https://www.reddit.com/',
     hostname: 'reddit.com',
     category: 'social',
-    icon: 'reddit',
+    icon: 'message-outline',
     accent: 'warning',
   },
   {
@@ -80,7 +81,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     url: 'https://www.pinterest.com/',
     hostname: 'pinterest.com',
     category: 'social',
-    icon: 'pinterest',
+    icon: 'image-multiple-outline',
     accent: 'error',
   },
   {
@@ -89,7 +90,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     url: 'https://web.telegram.org/',
     hostname: 'web.telegram.org',
     category: 'social',
-    icon: 'send',
+    icon: 'compass-outline',
     accent: 'info',
   },
   {
@@ -98,7 +99,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     url: 'https://x.com/',
     hostname: 'x.com',
     category: 'social',
-    icon: 'twitter',
+    icon: 'web',
     accent: 'textPrimary',
   },
   {
@@ -107,7 +108,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     url: 'https://www.twitch.tv/',
     hostname: 'twitch.tv',
     category: 'video',
-    icon: 'twitch',
+    icon: 'movie-open-outline',
     accent: 'primary',
   },
   {
@@ -116,7 +117,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     url: 'https://web.snapchat.com/',
     hostname: 'web.snapchat.com',
     category: 'social',
-    icon: 'ghost',
+    icon: 'account-group-outline',
     accent: 'warning',
   },
 ] as const;

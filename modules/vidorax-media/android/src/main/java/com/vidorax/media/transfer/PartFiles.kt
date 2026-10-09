@@ -44,3 +44,23 @@ internal object ResumeValidator {
 
   private const val SUFFIX = ".validator"
 }
+
+/**
+ * Marks a `.part` a whole-file transfer finished, with its length, so a later run (a crash while processing, a
+ * retried merge) never fetches that track again: a resume of a complete file would only get a 416 and start over.
+ * A marker that no longer matches the `.part`'s length is ignored.
+ */
+internal object TrackDone {
+  private fun fileFor(partFile: File): File = File(partFile.path + ".done")
+
+  fun mark(partFile: File) {
+    runCatching { fileFor(partFile).writeText(partFile.length().toString()) }
+  }
+
+  /** The `.part`'s length when it was marked complete and has not changed since; else null. */
+  fun length(partFile: File): Long? {
+    if (!partFile.isFile) return null
+    val marked = runCatching { fileFor(partFile).takeIf { it.isFile }?.readText()?.trim()?.toLong() }.getOrNull() ?: return null
+    return marked.takeIf { it == partFile.length() && it > 0 }
+  }
+}

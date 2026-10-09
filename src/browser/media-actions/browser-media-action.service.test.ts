@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { beforeEach, describe, test } from 'node:test';
 
-import { browserMediaActionService } from './browser-media-action.service';
+import { browserMediaActionService, NEGATIVE_VERDICT_SETTLE_MS } from './browser-media-action.service';
 import type { BrowserMediaVerifiedHandoff } from './browser-media-action.types';
 
 const PAGE = 'https://news.example.org/story/42';
@@ -197,5 +197,152 @@ describe('a tab switch is not a navigation inside the tab', () => {
     browserMediaActionService.resetForNavigation('https://site-b.example.org/other');
     browserMediaActionService.resetForNavigation(PAGE_B);
     assert.equal(browserMediaActionService.getState().status, 'idle');
+  });
+});
+
+describe('negative verdicts are shown only once final', () => {
+  test('a verdict is withheld until it has stood, then presented once (re-render at settle time)', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 1_000_000 });
+    let emits = 0;
+    const unsubscribe = browserMediaActionService.subscribe(() => {
+      emits += 1;
+    });
+    browserMediaActionService.recordVerdict('video:xa1b2c3', 'UNSUPPORTED');
+    assert.equal(browserMediaActionService.getVerdict('video:xa1b2c3'), null, 'not final yet: nothing is shown');
+    t.mock.timers.tick(NEGATIVE_VERDICT_SETTLE_MS - 1);
+    assert.equal(browserMediaActionService.getVerdict('video:xa1b2c3'), null);
+    const before = emits;
+    t.mock.timers.tick(1);
+    assert.equal(browserMediaActionService.getVerdict('video:xa1b2c3'), 'UNSUPPORTED');
+    assert.equal(emits, before + 1, 'the presentation is told when it becomes final');
+    unsubscribe();
+  });
+
+  test('a new verification of the same video (a new candidate) discards the earlier answer', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 2_000_000 });
+    browserMediaActionService.recordVerdict('video:xa1b2c3', 'UNSUPPORTED');
+    t.mock.timers.tick(NEGATIVE_VERDICT_SETTLE_MS / 2);
+    browserMediaActionService.beginVerification('video:xa1b2c3');
+    t.mock.timers.tick(NEGATIVE_VERDICT_SETTLE_MS);
+    assert.equal(browserMediaActionService.getVerdict('video:xa1b2c3'), null);
+  });
+
+  test('an offer for the video supersedes its verdict', (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 3_000_000 });
+    browserMediaActionService.recordVerdict('video:xa1b2c3', 'UNSUPPORTED');
+    browserMediaActionService.handoffVerified({
+      pageUrl: PAGE,
+      media: { id: 'm1', url: 'https://cdn.feedhost.tv/cdn/manifest/video/xa1b2c3.m3u8', category: 'stream' },
+      analysis: { downloadable: true, finalUrl: 'https://cdn.feedhost.tv/cdn/manifest/video/xa1b2c3.m3u8' },
+      requestContext: {},
+      mediaUrl: 'https://cdn.feedhost.tv/cdn/manifest/video/xa1b2c3.m3u8',
+      contentIdentity: 'video:xa1b2c3',
+    } as unknown as BrowserMediaVerifiedHandoff);
+    t.mock.timers.tick(NEGATIVE_VERDICT_SETTLE_MS);
+    assert.equal(browserMediaActionService.getVerdict('video:xa1b2c3'), null);
+  });
+});
+
+describe('a download this tap started is not "already downloaded"', () => {
+  const LINK = 'https://cdn.example.org/v/first.mp4';
+
+  function offer(contentIdentity = 'general:first'): void {
+    browserMediaActionService.setVerified({
+      pageUrl: PAGE,
+      media: { id: `media:${LINK}` } as unknown as BrowserMediaVerifiedHandoff['media'],
+      analysis: { platform: 'generic' } as unknown as BrowserMediaVerifiedHandoff['analysis'],
+      requestContext: { authMode: 'PUBLIC' } as unknown as BrowserMediaVerifiedHandoff['requestContext'],
+      mediaUrl: LINK,
+      contentIdentity,
+    });
+  }
+
+  function tap(downloadId: string | null, duplicate: 'ALREADY_DOWNLOADED' | 'ALREADY_DOWNLOADING' | null): void {
+    const claim = browserMediaActionService.claimForHandoff();
+    assert.equal(claim.outcome, 'CLAIMED');
+    if (claim.outcome === 'CLAIMED') {
+      browserMediaActionService.commitConsumed(
+        claim.tabId,
+        claim.fingerprint,
+        claim.handoffGeneration,
+        downloadId,
+        duplicate,
+      );
+    }
+  }
+
+  test('a first download records its id and that the video was new', () => {
+    offer();
+    tap('dl-new', null);
+    assert.deepEqual(browserMediaActionService.getConsumedOutcome('general:first'), {
+      downloadId: 'dl-new',
+      preExisting: false,
+      revisited: false,
+    });
+  });
+
+  test('a page video without a content identity is found through the tab’s consumed state', () => {
+    browserMediaActionService.setVerified({
+      pageUrl: PAGE,
+      media: { id: `media:${LINK}` } as unknown as BrowserMediaVerifiedHandoff['media'],
+      analysis: { platform: 'generic' } as unknown as BrowserMediaVerifiedHandoff['analysis'],
+      requestContext: { authMode: 'PUBLIC' } as unknown as BrowserMediaVerifiedHandoff['requestContext'],
+      mediaUrl: LINK,
+      contentIdentity: null,
+    });
+    tap('dl-plain', null);
+    assert.equal(browserMediaActionService.getState().status, 'consumed');
+    assert.equal(browserMediaActionService.getConsumedOutcome(null, null)?.downloadId, 'dl-plain');
+  });
+
+  test('the engine saying ALREADY_DOWNLOADED marks the video as existing before this attempt', () => {
+    offer();
+    tap('lib-1', 'ALREADY_DOWNLOADED');
+    assert.equal(browserMediaActionService.getConsumedOutcome('general:first')?.preExisting, true);
+  });
+
+  test('a download already running is followed, not treated as downloaded', () => {
+    offer();
+    tap('dl-running', 'ALREADY_DOWNLOADING');
+    const outcome = browserMediaActionService.getConsumedOutcome('general:first');
+    assert.equal(outcome?.preExisting, false);
+    assert.equal(outcome?.downloadId, 'dl-running');
+  });
+
+  test('leaving the video and coming back makes it revisited; a navigation forgets it', () => {
+    offer();
+    tap('dl-new', null);
+    browserMediaActionService.markConsumedRevisitable('general:first');
+    assert.equal(browserMediaActionService.getConsumedOutcome('general:first')?.revisited, true);
+    browserMediaActionService.resetForNavigation('https://news.example.org/story/43');
+    assert.equal(browserMediaActionService.getConsumedOutcome('general:first'), null);
+  });
+
+  test('offer duplicates distinguish a finished copy from a download under way', () => {
+    browserMediaActionService.markOfferDuplicate('fp-1', 'DOWNLOADING', 'dl-9');
+    assert.equal(browserMediaActionService.isOfferDuplicate('fp-1'), false);
+    assert.deepEqual(browserMediaActionService.getOfferDuplicate('fp-1'), { kind: 'DOWNLOADING', downloadId: 'dl-9' });
+    browserMediaActionService.markOfferDuplicate('fp-1');
+    assert.equal(browserMediaActionService.isOfferDuplicate('fp-1'), true);
+  });
+
+  test('a not-yet-final negative verdict is pending (detection still active), then final', () => {
+    browserMediaActionService.recordVerdict('general:first', 'UNSUPPORTED');
+    assert.equal(browserMediaActionService.hasPendingVerdict('general:first'), true);
+    assert.equal(browserMediaActionService.getVerdict('general:first'), null);
+    const later = Date.now() + NEGATIVE_VERDICT_SETTLE_MS + 1;
+    assert.equal(browserMediaActionService.hasPendingVerdict('general:first', later), false);
+    assert.equal(browserMediaActionService.getVerdict('general:first', later), 'UNSUPPORTED');
+  });
+});
+
+describe('active detection of the current video', () => {
+  test('a running verification of the video is active detection; an aborted or finished one is not', () => {
+    browserMediaActionService.setDetecting(PAGE);
+    browserMediaActionService.beginVerification('general:live');
+    assert.equal(browserMediaActionService.isVerifying('general:live'), true);
+    assert.equal(browserMediaActionService.isVerifying('general:other'), false);
+    browserMediaActionService.cancelVerification();
+    assert.equal(browserMediaActionService.isVerifying('general:live'), false);
   });
 });

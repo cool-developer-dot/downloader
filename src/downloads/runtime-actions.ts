@@ -43,10 +43,11 @@ export type ResolveDownloadRuntimeActionsInput = {
 };
 
 /**
- * Failures that are a verdict on the source itself (PROTECTED / UNSUPPORTED), not on this attempt. Expired links
- * are not here: their Retry asks the live page for a fresh link.
+ * Failures that are a verdict on the source itself (PROTECTED / UNSUPPORTED), not on this attempt, and DUPLICATE (the
+ * video is already saved). Expired links are not here: their Retry asks the live page for a fresh link.
  */
 const FINAL_FAILURE_CODES: ReadonlySet<string> = new Set([
+  'DUPLICATE',
   'DRM_PROTECTED',
   'LIVE_UNSUPPORTED',
   'UNSUPPORTED_FORMAT',
@@ -54,6 +55,10 @@ const FINAL_FAILURE_CODES: ReadonlySet<string> = new Set([
   'HLS_ENCRYPTED',
   'UNSUPPORTED_DRM',
   'UNSUPPORTED_HLS_ENCRYPTION',
+  // The tracks themselves are not one video: downloading them again cannot change that.
+  'VIDEO_TRACK_MISSING',
+  'AUDIO_TRACK_MISSING',
+  'TRACK_MISMATCH',
 ]);
 
 export function isFinalFailure(errorCode: string | null | undefined): boolean {

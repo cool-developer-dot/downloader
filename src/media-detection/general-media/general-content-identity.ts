@@ -57,6 +57,51 @@ export function extractGeneralPageVideoId(
   return null;
 }
 
+const MEDIA_URL_CONTENT_ID_RE =
+  /\/(?:video|videos|embed|media|clip|clips|shorts|reel|reels|watch|v|p)\/([A-Za-z0-9_-]{5,32})(?:\.[A-Za-z0-9]{2,5})?(?=[/?#]|$)/i;
+
+/** An id-like token: has a digit, or mixes cases — not a word such as `manifest` or `master`. */
+function isIdLike(value: string): boolean {
+  return /\d/.test(value) || (/[a-z]/.test(value) && /[A-Z]/.test(value));
+}
+
+/**
+ * The content id a media or manifest URL names in its own path (`…/manifest/video/x9abc12.m3u8`,
+ * `…/videos/8812345/master.mpd`), or null. Only a path segment after a video route word counts, and only an id-like
+ * token — a CDN object path, a signature or a plain word is never taken for an item.
+ */
+export function extractMediaUrlContentId(url: string | null | undefined): string | null {
+  if (!url || typeof url !== 'string') {
+    return null;
+  }
+  try {
+    const parsed = new URL(url);
+    const match = MEDIA_URL_CONTENT_ID_RE.exec(parsed.pathname);
+    const id = match?.[1] ?? null;
+    return id && isIdLike(id) ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The item id a general media identity names (`video:<id>`), or null for element/resource identities. */
+export function contentIdOfGeneralIdentity(identity: string | null | undefined): string | null {
+  if (!identity || !identity.startsWith('video:')) {
+    return null;
+  }
+  const id = identity.slice('video:'.length);
+  return /^[A-Za-z0-9_-]{5,32}$/.test(id) ? id : null;
+}
+
+/** Whether two content ids are of one kind (both numeric, or both alphanumeric, of about the same length). */
+export function sameContentIdShape(a: string, b: string): boolean {
+  const numeric = (v: string) => /^\d+$/.test(v);
+  if (numeric(a) !== numeric(b)) {
+    return false;
+  }
+  return Math.abs(a.length - b.length) <= (numeric(a) ? 3 : 2);
+}
+
 export function generalPagePathKey(pageUrl: string | null | undefined): string | null {
   if (!pageUrl) {
     return null;

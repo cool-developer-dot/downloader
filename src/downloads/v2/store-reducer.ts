@@ -127,12 +127,12 @@ export function reduceEngineEntries(state: EngineViewState, entries: V2DownloadE
     next.engineRowsById[id] = item;
     next.transferById[id] = transfer;
     placeInView(next, item, state, entry.libraryOnly === true);
+    // `next.libraryOnlyIds` is this batch's own copy: update it in place. Copying it per entry made hydrating a
+    // library of N videos cost O(N²).
     if (entry.libraryOnly === true) {
-      next.libraryOnlyIds = { ...next.libraryOnlyIds, [id]: true };
+      next.libraryOnlyIds[id] = true;
     } else if (next.libraryOnlyIds[id]) {
-      const rest = { ...next.libraryOnlyIds };
-      delete rest[id];
-      next.libraryOnlyIds = rest;
+      delete next.libraryOnlyIds[id];
     }
   }
   return next;

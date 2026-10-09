@@ -13,6 +13,7 @@ const { patchReactNativeWebView } = createRequire(import.meta.url)(SCRIPT);
 const SOURCE_DIR = path.join('android', 'src', 'main', 'java', 'com', 'reactnativecommunity', 'webview');
 const CLIENT = 'RNCWebViewClient.java';
 const MANAGER = 'RNCWebViewManagerImpl.kt';
+const VIEW = 'RNCWebView.java';
 const HOOKS = 'RNCWebViewHooks.java';
 
 // Excerpts of react-native-webview 13.16.1 around the patch anchors, verbatim; "// …" marks omitted code.
@@ -131,15 +132,33 @@ const MANAGER_SOURCE = `    fun createViewInstance(context: ThemedReactContext, 
     }
 
     private fun setupWebChromeClient(
+    // …
+    fun setInjectedJavaScriptBeforeContentLoaded(viewWrapper: RNCWebViewWrapper, value: String?) {
+        val view = viewWrapper.webView
+        view.injectedJSBeforeContentLoaded = value
+    }
+
+    fun setInjectedJavaScriptForMainFrameOnly(viewWrapper: RNCWebViewWrapper, value: Boolean) {
 `;
 
-function createPackage(t, { client, manager }) {
+const VIEW_SOURCE = `    public void callInjectedJavaScriptBeforeContentLoaded() {
+        if (getSettings().getJavaScriptEnabled() &&
+                injectedJSBeforeContentLoaded != null &&
+                !TextUtils.isEmpty(injectedJSBeforeContentLoaded)) {
+            evaluateJavascriptWithFallback("(function() {\\n" + injectedJSBeforeContentLoaded + ";\\n})();");
+            injectJavascriptObject();  // re-inject the Javascript object in case it has been overwritten.
+        }
+    }
+`;
+
+function createPackage(t, { client, manager, view = VIEW_SOURCE }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rnwv-patch-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.mkdirSync(path.join(dir, SOURCE_DIR), { recursive: true });
   fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'react-native-webview', version: '13.16.1' }));
   fs.writeFileSync(path.join(dir, SOURCE_DIR, CLIENT), client);
   fs.writeFileSync(path.join(dir, SOURCE_DIR, MANAGER), manager);
+  fs.writeFileSync(path.join(dir, SOURCE_DIR, VIEW), view);
   return dir;
 }
 
@@ -148,7 +167,7 @@ function readSources(dir) {
     const file = path.join(dir, SOURCE_DIR, name);
     return fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
   };
-  return { client: read(CLIENT), manager: read(MANAGER), hooks: read(HOOKS) };
+  return { client: read(CLIENT), manager: read(MANAGER), view: read(VIEW), hooks: read(HOOKS) };
 }
 
 function runScript(dir) {
@@ -160,9 +179,9 @@ const occurrences = (text, part) => text.split(part).length - 1;
 test('patches a pristine install', (t) => {
   const dir = createPackage(t, { client: PRISTINE_CLIENT, manager: MANAGER_SOURCE });
 
-  assert.deepEqual(patchReactNativeWebView(dir), [CLIENT, MANAGER, HOOKS]);
+  assert.deepEqual(patchReactNativeWebView(dir), [CLIENT, MANAGER, VIEW, HOOKS]);
 
-  const { client, manager, hooks } = readSources(dir);
+  const { client, manager, view, hooks } = readSources(dir);
   assert.equal(occurrences(client, 'RNCWebViewHooks.observeRequest(view, request);'), 1);
   assert.equal(occurrences(client, 'return RNCWebViewHooks.cancelsUndecidedNavigation(url);'), 2);
   assert.ok(!client.includes('defaulting to allow loading'));
@@ -173,6 +192,18 @@ test('patches a pristine install', (t) => {
   assert.match(manager, /RNCWebViewHooks\.onWebViewCreated\(webView\)\n\s+return RNCWebViewWrapper\(context, webView\)/);
   assert.match(hooks, /public final class RNCWebViewHooks/);
   assert.match(hooks, /private static volatile Listener listener;/);
+  // The before-content-loaded script runs at document start (main frame only) instead of from onPageStarted.
+  assert.match(
+    manager,
+    /view\.injectedJSBeforeContentLoaded = value\n\s+RNCWebViewHooks\.setDocumentStartScript\(view, value\)\n\s+\}/,
+  );
+  assert.match(
+    view,
+    /callInjectedJavaScriptBeforeContentLoaded\(\) \{\n\s+if \(RNCWebViewHooks\.hasDocumentStartScript\(this\)\) \{\n\s+injectJavascriptObject\(\);\n\s+return;\n\s+\}/,
+  );
+  assert.match(hooks, /WebViewCompat\.addDocumentStartJavaScript\(webView, mainFrameOnly, ALL_ORIGINS\)/);
+  assert.match(hooks, /if \(window !== window\.top\) \{ return; \}/);
+  assert.match(hooks, /WebViewFeature\.isFeatureSupported\(WebViewFeature\.DOCUMENT_START_SCRIPT\)/);
 });
 
 test('migrates the v1 patch to the same sources as a pristine install', (t) => {
@@ -211,7 +242,7 @@ test('fails loudly and writes nothing when an anchor is missing', (t) => {
     result.stderr,
     /RNCWebViewManagerImpl\.kt: anchor not found for "hand downloads to the hook before DownloadManager" \(react-native-webview 13\.16\.1\)/,
   );
-  assert.deepEqual(readSources(dir), { client: PRISTINE_CLIENT, manager, hooks: null });
+  assert.deepEqual(readSources(dir), { client: PRISTINE_CLIENT, manager, view: VIEW_SOURCE, hooks: null });
 });
 
 test('fails when react-native-webview is not installed', (t) => {

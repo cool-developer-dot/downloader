@@ -144,6 +144,112 @@ class LibraryStore internal constructor(
   suspend fun setGalleryUri(id: String, galleryUri: String, announce: Boolean = true) =
     update(id, ContentValues().apply { put("gallery_uri", galleryUri) }, announce)
 
+  /**
+   * Records the gallery copy of [id] in one transaction: on the item (no longer pending) and in `gallery_exports`,
+   * which outlives the item, so the same video is still known as downloaded while the user keeps that copy.
+   */
+  suspend fun recordGalleryCopy(id: String, galleryUri: String, identityKey: String?, now: Long, announce: Boolean = true) {
+    val changed = database.transaction { db ->
+      val values = ContentValues().apply {
+        put("gallery_uri", galleryUri)
+        putNull("gallery_state")
+      }
+      db.update(TABLE, values, "id = ?", arrayOf(id)).also {
+        db.insertWithOnConflict(
+          GALLERY_EXPORTS,
+          null,
+          ContentValues().apply {
+            put("uri", galleryUri)
+            put("library_id", id)
+            put("identity_key", identityKey)
+            put("created_at", now)
+          },
+          SQLiteDatabase.CONFLICT_REPLACE,
+        )
+      }
+    }
+    if (changed > 0 && announce) announce(LibraryChange(LibraryChangeReason.UPDATED, listOf(id)))
+  }
+
+  /** `pending` while the automatic gallery copy is owed, `failed` once it could not be made; null otherwise. */
+  suspend fun setGalleryState(id: String, state: String?) {
+    database.transaction { db ->
+      db.update(TABLE, ContentValues().apply { put("gallery_state", state) }, "id = ?", arrayOf(id))
+    }
+  }
+
+  /** Items whose automatic gallery copy was interrupted (the process died mid-copy). */
+  suspend fun pendingGalleryIds(): List<String> = database.read { db ->
+    db.rawQuery("SELECT id FROM $TABLE WHERE gallery_state = ?", arrayOf(GALLERY_PENDING)).use { cursor ->
+      buildList { while (cursor.moveToNext()) add(cursor.getString(0)) }
+    }
+  }
+
+  /** Items downloaded from the source with this identity (engine/DownloadIdentity). */
+  suspend fun findByIdentity(identityKey: String): List<LibraryItem> = database.read { db ->
+    db.rawQuery("SELECT * FROM $TABLE WHERE identity_key = ?", arrayOf(identityKey)).use { it.readItems() }
+  }
+
+  /** Items of exactly [sizeBytes] other than [excludeId], each with its content hash when one was computed. */
+  suspend fun findBySize(sizeBytes: Long, excludeId: String?): List<Pair<LibraryItem, String?>> = database.read { db ->
+    db.rawQuery(
+      "SELECT * FROM $TABLE WHERE size_bytes = ? AND id != ?",
+      arrayOf(sizeBytes.toString(), excludeId ?: ""),
+    ).use { cursor ->
+      buildList(cursor.count) {
+        while (cursor.moveToNext()) add(cursor.readItem() to cursor.textOrNull("content_sha256"))
+      }
+    }
+  }
+
+  suspend fun setContentHash(id: String, sha256: String) {
+    database.transaction { db ->
+      db.update(TABLE, ContentValues().apply { put("content_sha256", sha256) }, "id = ?", arrayOf(id))
+    }
+  }
+
+  /** Gallery copies VidoraX saved of the video with this identity, newest first (they may since have been deleted). */
+  suspend fun galleryCopiesFor(identityKey: String): List<String> = database.read { db ->
+    db.rawQuery(
+      "SELECT uri FROM $GALLERY_EXPORTS WHERE identity_key = ? ORDER BY created_at DESC",
+      arrayOf(identityKey),
+    ).use { cursor -> buildList { while (cursor.moveToNext()) add(cursor.getString(0)) } }
+  }
+
+  /** Forgets a gallery copy the user deleted outside VidoraX. */
+  suspend fun forgetGalleryCopy(uri: String) {
+    database.transaction { db -> db.delete(GALLERY_EXPORTS, "uri = ?", arrayOf(uri)) }
+  }
+
+  /**
+   * Gives items saved before identities existed the identity of their recorded source (and their gallery copies the
+   * same), so a video downloaded by an older version is still recognised. Runs until nothing is left to fill in.
+   */
+  suspend fun backfillIdentities(identityOf: (sourceUrl: String, pageUrl: String?) -> String?) {
+    val rows = database.read { db ->
+      db.rawQuery(
+        "SELECT id, source_url, page_url FROM $TABLE WHERE identity_key IS NULL AND source_url IS NOT NULL",
+        null,
+      ).use { cursor ->
+        buildList { while (cursor.moveToNext()) add(Triple(cursor.getString(0), cursor.getString(1), cursor.getStringOrNull(2))) }
+      }
+    }
+    if (rows.isEmpty()) return
+    database.transaction { db ->
+      for ((id, sourceUrl, pageUrl) in rows) {
+        // An unusable source still gets a value, so the row is not read again at every start.
+        val key = identityOf(sourceUrl, pageUrl) ?: NO_IDENTITY
+        db.update(TABLE, ContentValues().apply { put("identity_key", key) }, "id = ?", arrayOf(id))
+        db.update(
+          GALLERY_EXPORTS,
+          ContentValues().apply { put("identity_key", key) },
+          "library_id = ? AND identity_key IS NULL",
+          arrayOf(id),
+        )
+      }
+    }
+  }
+
   /** Fills in what the v1 catalog knew. Null fields and unknown ids are skipped. */
   suspend fun applyLegacyMetadata(entries: List<LegacyMetadata>) {
     val updated = database.transaction { db ->
@@ -247,6 +353,8 @@ class LibraryStore internal constructor(
     galleryUri = textOrNull("gallery_uri"),
     createdAt = long("created_at"),
     completedAt = long("completed_at"),
+    identityKey = textOrNull("identity_key")?.takeIf { it != NO_IDENTITY },
+    galleryPending = textOrNull("gallery_state") == GALLERY_PENDING,
   )
 
   private fun LibraryItem.toValues() = ContentValues().apply {
@@ -270,6 +378,8 @@ class LibraryStore internal constructor(
     put("gallery_uri", galleryUri)
     put("created_at", createdAt)
     put("completed_at", completedAt)
+    put("identity_key", identityKey)
+    put("gallery_state", if (galleryPending) GALLERY_PENDING else null)
   }
 
   private fun LegacyMetadata.toValues() = ContentValues().apply {
@@ -279,8 +389,13 @@ class LibraryStore internal constructor(
     favorite?.let { put("favorite", if (it) 1 else 0) }
   }
 
-  private companion object {
+  internal companion object {
     const val TABLE = "library"
+    const val GALLERY_EXPORTS = "gallery_exports"
+    const val GALLERY_PENDING = "pending"
+    const val GALLERY_FAILED = "failed"
+    /** Marks a row whose recorded source has no usable identity, so the backfill does not revisit it. */
+    const val NO_IDENTITY = "-"
   }
 }
 
@@ -292,6 +407,8 @@ private fun Cursor.textOrNull(column: String): String? =
   getColumnIndexOrThrow(column).let { if (isNull(it)) null else getString(it) }
 
 private fun Cursor.long(column: String): Long = getLong(getColumnIndexOrThrow(column))
+
+private fun Cursor.getStringOrNull(index: Int): String? = if (isNull(index)) null else getString(index)
 
 private fun Cursor.longOrNull(column: String): Long? =
   getColumnIndexOrThrow(column).let { if (isNull(it)) null else getLong(it) }

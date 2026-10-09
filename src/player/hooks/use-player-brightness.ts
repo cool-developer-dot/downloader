@@ -74,6 +74,33 @@ export function usePlayerBrightness(): PlayerBrightnessState {
     };
   }, [control]);
 
+  // A swipe asks for a new level every frame; the window only needs the latest. One native write at a time, the
+  // newest pending level after it — so the end of a swipe is never queued behind dozens of stale writes.
+  const writingRef = useRef(false);
+  const pendingLevelRef = useRef<number | null>(null);
+  const writeLatest = useCallback(
+    (level: number) => {
+      if (writingRef.current) {
+        pendingLevelRef.current = level;
+        return;
+      }
+      writingRef.current = true;
+      void (async () => {
+        let next: number | null = level;
+        try {
+          while (next !== null) {
+            await control.setLevel(next);
+            next = pendingLevelRef.current;
+            pendingLevelRef.current = null;
+          }
+        } finally {
+          writingRef.current = false;
+        }
+      })();
+    },
+    [control],
+  );
+
   const setLevel = useCallback(
     (nextLevel: number) => {
       if (!control.available) {
@@ -82,9 +109,9 @@ export function usePlayerBrightness(): PlayerBrightnessState {
       const clamped = clampBrightness(nextLevel);
       setLevelState(clamped);
       lastHapticRef.current = maybeBoundaryHaptic(clamped, lastHapticRef.current);
-      void control.setLevel(clamped);
+      writeLatest(clamped);
     },
-    [control],
+    [control, writeLatest],
   );
 
   const beginInteraction = useCallback(() => {

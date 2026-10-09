@@ -1,13 +1,13 @@
-import { Download, Globe, Link2 } from 'lucide-react-native';
+import CirclePlay from 'lucide-react-native/icons/circle-play';
+import Download from 'lucide-react-native/icons/download';
+import Film from 'lucide-react-native/icons/film';
+import Globe from 'lucide-react-native/icons/globe';
+import Library from 'lucide-react-native/icons/library';
+import Link2 from 'lucide-react-native/icons/link-2';
+import ShieldCheck from 'lucide-react-native/icons/shield-check';
+import Users from 'lucide-react-native/icons/users';
+import Video from 'lucide-react-native/icons/video';
 
-import {
-  DailymotionBrandIcon,
-  FacebookBrandIcon,
-  InstagramBrandIcon,
-  RedditBrandIcon,
-  TikTokBrandIcon,
-  VimeoBrandIcon,
-} from './PlatformBrandIcons';
 import type { PlatformHubItem } from './types';
 
 export const PLATFORM_HUB_ICON_COUNT = 9;
@@ -23,54 +23,57 @@ function radialEnter(index: number, distance = 16) {
   };
 }
 
-/** Clockwise from top — platforms first (promoted set), then VidoraX capabilities. */
+/**
+ * Clockwise from top: generic media themes first, then VidoraX capabilities. No third-party brand artwork
+ * (store-review and trademark safety); the browser itself still opens any site.
+ */
 export const PLATFORM_HUB_ITEMS: readonly PlatformHubItem[] = [
   {
-    id: 'instagram',
-    label: 'Instagram',
+    id: 'video',
+    label: 'Video',
     kind: 'platform',
-    Icon: InstagramBrandIcon,
-    brandColor: '#E1306C',
+    Icon: Video,
+    brandColor: '#EF4444',
     ...radialEnter(0),
   },
   {
-    id: 'tiktok',
-    label: 'TikTok',
+    id: 'social',
+    label: 'Social',
     kind: 'platform',
-    Icon: TikTokBrandIcon,
-    brandColor: '#F8FAFC',
+    Icon: Users,
+    brandColor: '#EC4899',
     ...radialEnter(1),
   },
   {
-    id: 'facebook',
-    label: 'Facebook',
+    id: 'media',
+    label: 'Media',
     kind: 'platform',
-    Icon: FacebookBrandIcon,
-    brandColor: '#1877F2',
+    Icon: Film,
+    brandColor: '#F97316',
     ...radialEnter(2),
   },
   {
-    id: 'vimeo',
-    label: 'Vimeo',
+    id: 'player',
+    label: 'Player',
     kind: 'platform',
-    Icon: VimeoBrandIcon,
-    brandColor: '#1AB7EA',
+    Icon: CirclePlay,
+    brandColor: '#F59E0B',
     ...radialEnter(3),
   },
   {
-    id: 'dailymotion',
-    label: 'Dailymotion',
+    id: 'library',
+    label: 'Library',
     kind: 'platform',
-    Icon: DailymotionBrandIcon,
-    brandColor: '#0066DC',
+    Icon: Library,
+    brandColor: '#8B5CF6',
     ...radialEnter(4),
   },
   {
-    id: 'reddit',
-    label: 'Reddit',
+    id: 'private',
+    label: 'Private',
     kind: 'platform',
-    Icon: RedditBrandIcon,
-    brandColor: '#FF4500',
+    Icon: ShieldCheck,
+    brandColor: '#14B8A6',
     ...radialEnter(5),
   },
   {

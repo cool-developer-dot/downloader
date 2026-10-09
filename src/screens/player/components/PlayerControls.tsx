@@ -2,29 +2,25 @@ import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Box } from '@/components/base/Box';
-import { Text } from '@/components/base/Text';
 import { IconButton } from '@/components/buttons/IconButton';
 import { Loader } from '@/components/common/Loader';
 import { useTranslation } from '@/localization';
-import { formatPlaybackRateLabel } from '@/player';
-import { resolveVolumeIcon } from '@/player/volume-icons';
 
 export type PlayerControlsProps = {
   isPlaying: boolean;
   isReady: boolean;
   isLoading: boolean;
   isCompleted: boolean;
-  isMuted: boolean;
-  volumeLevel: number;
-  playbackRate: number;
   disabled?: boolean;
   visible?: boolean;
+  /** Previous / Next show only when the video was opened from a list; each is null at that end of it. */
+  hasQueue?: boolean;
+  onPrevious?: (() => void) | null;
+  onNext?: (() => void) | null;
   onPlayPause: () => void;
   onRewind: () => void;
   onForward: () => void;
   onReplay: () => void;
-  onToggleMute: () => void;
-  onOpenSpeed: () => void;
 };
 
 export const PlayerControls = memo(function PlayerControls({
@@ -32,17 +28,15 @@ export const PlayerControls = memo(function PlayerControls({
   isReady,
   isLoading,
   isCompleted,
-  isMuted,
-  volumeLevel,
-  playbackRate,
   disabled = false,
   visible = true,
+  hasQueue = false,
+  onPrevious = null,
+  onNext = null,
   onPlayPause,
   onRewind,
   onForward,
   onReplay,
-  onToggleMute,
-  onOpenSpeed,
 }: PlayerControlsProps) {
   const { t } = useTranslation();
   if (!visible) {
@@ -50,21 +44,23 @@ export const PlayerControls = memo(function PlayerControls({
   }
 
   const controlsDisabled = disabled || (!isReady && !isCompleted) || isLoading;
-  const volumeIcon = resolveVolumeIcon(volumeLevel, isMuted);
 
   return (
     <View style={styles.wrap} pointerEvents="box-none">
-      <Box row center gap={16} style={styles.row}>
-        <IconButton
-          icon={volumeIcon}
-          size="medium"
-          variant="ghost"
-          // Video stage is always black — theme primary is ink in LIGHT and vanishes.
-          color={controlsDisabled ? 'disabled' : 'inverse'}
-          accessibilityLabel={isMuted ? t('player.unmute') : t('player.mute')}
-          disabled={controlsDisabled}
-          onPress={onToggleMute}
-        />
+      <Box row center gap={12} style={styles.row}>
+        {hasQueue ? (
+          <IconButton
+            icon="skip-previous"
+            size="medium"
+            variant="ghost"
+            // Video stage is always black — theme primary is ink in LIGHT and vanishes.
+            color={onPrevious ? 'inverse' : 'disabled'}
+            accessibilityLabel={t('player.previousVideo')}
+            disabled={!onPrevious}
+            onPress={onPrevious ?? undefined}
+            testID="player-previous"
+          />
+        ) : null}
         <IconButton
           icon="rewind-10"
           size="large"
@@ -105,23 +101,19 @@ export const PlayerControls = memo(function PlayerControls({
           disabled={controlsDisabled}
           onPress={onForward}
         />
-        <IconButton
-          icon="play-speed"
-          size="medium"
-          variant="ghost"
-          color={controlsDisabled ? 'disabled' : 'inverse'}
-          accessibilityLabel={t('player.playbackSpeedSelected', {
-            rate: formatPlaybackRateLabel(playbackRate),
-          })}
-          disabled={controlsDisabled}
-          onPress={onOpenSpeed}
-        />
+        {hasQueue ? (
+          <IconButton
+            icon="skip-next"
+            size="medium"
+            variant="ghost"
+            color={onNext ? 'inverse' : 'disabled'}
+            accessibilityLabel={t('player.nextVideo')}
+            disabled={!onNext}
+            onPress={onNext ?? undefined}
+            testID="player-next"
+          />
+        ) : null}
       </Box>
-      <View style={styles.rateHint} pointerEvents="none">
-        <Text variant="caption" color="white">
-          {formatPlaybackRateLabel(playbackRate)}
-        </Text>
-      </View>
     </View>
   );
 });
@@ -141,11 +133,5 @@ const styles = StyleSheet.create({
     height: 56,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  rateHint: {
-    position: 'absolute',
-    bottom: 12,
-    alignSelf: 'center',
-    opacity: 0.85,
   },
 });

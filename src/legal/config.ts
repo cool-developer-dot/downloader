@@ -39,7 +39,7 @@ export const legalConfig: LegalConfig = {
   updatedDate: '2026-08-25',
   contact: {
     privacyEmail: null,
-    supportEmail: null,
+    supportEmail: 'Vidoraxlabs@gmail.com',
   },
   publicPrivacyUrl: `${WEBSITE_ORIGIN}/privacy`,
   publicTermsUrl: `${WEBSITE_ORIGIN}/terms`,
