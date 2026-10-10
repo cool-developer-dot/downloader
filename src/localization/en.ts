@@ -986,7 +986,11 @@ export const en = {
     untitled: 'Video',
     seekTimelineA11y: 'Seek timeline',
     videoSurfaceA11y: 'Video surface',
-    surfaceHint: 'Tap to show controls. Swipe the left edge for brightness, the right edge for volume. Double tap a side to seek. Pinch to zoom; double tap resets the zoom.',
+    surfaceHint: 'Tap to show controls. Swipe the left edge for brightness, the right edge for volume. Double tap the left third to go back 10 seconds, the middle to play or pause, the right third to skip 10 seconds. Pinch to zoom; while zoomed, double tap resets the zoom.',
+    durationTotalA11y: 'Total length {time}',
+    durationRemainingA11y: 'Time left {time}',
+    durationShowRemainingHint: 'Shows the time left instead',
+    durationShowTotalHint: 'Shows the total length instead',
     hud: {
       brightness: 'Brightness {percent} percent',
       volume: 'Volume {percent} percent',

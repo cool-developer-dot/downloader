@@ -440,14 +440,15 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
   format). Progress is saved every 5 s while playing, on pause, on background, on end, and on unmount **from refs**
   (never from a released player).
 - Controls: back, orientation sheet and fullscreen on top; previous / −10 s / play-pause / +10 s / next in the
-  centre; scrubber with current / total time, mute and the speed sheet at the bottom; a lock control. Picture-in-picture
-  is entered automatically when the user leaves the app while a video plays (no button). Auto-hide after 3 s while
-  playing. *(Not built yet, planned in Phase 20 — `docs/ROADMAP.md`: fit/fill/crop, audio and
-  subtitle track menus, remaining-time toggle.)*
-- Gestures: tap toggles controls; double-tap in the centre zone seeks ±10 s by left/right half and resets the zoom;
-  vertical swipe on the left 25 % changes **window** brightness (no system settings permission); right 25 % changes
-  media volume; pinch zooms; the lock button disables gestures. *(Long-press 2× and a play/pause double-tap are not
-  built yet — Phases 20 and 16.)*
+  centre; scrubber with current / total time (tap the total to show the time left as `−mm:ss`, tap again for the
+  total; the choice is kept in MMKV `vidorax.mmkv.player.durationLabelMode.v1`), mute and the speed sheet at the
+  bottom; a lock control. Picture-in-picture is entered automatically when the user leaves the app while a video plays
+  (no button). Auto-hide after 3 s while playing. *(Not built yet, planned in Phase 20 — `docs/ROADMAP.md`:
+  fit/fill/crop, audio and subtitle track menus.)*
+- Gestures: tap toggles controls; double-tap: while zoomed it only resets the zoom, otherwise the surface is split in
+  thirds — left −10 s, middle play/pause, right +10 s (`resolveDoubleTapAction`; physical sides, not mirrored in
+  Urdu); vertical swipe on the left 25 % changes **window** brightness (no system settings permission); right 25 %
+  changes media volume; pinch zooms; the lock button disables gestures. *(Long-press 2× is not built yet — Phase 20.)*
 - Next/previous follow the order of the library screen the player was opened from. The player only opens local
   library files (`resolve-playback-source.ts`, by media id); network streams and files from other apps are Phase 16.
 - Picture-in-picture needs manifest entries mirrored from expo-video's config plugin (this repo does not run
