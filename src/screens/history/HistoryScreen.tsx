@@ -10,6 +10,7 @@ import { navigation } from '@/navigation';
 import type { BrowserHistoryEntry } from '@/storage/types';
 
 import {
+  HistoryClearSearchesRow,
   HistoryDeleteDialog,
   HistoryEmptyState,
   HistoryErrorState,
@@ -45,6 +46,12 @@ export const HistoryScreen = memo(function HistoryScreen() {
     openClear,
     cancelClear,
     confirmClear,
+    recentSearchTotal,
+    clearSearchesVisible,
+    clearingSearches,
+    openClearSearches,
+    cancelClearSearches,
+    confirmClearSearches,
     openBrowser,
     refresh,
     loadMore,
@@ -88,6 +95,10 @@ export const HistoryScreen = memo(function HistoryScreen() {
     void confirmClear();
   }, [confirmClear]);
 
+  const handleConfirmClearSearches = useCallback(() => {
+    void confirmClearSearches();
+  }, [confirmClearSearches]);
+
   const canClear = items.length > 0 || total > 0;
 
   return (
@@ -124,6 +135,10 @@ export const HistoryScreen = memo(function HistoryScreen() {
           testID="history-search-field"
         />
       </Box>
+
+      {recentSearchTotal > 0 ? (
+        <HistoryClearSearchesRow onPress={openClearSearches} disabled={clearingSearches} />
+      ) : null}
 
       {status === 'loading' ? <HistorySkeleton /> : null}
 
@@ -162,6 +177,14 @@ export const HistoryScreen = memo(function HistoryScreen() {
         loading={clearing}
         onConfirm={handleConfirmClear}
         onCancel={cancelClear}
+      />
+
+      <HistoryDeleteDialog
+        mode="clearSearches"
+        visible={clearSearchesVisible}
+        loading={clearingSearches}
+        onConfirm={handleConfirmClearSearches}
+        onCancel={cancelClearSearches}
       />
     </SafeAreaScreen>
   );

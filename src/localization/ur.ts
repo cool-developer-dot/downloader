@@ -1254,9 +1254,15 @@ export const ur: CatalogStrings<typeof en> = {
     errorTitle: 'ہسٹری لوڈ نہیں ہو سکی',
     clearTitle: 'براؤزنگ ہسٹری صاف کریں؟',
     clearMessage:
-      'اس ڈیوائس سے محفوظ شدہ براؤزنگ ہسٹری مستقل طور پر ہٹ جائے گی۔',
+      'اس ڈیوائس سے محفوظ شدہ براؤزنگ ہسٹری مستقل طور پر ہٹ جائے گی۔ آپ کی حالیہ تلاشیں رہیں گی۔',
     clearConfirm: 'سب صاف کریں',
     clearCancel: 'منسوخ',
+    clearSearches: 'حالیہ تلاشیں صاف کریں',
+    clearSearchesHint: 'ایڈریس بار میں لکھی گئی تلاشیں۔ براؤزنگ ہسٹری رہے گی۔',
+    clearSearchesTitle: 'حالیہ تلاشیں صاف کریں؟',
+    clearSearchesMessage:
+      'اس سے ایڈریس بار میں لکھی گئی تلاشیں اس ڈیوائس سے ہٹ جائیں گی اور پھر تجویز نہیں ہوں گی۔ آپ کی براؤزنگ ہسٹری رہے گی۔',
+    clearSearchesConfirm: 'تلاشیں صاف کریں',
     deleteTitle: 'یہ صفحہ ہٹائیں؟',
     deleteMessage: 'یہ صفحہ براؤزنگ ہسٹری سے ہٹ جائے گا۔',
     deleteConfirm: 'ہٹائیں',

@@ -1251,9 +1251,15 @@ export const en = {
     errorTitle: 'Couldn’t load history',
     clearTitle: 'Clear browsing history?',
     clearMessage:
-      'This permanently removes your saved browsing history from this device.',
+      'This permanently removes your saved browsing history from this device. Your recent searches are kept.',
     clearConfirm: 'Clear all',
     clearCancel: 'Cancel',
+    clearSearches: 'Clear recent searches',
+    clearSearchesHint: 'Searches you typed in the address bar. Browsing history stays.',
+    clearSearchesTitle: 'Clear recent searches?',
+    clearSearchesMessage:
+      'This removes the searches you typed in the address bar from this device, so they are no longer suggested. Your browsing history is kept.',
+    clearSearchesConfirm: 'Clear searches',
     deleteTitle: 'Remove this page?',
     deleteMessage: 'This page will be removed from your browsing history.',
     deleteConfirm: 'Remove',
