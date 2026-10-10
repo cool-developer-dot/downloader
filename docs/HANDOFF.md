@@ -1975,6 +1975,15 @@ in `docs/ROADMAP.md`. No code changed.
   "Not planned" with a reason (torrent/P2P, accounts/cloud vs the local-only rule, Play-restricted permissions,
   device-wide file manager, password manager, music-player and online-service features).
 
+### 4.32 Phase 16 quick fixes — Faran · Sonnet (branch `faran/sonnet-fixes`, 2026-10-10)
+
+One task per commit group (`F12:` …), full log with test evidence in `docs/work-log/faran-sonnet.md`.
+
+- **F12 Help answers.** 16 Help & Support answers rewritten to match the app (en + ur): theme options System / Red /
+  Dark; HLS and DASH downloads pause and resume (segment checkpoints; checked on the AVD); the saved-videos tab is
+  "Player"; favorites, folders, rename, delete, share and storage name the real screens. New
+  `src/localization/catalog-parity.test.ts` (same keys, no empty Urdu, same placeholders).
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.
