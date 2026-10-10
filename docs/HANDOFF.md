@@ -1993,6 +1993,9 @@ One task per commit group (`F12:` …), full log with test evidence in `docs/wor
   (`linkFromClipboardText`: first http(s) link starting a word, punctuation trimmed) and opens it with `openPastedLink`
   (direct analyzer); YouTube → refusal toast; no link → Browser with the address-bar editor focused
   (`address-bar-focus.ts`; Android drops the overlay's first keyboard request, so the hook blurs/refocuses once).
+- **F11 Translate page.** Browser menu → "Translate page" (after Share) opens
+  `translate.google.com/translate?sl=auto&tl=<en|ur>&u=<page>` in a new tab (`services/translate-page.ts`); disabled on
+  home / non-web / Google Translate pages; Privacy Policy §5 says the page address goes to Google when tapped.
 
 ## 5. How to resume
 

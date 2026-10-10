@@ -307,3 +307,59 @@ errors (84 warnings); `git diff --check` clean.
 
 - Android shows its own "VidoraX pasted from your clipboard" toast first (system behaviour, Android 12+); our YouTube
   refusal toast follows it.
+
+## F11 — Translate page
+
+**Plan.** Add "Translate page" to the browser menu after Share; tap → new tab with
+`https://translate.google.com/translate?sl=auto&tl=<en|ur>&u=<encodeURIComponent(page)>` (`tl` = app language);
+disabled on the browser home, non-web pages and Google Translate pages; 10-tab limit → the F8 toast; one sentence in
+the Privacy Policy (en + ur); unit-test the URL builder.
+
+**Decisions.**
+- *Google Translate pages* = `translate.google.com`, `*.translate.goog` (where Google serves the translated copy) and
+  `translate.googleusercontent.com`; Translate is disabled there.
+- *Privacy sentence* appended to section 5 "Third-party and service-provider processing", paragraph 1 (structure of the
+  frozen legal document unchanged); `legalConfig.updatedDate` → 2026-10-10 because the policy text changed.
+- The tab limit reuses F8's `announceTabsLimitReached` (one small shared helper; F11 now depends on F8's commit).
+- `BROWSER_CHROME_ACTIONS` `translate` set to `enabled: true` (that list's flags mark what ships).
+
+**Files changed:** `src/browser/services/{translate-page.ts, translate-page.test.ts}` (new),
+`src/browser/components/BrowserOverflowMenu/{browser-menu-actions.ts, types.ts}`,
+`src/browser/constants/chrome-actions.ts`, `src/legal/config.ts`, `src/localization/{en,ur}.ts`
+(`browser.translatePageA11y`, `privacy.sections.thirdParties.p1`).
+
+**Automated:** `npm test` 658 / 658 (+5: sl=auto, tl=en/ur; `?`, `#`, `&` and spaces encoded and round-trip; non-Latin
+raw and percent-encoded addresses round-trip; home/about/file/empty/invalid → unavailable; Google Translate pages →
+unavailable); typecheck OK; lint 0 errors (84 warnings); `git diff --check` clean.
+
+**Manual cases**
+
+| # | Case | Build | Result | Note |
+| --- | --- | --- | --- | --- |
+| 1 | Spanish news site → Translate page → English page in a new tab | release | PASS | BBC Mundo → new tab (1 → 2) → `www-bbc-com.translate.goog/mundo?_x_tr_sl=auto&_x_tr_tl=en…`, "Spanish → English", headlines in English. On the debug build the first try reached Google's "unusual traffic" reCAPTCHA (`google.com/sorry`, with the correct `translate?sl=auto&tl=en&u=https%3A%2F%2Fwww.bbc.com%2Fmundo` as `continue`) — not solved (not allowed); later tries went through |
+| 2 | App in Urdu → `tl=ur` | debug | PASS | menu label "صفحہ ترجمہ کریں" right after Share; new tab URL `tl=ur` → `…translate.goog/mundo?_x_tr_tl=ur` |
+| 3 | Disabled on the browser home / on a Google Translate page | debug | PASS | menu row `enabled=false` on the home tab and on `translate.google.com/?sl=es…`; `true` on BBC. (The reCAPTCHA page is `www.google.com/sorry`, not a Translate page, so Translate stays enabled there) |
+| 4 | Video on the translated page still detected | debug | PASS | w3schools `html5_video.asp` → Translate (ur) → `www-w3schools-com.translate.goog/…` → `[VidoraPipeline] stage offer OFFERED`, bar "ویڈیو دستیاب / پہلے سے ڈاؤن لوڈ شدہ" (already saved earlier) |
+| 5 | 10 tabs → message | debug | PASS | toast "زیادہ سے زیادہ ۱۰ ٹیبز کھلے ہیں", still 10 tabs |
+| 6 | Privacy Policy sentence en + ur | debug | PASS | "When you tap Translate page in the browser menu, the address of that page is sent to Google Translate…", Urdu in section ۵; "Last updated: 2026-10-10" |
+
+**Regression (release `525ed4d`, debug-key re-signed, over a freshly seeded test1)**
+
+| # | Result | Note |
+| --- | --- | --- |
+| R1 | FAIL (target), no regression | 6.2 / 6.2 / 6.5 s; test1 6.2–6.4 s |
+| R2 | PASS | MP4 → Player PLAYING |
+| R3 | PASS | 184p completed |
+| R4 | PASS | TikTok 576p, Facebook completed |
+| R5 | PASS | YouTube toast |
+| R6 | PASS | 288p paused at 13.9 / 36.7 MB, unchanged 8 s, resumed, completed |
+| R7 | PASS | 00:04 → +10 00:14 → −10 00:04 → seek 05:19, PLAYING, fullscreen ROTATION_90, PiP pinned |
+| R8 | PASS | lock screen after enable + Home; none after disable (`r8.sh`) |
+| R9 | PASS | Settings in Urdu (27 strings) |
+| R10 | PASS | 1 download, favorite, 6 history entries, test1 recent search row |
+
+**Found, not fixed (F11)**
+
+- The browser menu keeps its icons on the left and is not mirrored in Urdu (existing layout).
+- The emulator's network sometimes gets Google's "unusual traffic" CAPTCHA (also seen for Google searches) — an
+  environment limit, not an app issue.
