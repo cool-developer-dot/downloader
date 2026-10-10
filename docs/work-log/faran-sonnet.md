@@ -363,3 +363,64 @@ unavailable); typecheck OK; lint 0 errors (84 warnings); `git diff --check` clea
 - The browser menu keeps its icons on the left and is not mirrored in Urdu (existing layout).
 - The emulator's network sometimes gets Google's "unusual traffic" CAPTCHA (also seen for Google searches) — an
   environment limit, not an app issue.
+
+## F10 — Player: time left + double-tap play/pause
+
+**Plan.** Tappable duration label (total ↔ −time left, persisted like `library/view-mode.ts` does in MMKV); replace the
+half-split double tap with thirds (−10 s / play-pause / +10 s), keeping the zoom-reset precedence; update
+`player.surfaceHint` and ARCHITECTURE §7; unit-test the zone function and the label formatting.
+
+**Decisions.**
+- *Zone:* the existing double tap covered the whole surface width (`resolveCenterDoubleTapSide(x, layout.width)`), so
+  "centre zone" = that surface; the new `resolveDoubleTapAction(x, width, zoomed)` is a `'worklet'` called inside the
+  gesture (`surfaceWidth`, `isZoomed(scale)`), so the zoom rule stays first exactly as before: zoomed → only reset.
+  The middle third includes both edges (exactly 1/3 and 2/3 → play/pause). Physical `event.x`, never mirrored.
+  `resolveCenterDoubleTapSide` / `resolveDoubleTapSide` (halves) are removed.
+- *Play/pause* reuses the screen's `onPlayPause` (same as the button: keeps the controls' timer fresh).
+- *Label format:* the existing `formatPlaybackTime` style (`00:05`, `1:02:03`), so time left reads `−00:05` /
+  `−1:02:03` (U+2212) next to the `00:05`-style position label, not `−0:05` as in the task's example.
+- *Time left* = ⌊total⌋ − ⌊position⌋: with a fractional length (634.63 s → "10:34") a rounded-up remainder showed
+  05:42 + 04:53 = 10:35 on the device; fixed so the labels always add up to the total shown.
+- MMKV key `vidorax.mmkv.player.durationLabelMode.v1` (default `total`).
+
+**Files changed:** `src/player/{double-tap-seek.ts, double-tap-seek.test.ts (new), duration-label.ts (new),
+duration-label.test.ts (new), duration-label-preference.ts (new), index.ts}`,
+`src/screens/player/{PlayerScreen.tsx, components/PlayerTimeline.tsx, components/PlayerVideoSurface.tsx}`,
+`src/storage/constants/mmkv-keys.ts`, `src/localization/{en,ur}.ts` (`player.surfaceHint`, `player.duration*`),
+`docs/ARCHITECTURE.md` §7.
+
+**Automated:** `npm test` 671 / 671 (+13: thirds; exactly 1/3 and 2/3 and a width not divisible by 3; zoomed →
+reset wherever the tap lands, also with width 0; zero/negative/NaN/∞ width → nothing; ±10 s; total label; −00:05,
+−1:02:03; position + left = total incl. a fractional length; never below zero; unknown duration `--:--` in both modes;
+toggle; stored values); typecheck OK; lint 0 errors (84 warnings); `git diff --check` clean.
+
+**Manual cases**
+
+| # | Case | Build | Result | Note |
+| --- | --- | --- | --- | --- |
+| 1 | Tap duration → toggles; survives restart | debug + release | PASS | "Total length 10:34" → "Time left −04:47" with position 05:47; after force-stop still time left; tap → total again. Release: 00:55 / −01:10 of 02:05, still time left after force-stop |
+| 2 | Double-tap middle / left / right | debug | PASS | right 00:21 → 00:31, left → 00:21, middle → PLAYING, middle again → PAUSED (time unchanged) |
+| 3 | Zoom in, double-tap → zoom resets only | — | BLOCKED | the AVD cannot produce a pinch: console multi-touch events reach `/dev/input/event1` (a console single tap works) but a two-finger pinch is not recognised; the emulator window is not reachable for host Ctrl+drag. Covered by the unit test and by keeping the existing reset branch first in the worklet |
+| 4 | Locked → nothing happens | debug | PASS | middle and right double-taps while locked: PAUSED at 35.96 s before and after |
+| 5 | Mini player unaffected | debug | PASS | leaving the Player shows the mini player; its play button plays; a tap reopens the full Player |
+| 6 | Landscape fullscreen | debug | PASS | ROTATION_90; right 00:41 → 00:51, left → 00:41, middle play, middle pause |
+| 7 | Urdu: sides stay physical | debug | PASS | physical right +10 (01:01 → 01:11), left −10; label a11y "کل دورانیہ 02:05" / "باقی وقت −01:04" |
+
+**Regression (release `fed09a1`, debug-key re-signed, over a freshly seeded test1)**
+
+| # | Result | Note |
+| --- | --- | --- |
+| R1 | FAIL (target), no regression | 6.5 / 6.5 / 6.5 s (Gradle building alongside); test1 6.2–6.4 s |
+| R2 | PASS | MP4 → Player PLAYING |
+| R3 | PASS | 184p completed |
+| R4 | PASS | TikTok 576p, Facebook completed |
+| R5 | PASS | YouTube toast |
+| R6 | PASS | 288p paused at 23.4 / 37.2 MB, unchanged 8 s, resumed, completed |
+| R7 | PASS | 00:04 → +10 00:14 → −10 00:04 → seek 05:19, PLAYING, fullscreen ROTATION_90, PiP pinned |
+| R8 | PASS | lock screen after enable + Home; none after disable |
+| R9 | PASS | Settings in Urdu (27 strings) |
+| R10 | PASS | 1 download, favorite, 3 history entries |
+
+**Found, not fixed (F10)**
+
+- The 288p HLS file that was paused/resumed in a regression run again stuck in BUFFERING after seeks (at 05:57); see F9.

@@ -1996,6 +1996,9 @@ One task per commit group (`F12:` …), full log with test evidence in `docs/wor
 - **F11 Translate page.** Browser menu → "Translate page" (after Share) opens
   `translate.google.com/translate?sl=auto&tl=<en|ur>&u=<page>` in a new tab (`services/translate-page.ts`); disabled on
   home / non-web / Google Translate pages; Privacy Policy §5 says the page address goes to Google when tapped.
+- **F10 Player.** Tap the total time → time left `−mm:ss` (MMKV `vidorax.mmkv.player.durationLabelMode.v1`);
+  double tap by thirds — −10 s / play-pause / +10 s — after the unchanged zoom-reset rule (`resolveDoubleTapAction`, a
+  worklet). ARCHITECTURE §7 updated.
 
 ## 5. How to resume
 
