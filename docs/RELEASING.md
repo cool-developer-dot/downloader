@@ -9,6 +9,7 @@ neither can break the other.
 | --- | --- | --- |
 | `release/1.0` | The tested build plus fixes from tester feedback | Small fixes only, by pull request. Every Play build comes from here |
 | `main` | All new work (Phase 16, the downloader plan) | Merged by pull request from feature branches; must always build |
+| `faran/sonnet-fixes`, `faran/opus-engine` | Faran's two batches (prompts in `docs/work-plans/`) | Each task is its own commits, prefixed with its ID (`F7: …`), so one feature can be changed or reverted alone; merged into `main` by PR |
 | `dl/<ID>-<name>`, `fix/<issue>-<name>` | One work package or one fix | Branch from `main` (new work) or `release/1.0` (tester fix) |
 
 `phase14-cloud-sync` and `overhaul` are history; don't build on them.
