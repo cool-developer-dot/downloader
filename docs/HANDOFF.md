@@ -1983,6 +1983,9 @@ One task per commit group (`F12:` …), full log with test evidence in `docs/wor
   Dark; HLS and DASH downloads pause and resume (segment checkpoints; checked on the AVD); the saved-videos tab is
   "Player"; favorites, folders, rename, delete, share and storage name the real screens. New
   `src/localization/catalog-parity.test.ts` (same keys, no empty Urdu, same placeholders).
+- **F9 Clear recent searches.** History has a "Clear recent searches" row + dialog; it clears only the address-bar
+  searches and invalidates the omnibox suggestion index (`clearRecentSearches`); "Clear all" history keeps searches.
+  `SuggestionService` now takes its sources in the constructor (storage sources in `suggestions/index.ts`).
 
 ## 5. How to resume
 

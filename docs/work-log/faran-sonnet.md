@@ -110,3 +110,70 @@ a mutation run — one blanked Urdu string and one deleted Urdu key — failed 2
   redirects `/` to Browser and the tab has `href: null`. (Matters for F7.)
 - Hard-coded English seen while testing: the "Press back again to exit" toast (`use-tab-exit-back-handler.ts`) and the
   omnibox row subtitles "Recent search", "Suggested site", "Search Google for “…”" (`suggestion.service.ts`).
+
+## F9 — Clear recent searches
+
+**Plan.** The store's `clear()` exists but nothing calls it, and it does not drop the omnibox's cached suggestion index
+(`suggestionService` keeps a 1-minute index plus a per-query cache), so a cleared search could still be suggested.
+Add a History row + its own confirmation dialog, make `clear()` invalidate the suggestion index like `record()` does, and
+test "after clear, no `recent_search` suggestion" against the real `SuggestionService`.
+
+**Decisions.**
+- *Placement:* a full-width row "Clear recent searches" under the History search field (with a one-line hint), shown
+  while there are recent searches — not a second unlabeled header icon beside "Clear all", which would be
+  indistinguishable from it. ROADMAP Phase 16 #3 also calls it a row.
+- *Testability:* `SuggestionService` now receives its sources in the constructor (`SuggestionSources`); the app
+  instance in `browser/suggestions/index.ts` passes the storage services (`storage-sources.ts`). The storage layer
+  needs expo-sqlite (and uses parameter properties), so it cannot load under `node --test`.
+- The clear sequence lives in `store/recent-searches/clear-recent-searches.ts` (clear table → invalidate suggestions), used
+  by the store and by the test.
+- "Clear all" history already only touches `browser_history` + `recent_urls`; its dialog now says recent searches
+  are kept (en + ur).
+
+**Files changed:** `src/browser/suggestions/{suggestion.service.ts, index.ts, storage-sources.ts (new),
+suggestion.service.test.ts (new)}`, `src/store/recent-searches/{actions.ts, clear-recent-searches.ts (new)}`,
+`src/screens/history/{HistoryScreen.tsx, hooks/useHistoryScreen.ts, components/HistoryClearSearchesRow.tsx (new),
+components/HistoryDeleteDialog.tsx, components/index.ts}`, `src/localization/{en,ur}.ts` (`history.clearSearches*`,
+`history.clearMessage`).
+
+**Automated:** `npm test` 631 / 631 (+4: "cats" suggested before; no `recent_search` for "ca"/"cats"/"c" after
+clear even with a warm cache; history suggestions kept; without the invalidation the stale index still offers it);
+typecheck OK; lint 0 errors (84 warnings); `git diff --check` clean. No Kotlin changed.
+
+**Manual cases**
+
+| # | Case | Build | Result | Note |
+| --- | --- | --- | --- | --- |
+| 1 | Search "cats", type "ca" → "cats" suggested | debug | PASS | row "cats · Recent search" |
+| 2 | History → Clear recent searches → confirm → "ca" → no "cats" | debug | PASS | row disappears; 10 history entries kept (incl. the Google results page — that is browsing history) |
+| 3 | Force-stop + reopen → still cleared, history still there | debug | PASS | 0 recent rows, 10 history rows |
+| 4 | Cancel in the dialog → nothing cleared | debug | PASS | row and suggestion stay |
+| 5 | Urdu dialog + row | debug | PASS | "حالیہ تلاشیں صاف کریں؟" / "تلاشیں صاف کریں", row mirrored RTL |
+| 6 | Clear all browsing history keeps searches | debug | PASS | Urdu "سب صاف کریں" → 0 history rows, "dogs" still suggested for "do" |
+| 7 | Release over test1: the test1 search shows the row → clear → gone, no suggestion | release | PASS | |
+
+**Regression (release `62ccd8a`, debug-key re-signed, over a freshly seeded test1; scripted in `regress.py`)**
+
+| # | Result | Note |
+| --- | --- | --- |
+| R1 | FAIL (target), no regression | browser chrome 6.2 / 6.2 / 6.2 s; test1 measured the same way 6.2 / 6.3 / 6.4 s (splash animation) |
+| R2 | PASS | w3schools MP4 → Player PLAYING |
+| R3 | PASS | quality sheet → 184p → completed |
+| R4 | PASS | TikTok 576p, Facebook completed |
+| R5 | PASS | toast "YouTube downloads are not supported" |
+| R6 | PASS | 288p paused at 31.5 / 37.7 MB, unchanged after 8 s, resumed, completed, plays from the start |
+| R7 | PASS | −10/+10 (00:05→00:15→00:05), seek →05:19, PLAYING, fullscreen ROTATION_90, PiP `mode=pinned` (Home while a video plays) |
+| R8 | PASS | PIN asked after enable; none after disable (first scripted try missed the Enable button while the screen scrolled — redone) |
+| R9 | PASS | Settings 25 Urdu strings; History row/dialog in Urdu |
+| R10 | PASS | 1 download, favorite, 6 history entries, the test1 recent search shows the new row |
+
+**Found, not fixed (F9)**
+
+- The 288p HLS download that was paused and resumed opened at its saved position 84.025 s and stayed BUFFERING (no
+  picture, no PiP because nothing played); seeking from the start and to 87–170 s played normally, on test1 too. A
+  frame comparison against ffmpeg's own copy of the same variant shows one frame missing at the first segment boundary
+  (app frame 299 = source frame 300) and 18,979 vs 19,039 video frames overall. Worth a look by whoever owns
+  `HlsTransfer`/`Remuxer` (Faran · Opus engine batch?).
+- Home while a video plays in landscape *fullscreen* pauses it instead of entering PiP (portrait PiP works).
+- The History list's day header "TODAY" stays English in Urdu.
+- Omnibox rows "Recent search"/"Recent" stay English in Urdu (see F12).
