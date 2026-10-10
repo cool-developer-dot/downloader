@@ -490,6 +490,7 @@ export const en = {
     linkCopied: 'Link copied',
     copyLinkA11y: 'Copy link to current page',
     sharePageA11y: 'Share current page',
+    translatePageA11y: 'Open this page translated by Google Translate in a new tab',
     desktopSiteA11y: 'Request desktop version of current site',
     desktopSiteEnabled: 'Desktop site enabled',
     desktopSiteDisabled: 'Mobile site enabled',
@@ -1725,7 +1726,7 @@ export const en = {
       },
       thirdParties: {
         heading: '5. Third-party and service-provider processing',
-        p1: 'When you browse websites or open in-app search that loads a third-party page, those third parties process information under their own policies. VidoraX does not control third-party websites you visit.',
+        p1: 'When you browse websites or open in-app search that loads a third-party page, those third parties process information under their own policies. VidoraX does not control third-party websites you visit. When you tap Translate page in the browser menu, the address of that page is sent to Google Translate, which opens the translated page in a new tab.',
         p2: 'Network requests needed to load pages, thumbnails, or media you choose still go to those third-party sources. This policy does not claim that browsing is hidden from the sites you visit.',
         p3: 'The app may use on-device system notifications (for example, download-related alerts). VidoraX does not currently embed advertising networks or third-party analytics SDKs in the mobile app as described in this policy.',
       },
