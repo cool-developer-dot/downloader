@@ -18,6 +18,8 @@ export type ProgressiveVideoContainer =
   | 'm2ts'
   | '3gp'
   | '3g2'
+  | 'f4v'
+  | 'divx'
   | 'flv'
   | 'wmv';
 

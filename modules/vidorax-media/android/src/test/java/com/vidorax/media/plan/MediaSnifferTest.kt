@@ -43,6 +43,41 @@ class MediaSnifferTest {
     assertSupported(Container.WMV, sniff(guid + ByteArray(32), total = 48))
   }
 
+  // --- F4V, 3GPP2 and DivX (real ffmpeg files in /media/process) ---
+
+  @Test fun classifiesF4vAsMp4() {
+    val bytes = fixture("/media/process/sample.f4v")
+    assertEquals("ftyp major brand", "f4v ", String(bytes, 8, 4, Charsets.US_ASCII))
+    assertSupported(Container.MP4, sniff(bytes, url = "https://cdn.example/show.f4v", total = bytes.size.toLong()))
+    // The bytes decide: the same file behind an opaque link is still MP4.
+    assertSupported(Container.MP4, sniff(bytes, contentType = "video/x-f4v", url = "https://cdn.example/s/91", total = bytes.size.toLong()))
+  }
+
+  @Test fun classifiesThreeGpp2ByBrand() {
+    val bytes = fixture("/media/process/sample.3g2")
+    assertEquals("ftyp major brand", "3g2a", String(bytes, 8, 4, Charsets.US_ASCII))
+    assertSupported(Container.THREE_G2, sniff(bytes, url = "https://cdn.example/clip.3g2", total = bytes.size.toLong()))
+    assertSupported(Container.THREE_G2, sniff(bytes, url = "https://cdn.example/opaque", total = bytes.size.toLong()))
+  }
+
+  @Test fun classifiesDivxAndDivx3AsAvi() {
+    for (name in listOf("divx-mp3.divx", "div3-mp3.divx")) {
+      val bytes = fixture("/media/process/$name")
+      assertSupported(Container.AVI, sniff(bytes, contentType = "video/divx", url = "https://cdn.example/$name", total = bytes.size.toLong()))
+    }
+  }
+
+  @Test fun refusesDrmBrandedF4v() {
+    val payload = "f4v ".toByteArray() + byteArrayOf(0, 0, 0, 0) + "f4v ".toByteArray() + "cenc".toByteArray()
+    val bytes = box("ftyp", payload) + box("mdat", ByteArray(16))
+    assertUnsupported(ProbeFailure.DRM_PROTECTED, sniff(bytes, url = "https://cdn.example/show.f4v", total = bytes.size.toLong()))
+  }
+
+  @Test fun refusesF4vWithProtectedSampleEntries() {
+    val bytes = ftyp("f4v ") + box("moov", box("trak", box("sinf", ByteArray(16)))) + box("mdat", ByteArray(16))
+    assertUnsupported(ProbeFailure.DRM_PROTECTED, sniff(bytes, url = "https://cdn.example/show.f4v", total = bytes.size.toLong()))
+  }
+
   @Test fun acceptsExtensionlessUrlFromMagicBytes() {
     val bytes = fixture("/media/progressive/av.mp4")
     // No extension in the URL at all: classification must come from bytes, not the path.
