@@ -177,3 +177,60 @@ typecheck OK; lint 0 errors (84 warnings); `git diff --check` clean. No Kotlin c
 - Home while a video plays in landscape *fullscreen* pauses it instead of entering PiP (portrait PiP works).
 - The History list's day header "TODAY" stays English in Urdu.
 - Omnibox rows "Recent search"/"Recent" stay English in Urdu (see F12).
+
+## F8 — Open link in new tab
+
+**Plan.** Enable `openInNewTabAction`; give the sheet's `openInNewTab` a real implementation over
+`browserStore.createTab({ url })`; at the 10-tab limit show "Maximum 10 tabs open"; translate the sheet title,
+announcement and the four labels; unit-test the action and the open/limit/non-http paths.
+
+**Decisions.**
+- *Limit message:* `browser.tabsLimitReached` was only ever announced to screen readers (the menu's feedback is an
+  invisible live region). F8 shows it as a toast + announcement (`services/tabs-limit-notice.ts`, same pattern as the
+  YouTube refusal), so a sighted user sees why no tab opened.
+- *Non-http links* (`mailto:`, `tel:` — the sheet also opens for them): "Open in new tab" is not offered
+  (`isAvailable`), rather than shown greyed out; the sheet already hides disabled entries.
+- Actions carry a `labelKey` (translated when the sheet renders) instead of an English `label`; the dead "(Soon)"
+  suffix for disabled actions is gone (the sheet never showed disabled entries). The share sheet's fallback title is
+  translated too.
+- The browser Help answer (F12) now says a link can be opened in a new tab (en + ur).
+
+**Files changed:** `src/browser/actions/{types.ts, open-link-in-new-tab.ts (new), open-link-in-new-tab.test.ts (new),
+builtins/*.action.ts}`, `src/browser/hooks/useBrowserLongPressActions.ts`, `src/browser/services/tabs-limit-notice.ts
+(new)`, `src/localization/{en,ur}.ts` (`browser.linkActions.*`, `support.faq.howToUseBrowser.answer`).
+
+**Automated:** `npm test` 639 / 639 (+8: creates the tab with the trimmed URL; limit → message, no tab;
+`mailto:`/`tel:`/`javascript:`/`intent:`/empty → nothing; http/https only; action enabled, offered for http(s), not
+for mailto/tel, passes the trimmed link, translated label key); typecheck OK; lint 0 errors (84 warnings);
+`git diff --check` clean.
+
+**Manual cases**
+
+| # | Case | Build | Result | Note |
+| --- | --- | --- | --- | --- |
+| 1 | Long-press a link on a news site → Open in new tab → page in a new tab, counter +1 | debug | PASS | Hacker News → "REA Reverse" link → new tab `rea.tools`, counter 1 → 2; switching back: the sheet does not reappear |
+| 2 | Video page opened this way → "Video available" → download | debug | PASS | w3schools "HTML Multimedia" → long-press Next → new tab `html5_video.asp` → offer (first "Already downloaded": the earlier copy was still in the Gallery — deleted it) → after an app restart the restored tab offered again → MP4 770 KB completed |
+| 3 | 10 tabs open → message, no 11th tab | debug | PASS | toast "Maximum 10 tabs open", counter stays 10, page unchanged |
+| 4 | Copy / Share / Open in external browser still work | debug | PASS | Copy: pasted into the address bar = the link; Share: system chooser; External: Chrome opened the link |
+| 5 | Urdu labels, RTL sheet | debug | PASS | "لنک کے اختیارات", four Urdu labels, icons on the right; limit toast "زیادہ سے زیادہ ۱۰ ٹیبز کھلے ہیں" |
+| 6 | Release over test1 | release | PASS | Open in new tab → 1 → 2 tabs, video page offered |
+
+**Regression (release `3a08b5d`, debug-key re-signed, over a freshly seeded test1)**
+
+| # | Result | Note |
+| --- | --- | --- |
+| R1 | FAIL (target), no regression | browser chrome 1.9* / 6.2 / 6.4 s (*first sample caught a red frame early — counted as noise); test1 6.2–6.4 s |
+| R2 | PASS | MP4 → Player PLAYING |
+| R3 | PASS | 184p completed |
+| R4 | PASS | TikTok 576p, Facebook completed |
+| R5 | PASS | YouTube toast |
+| R6 | PASS | (script picked 1080p) paused at 103.6 / 430.5 MB, unchanged 8 s, resumed, completed 465.3 MB |
+| R7 | PASS | 02:30 → +10 02:40 → −10 02:30 → seek 05:19, PLAYING, fullscreen ROTATION_90, PiP pinned |
+| R8 | PASS | PIN asked after enable; after disable (done by hand — the script tapped the wrong PIN field) no PIN |
+| R9 | PASS | Settings in Urdu (25 strings) |
+| R10 | PASS | 1 download, favorite, 4 history entries, test1 recent search row |
+
+**Found, not fixed (F8)**
+
+- "New tab" in the browser menu and "+" in the tab switcher at the 10-tab limit still only announce the message to
+  screen readers (invisible otherwise); F8's toast helper could be reused there.

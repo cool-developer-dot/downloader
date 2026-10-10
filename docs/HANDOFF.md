@@ -1986,6 +1986,9 @@ One task per commit group (`F12:` …), full log with test evidence in `docs/wor
 - **F9 Clear recent searches.** History has a "Clear recent searches" row + dialog; it clears only the address-bar
   searches and invalidates the omnibox suggestion index (`clearRecentSearches`); "Clear all" history keeps searches.
   `SuggestionService` now takes its sources in the constructor (storage sources in `suggestions/index.ts`).
+- **F8 Open in new tab.** The link long-press sheet's "Open in new tab" works (`openLinkInNewTab` →
+  `createTab({ url })`, http(s) only; at 10 tabs a toast "Maximum 10 tabs open" — `tabs-limit-notice.ts`); sheet title
+  and labels are translated (`browser.linkActions.*`, actions use `labelKey`).
 
 ## 5. How to resume
 
