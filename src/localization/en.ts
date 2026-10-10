@@ -539,6 +539,14 @@ export const en = {
     webContentA11y: 'Web content',
     openBookmarksA11y: 'Open bookmarks',
     openHistoryA11y: 'Open browsing history',
+    linkActions: {
+      title: 'Link options',
+      announce: 'Link actions available',
+      copyLink: 'Copy link',
+      shareLink: 'Share link',
+      openInNewTab: 'Open in new tab',
+      openExternal: 'Open in external browser',
+    },
     media: {
       videoAvailable: 'Video available',
       alreadyDownloaded: 'Already downloaded',
@@ -1519,7 +1527,7 @@ export const en = {
       howToUseBrowser: {
         question: 'How do I use the browser?',
         answer:
-          'Open Browser from the main tabs. Enter a URL or search in the address bar, browse pages, and use bookmarks or history from the browser menu. Long-press a link to copy it, share it or open it in another browser. The in-app browser is for navigation and detecting supported media — it does not claim every site works the same way.',
+          'Open Browser from the main tabs. Enter a URL or search in the address bar, browse pages, and use bookmarks or history from the browser menu. Long-press a link to open it in a new tab, copy it, share it or open it in another browser. The in-app browser is for navigation and detecting supported media — it does not claim every site works the same way.',
         keywords: 'browser, url, address bar, tabs, bookmarks',
       },
       whereDownloadsAppear: {
