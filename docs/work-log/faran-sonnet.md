@@ -234,3 +234,76 @@ for mailto/tel, passes the trimmed link, translated label key); typecheck OK; li
 
 - "New tab" in the browser menu and "+" in the tab switcher at the 10-tab limit still only announce the message to
   screen readers (invisible otherwise); F8's toast helper could be reused there.
+
+## F7 — Paste a copied link
+
+**Plan.** `useQualitySelection.open` (the "Paste link" action of Downloads and Home) only navigated to the Browser. Make
+it read the clipboard (`expo-clipboard` `getStringAsync`, SDK 57 docs: empty string when empty or denied), pick the first
+http(s) link, and open it through `openPastedLink` in the active tab — the address-bar paste path, direct analyzer
+first. YouTube → `announceYouTubeNotSupported`, nothing loads. No link → Browser with the address-bar editor focused
+and the keyboard up.
+
+**Decisions.**
+- *Extraction* (`services/clipboard-link.ts`): stricter than `urlFromSharedText` (shares), because copied text is often
+  not a link: only `http://`/`https://`; the URL must start a word, so an `intent://…;S.browser_fallback_url=https://…`
+  or a `?next=https://…` inside another link is not taken; no bare hosts (`v1.2`, `file.txt`); trailing `.,!?;:…`
+  and unmatched `)`/`]`/`}` are dropped (Wikipedia-style `/Mercury_(planet)` kept); `https:///x` refused.
+- *YouTube:* the toast shows and the user stays where they were (Downloads); the Browser is not opened.
+- *Focus request* (`services/address-bar-focus.ts`): a one-shot request (expires after 5 s so it can never steal focus
+  later), taken by the address bar when the Browser screen gains focus. The compact bar has no ref; focusing means
+  opening the editor overlay (`onFocus`). On Android the overlay's first keyboard request is dropped
+  (`ImeTracker … onFailed at PHASE_CLIENT_VIEW_SERVED` — the field is not yet served to the IME; a tap does not hit
+  this), and React Native ignores `focus()` on an already-focused field, so the hook blurs and refocuses it once
+  (800/900 ms). Verified: `mInputShown=true`, `ImeTracker … onShown`.
+- *Home:* the Home screen is never shown in the app (see F12); it uses the same `open`, so it gets the behaviour too,
+  but its manual case is BLOCKED (not reachable).
+- The Downloads empty state's "Open Browser" button used the same `open`; it now just opens the Browser (its label
+  promises nothing else) with its own hint `downloads.emptyActionHint`. Paste-link hints (`home.pasteLinkA11y`,
+  `downloads.pasteLinkHint`) describe the new behaviour (en + ur).
+- If the active tab's WebView is not mounted, the link is queued with `pendingNavigationService` (Browser loads it on
+  focus) instead of being dropped.
+
+**Files changed:** `src/browser/services/{clipboard-link.ts, clipboard-link.test.ts, address-bar-focus.ts,
+address-bar-focus.test.ts, paste-clipboard-link.ts}` (new), `src/browser/hooks/useAddressBar.ts`,
+`src/screens/downloads/{quality/useQualitySelection.ts, DownloadsScreen.tsx, components/DownloadEmptyState.tsx}`,
+`src/localization/{en,ur}.ts`.
+
+**Automated:** `npm test` 653 / 653 (+14: link alone, inside text (emoji, Urdu), first of several, none
+(text, `v1.2`, bare host, ftp, mailto, javascript, `https://`, `https:///nohost`), intent:// and nested links,
+spaces/newlines, trailing punctuation and brackets, upper-case scheme; decision open / YouTube (watch, youtu.be,
+shorts in text) / focus; focus request taken once, expires after 5 s, listener + unsubscribe); typecheck OK; lint 0
+errors (84 warnings); `git diff --check` clean.
+
+**Manual cases**
+
+| # | Case | Build | Result | Note |
+| --- | --- | --- | --- | --- |
+| 1a | TikTok link copied in Chrome (Chrome's "Copy link") → Downloads → Paste link | debug | PASS | Browser loads `tiktok.com/@complex/video/7626254334065511711`; `[VidoraDirect] status SUPPORTED reason VERIFIED`; "Video available" |
+| 1b | Facebook link copied in Chrome → Paste link | debug | PASS | `m.facebook.com/watch/?v=1376350954687257` → SUPPORTED/VERIFIED, "Video available" |
+| 2 | Plain text copied ("hello cats and dogs") → Paste link | debug | PASS | Browser, address-bar editor open and focused, keyboard visible (`mInputShown=true`). First two attempts failed (no ref / keyboard dropped) — fixed as described above |
+| 3 | YouTube link copied in Chrome → Paste link | debug | PASS | toast "YouTube downloads are not supported", stays on Downloads, the tab's page unchanged |
+| 4 | Downloads screen paste button → same results | debug | PASS | cases 1–3 were all run from the Downloads paste button |
+| 5 | After a cold start | debug | PASS | force-stop → launch → Downloads → Paste link with a TikTok link → loads, "Video available" |
+| 6 | Home → Paste link | — | BLOCKED | Home screen is not reachable in the app (`/` redirects to Browser); it uses the same action |
+| 7 | Urdu | debug | PASS | no new visible text; the two hints have Urdu strings (catalog parity test) |
+| 8 | Release over test1: TikTok link copied in Chrome → Paste link | release | PASS | `@complex/video/7626254334065511711` loaded, "Video available" |
+
+**Regression (release `75eda12`, debug-key re-signed, over a freshly seeded test1)**
+
+| # | Result | Note |
+| --- | --- | --- |
+| R1 | FAIL (target), no regression | 6.4 / 6.4 / 6.4 s; test1 6.2–6.4 s |
+| R2 | PASS | MP4 → Player PLAYING |
+| R3 | PASS | 184p completed |
+| R4 | PASS | TikTok 576p, Facebook completed (re-run after R8 left the app locked) |
+| R5 | PASS | YouTube toast |
+| R6 | PASS | 288p paused at 14.4 / 36.6 MB, unchanged 8 s, resumed, completed |
+| R7 | PASS | 00:04 → +10 00:14 → −10 00:04 → seek 05:19, PLAYING, fullscreen ROTATION_90, PiP pinned |
+| R8 | PASS | PIN asked after enable; disable done by hand (the scripted disable step is unreliable), then no PIN |
+| R9 | PASS | Settings in Urdu (27 strings) |
+| R10 | PASS | 1 download, favorite, 4 history entries, test1 recent search row |
+
+**Found, not fixed (F7)**
+
+- Android shows its own "VidoraX pasted from your clipboard" toast first (system behaviour, Android 12+); our YouTube
+  refusal toast follows it.

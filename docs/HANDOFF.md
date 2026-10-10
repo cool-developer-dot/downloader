@@ -1989,6 +1989,10 @@ One task per commit group (`F12:` …), full log with test evidence in `docs/wor
 - **F8 Open in new tab.** The link long-press sheet's "Open in new tab" works (`openLinkInNewTab` →
   `createTab({ url })`, http(s) only; at 10 tabs a toast "Maximum 10 tabs open" — `tabs-limit-notice.ts`); sheet title
   and labels are translated (`browser.linkActions.*`, actions use `labelKey`).
+- **F7 Paste a copied link.** "Paste link" (Downloads; Home's identical action) reads the clipboard
+  (`linkFromClipboardText`: first http(s) link starting a word, punctuation trimmed) and opens it with `openPastedLink`
+  (direct analyzer); YouTube → refusal toast; no link → Browser with the address-bar editor focused
+  (`address-bar-focus.ts`; Android drops the overlay's first keyboard request, so the hook blurs/refocuses once).
 
 ## 5. How to resume
 
