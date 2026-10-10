@@ -414,7 +414,7 @@ toggle; stored values); typecheck OK; lint 0 errors (84 warnings); `git diff --c
 | R2 | PASS | MP4 → Player PLAYING |
 | R3 | PASS | 184p completed |
 | R4 | PASS | TikTok 576p, Facebook completed |
-| R5 | PASS | YouTube toast |
+| R5 | PASS (verified in §7) | the script's screenshot shows no toast: the AVD keyboard had switched to floating mode and its toolbar covered the "Go" suggestion, so the link was never submitted. Re-checked by hand (Enter) on the final build, which contains this change: toast shown, page unchanged |
 | R6 | PASS | 288p paused at 23.4 / 37.2 MB, unchanged 8 s, resumed, completed |
 | R7 | PASS | 00:04 → +10 00:14 → −10 00:04 → seek 05:19, PLAYING, fullscreen ROTATION_90, PiP pinned |
 | R8 | PASS | lock screen after enable + Home; none after disable |
@@ -487,7 +487,7 @@ vidorax-web 27 / 0 (+1: `.f4v/.3g2/.divx` responses are video files).
 | R2 | PASS | MP4 → Player PLAYING |
 | R3 | PASS (2nd run) | first run: the hls.js demo page showed no offer within the script's wait (no crash; the same step passed alone after a restart, 184p completed) |
 | R4 | PASS | TikTok 576p, Facebook completed |
-| R5 | PASS | YouTube toast |
+| R5 | PASS (verified in §7) | the script's screenshot shows no toast: the AVD keyboard had switched to floating mode and its toolbar covered the "Go" suggestion, so the link was never submitted. Re-checked by hand (Enter) on the final build, which contains this change: toast shown, page unchanged |
 | R6 | PASS | 288p paused at 37.3 / 37.7 MB (the pause landed late), unchanged 8 s, resumed, completed |
 | R7 | PASS | 00:04 → +10 00:14 → −10 00:04 → seek 05:19, PLAYING, fullscreen ROTATION_90, PiP pinned (2nd run; the first used R3's missing file) |
 | R8 | PASS | `r8.sh`: lock screen after enable + Home; none after disable (the default step list also ran the scripted R8, whose disable is unreliable — it left the lock on, so the first R9 met the PIN screen) |
@@ -501,3 +501,48 @@ vidorax-web 27 / 0 (+1: `.f4v/.3g2/.divx` responses are video files).
 - The remuxed DivX MP4 stayed on "Preparing video" on its first open in the Player while the sound played; closing and
   reopening showed the picture. Not reproduced on a second try.
 - Android's media scanner records the Gallery copy of a `.3g2` as `video/mp4`; the library keeps `video/3gpp2`.
+
+---
+
+## Final pass (§7)
+
+**Automated gate on `2561d94`** (code head; later commits are docs only): `npm test` 678 / 678 (baseline 624, +54);
+`npm run typecheck` OK; `npm run lint` 0 errors, 84 warnings (= baseline); `git diff --check` clean;
+`gradle :vidorax-media:testDebugUnitTest :vidorax-web:testDebugUnitTest --rerun` → vidorax-media 505 / 0 failures
+(baseline 493), vidorax-web 27 / 0 (baseline 26).
+
+**Release build.** Fresh `:app:assembleRelease` of `2561d94` (generated React release assets deleted first; the bundle
+contains the F5 `ERR_NO_APP` mapping), signed by Gradle with the upload key — **not re-signed**. Certificate SHA-256
+`36b9c622…dd7b5af`, identical to the Gradle-signed test1 baseline APK.
+
+**R10 with the Gradle-signed APKs.** Uninstall → install the upload-key test1 APK → seed (favorited MP4 download,
+example.com + wikipedia history, search "cats") → `adb install -r` the final upload-key APK → `Success`, data kept.
+
+| # | Result | Note |
+| --- | --- | --- |
+| R1 | FAIL (target), no regression | 6.1 / 6.0 / 6.1 s to browser chrome; test1 6.2–6.4 s (the JS splash; same as every pass) |
+| R2 | PASS | HTML video MP4 176p → Player PLAYING |
+| R3 | PASS | hls.js demo 184p completed (19.1 MB) |
+| R4 | PASS (re-run) | first run: TikTok 576p completed, Facebook no offer — see the stall below; re-run after clearing it: TikTok completed + Facebook completed |
+| R5 | PASS | by hand (Enter): toast "YouTube downloads are not supported", page unchanged. The script's own screenshot had no toast (floating AVD keyboard covered "Go"); the script now submits with Enter |
+| R6 | PASS | 288p paused at 12.2 / 36.5 MB, unchanged after 8 s, resumed, completed |
+| R7 | PASS | 00:04 → +10 00:14 → −10 00:04 → seek 05:19, PLAYING, fullscreen ROTATION_90, PiP |
+| R8 | PASS | `r8.sh`: lock screen after enable + Home, no PIN after disable (re-run in full; the first run's output was cut) |
+| R9 | PASS | Settings in Urdu (27 strings, no Latin-only labels) |
+| R10 | PASS | upload-key test1 → upload-key final: 1 download, favorite, 3 history entries, recent search kept |
+
+No crash in the crash buffer during the pass.
+
+**Emulator stall (environment).** At 21:03 `system_server` ran at ~306 % CPU in kernel time (load 28, `artd`
+compiling after the install). Android logged an ANR for Chrome (21:03:22, "failed to complete startup") and then for
+VidoraX (21:03:40, "Input dispatching timed out … KeyEvent"; VidoraX itself at 26 % CPU). The ANR dialog of that dead
+process kept coming back 5 s after each "Wait", with no new `am_anr`, and covered the screen, so R4's taps failed.
+"Close app" cleared it; after a restart R4 passed and no further ANR was logged (app frames ~10 ms).
+
+**BLOCKED (whole branch)**
+
+- F10 case 3 (zoom then double-tap → reset only): the AVD cannot produce a pinch; covered by the unit test.
+- F7 case 6 (Home → Paste link): the Home screen is unreachable in the app (`/` redirects to Browser).
+- PR screenshots: the in-app browser is not signed in to GitHub, so the evidence sheets (`.claude/pr-evidence/`,
+  not committed) were sent to the user to attach.
+- R1 target: no pass meets it; it never regressed against test1.
