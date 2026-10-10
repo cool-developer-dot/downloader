@@ -1999,6 +1999,12 @@ One task per commit group (`F12:` …), full log with test evidence in `docs/wor
 - **F10 Player.** Tap the total time → time left `−mm:ss` (MMKV `vidorax.mmkv.player.durationLabelMode.v1`);
   double tap by thirds — −10 s / play-pause / +10 s — after the unchanged zoom-reset rule (`resolveDoubleTapAction`, a
   worklet). ARCHITECTURE §7 updated.
+- **F5 F4V / 3G2 / DivX.** The sniffer names a `3g2*` ftyp brand `THREE_G2` (kept `.3g2`, `video/3gpp2`, details
+  "3G2"); F4V is ISO-BMFF → `.mp4` (a DRM-branded F4V is refused like any protected MP4); `.divx` / `video/divx` is
+  AVI → remuxed to MP4 when Android decodes it, else kept `.avi` when the AVI header declares a video stream
+  (`process/AviHeader`; MediaProcessor keep rule + DownloadEngine skips its audio-only refusal). Detection (vidorax-web
+  classifier, JS extension/MIME/observer, enqueue) knows `.f4v/.3g2/.divx`. "Open with" `ERR_NO_APP` now maps to "No
+  compatible video app" (was "couldn't open"). ARCHITECTURE §1/§3 updated.
 
 ## 5. How to resume
 

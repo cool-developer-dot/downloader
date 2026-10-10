@@ -424,3 +424,80 @@ toggle; stored values); typecheck OK; lint 0 errors (84 warnings); `git diff --c
 **Found, not fixed (F10)**
 
 - The 288p HLS file that was paused/resumed in a regression run again stuck in BUFFERING after seeks (at 05:57); see F9.
+
+## F5 — Recognise F4V, 3G2 and DivX
+
+**Plan.** Teach every layer the three types without new decoders: native sniffer/types (vidorax-media), the network
+classifier (vidorax-web), JS detection (extension, MIME, in-page observer, pasted links, enqueue). F4V → `.mp4`,
+3G2 → `.3g2` / `video/3gpp2`, DivX → AVI path; an AVI Android can't decode is kept for "Open with" like WMV. Kotlin
+tests on real ffmpeg-made header bytes (+ a DRM-branded F4V refused); JS extension/MIME tests; manual test with ffmpeg
+files on `fx.127.0.0.1.nip.io:8090` + `adb reverse` (debug build only — the fixture host is a dev setup).
+
+**Decisions.**
+- *F4V* is ISO-BMFF (`ftyp` brand `f4v `) and Media3 reads it as MP4, so it gets no container of its own: it is
+  sniffed/kept/remuxed as MP4 and saved as `.mp4`, `video/mp4`. A DRM-branded F4V (`ftyp` brand / `sinf` box) is
+  refused by the existing ISO-BMFF protection checks — test only, no new branch.
+- *3G2* gets `Container.THREE_G2("3g2")` (brand prefix `3g2`), kept byte for byte, `video/3gpp2`, details label "3G2";
+  Media3 reads it with the 3GP track container. Android's media scanner records the Gallery copy as `video/mp4` — not
+  ours to change.
+- *DivX/XviD:* `.divx`, `video/divx`, `video/x-divx` map to AVI. MPEG-4 Part 2 DivX (`DIVX`/`XVID` fourcc) is remuxed
+  to MP4 like any AVI (MP3 → AAC). DivX 3 (`DIV3`, MS-MPEG4v3) has no Android decoder and Media3 exposes only its sound,
+  so the AVI was refused as "audio only". New `process/AviHeader.declaresVideoStream` (an `strh` chunk of type `vids` in
+  the first 64 KiB): MediaProcessor keeps such a file as downloaded (`.avi`) and DownloadEngine skips its audio-only
+  refusal for it. An AVI that declares no video stream is still refused (test).
+- *"Open with" message:* the v2 module rejects `openWith` with `ERR_NO_APP` when no installed app handles the type; the
+  JS mapper only knew `NO_COMPATIBLE_APP`/`ACTIVITY_NOT_FOUND`, so the user saw "couldn't open this downloaded file".
+  `ERR_NO_APP` now maps to "No compatible video app is installed." (existing string, en + ur) — also for WMV.
+- No new strings, no new permissions, refusals unchanged.
+
+**Files changed:** vidorax-media `model/ContractValues.kt`, `plan/MediaSniffer.kt`, `verify/Verifier.kt`,
+`process/{MediaProcessor.kt, AviHeader.kt (new)}`, `library/MediaTypes.kt`, `engine/DownloadEngine.kt`,
+`src/VidoraMedia.types.ts`; tests `MediaSnifferTest`, `MediaTypesTest`, `RemuxerTest`, `DownloadEngineTest` + fixtures
+`test/resources/media/process/{sample.f4v, sample.3g2, divx-mp3.divx, div3-mp3.divx}` (ffmpeg testsrc, 1 s);
+vidorax-web `network/NetworkMediaClassifier.kt` + `NetworkMediaClassifierDownloadTest`; JS
+`src/media-detection/{types/media.types.ts, constants/media.constants.ts, resource/video-resource.ts,
+direct-analyzer/media-url.ts, observers/injected-script.ts, parsers/extension.parser.test.ts (new)}`,
+`src/browser/hooks/useBrowserEngineEvents.ts`, `src/downloads/v2/enqueue-request.ts`, `src/library/format-label.ts`,
+`src/downloads/completed-file/{action-errors.ts, action-errors.test.ts (new)}`; `docs/ARCHITECTURE.md` §1, §3.
+
+**Automated:** `npm test` 678 / 678 (+7: F4V/DivX/3G2 by extension and by declared MIME, DivX prefers an external
+player and F4V doesn't, pasted links are progressive, observer regex; `ERR_NO_APP` → no compatible app); typecheck OK;
+`npm run lint` 0 errors (84 warnings); `git diff --check` clean. Kotlin `--rerun`: vidorax-media 505 / 0 failures (+12:
+sniffer F4V/3G2/DivX/DIV3 from real bytes, DRM F4V by brand and by `sinf`; types; F4V/3G2 kept, DivX remuxed, DIV3
+kept, AVI without video refused; engine keeps a DIV3 AVI and still refuses an AVI with no video stream);
+vidorax-web 27 / 0 (+1: `.f4v/.3g2/.divx` responses are video files).
+
+**Manual cases** (debug build, ffmpeg testsrc files served by a local Range-capable server with
+`video/x-f4v`, `video/3gpp2`, `video/divx`)
+
+| # | Case | Build | Result | Note |
+| --- | --- | --- | --- | --- |
+| 1 | `sample.f4v` (H.264 + AAC) | debug | PASS | offered → completed → `.mp4`, `video/mp4`, avc, 4.08 s; details MP4; plays |
+| 2 | `sample.3g2` (MPEG-4 + AAC) | debug | PASS | link on the index page → download → `Download_0435985c.3g2`, `video/3gpp2`, mp4v-es, 4.0 s; details "3G2"; plays; "Open with" → Photos |
+| 3 | `sample.divx` (DivX MPEG-4 + MP3) | debug | PASS | offered → remuxed: `Download_413ed54e.mp4` (video copied, MP3 → AAC), 4.11 s, details MP4 240p; plays (first open stayed on "Preparing video" with sound — see Found) |
+| 4 | `sample-div3.divx` (DivX 3 + MP3, undecodable) | debug | PASS | before the keep rule: refused `VIDEO_TRACK_MISSING`, then "This file has no video"; now kept `Download_b53b523a.avi`, `video/x-msvideo`, "AVI · 194.2 KB · Original Quality" |
+| 5 | "Open with" on the kept DIV3 AVI | debug | PASS (no player on the AVD) | the AVD has no app for `video/x-msvideo` (`cmd package query-activities` empty), so the native check rejects `ERR_NO_APP`; the message was "couldn't open this downloaded file", now "No compatible video app is installed." The handoff itself works: the 3G2's "Open with" opens Photos |
+| 6 | DRM-branded F4V refused | — | unit test | `MediaSnifferTest` (brand + `sinf`); no DRM F4V sample to serve |
+
+**Regression (release `cad62b8`, debug-key re-signed, over a freshly seeded test1)**
+
+| # | Result | Note |
+| --- | --- | --- |
+| R1 | FAIL (target), no regression | 6.2 / 6.3 / 6.5 s; test1 6.2–6.4 s |
+| R2 | PASS | MP4 → Player PLAYING |
+| R3 | PASS (2nd run) | first run: the hls.js demo page showed no offer within the script's wait (no crash; the same step passed alone after a restart, 184p completed) |
+| R4 | PASS | TikTok 576p, Facebook completed |
+| R5 | PASS | YouTube toast |
+| R6 | PASS | 288p paused at 37.3 / 37.7 MB (the pause landed late), unchanged 8 s, resumed, completed |
+| R7 | PASS | 00:04 → +10 00:14 → −10 00:04 → seek 05:19, PLAYING, fullscreen ROTATION_90, PiP pinned (2nd run; the first used R3's missing file) |
+| R8 | PASS | `r8.sh`: lock screen after enable + Home; none after disable (the default step list also ran the scripted R8, whose disable is unreliable — it left the lock on, so the first R9 met the PIN screen) |
+| R9 | PASS | Settings in Urdu (27 strings), 2nd run |
+| R10 | PASS | 1 download, favorite, 3 history entries |
+
+**Found, not fixed (F5)**
+
+- The F4V typed into the address bar on a tab that showed a Facebook reel was saved with the reel's title (the handoff
+  takes the tab's last page title) — existing behaviour for any direct file URL.
+- The remuxed DivX MP4 stayed on "Preparing video" on its first open in the Player while the sound played; closing and
+  reopening showed the picture. Not reproduced on a second try.
+- Android's media scanner records the Gallery copy of a `.3g2` as `video/mp4`; the library keeps `video/3gpp2`.
