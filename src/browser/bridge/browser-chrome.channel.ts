@@ -5,6 +5,7 @@ export type BrowserChromeMessageType =
   | 'scroll'
   | 'pull_to_refresh'
   | 'spa_navigation'
+  | 'fullscreen'
   | 'ready';
 
 export type BrowserChromeEnvelope = {

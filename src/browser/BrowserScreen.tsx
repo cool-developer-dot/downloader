@@ -23,6 +23,7 @@ import {
 } from '@/browser/components';
 import { BrowserTabSwitcher } from '@/browser/components/BrowserTabSwitcher';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
+import { useIsWebFullscreen, useWebFullscreenLifecycle } from '@/browser/fullscreen';
 import {
   useBrowserEngine,
   useBrowserRouteLifecycle,
@@ -147,6 +148,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   const { loadUrl } = useBrowserEngineContext();
   const { t } = useTranslation();
   const [tabSwitcherVisible, setTabSwitcherVisible] = useState(false);
+  useWebFullscreenLifecycle(tabSwitcherVisible);
+  const webFullscreenActive = useIsWebFullscreen();
 
   useEffect(() => registerBrowserLoadUrl(loadUrl), [loadUrl]);
 
@@ -201,7 +204,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
       <Box flex={1} style={{ position: 'relative' }}>
         <BrowserContainer />
         <BrowserMediaDownloadBar
-          overlayBlocking={tabSwitcherVisible}
+          overlayBlocking={tabSwitcherVisible || webFullscreenActive}
           onRequestDownload={handleRequestDownload}
         />
       </Box>
