@@ -14,6 +14,11 @@ export type PlayerTopBarProps = {
   onBack: () => void;
   onOpenOrientation: () => void;
   onToggleFullscreen: () => void;
+  /** A file opened from another app: "Save to VidoraX". Omitted for library videos. */
+  save?: {
+    state: 'idle' | 'saving' | 'saved';
+    onPress: () => void;
+  } | null;
 };
 
 export const PlayerTopBar = memo(function PlayerTopBar({
@@ -24,6 +29,7 @@ export const PlayerTopBar = memo(function PlayerTopBar({
   onBack,
   onOpenOrientation,
   onToggleFullscreen,
+  save = null,
 }: PlayerTopBarProps) {
   const { t, rtl } = useTranslation();
   if (!visible) {
@@ -50,6 +56,25 @@ export const PlayerTopBar = memo(function PlayerTopBar({
           style={styles.title}>
           {title}
         </Text>
+        {save ? (
+          <IconButton
+            icon={save.state === 'saved' ? 'check-circle-outline' : 'content-save-outline'}
+            size="medium"
+            variant="ghost"
+            color="inverse"
+            disabled={save.state !== 'idle'}
+            accessibilityLabel={
+              save.state === 'saved'
+                ? t('player.savedToLibrary')
+                : save.state === 'saving'
+                  ? t('player.savingToLibrary')
+                  : t('player.saveToLibrary')
+            }
+            accessibilityHint={save.state === 'idle' ? t('player.saveToLibraryHint') : undefined}
+            onPress={save.onPress}
+            testID="player-save-to-library"
+          />
+        ) : null}
         <IconButton
           icon={orientationIcon}
           size="medium"

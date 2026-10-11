@@ -29,6 +29,8 @@ import {
 import { useDownloadsStore } from '@/store/downloads';
 
 import { isDeviceMediaId, knownDeviceVideo } from './device-media';
+import { externalTokenOf, isExternalMediaId, knownIncomingMedia } from './external-media';
+import { getIncomingMediaSource } from './incoming-media.runtime';
 
 import {
   configureResolvePlaybackSourceDeps,
@@ -43,6 +45,22 @@ export function ensurePlaybackSourceRuntime(): void {
   }
   const deps: ResolvePlaybackSourceDeps = {
     getLocalRecord: async (mediaId) => {
+      // A file another app opened with VidoraX plays from the URI it sent (read access came with the intent).
+      if (isExternalMediaId(mediaId)) {
+        const token = externalTokenOf(mediaId);
+        const source = token ? getIncomingMediaSource(token) : null;
+        return source
+          ? {
+              downloadId: mediaId,
+              fileName: source.displayName ?? '',
+              localUri: source.uri,
+              localState: 'complete' as const,
+              remoteStatus: 'COMPLETED' as const,
+              totalBytes: source.sizeBytes,
+              expectedFileSize: source.sizeBytes != null ? String(source.sizeBytes) : '',
+            }
+          : null;
+      }
       // A video that was already on the device plays straight from its MediaStore URI.
       if (isDeviceMediaId(mediaId)) {
         const video = knownDeviceVideo(mediaId);
@@ -80,8 +98,12 @@ export function ensurePlaybackSourceRuntime(): void {
       };
     },
     assessFile: (input) => {
-      // A `content://` video belongs to the system, not to VidoraX: MediaStore listing it is the check.
-      if (typeof input.localUri === 'string' && input.localUri.startsWith('content://')) {
+      // A `content://` video belongs to the system, not to VidoraX: MediaStore listing it is the check. A file from
+      // another app is that app's to vouch for: the player reports it if it cannot be read.
+      if (
+        (typeof input.localUri === 'string' && input.localUri.startsWith('content://')) ||
+        (isExternalMediaId(input.downloadId) && typeof input.localUri === 'string')
+      ) {
         return {
           presence: 'complete' as const,
           localUri: input.localUri,
@@ -102,13 +124,17 @@ export function ensurePlaybackSourceRuntime(): void {
     },
     // v1's managed path is its own downloads folder; a v2 library file is guarded by its own root check.
     assertManagedPath: (uri, mediaId) => {
-      if (isV2LibraryFileUri(uri) || (typeof uri === 'string' && uri.startsWith('content://'))) {
+      if (
+        isV2LibraryFileUri(uri) ||
+        (typeof uri === 'string' && uri.startsWith('content://')) ||
+        isExternalMediaId(mediaId)
+      ) {
         return;
       }
       assertManagedDownloadPath(uri, mediaId);
     },
     verifyFile: (uri, expectedBytes, options) => {
-      if (typeof uri === 'string' && uri.startsWith('content://')) {
+      if ((typeof uri === 'string' && uri.startsWith('content://')) || isExternalMediaId(options?.downloadId)) {
         return { ok: true as const, size: expectedBytes ?? 0 };
       }
       if (isV2LibraryFileUri(uri)) {
@@ -126,6 +152,9 @@ export function ensurePlaybackSourceRuntime(): void {
     normalizeMimeType,
     resolveDisplayName,
     getDisplayTitle: (mediaId) => {
+      if (isExternalMediaId(mediaId)) {
+        return knownIncomingMedia(mediaId)?.displayName?.trim() || null;
+      }
       const device = isDeviceMediaId(mediaId) ? knownDeviceVideo(mediaId) : null;
       if (device) {
         return device.title;
@@ -136,6 +165,9 @@ export function ensurePlaybackSourceRuntime(): void {
       return title || null;
     },
     getMimeType: (mediaId) => {
+      if (isExternalMediaId(mediaId)) {
+        return knownIncomingMedia(mediaId)?.mimeType?.trim() || null;
+      }
       const device = isDeviceMediaId(mediaId) ? knownDeviceVideo(mediaId) : null;
       if (device?.mimeType) {
         return device.mimeType;

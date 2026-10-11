@@ -178,6 +178,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureIncomingLinkHandling } = await import('@/browser/services/incoming-link.service');
       // A link shared to VidoraX, or opened through it as the device's browser, lands in the browser tab.
       ensureIncomingLinkHandling();
+      const { ensureIncomingMediaHandling } = await import('@/player/incoming-media.runtime');
+      // A video or audio file opened with VidoraX from another app plays as an external source (IncomingMediaHost).
+      ensureIncomingMediaHandling();
       downloadAppLifecycle.ensureAttached();
       bindDownloadEngineToStore();
       ensureDownloadRecoveryListener();

@@ -39,6 +39,14 @@ export function shouldShowStartupCover(input: {
 }
 
 /**
+ * An audio-only source (MP3, M4A… — a file opened from another app or saved from one) never paints a video frame, so
+ * waiting for one would leave "Preparing video" over a playing file with no controls: it is revealed once ready.
+ */
+export function revealsWithoutFirstFrame(mimeType: string | null | undefined): boolean {
+  return typeof mimeType === 'string' && mimeType.trim().toLowerCase().startsWith('audio/');
+}
+
+/**
  * Mid-playback buffering must not re-cover an already painted / revealed frame.
  */
 export function shouldShowStartupCoverWhileBuffering(input: {

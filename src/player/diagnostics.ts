@@ -38,7 +38,9 @@ export type PlayerDiagnosticEvent =
   | 'player.error'
   | 'player.retry'
   | 'player.completed'
-  | 'player.disposed';
+  | 'player.disposed'
+  /** A file opened from another app: read at launch / on a new intent, held for App Lock, opened. */
+  | 'player.incoming';
 
 function sanitize(fields?: Fields): Fields {
   if (!fields) {

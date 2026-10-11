@@ -47,6 +47,7 @@ import {
   createRequestAnimationFrameScheduler,
   scheduleCompositionSyncedReveal,
   shouldAssignPlaybackSource,
+  revealsWithoutFirstFrame,
 } from './first-frame-state';
 import { isCurrentPlayerSession } from './session-generation';
 import { ensurePlaybackSourceRuntime } from './resolve-playback-source.runtime';
@@ -220,6 +221,23 @@ export function usePlayerSession(
         isSurfaceRevealed: true,
         isLoading: false,
       };
+    });
+  }, [safeSetSession]);
+
+  // Audio has no first frame to wait for: reveal as soon as the source is ready.
+  const revealAudioOnlySource = useCallback(() => {
+    if (!revealsWithoutFirstFrame(sourceRef.current?.mimeType)) {
+      return;
+    }
+    safeSetSession((prev) => {
+      if (prev.isSurfaceRevealed) {
+        return prev;
+      }
+      playerLog('player.surface_revealed', {
+        mediaId: sourceRef.current?.mediaId,
+        generation: resolveGenRef.current,
+      });
+      return { ...prev, hasFirstFrame: true, isSurfaceRevealed: true, isLoading: false };
     });
   }, [safeSetSession]);
 
@@ -405,6 +423,7 @@ export function usePlayerSession(
               error: null,
               errorMessage: null,
             }));
+            revealAudioOnlySource();
           }
         } catch {
           // Native statusChange will follow if status is not yet readable.
@@ -445,6 +464,7 @@ export function usePlayerSession(
     safeSetSession,
     applyTerminalError,
     cancelPendingReveal,
+    revealAudioOnlySource,
   ]);
 
   // Cleanup on unmount / media exit. The position comes from what the player last reported: by the time this runs
@@ -629,6 +649,7 @@ export function usePlayerSession(
         error: null,
         errorMessage: null,
       }));
+      revealAudioOnlySource();
       return;
     }
     if (status === 'loading') {
