@@ -388,3 +388,126 @@ The release build allows HTTPS only, so the local fixture pages are debug-only; 
   the Mac); the video page itself works. Its cookie banner offers only "I understand" (not tapped).
 - Test tooling: the emulator screen went black for ~1 min under load right after a cold start of the debug build
   (launcher black too; recovered by itself); `regress.py`'s R12 reads the row before it refreshes.
+
+---
+
+## F16 — Open video files from other apps
+
+### Design
+
+- **Manifest** — `MainActivity` gets `VIEW` + `DEFAULT` filters for `video/*` and `audio/*` on `content` and `file`
+  (no `http`: the browser filter owns web links). No permission.
+- **Native (vidorax-media, `incoming/`)** — `IncomingMediaIntents.parse` (pure): a `VIEW` whose data is `content:` or
+  `file:` and whose type (the intent's, else the resolver's, else the display name's extension) is a known audio/video
+  type; anything else (http, no data, unknown type) is ignored. `IncomingMediaReader` fills the display name and size
+  (`OpenableColumns`, or the file), takes a persistable read grant when the intent offers one, and marks the intent
+  consumed (a JS reload does not reopen it). The URI stays native: JS gets a **token** — the first 32 hex of
+  SHA-256(`incoming:` + URI) — so the same file opened again has the same token (resume key) and no URI ever reaches
+  a router path or a log. `IncomingMediaRegistry` (in memory, last 32) maps token → URI/name/type/size. Cold start:
+  `consumeIncomingMedia()`; while running (`singleTask`): `OnNewIntent` → `onIncomingMedia` (kept for
+  `consumeIncomingMedia` when JS is not listening, like `SharedText`).
+- **Contract** — `IncomingMedia { token, displayName, mimeType, sizeBytes, kind }`, `getIncomingMediaSource(token)`
+  (the playable URI, for the player only), `importIncomingMedia(token)` → `{ status: 'imported', item } |
+  { status: 'duplicate', libraryItemId, galleryUri }`, `openIncomingWith(token)`, event `onIncomingMedia`; `SiteId`
+  gains `device` (`SiteId.DEVICE`, folder "Device").
+- **Save to VidoraX** (`library/IncomingImport`) — copies the stream into a work file (SHA-256 while copying, free-space
+  check first), `SavedVideoIndex.findByContent` → duplicate (work file deleted) or: type from name/MIME/container,
+  `StoragePaths.newLibraryFile(DEVICE, title, id, ext)`, thumbnail, `LibraryStore.insert` (no gallery copy — the file
+  is already on the device), content hash stored, announced as `imported`. A file Android cannot decode is still kept
+  (the F5 keep-and-"Open with" rule); a file that is not audio/video at all is refused; every failure removes the work
+  file, the library file and the thumbnail.
+- **JS** — `src/player/external-media.ts` (pure): media id `external:<token>` (passes `assertSafeMediaId`), a registry
+  of incoming records, predicates. `src/player/incoming-media.runtime.ts`: reads the launch intent and listens; each
+  file becomes a pending target opened by `IncomingMediaHost` (inside `AppLockGate` in the `(app)` layout) once the
+  launch has handed over (`src/navigation/launch-handover.ts`, see below) and only while App Lock is off or unlocked —
+  nothing plays behind the PIN. The playback
+  resolver plays `external:` ids from `getIncomingMediaSource` (like `device:` ids); the persistence coordinator keeps
+  their position under the same id (= hash of the URI) but `listLocalPlaybackSummaries` drops `external:` ids, so they
+  never appear in Watch history / Continue watching; no library row; Previous/Next have no queue. The Player shows a
+  **Save to VidoraX** button for an external session (toast: saved / already in the library / failed / no space) and
+  "Open with" on its error screen opens the original file in another app.
+
+**Found while testing and fixed in F16** (design additions):
+
+- **Cold start lost the file to the splash.** The router already shows `/browser` under the branded splash, and the
+  splash ends with `router.replace(post-splash route)` — the Player opened before that was replaced (its session went
+  on in the mini player). New `src/navigation/launch-handover.ts`: the splash marks `splashShown` on mount and
+  `launchHandedOver` after its replace (the onboarding pages mark it when they finish, on a first launch);
+  `IncomingMediaHost` waits for it. A launch where no splash appears within 5 s (`NO_SPLASH_HANDOVER_MS`; the known
+  "splash sometimes skipped" case) counts as handed over.
+- **An audio file stayed on "Preparing video" with no controls** although it played: the startup cover waits for a
+  first video frame. `revealsWithoutFirstFrame(mimeType)` — an `audio/*` source is revealed when it is ready (also
+  helps audio already in the library).
+- **WMV (no decoder) showed "Unreadable video" with no way out.** For an external file the error screen now offers
+  "Open with…" for `CORRUPT_MEDIA` too, and **Save to VidoraX** (the file is kept, F5 rule) — library videos unchanged.
+- `content:`/`file:` links are non-routes in `src/app/+native-intent.ts` (expo-router would otherwise route them and
+  stack a second app tree, as with web links).
+
+Tester constants: `IncomingMediaRegistry.DEFAULT_CAPACITY` 32, `IncomingImport.FREE_SPACE_MARGIN_BYTES` 32 MiB,
+`NO_SPLASH_HANDOVER_MS` 5000 (`src/player/IncomingMediaHost.tsx`). No setting: "Open with" is chosen in Android.
+
+**Evidence for the PR** (`.claude/pr-evidence/`, not committed): `F16-open-with-chooser.png`, `F16-saved-to-vidorax.png`,
+`F16-already-in-library.png`, `F16-mp3-cold-start.png`, `F16-app-lock-first.png`, `F16-pip.png`, `F16-saved-urdu.png`,
+`F16-wmv-open-with.png`, `F16-wmv-saved.png`, `F16-release-external-player.png`.
+
+### Automated (final F16 code)
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | 715 tests, 715 pass, 0 fail — new: `src/player/external-media.test.ts` (8: ids/token, file links, open gate, App Lock queue, newest wins, outcome mapping, audio reveal, shell route), `src/playback/external-history.test.ts` (resume kept, history/Continue watching exclude), `src/navigation/launch-handover.test.ts` |
+| `npm run typecheck` | OK |
+| `npm run lint` | 0 errors, 84 warnings (unchanged) |
+| `gradle :vidorax-media:testDebugUnitTest --rerun :vidorax-web:testDebugUnitTest --rerun` | BUILD SUCCESSFUL — 570 / 0 (+19: `IncomingMediaIntentsTest` 8 — content, file, http/no data/other actions ignored, unknown type → resolver → name, not media, token, reader once per intent, registry; `IncomingImportTest` 11 — copy into `device`, duplicate, same size different bytes, failed copy leaves nothing, unreadable, not media / empty, no space before copying, undecodable kept, audio, type from MIME, crash leftovers) and 27 / 0 (XMLs 22:40–22:41) |
+| `gradle :vidorax-media:connectedDebugAndroidTest` | 38 / 0 on Pixel_8 AVD (new `IncomingImportAndroidTest`: a real FileProvider URI → reader (name, size) → import (real metadata, real thumbnail) → second import = duplicate). First run 37 / 1: the test reused `av.mp4`'s exact bytes, which other on-device tests had already saved — a trailing `free` box makes them unique |
+| `git diff --check` | clean |
+
+### Manual cases — debug build (Metro), then release (`F16-release-debugkey.apk`)
+
+| Case | Result |
+| --- | --- |
+| `adb push` → Files → tap MP4 → "Open with" lists VidoraX (and Photos) → Just once | PASS (debug + release): plays in the Player, title = file name, Save button, no Previous/Next |
+| Save to VidoraX | PASS: toast "Saved to VidoraX", check icon; Player tab shows "VidoraX F16 sample" (MP4 · 2.3 MB · 360p, thumbnail); not in Continue Watching |
+| Same file again → Save | PASS (debug + release): "Already in your VidoraX library", no second item |
+| `.mkv` | PASS: plays; saved in Urdu ("VidoraX میں محفوظ ہو گئی") |
+| `.mp3` | **FAIL first** (played, but "Preparing video" with no controls) → fixed → PASS (debug + release): controls, time advances |
+| Cold start (app stopped) from Files | **FAIL first** (the splash's own navigation replaced the Player; session left in the mini player) → fixed (launch handover) → PASS: `launch_file` → `held_for_launch` → `opened` after the splash, Player shows the file (debug + release) |
+| App already open (`onNewIntent`) | PASS (all cases above with the app running) |
+| App Lock on → Home → open a file | PASS: PIN screen first, VidoraX has no audio track running behind it; after the PIN the Player opens and plays |
+| PiP with an external file | PASS: Home while playing → PiP window |
+| Mini player with an external file | PASS: Back from the Player → mini player "VidoraX F16 sample.mp4" |
+| WMV (no decoder on this device; only VidoraX opens it) | "Unreadable video" → for external files now "Open with…" ("No compatible video app is installed." — correct here) and Save to VidoraX (kept, per the F5 rule) → PASS |
+| Urdu | PASS: RTL top bar, Save label/hint and toast in Urdu |
+| Google Photos → Open with | **BLOCKED**: Photos' first run asks to turn on cloud backup for the owner's Google account — not accepted on their behalf |
+| Real phone | **BLOCKED**: no phone available |
+
+### Regression
+
+Regression: quick check only, full R1–R12 deferred to §7 — release build cold start: no crash, no ANR, browser opens
+(`F16-release-debugkey.apk` over the F13 data).
+
+### Decisions (F16)
+
+- **Testing plan change (owner, 2026-10-11):** from F16 on, R1–R12 is not run after each task — only once, at §7, on
+  the upload-key release installed over the upload-key test1; per task a quick release sanity check. Reason: the owner
+  asked to save time by running the regression once at the end. A §7 failure is fixed in a commit prefixed with the
+  task that caused it.
+- The incoming intent lives in vidorax-media (the import needs its library); vidorax-web's shared-link reader ignores
+  `content:`/`file:` data.
+- Token = hash of the URI (stable → resume works; opaque in routes and logs); the URI crosses to JS only for playback.
+- Imports get their own folder (`no_backup/imports/`) — the download temp cleaner deletes `work/` folders it doesn't
+  know.
+- `ERR_NO_SPACE` is its own rejection code so the toast can say "Not enough storage".
+- Undecodable files are imported and kept (F5 rule); not-audio/video is refused.
+- Title shows the file name with its extension (it is the file the user picked); the saved library item drops it.
+
+### Found, not fixed (F16)
+
+- **The floating mini player covers bottom buttons of stack screens**: on Settings → App Lock setup, "Enable App Lock"
+  sat under it and a tap opened the Player instead (also any screen whose primary button is at the very bottom).
+- The emulator under load: "Files isn't responding" / "Process system isn't responding" dialogs (recovered with Wait),
+  and the app process was killed in the background once (memory). The AVD's data partition was at 91 %; this
+  session's own gallery copies from today's test downloads (19 files, ~860 MB) were deleted by id to install builds.
+- A WMV in the library or from another app is classified "Unreadable video / damaged" (Media3 has no ASF reader), not
+  "format not supported".
+- The Player's not-found message for an external token from an earlier process says "could not be found in your
+  library" (only reachable after the app process died while the Player route was kept).

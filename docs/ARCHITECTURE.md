@@ -129,7 +129,9 @@ All Media3 artifacts pinned to **exactly** the version expo-video uses (`1.9.0`,
 | `library/LegacyImport` | One-time import of completed files from the old layout `filesDir/VidoraXDownloads/<id>/<file>` (id preserved so existing playback progress still matches). Skips `.part` and workspace folders, generates metadata and thumbnails, then removes empty old folders. |
 | `runner/DownloadNotifications` | Channel `vidorax_downloads_progress` (low importance, ongoing: "Downloading · 6.8 MB of 13 MB · 1.2 MB/s", Pause/Cancel; Paused with Resume/Cancel; Waiting for network) and `vidorax_downloads_status` (completed; failed with Retry unless the verdict is final). Speed is the engine's 2 s window, shown only while bytes move. Tapping opens `vidorax://downloads` (a transfer) or `vidorax://library` (a finished video) — also on a cold start: `MainActivity.onNewIntent` keeps the link and the splash honours it. |
 | `analyze/PageFetcher` | `fetchPage`: a pasted/shared link read the way its tab would navigate to it, for the direct analyzer (§5.4). GET with the tab's identity (the stock WebView User-Agent via `BrowserIdentity`, or the desktop UA; device Accept-Language; `Sec-Fetch-*` navigation headers; OkHttp's transparent gzip). Redirects followed here, ≤ 10 hops, every hop checked against `UrlPolicy` (public hosts only) and the YouTube policy before it is contacted, a URL seen twice = `REDIRECT_LOOP`; one deadline (1–20 s) spans all hops and the body; the body is read up to a byte bound (16 KiB–4 MiB) and decoded with its declared charset. Media (a pasted file or manifest) is recognised from Content-Type and the first 4 KiB (`ContentClassifier`) and never read further. Cookies: the WebView session's per hop plus those earlier hops set; with `commitCookies`, the `Set-Cookie`s of a complete fetch that finished inside its deadline are stored in the WebView jar (`CookieSink`), exactly what the tab's navigation would store. Typed failures: `INVALID_URL`, `UNSAFE_URL`, `POLICY_BLOCKED`, `REDIRECT_LOOP`, `TOO_MANY_REDIRECTS`, `TIMEOUT`, `NETWORK`, `HTTP_ERROR` (status), `UNSUPPORTED_CONTENT`. Nothing is executed, nothing persisted, no cookie value reaches JavaScript or a log. |
-| `files/FileActions` | Open with / share via a `FileProvider` (`${applicationId}.vidorax.files`) with read grants. |
+| `files/FileActions` | Open with / share via a `FileProvider` (`${applicationId}.vidorax.files`) with read grants. `openIncomingWith`: a file another app opened in VidoraX, forwarded with its read grant, VidoraX excluded from the chooser. |
+| `incoming/IncomingMedia` | "Open with VidoraX" (F16). `IncomingMediaIntents.parse`: a `VIEW` of a `content:`/`file:` URI whose type — the intent's, else the resolver's, else the display name's extension — is audio or video; web links, no data and other types are ignored. `IncomingMediaReader` (launch intent via `consumeIncomingMedia`, later ones via `OnNewIntent` → `onIncomingMedia`) reads the display name and size (`OpenableColumns`), takes a persistable read grant when one is offered, and marks the intent consumed. JavaScript gets a **token** — first 32 hex of SHA-256(`incoming:` + URI), stable per file, so it doubles as the resume key — never the URI (only `getIncomingMediaSource`, for the player, returns it). `IncomingMediaRegistry`: token → file for this process (last 32). |
+| `library/IncomingImport` | "Save to VidoraX" (`importIncomingMedia`): free-space check (size + 32 MiB), copy into `noBackupFilesDir/imports/<id>/` with SHA-256 on the way, `SavedVideoIndex.findByContent` → `duplicate`, else type from name / MIME / container, `library/device/<Title>_<id>.<ext>` (site `device`), thumbnail, row (no gallery copy: the file is on the device already), content hash stored, `onLibraryChange` `imported`. A file Android cannot decode is kept (opens with another app); not audio/video or empty → `ERR_INVALID_REQUEST`; unreadable → `ERR_NOT_FOUND`; `ERR_NO_SPACE`; any failure removes the work file, library file and thumbnail. One import at a time; leftovers of an import the process died in are removed by the next. |
 | `player/Volume` | Media stream volume get/set and change events (for the player's volume gesture). |
 
 ### 3.3 Storage layout (private by default)
@@ -141,6 +143,7 @@ filesDir/
 noBackupFilesDir/
   vidorax-media.db
   work/<id>/                                    temp parts, segments, keys (deleted on completion/cancel)
+  imports/<id>/                                 a file from another app being saved (IncomingImport)
 ```
 
 The library copy is private (App Lock protects it). Since 2026-09-26 every completed download is **also** published
@@ -462,8 +465,22 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
   thirds — left −10 s, middle play/pause, right +10 s (`resolveDoubleTapAction`; physical sides, not mirrored in
   Urdu); vertical swipe on the left 25 % changes **window** brightness (no system settings permission); right 25 %
   changes media volume; pinch zooms; the lock button disables gestures. *(Long-press 2× is not built yet — Phase 20.)*
-- Next/previous follow the order of the library screen the player was opened from. The player only opens local
-  library files (`resolve-playback-source.ts`, by media id); network streams and files from other apps are Phase 16.
+- Next/previous follow the order of the library screen the player was opened from. The player opens local library
+  files (`resolve-playback-source.ts`, by media id), device videos (`device:<MediaStore id>`) and files other apps open
+  with VidoraX (`external:<token>`, F16: `src/player/external-media.ts`). An external file is held by
+  `incomingMediaQueue` until `IncomingMediaHost` (inside `AppLockGate` in the `(app)` layout, which renders under the
+  splash) may open it: the launch has handed over (`src/navigation/launch-handover.ts` — set by the splash after its
+  own `replace`, by the onboarding pages when they finish, or 5 s after the shell mounted when no splash appeared;
+  the router already shows `/browser` under the splash, so an earlier Player would be replaced) and App Lock is off or
+  unlocked, so nothing plays behind the PIN. It plays from
+  `getIncomingMediaSource` with every player feature; its position is saved under its id (= a hash of its URI, so the
+  same file resumes) but `listLocalPlaybackSummaries` drops `external:` ids — no Watch history, no Continue watching, no
+  library row, no Previous/Next. The top bar shows **Save to VidoraX** (`importIncomingMedia`; toast: saved / already
+  in your library / not enough storage / no longer readable / failed). On the error screen an external file offers
+  "Open with…" (also for "unreadable" — a WMV has no decoder here) and Save to VidoraX (kept for another app, the F5
+  rule). An `audio/*` source is revealed when ready (`revealsWithoutFirstFrame`): the startup cover otherwise waits for
+  a video frame that never comes. `+native-intent.ts` treats `content:`/`file:` links as non-routes, like web links.
+  Network streams are still Phase 16 (F17).
 - Picture-in-picture needs manifest entries mirrored from expo-video's config plugin (this repo does not run
   prebuild). Background audio is **off**: expo-video's `ExpoVideoPlaybackService` and
   `FOREGROUND_SERVICE_MEDIA_PLAYBACK` were removed on 2026-10-01 (app.json `supportsBackgroundPlayback: false`), so

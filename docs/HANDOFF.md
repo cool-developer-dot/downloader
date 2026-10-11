@@ -2031,6 +2031,15 @@ Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-pl
   only the active tab's WebView is fullscreen-capable. The page also gets its scroll position back after leaving
   (react-native-webview's video view resets it). "Video available" is hidden while fullscreen. Facebook offers no
   fullscreen button to logged-out mobile visitors (BLOCKED by the site); real phone BLOCKED (no phone).
+- **F16 Open video files from other apps.** `MainActivity` takes `VIEW` of `content:`/`file:` `video/*` and `audio/*`
+  (Files → "Open with VidoraX"). vidorax-media `incoming/` reads the intent (name, size, persistable grant when
+  offered) and gives JavaScript a token (hash of the URI — never the URI); the Player plays it as `external:<token>`
+  with every player feature (mini player, PiP, gestures), resume by token, no library row, no Watch history. **Save to
+  VidoraX** (`library/IncomingImport`): copy with SHA-256, duplicate check ("Already in your VidoraX library"),
+  site `device`, thumbnail, `imported`; undecodable files are kept. App Lock: the PIN comes first. Found and fixed: a
+  cold start's Player was replaced by the splash's own navigation (`launch-handover.ts`), an MP3 stayed on "Preparing
+  video" (audio revealed when ready). Google Photos BLOCKED (its first-run asks to turn on backup for the owner's
+  account); real phone BLOCKED. From F16 on, R1–R12 runs once at §7 (owner's request); per task a quick release check.
 
 ## 5. How to resume
 
