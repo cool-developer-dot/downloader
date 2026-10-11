@@ -279,7 +279,8 @@ class ParallelTransferTest {
 
   @Test fun aKilledDownloadResumesEveryPartFromItsCheckpoint() = runBlocking {
     origin.throttle = { 16 * 1024 }
-    val job = launch(Dispatchers.IO) { ProgressiveTransfer(http, retryDelay = noDelay).transfer(spec(3)) }
+    val reported = java.util.concurrent.atomic.AtomicLong()
+    val job = launch(Dispatchers.IO) { ProgressiveTransfer(http, retryDelay = noDelay).transfer(spec(3)) { b, _ -> reported.set(b) } }
     withTimeout(20_000) {
       while ((PartsCheckpoint.read(part())?.parts?.count { it.done > 0 } ?: 0) < 3) delay(50)
     }
@@ -291,6 +292,7 @@ class ParallelTransferTest {
     assertTrue(saved.parts.all { it.done in 1 until it.length })
     assertEquals("the .part is the whole file, pre-sized", MB17.toLong(), part().length())
     assertEquals(saved.bytesDone, PartProgress.bytesOnDisk(part()))
+    assertEquals("a cancel (pause, the network gate) checkpoints every byte reported", reported.get(), saved.bytesDone)
 
     // A new process: only the files on disk.
     requests.clear()
@@ -301,6 +303,32 @@ class ParallelTransferTest {
     val resumedStarts = ranges().map { it.substringAfter('=').substringBefore('-').toLong() }.toSet()
     for (p in saved.parts) assertTrue("part ${p.start} resumed at ${p.start + p.done}: $resumedStarts", (p.start + p.done) in resumedStarts)
     assertTrue("nothing already on disk was fetched again", resumedStarts.none { it == 0L })
+  }
+
+  @Test fun whenTheNetworkGoesTheLastCheckpointClaimsEveryByteOnDisk() {
+    origin.throttle = { 16 * 1024 }
+    val progress = java.util.concurrent.atomic.AtomicLong()
+    val failure = runCatching {
+      runBlocking {
+        val job = launch(Dispatchers.IO) {
+          val outcome = runCatching {
+            ProgressiveTransfer(http, retryDelay = noDelay).transfer(spec(3)) { bytes, _ -> progress.set(bytes) }
+          }
+          assertTrue("the dropped network is a transient failure", outcome.exceptionOrNull() is com.vidorax.media.net.MediaNetworkException)
+        }
+        withTimeout(20_000) { while (progress.get() < 3L * 1024 * 1024) delay(20) }
+        server.shutdown() // every connection drops; every retry is refused
+        job.join()
+      }
+    }
+    assertTrue(failure.isSuccess)
+    val saved = checkNotNull(PartsCheckpoint.read(part()))
+    val disk = part().readBytes()
+    for (p in saved.parts) {
+      val claimed = disk.copyOfRange(p.start.toInt(), (p.start + p.done).toInt())
+      assertArrayEquals("part ${p.start} claims only real bytes", origin.bytes.copyOfRange(p.start.toInt(), (p.start + p.done).toInt()), claimed)
+    }
+    assertEquals("the final checkpoint holds every byte reported", progress.get(), saved.bytesDone)
   }
 
   @Test fun aChangedResourceStartsOverFromZero() = runBlocking {
