@@ -352,6 +352,42 @@ class DownloadEngineTest {
     assertTrue("an unsupported source is not retried", delays.isEmpty())
   }
 
+  @Test fun aDivx3AviIsKeptAlthoughAndroidReadsOnlyItsSound() = runBlocking {
+    // MediaMetadataRetriever (the inspector) sees only the MP3 of a DivX 3 AVI; the AVI header declares the video.
+    val bytes = resourceBytes("/media/process/div3-mp3.divx")
+    val engine = engine(
+      prober = probeSuccess(Container.AVI, bytes.size.toLong()),
+      transfers = writesBytes(bytes),
+      inspector = { metadata(hasAudio = true, mime = "video/x-msvideo").copy(hasVideo = false, videoCodec = null) },
+    )
+    val record = engine.enqueue(request("https://cdn.example/movie.divx"))
+    engine.awaitIdle()
+
+    val row = store.current(record.id)!!
+    assertEquals(row.errorMessage, DownloadState.COMPLETED, row.state)
+    val item = library.items.values.single()
+    assertTrue("named by its container", item.file.name.endsWith(".avi"))
+    assertEquals("video/x-msvideo", item.mimeType)
+  }
+
+  @Test fun anAviWithNoVideoStreamIsStillNotAVideo() = runBlocking {
+    val bytes = resourceBytes("/media/process/div3-mp3.divx")
+    val strh = String(bytes, Charsets.ISO_8859_1).indexOf("strh")
+    "auds".toByteArray().copyInto(bytes, strh + 8)
+    val engine = engine(
+      prober = probeSuccess(Container.AVI, bytes.size.toLong()),
+      transfers = writesBytes(bytes),
+      inspector = { metadata(hasAudio = true, mime = "video/x-msvideo").copy(hasVideo = false, videoCodec = null) },
+    )
+    val record = engine.enqueue(request("https://cdn.example/sound.avi"))
+    engine.awaitIdle()
+
+    val row = store.current(record.id)!!
+    assertEquals(DownloadState.FAILED, row.state)
+    assertEquals(DownloadErrorCode.UNSUPPORTED_FORMAT, row.errorCode)
+    assertTrue(library.items.isEmpty())
+  }
+
   // ---------- J: stale-generation completion is idempotent ----------
 
   @Test fun supersededWorkerCannotCreateDuplicateLibraryEntry() = runBlocking {
@@ -1436,6 +1472,16 @@ class DownloadEngineTest {
 
   private fun probeFailure(reason: ProbeFailure) = Prober {
     ProbeResult.Failure(reason = reason, httpStatus = null, message = "nope")
+  }
+
+  private fun resourceBytes(path: String): ByteArray =
+    checkNotNull(javaClass.getResourceAsStream(path)) { "missing test fixture $path" }.use { it.readBytes() }
+
+  private fun writesBytes(bytes: ByteArray) = FakeTransfers { _, spec, onProgress ->
+    spec.partFile.parentFile?.mkdirs()
+    spec.partFile.writeBytes(bytes)
+    onProgress(bytes.size.toLong(), bytes.size.toLong())
+    TransferOutcome.Completed(bytes.size.toLong(), bytes.size.toLong(), "etag", spec.url)
   }
 
   private fun writes(bytes: Int) = FakeTransfers { _, spec, onProgress ->

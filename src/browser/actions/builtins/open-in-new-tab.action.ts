@@ -1,16 +1,15 @@
+import { canOpenInNewTab } from '../open-link-in-new-tab';
 import type { BrowserLongPressAction } from '../types';
 
-/**
- * Architecture-only placeholder for multi-tab.
- * Visible but disabled until the Tabs phase registers a real executor.
- */
+/** Opens the long-pressed link in a new tab and switches to it (`context.openInNewTab`, wired by the sheet's hook). */
 export const openInNewTabAction: BrowserLongPressAction = {
   id: 'open_in_new_tab',
-  label: 'Open in New Tab',
+  labelKey: 'browser.linkActions.openInNewTab',
   icon: 'tab-plus',
   order: 30,
-  enabled: false,
+  enabled: true,
+  isAvailable: (context) => canOpenInNewTab(context.url),
   execute(context) {
-    context.openInNewTab?.(context.url);
+    context.openInNewTab?.(context.url.trim());
   },
 };

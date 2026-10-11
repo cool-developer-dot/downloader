@@ -8,6 +8,10 @@ import {
   type BrowserActionContext,
   type BrowserLinkLongPressPayload,
 } from '@/browser/actions';
+import { openLinkInNewTab } from '@/browser/actions/open-link-in-new-tab';
+import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
+import { useBrowserStore } from '@/browser/stores';
+import { useTranslation } from '@/localization';
 
 function isActionableLink(url: string): boolean {
   const trimmed = url.trim().toLowerCase();
@@ -32,6 +36,7 @@ export type BrowserLongPressController = {
  * Owns long-press action sheet state. Presentation-only consumers bind to this.
  */
 export function useBrowserLongPressActions(): BrowserLongPressController {
+  const { t } = useTranslation();
   const [payload, setPayload] = useState<BrowserLinkLongPressPayload | null>(null);
 
   const dismiss = useCallback(() => {
@@ -43,8 +48,8 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
       return;
     }
     setPayload(next);
-    AccessibilityInfo.announceForAccessibility('Link actions available');
-  }, []);
+    AccessibilityInfo.announceForAccessibility(t('browser.linkActions.announce'));
+  }, [t]);
 
   const context: BrowserActionContext | null = useMemo(() => {
     if (!payload) {
@@ -55,8 +60,11 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
       linkText: payload.text,
       pageUrl: payload.pageUrl,
       title: payload.text,
-      openInNewTab: (_url: string) => {
-        // Tabs phase will wire this callback via registry re-registration.
+      openInNewTab: (url: string) => {
+        openLinkInNewTab(url, {
+          createTab: (options) => useBrowserStore.getState().createTab(options),
+          onLimitReached: announceTabsLimitReached,
+        });
       },
     };
   }, [payload]);
@@ -70,7 +78,7 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
       const enabled = action.enabled !== false;
       return {
         id: action.id,
-        label: enabled ? action.label : `${action.label} (Soon)`,
+        label: t(action.labelKey),
         icon: action.icon,
         destructive: action.destructive,
         onPress: enabled
@@ -80,11 +88,11 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
           : undefined,
       };
     });
-  }, [context]);
+  }, [context, t]);
 
   return {
     visible: payload != null,
-    title: 'Link options',
+    title: t('browser.linkActions.title'),
     subtitle: payload?.href ?? '',
     actions,
     present,

@@ -430,7 +430,7 @@ export const en = {
     brand: 'VidoraX',
     greetingWelcome: 'Welcome to VidoraX',
     pasteLink: 'Paste link',
-    pasteLinkA11y: 'Paste a link in Browser to open a video page',
+    pasteLinkA11y: 'Opens the link you copied in Browser',
     openBrowser: 'Open Browser',
     openBrowserA11y: 'Open the VidoraX browser',
     quickAccess: 'Quick Access',
@@ -490,6 +490,7 @@ export const en = {
     linkCopied: 'Link copied',
     copyLinkA11y: 'Copy link to current page',
     sharePageA11y: 'Share current page',
+    translatePageA11y: 'Open this page translated by Google Translate in a new tab',
     desktopSiteA11y: 'Request desktop version of current site',
     desktopSiteEnabled: 'Desktop site enabled',
     desktopSiteDisabled: 'Mobile site enabled',
@@ -539,6 +540,14 @@ export const en = {
     webContentA11y: 'Web content',
     openBookmarksA11y: 'Open bookmarks',
     openHistoryA11y: 'Open browsing history',
+    linkActions: {
+      title: 'Link options',
+      announce: 'Link actions available',
+      copyLink: 'Copy link',
+      shareLink: 'Share link',
+      openInNewTab: 'Open in new tab',
+      openExternal: 'Open in external browser',
+    },
     media: {
       videoAvailable: 'Video available',
       alreadyDownloaded: 'Already downloaded',
@@ -659,6 +668,7 @@ export const en = {
     emptyDescription:
       'Open a video in Browser. VidoraX finds downloadable video automatically.',
     emptyAction: 'Open Browser',
+    emptyActionHint: 'Opens the in-app browser',
     emptySearchTitle: 'No downloads found',
     emptySearchDescription: 'Try a different title, file name, or URL.',
     emptyFilterTitle: 'Nothing here',
@@ -827,7 +837,7 @@ export const en = {
     openQueueHint: 'Shows active downloads and items waiting in line',
     openFavoritesA11y: 'Open favorites',
     openFavoritesHint: 'Shows downloads you have favorited',
-    pasteLinkHint: 'Opens Browser so you can paste or open a video page',
+    pasteLinkHint: 'Opens the link you copied in Browser. With no link copied, Browser opens ready to type one',
     opensDetails: 'Opens download details',
     favoriteEnabled: 'Favorite enabled',
     favoriteDisabled: 'Favorite disabled',
@@ -976,7 +986,11 @@ export const en = {
     untitled: 'Video',
     seekTimelineA11y: 'Seek timeline',
     videoSurfaceA11y: 'Video surface',
-    surfaceHint: 'Tap to show controls. Swipe the left edge for brightness, the right edge for volume. Double tap a side to seek. Pinch to zoom; double tap resets the zoom.',
+    surfaceHint: 'Tap to show controls. Swipe the left edge for brightness, the right edge for volume. Double tap the left third to go back 10 seconds, the middle to play or pause, the right third to skip 10 seconds. Pinch to zoom; while zoomed, double tap resets the zoom.',
+    durationTotalA11y: 'Total length {time}',
+    durationRemainingA11y: 'Time left {time}',
+    durationShowRemainingHint: 'Shows the time left instead',
+    durationShowTotalHint: 'Shows the total length instead',
     hud: {
       brightness: 'Brightness {percent} percent',
       volume: 'Volume {percent} percent',
@@ -1251,9 +1265,15 @@ export const en = {
     errorTitle: 'Couldn’t load history',
     clearTitle: 'Clear browsing history?',
     clearMessage:
-      'This permanently removes your saved browsing history from this device.',
+      'This permanently removes your saved browsing history from this device. Your recent searches are kept.',
     clearConfirm: 'Clear all',
     clearCancel: 'Cancel',
+    clearSearches: 'Clear recent searches',
+    clearSearchesHint: 'Searches you typed in the address bar. Browsing history stays.',
+    clearSearchesTitle: 'Clear recent searches?',
+    clearSearchesMessage:
+      'This removes the searches you typed in the address bar from this device, so they are no longer suggested. Your browsing history is kept.',
+    clearSearchesConfirm: 'Clear searches',
     deleteTitle: 'Remove this page?',
     deleteMessage: 'This page will be removed from your browsing history.',
     deleteConfirm: 'Remove',
@@ -1385,7 +1405,7 @@ export const en = {
   support: {
     title: 'Help & Support',
     description:
-      'Search help topics, browse categories, and find answers about downloads, Library, playback, and settings — all available offline.',
+      'Search help topics, browse categories, and find answers about downloads, the Player tab, playback, and settings — all available offline.',
     a11y: 'Help and Support screen',
     searchPlaceholder: 'Search help',
     searchA11y: 'Search help articles',
@@ -1480,7 +1500,7 @@ export const en = {
         description: 'Failures, pause, Wi-Fi, and unsupported sources',
       },
       libraryFiles: {
-        title: 'Library & Files',
+        title: 'Player & Files',
         description: 'Rename, delete, share, favorites, and folders',
       },
       playback: {
@@ -1507,25 +1527,25 @@ export const en = {
       howToDownload: {
         question: 'How do I download a video?',
         answer:
-          'Open Browser, go to a page with downloadable media, then use the download controls when VidoraX detects a supported source. Choose a quality if offered, confirm the download, and track progress in Downloads. Not every website or video is downloadable — DRM, encrypted, live, or blocked sources are refused.',
+          'Open Browser and go to the page with the video, or paste its link into the address bar. When “Video available” appears, tap it, choose a quality if offered, and follow the progress in Downloads. Not every website or video can be downloaded — YouTube, DRM-protected, encrypted and live videos are refused.',
         keywords: 'download, save, video, quality, browser',
       },
       howToUseBrowser: {
         question: 'How do I use the browser?',
         answer:
-          'Open Browser from the main tabs. Enter a URL or search in the address bar, browse pages, and use bookmarks or history when available. Long-press links for share or open-external actions. The in-app browser is for navigation and detecting supported media — it does not claim every site works the same way.',
+          'Open Browser from the main tabs. Enter a URL or search in the address bar, browse pages, and use bookmarks or history from the browser menu. Long-press a link to open it in a new tab, copy it, share it or open it in another browser. The in-app browser is for navigation and detecting supported media — it does not claim every site works the same way.',
         keywords: 'browser, url, address bar, tabs, bookmarks',
       },
       whereDownloadsAppear: {
         question: 'Where do downloads appear?',
         answer:
-          'Active and recent transfers appear in Downloads, including queued, paused, failed, and completed items. Completed media you keep also shows in Library so you can browse, filter, and play offline. Use Downloads for transfer status and Library for your saved collection.',
+          'Active and recent transfers appear in Downloads, including queued, paused, failed, and completed items. Finished videos also show in the Player tab, where you can search, filter and play them offline, and by default a copy is saved to your phone’s Gallery (turn this off in Download Settings → Save to Gallery). Use Downloads for transfer status and the Player tab for your saved videos.',
         keywords: 'downloads, library, queue, completed, where',
       },
       howToPlayDownloaded: {
         question: 'How do I play downloaded media?',
         answer:
-          'Open a completed item from Library or Downloads and choose Play to open the VidoraX player. Playback needs the local file to still be on device and a format your device can decode. If the file was deleted or the codec is unsupported, VidoraX will show an error instead of playing.',
+          'Tap a video in the Player tab, or open a completed item in Downloads and choose Play, to open the VidoraX player. Playback needs the local file to still be on the device and a format your device can decode. If the file was deleted or the codec is unsupported, VidoraX will show an error instead of playing.',
         keywords: 'play, player, library, offline, watch',
       },
       downloadFailed: {
@@ -1537,13 +1557,13 @@ export const en = {
       pauseAndResume: {
         question: 'Can I pause and resume downloads?',
         answer:
-          'Progressive file downloads can usually be paused and resumed from Downloads when the media source allows resuming from a partial file. Some sources — including social CDNs serving temporary signed links — ignore that request, and those downloads have to start over. HLS stream downloads do not support user pause/resume — VidoraX will not fake that behavior. Auto Resume (in Download Settings) can restart eligible paused progressive downloads when conditions allow; it does not unlock unsupported HLS pause.',
-        keywords: 'pause, resume, HLS, progressive, auto resume',
+          'Yes. Tap Pause on a running download in Downloads and Resume when you want it to continue — this works for video files and for HLS and DASH streams. A stream continues from the last segment it finished; a file continues from the bytes already saved, unless its source refuses to resume a partial file (some social sites’ temporary links), in which case it starts again from zero. A download stopped by a lost connection, by Android closing the app or by a phone restart continues on its own; a download you paused stays paused until you tap Resume.',
+        keywords: 'pause, resume, HLS, DASH, stream, auto resume',
       },
       wifiOnlyDownloads: {
         question: 'How does Wi-Fi Only work?',
         answer:
-          'Turn on Wi-Fi Only in Download Settings to keep new downloads waiting until Wi-Fi is available. Active transfers may be held when the policy requires Wi-Fi. Cellular data will not start those downloads until Wi-Fi returns or you turn the setting off.',
+          'Turn on “Download over Wi-Fi only” in Settings → Download Settings to keep downloads waiting until Wi-Fi is available. A running download that loses Wi-Fi waits too. Mobile data will not be used for those downloads until Wi-Fi returns or you turn the setting off.',
         keywords: 'wifi, wi-fi, cellular, data, settings',
       },
       fileUnavailable: {
@@ -1555,49 +1575,49 @@ export const en = {
       unsupportedSource: {
         question: 'Why is a source unsupported?',
         answer:
-          'VidoraX only downloads supported, non-DRM sources it can process legally and technically. Encrypted HLS, DRM-protected media, live streams, and some site protections are blocked with a clear error. Not every website works — an unsupported badge or message means that source cannot be downloaded in VidoraX.',
+          'VidoraX only downloads supported, non-DRM sources it can process legally and technically. YouTube, encrypted HLS, DRM-protected media, live streams, and some site protections are blocked with a clear message. Not every website works — an unsupported message means that source cannot be downloaded in VidoraX.',
         keywords: 'unsupported, DRM, encrypted, HLS, live',
       },
       renameMedia: {
         question: 'How do I rename media?',
         answer:
-          'Open the item’s details or file actions and choose Rename. You can update the display name used in VidoraX. Renaming does not change unsupported formats or restore a missing file.',
+          'In Downloads, open the completed item, tap the menu at the top to open File actions, and choose Rename. This changes the name VidoraX shows. Renaming does not change unsupported formats or restore a missing file.',
         keywords: 'rename, name, display name, edit',
       },
       deleteMedia: {
         question: 'How do I delete media?',
         answer:
-          'Use Delete from the item’s file actions in Downloads or Library. Deleting removes the local file and related library entry from this device. This cannot be undone from within VidoraX.',
+          'Long-press a video in the Player tab and choose Delete from VidoraX, or open it in Downloads and choose Delete in File actions. This removes the file from VidoraX on this device; a copy already saved to your Gallery stays there. This cannot be undone from within VidoraX.',
         keywords: 'delete, remove, erase, storage',
       },
       shareMedia: {
         question: 'How do I share a downloaded file?',
         answer:
-          'Open file actions on a completed item and choose Share. VidoraX hands the local file to the system share sheet. Share needs the file to still exist on device.',
+          'Long-press a video in the Player tab, or open File actions on a completed item in Downloads, and choose Share. VidoraX hands the local file to the system share sheet. Share needs the file to still exist on the device.',
         keywords: 'share, send, export, sheet',
       },
       openExternally: {
         question: 'How do I open a file in another app?',
         answer:
-          'Use Open from file actions on a completed download. VidoraX asks the system to open the local file with another app if one is available. If no suitable app is installed, use Share instead.',
+          'Long-press a video in the Player tab and choose Open with…, or choose Open in File actions on a completed download. VidoraX asks the system to open the local file with another app if one is available. If no suitable app is installed, use Share instead.',
         keywords: 'open, external, another app, intent',
       },
       favorites: {
         question: 'How do favorites work?',
         answer:
-          'Mark completed media as a favorite from download details or Library. Favorites appear in the Favorites filter and the Favorites list so you can find important items faster. Favoriting does not re-download or protect a file from deletion.',
+          'Open a completed item in Downloads and tap the heart at the top to make it a favorite. Favorites appear in the Player tab’s Favorites filter and the Favorites list so you can find important items faster. Favoriting does not re-download or protect a file from deletion.',
         keywords: 'favorite, star, filter, library',
       },
       folders: {
         question: 'How do folders work?',
         answer:
-          'Create folders and move completed downloads into them from download details or Library organization controls. Folders help you group media on this device. They do not sync as a cloud drive and do not bypass unsupported sources.',
+          'Open a completed item in Downloads and tap its Folder row to move it into a folder — you can create, rename and delete folders there too. In the Player tab, the Folder filter shows one folder’s videos. Folders only group media on this device; they do not sync as a cloud drive and do not move the files.',
         keywords: 'folder, organize, move, group',
       },
       videoNotPlaying: {
         question: 'Why isn’t a video playing?',
         answer:
-          'Confirm the download completed and the local file still exists, then open Play from Library or Downloads. Playback can fail if the file is missing, the format/codec is unsupported on this device, or the player hits a device error. Try Share/Open with another app only if you have a compatible player installed.',
+          'Confirm the download completed and the local file still exists, then play it from the Player tab or Downloads. Playback can fail if the file is missing, the format/codec is unsupported on this device, or the player hits a device error. Try Open with or Share with another app only if you have a compatible player installed.',
         keywords: 'play, broken, black screen, error, player',
       },
       unsupportedCodec: {
@@ -1633,13 +1653,13 @@ export const en = {
       themeSettings: {
         question: 'How do I change the theme?',
         answer:
-          'Open Settings → Appearance and pick Light, Dark, or System. Theme applies across Help & Support and the rest of the app using VidoraX theme tokens.',
-        keywords: 'theme, dark, light, appearance, system',
+          'Open Settings → Appearance → Theme and pick System, Red, or Dark. Red, VidoraX’s own colours, is the default; System is a plain light look and Dark is dark. The theme applies across the whole app, including Help & Support.',
+        keywords: 'theme, red, dark, light, appearance, system',
       },
       storageSettings: {
         question: 'How do I manage storage?',
         answer:
-          'Downloaded media uses device storage inside the VidoraX app. Check usage from Home or Library, then delete media you no longer need from Library or Downloads. Uninstalling the app removes local VidoraX files. There is no separate cloud “clear all downloads” button beyond deleting items you manage locally.',
+          'Downloaded videos use storage inside the VidoraX app. Settings → Storage → Manage Storage shows how much space VidoraX uses; Clear Cache there removes temporary files only. To free space, long-press videos you no longer need in the Player tab and choose Delete from VidoraX. Uninstalling the app removes VidoraX’s own files; copies saved to your Gallery stay on the phone.',
         keywords: 'storage, space, disk, delete, manage',
       },
     },
@@ -1710,7 +1730,7 @@ export const en = {
       },
       thirdParties: {
         heading: '5. Third-party and service-provider processing',
-        p1: 'When you browse websites or open in-app search that loads a third-party page, those third parties process information under their own policies. VidoraX does not control third-party websites you visit.',
+        p1: 'When you browse websites or open in-app search that loads a third-party page, those third parties process information under their own policies. VidoraX does not control third-party websites you visit. When you tap Translate page in the browser menu, the address of that page is sent to Google Translate, which opens the translated page in a new tab.',
         p2: 'Network requests needed to load pages, thumbnails, or media you choose still go to those third-party sources. This policy does not claim that browsing is hidden from the sites you visit.',
         p3: 'The app may use on-device system notifications (for example, download-related alerts). VidoraX does not currently embed advertising networks or third-party analytics SDKs in the mobile app as described in this policy.',
       },

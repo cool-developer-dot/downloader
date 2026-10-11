@@ -17,6 +17,18 @@ class NetworkMediaClassifierDownloadTest {
   }
 
   @Test
+  fun flashMp4ThreeGpp2AndDivxFilesAreVideos() {
+    // By type.
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/a.f4v", "video/x-f4v"))
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/a.3g2", "video/3gpp2"))
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/a.divx", "video/divx"))
+    // By name when the server says nothing useful.
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/files/show.F4V", "application/octet-stream"))
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/files/clip.3g2", "application/octet-stream"))
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/dl?id=2", null, "attachment; filename=movie.divx"))
+  }
+
+  @Test
   fun videoFilesByTypeOrName() {
     assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/clip.mov", "video/quicktime"))
     assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/dl?id=4", "video/mp4", "attachment; filename=\"a.mp4\""))

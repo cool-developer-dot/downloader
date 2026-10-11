@@ -8,7 +8,7 @@ import type { BrowserLongPressAction } from '../types';
  */
 export const openExternalAction: BrowserLongPressAction = {
   id: 'open_external',
-  label: 'Open in External Browser',
+  labelKey: 'browser.linkActions.openExternal',
   icon: 'open-in-new',
   order: 40,
   enabled: true,

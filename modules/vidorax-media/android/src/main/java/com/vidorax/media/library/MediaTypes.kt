@@ -17,16 +17,18 @@ internal object MediaTypes {
   private val TS = MediaType("video/mp2t", Container.TS, "ts")
   private val FLV = MediaType("video/x-flv", Container.FLV, "flv")
   private val THREE_GP = MediaType("video/3gpp", Container.THREE_GP, "3gp")
+  private val THREE_G2 = MediaType("video/3gpp2", Container.THREE_G2, "3g2")
   private val M4A = MediaType("audio/mp4", Container.MP4, "m4a")
   private val MP3 = MediaType("audio/mpeg", Container.UNKNOWN, "mp3")
   private val AAC = MediaType("audio/aac", Container.UNKNOWN, "aac")
   private val WAV = MediaType("audio/wav", Container.UNKNOWN, "wav")
   private val OGG = MediaType("audio/ogg", Container.UNKNOWN, "ogg")
 
-  private val ALL = listOf(MP4, WEBM, MOV, AVI, WMV, MKV, TS, FLV, THREE_GP, M4A, MP3, AAC, WAV, OGG)
+  private val ALL = listOf(MP4, WEBM, MOV, AVI, WMV, MKV, TS, FLV, THREE_GP, THREE_G2, M4A, MP3, AAC, WAV, OGG)
 
   private val byExtension: Map<String, MediaType> =
-    ALL.associateBy { it.extension } + mapOf("m4v" to MP4, "opus" to OGG)
+    // F4V is ISO-BMFF (Flash's MP4 profile) and DivX/XviD files are AVI: both are named by the container they hold.
+    ALL.associateBy { it.extension } + mapOf("m4v" to MP4, "f4v" to MP4, "divx" to AVI, "opus" to OGG)
 
   // First video type per container; the engine uses this to name and label a finished progressive file.
   private val byContainer: Map<Container, MediaType> =
@@ -38,6 +40,9 @@ internal object MediaTypes {
       mapOf(
         "video/mp2ts" to TS,
         "video/x-m4v" to MP4,
+        "video/x-f4v" to MP4,
+        "video/divx" to AVI,
+        "video/x-divx" to AVI,
         "video/matroska" to MKV,
         "audio/x-m4a" to M4A,
         "audio/x-wav" to WAV,
