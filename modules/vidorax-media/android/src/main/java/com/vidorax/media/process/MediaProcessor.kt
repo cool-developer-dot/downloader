@@ -106,6 +106,11 @@ internal class MediaProcessor(
     val info = MediaFiles.read(track.file, track.container)
       ?: return keep(track, "container not readable by Media3; kept as downloaded")
     if (info.encrypted) return ProcessingResult.Failed(DownloadErrorCode.DRM_PROTECTED, "This video is protected")
+    // An AVI whose video codec Media3 cannot name (DivX 3) still has its picture: keep it as downloaded for "Open
+    // with", as a WMV is kept.
+    if (info.video == null && track.container == TrackContainer.AVI && AviHeader.declaresVideoStream(track.file)) {
+      return keep(track, "video codec not readable by Media3; kept as downloaded")
+    }
     val video = info.video ?: return ProcessingResult.Failed(DownloadErrorCode.VIDEO_TRACK_MISSING, "This file has no video")
     val audio = info.audio
 
@@ -395,7 +400,7 @@ internal class MediaProcessor(
       Container.TS -> TrackContainer.TS
       Container.AVI -> TrackContainer.AVI
       Container.FLV -> TrackContainer.FLV
-      Container.THREE_GP -> TrackContainer.THREE_GP
+      Container.THREE_GP, Container.THREE_G2 -> TrackContainer.THREE_GP
       Container.WMV, Container.UNKNOWN -> TrackContainer.UNKNOWN
     }
   }

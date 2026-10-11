@@ -72,7 +72,7 @@ export const DownloadEmptyState = memo(function DownloadEmptyState({
             size="medium"
             fullWidth
             accessibilityLabel={t('downloads.emptyAction')}
-            accessibilityHint={t('downloads.pasteLinkHint')}
+            accessibilityHint={t('downloads.emptyActionHint')}
             testID="downloads-empty-paste-link-button"
           />
         </Box>

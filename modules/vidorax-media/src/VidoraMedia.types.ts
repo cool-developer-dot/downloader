@@ -98,7 +98,7 @@ export type ProbeFailure =
   /** `split`: the two files are not tracks of the same video (their lengths disagree). */
   | 'TRACK_MISMATCH';
 
-export type Container = 'mp4' | 'webm' | 'mov' | 'avi' | 'wmv' | 'mkv' | 'ts' | 'flv' | '3gp' | 'unknown';
+export type Container = 'mp4' | 'webm' | 'mov' | 'avi' | 'wmv' | 'mkv' | 'ts' | 'flv' | '3gp' | '3g2' | 'unknown';
 
 export interface ProbeVariant {
   /** Opaque id to pass back as `EnqueueRequest.variant.videoId` (HLS variant URI or DASH representation id). */
