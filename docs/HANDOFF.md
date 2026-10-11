@@ -2006,6 +2006,22 @@ One task per commit group (`F12:` …), full log with test evidence in `docs/wor
   classifier, JS extension/MIME/observer, enqueue) knows `.f4v/.3g2/.divx`. "Open with" `ERR_NO_APP` now maps to "No
   compatible video app" (was "couldn't open"). ARCHITECTURE §1/§3 updated.
 
+### 4.33 Faran · Opus engine batch (branch `faran/opus-engine`, from 2026-10-11)
+
+Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-plans/faran-opus-prompt.md`.
+
+- **F1 Parallel connections.** Download Settings → Performance → "Connections per file" (1–4, default 3; engine prefs
+  `connectionsPerFile`). A progressive file ≥ 16 MiB whose server proves ranges (206 + total + strong validator) is
+  fetched as parallel byte ranges into the pre-sized `.part` (`transfer/RangedDownload`, per-part checkpoint
+  `download.part.parts`, dynamic split only when it pays off against request latency); HLS/DASH segments are fetched
+  N at a time and appended in order. Fallback to one connection, never a failure. Parts use their own HTTP/1.1
+  connections (`HttpClient.separateConnections` — over HTTP/2 OkHttp had put them on one socket). Two engine bugs
+  fixed on the way: (1) MPEG-TS segment joins lost the last frame before each join (Media3 `TsExtractor` continuity
+  check; Mux 288p lost 60 of 19,039 frames and stalled after seeks) → `transfer/TsContinuity` renumbers at assembly;
+  (2) an unquoted ETag (Wikimedia) replayed in `If-Range` made every resume restart from zero → `Validators` quotes it.
+  On this AVD's ~1.7 MB/s link 1 and 3 connections move bytes at the same rate (host curl agrees); the gain shows
+  where a connection is the limit (fixture: 14.6 s → 4.2 s → 2.85 s). Real-phone check BLOCKED (no phone).
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

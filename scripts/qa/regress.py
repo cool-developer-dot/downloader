@@ -204,7 +204,8 @@ def r10():
 def r1():
     out = subprocess.run(['bash', f'{Q}/coldstart.sh'], capture_output=True, text=True).stdout.strip()
     times = [float(x) for x in re.findall(r'at ([0-9.]+)s', out)]
-    crash = 'FATAL' in sh('logcat', '-d', '-b', 'crash')
+    # Only the app's own crashes: uiautomator itself crashes now and then ("UiAutomationService already registered").
+    crash = f'Process: {PKG}' in sh('logcat', '-d', '-b', 'crash')
     record('R1', bool(times) and not crash,
            f'browser chrome at {", ".join(f"{t:.1f}" for t in times)} s (test1 baseline 6.2-6.4 s); crash={crash}')
 
@@ -275,12 +276,21 @@ def r6():
         paused_ok = bool(find('Resume download')) and a is not None and b is not None and a[2] == b[2]
         shot('r6_paused')
         tapq('Resume download')
+    # Force-stop mid-download: the next start resumes it on its own.
+    w(6)
+    sh('am', 'force-stop', PKG)
+    w(3)
+    sh('am', 'start', '-n', f'{PKG}/com.anonymous.vidorax.MainActivity')
+    w(10)
+    to_tab(405)
+    resumed_after_kill = bool(wait_for('Pause download', 60)) or any('288p' in d and 'Completed' in d for t, d, x, y in dump())
     end = time.time() + 420
     done = False
     while time.time() < end and not done:
         done = any('288p' in d and 'Completed' in d for t, d, x, y in dump())
         w(5)
-    record('R6', paused_ok and done, f'paused at {a[2] if a else "-"}, unchanged after 8 s={paused_ok}, resumed, completed={done}')
+    record('R6', paused_ok and resumed_after_kill and done,
+           f'paused at {a[2] if a else "-"}, unchanged after 8 s={paused_ok}, resumed; force-stop → running again={resumed_after_kill}; completed={done}')
 
 
 def r7():
@@ -457,40 +467,48 @@ def r4():
 
 
 def r11():
-    # DASH (separate audio + video) through the pasted-link analyzer: the lowest quality, downloaded and played.
-    open_url('https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd', 20)
-    ok = download_offer(icon=False)
-    for _ in range(3):
-        sh('input', 'swipe', '540', '1700', '540', '900', '400')
-        w(1.5)
-    nodes = dump()
-    heights = sorted({int(m.group(1)) for t, d, x, y in nodes for m in [re.match(r'(\d+)p,', d or t)] if m})
+    # DASH (separate audio + video) through the pasted-link analyzer: the lowest quality, downloaded and played. The
+    # tab starts from the browser's home: an .mpd does not replace the page underneath, whose inputs could take taps.
+    browser()
+    sh('input', 'keyevent', '111')
+    tapq('Go home', exact=True)
+    w(2)
+    to_tab(405)
+    before = {d for t, d, x, y in dump() if 'Completed' in d}
+    browser()
+    sh(f"am start -a android.intent.action.VIEW -d 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd' {PKG}")
+    ok = wait_for('Video available', 60)
+    if ok:
+        tapq('Video available', exact=True)
+        w(4)
+    for _ in range(4):
+        sh('input', 'swipe', '540', '1800', '540', '800', '400')
+        w(1.2)
+    heights = sorted({int(m.group(1)) for t, d, x, y in dump() for m in [re.match(r'(\d+)p, ', d or t)] if m})
     chosen = heights[0] if heights else None
     if chosen:
-        tapq(f'{chosen}p,')
+        tapq(f'{chosen}p, ')
         w(1.5)
         tapq(f'Download {chosen}p')
     w(5)
-    end = time.time() + 600
     done = None
+    end = time.time() + 600
     while time.time() < end and not done:
         to_tab(405)
-        done = next((d for t, d, x, y in dump() if 'Completed' in d and ('DASH' in d or 'bbb' in d.lower() or 'mpd' in d.lower())), None)
+        done = next((d for t, d, x, y in dump() if 'Completed' in d and d not in before and f'{chosen}p' in d), None)
         if not done:
             w(10)
     playing = None
     if done:
         to_tab(675)
-        hit = find('bbb_30fps') or find('DASH') or find('Bbb')
-        if hit:
-            tap(hit[0], hit[1])
+        if tapq('× 180'):
             w(6)
             playing = media_state()
             shot('r11_player')
             sh('input', 'keyevent', '4')
             w(1)
     record('R11', bool(done) and playing in ('PLAYING', 'PAUSED'),
-           f'offer={ok} qualities={heights} chose={chosen} row={done[:70] if done else None} player={playing}')
+           f'offer={bool(ok)} qualities={heights} chose={chosen} row={done[:70] if done else None} player={playing}')
 
 
 def set_wifi_only(on):
