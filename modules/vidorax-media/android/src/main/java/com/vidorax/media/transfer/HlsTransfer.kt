@@ -17,6 +17,8 @@ import com.vidorax.media.plan.HlsSegmentFormat
 import com.vidorax.media.plan.HlsSegmentRef
 import com.vidorax.media.plan.TrackRole
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.RandomAccessFile
@@ -25,7 +27,14 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.job
@@ -45,6 +54,11 @@ internal data class HlsTransferSpec(
    * the tags are removed so the file is one clean audio stream, and the first timestamp is kept for the merge.
    */
   val role: TrackRole = TrackRole.VIDEO,
+  /**
+   * Segments fetched at once (Settings → "Connections per file"). Above 1, the next segments are fetched ahead into
+   * their own temporary files beside the `.part` while the file is still assembled strictly in playlist order.
+   */
+  val connections: Int = 1,
 )
 
 internal data class HlsTransferOutcome(
@@ -77,6 +91,11 @@ internal data class HlsCheckpoint(
   val packedAudio: Boolean = false,
   /** Packed audio: the first segment's ID3 timestamp (µs). */
   val timestampUs: Long? = null,
+  /**
+   * MPEG-TS: the continuity counter of the last packet per PID ([TsContinuity]), so the next segment continues the
+   * numbering. Null in a checkpoint an older version wrote — its `.part` is renumbered once when it resumes.
+   */
+  val continuity: Map<Int, Int>? = null,
 ) {
   companion object {
     fun read(file: File): HlsCheckpoint? = runCatching {
@@ -92,6 +111,9 @@ internal data class HlsCheckpoint(
         indexSize = if (json.has("indexSize")) json.getLong("indexSize") else null,
         packedAudio = json.optBoolean("packedAudio", false),
         timestampUs = if (json.has("timestampUs")) json.getLong("timestampUs") else null,
+        continuity = json.optJSONObject("continuity")?.let { cc ->
+          cc.keys().asSequence().associate { pid -> pid.toInt() to cc.getInt(pid) }
+        },
       )
     }.getOrNull()
 
@@ -107,6 +129,9 @@ internal data class HlsCheckpoint(
       checkpoint.indexSize?.let { json.put("indexSize", it) }
       if (checkpoint.packedAudio) json.put("packedAudio", true)
       checkpoint.timestampUs?.let { json.put("timestampUs", it) }
+      checkpoint.continuity?.let { cc ->
+        json.put("continuity", JSONObject().apply { cc.forEach { (pid, counter) -> put(pid.toString(), counter) } })
+      }
       val tmp = File(file.parentFile, "${file.name}.tmp")
       RandomAccessFile(tmp, "rw").use { raf ->
         raf.setLength(0)
@@ -125,11 +150,16 @@ internal data class HlsCheckpoint(
 /**
  * Downloads an HLS plan's segments, in playlist order, into one file.
  *
- * - MPEG-TS segments are concatenated byte for byte. fMP4 writes its init section once (again only if the
+ * - MPEG-TS segments are concatenated, each packet's continuity counter renumbered so the joins read as one stream
+ *   ([TsContinuity]; nothing else in a packet changes). fMP4 writes its init section once (again only if the
  *   playlist switches init sections) followed by every media segment. Nothing is decrypted, remuxed or reordered.
  * - Segment by segment: after each one the `.part` is synced and the checkpoint advanced. A pause, a crash or a
  *   dropped connection resumes at the first segment not in the checkpoint; any bytes of a half-written segment are
  *   cut off first, so a segment is never written twice.
+ * - With [HlsTransferSpec.connections] above 1, up to that many segments are fetched at once — each into its own
+ *   file beside the `.part` — and appended strictly in order, so the assembled file and its checkpoint are exactly
+ *   what a one-by-one download writes. A segment that fails is reported only when its turn comes; a whole segment
+ *   fetched ahead by a paused run is used by the next run of the same stream instead of being fetched again.
  * - Every request carries the download's User-Agent, Referer, Origin and cookies; `EXT-X-BYTERANGE` segments are
  *   fetched as exact ranges. A child URL that answers 401/403 without a query of its own is retried once with the
  *   playlist's query (token propagation), and that choice then sticks for the rest of the run.
@@ -139,13 +169,23 @@ internal data class HlsCheckpoint(
  *   stream that turns out to be something the product refuses is [MediaRefusedException].
  */
 internal class HlsTransfer(private val http: HttpClient) {
+  /** Segments fetched ahead each use their own TCP connection, also from an HTTP/2 server. */
+  private val aheadHttp: HttpClient by lazy { http.separateConnections }
+
   suspend fun transfer(
     spec: HlsTransferSpec,
     onProgress: (bytesDone: Long, totalBytes: Long?) -> Unit = { _, _ -> },
   ): HlsTransferOutcome = withContext(Dispatchers.IO) { download(spec, onProgress) }
 
-  private suspend fun download(spec: HlsTransferSpec, onProgress: (Long, Long?) -> Unit): HlsTransferOutcome {
+  private suspend fun download(spec: HlsTransferSpec, reportProgress: (Long, Long?) -> Unit): HlsTransferOutcome = coroutineScope {
     val plan = spec.plan
+    // Reported from the assembly loop and from the threads fetching ahead: never backwards within a run (the engine
+    // reads a drop as a restart).
+    val reported = AtomicLong(0)
+    val onProgress = { bytes: Long, total: Long? ->
+      val now = reported.accumulateAndGet(bytes) { a, b -> maxOf(a, b) }
+      reportProgress(now, total?.let { maxOf(it, now) })
+    }
     spec.partFile.parentFile?.mkdirs()
     val saved = HlsCheckpoint.read(spec.checkpointFile)?.takeIf {
       it.fingerprint == plan.fingerprint && it.completed in 0..plan.segments.size &&
@@ -159,6 +199,7 @@ internal class HlsTransfer(private val http: HttpClient) {
     var indexSize = saved?.indexSize
     var packedAudio = saved?.packedAudio ?: false
     var timestampUs = saved?.timestampUs
+    val continuity = TsContinuity(saved?.continuity ?: emptyMap())
     val durations = LongArray(plan.segments.size + 1).also { sums ->
       for (i in plan.segments.indices) sums[i + 1] = sums[i] + plan.segments[i].durationUs
     }
@@ -166,79 +207,173 @@ internal class HlsTransfer(private val http: HttpClient) {
 
     // Never touch the `.part` once this worker has been superseded (pause, cancel, a newer run).
     currentCoroutineContext().ensureActive()
-    RandomAccessFile(spec.partFile, "rw").use { raf ->
-      // Whatever lies past the checkpoint is a segment that never completed: drop it before writing again.
-      raf.setLength(offset)
-      if (saved == null) spec.checkpointFile.delete()
+    // Segments fetched ahead by a run that was paused or died are kept only for the same stream, past the checkpoint.
+    SegmentFiles.prepare(spec.partFile, keepFrom = if (saved != null && spec.connections > 1) completed else null)
+    val prefetch = if (spec.connections > 1) Prefetch(this, spec, tokenPropagation) else null
+    try {
+      RandomAccessFile(spec.partFile, "rw").use { raf ->
+        // Whatever lies past the checkpoint is a segment that never completed: drop it before writing again.
+        raf.setLength(offset)
+        if (saved == null) {
+          // A new stream (or another one): a checkpoint at zero, so segments fetched ahead before the first is
+          // appended still belong to a known stream when the run is paused.
+          HlsCheckpoint.write(spec.checkpointFile, HlsCheckpoint(plan.fingerprint, 0, 0, null, null))
+        }
+        // A transport stream an older version assembled has its joins as the packager numbered them: renumber it once.
+        if (saved != null && saved.continuity == null && container == Container.TS && offset > 0) {
+          continuity.renumber(raf, 0, offset)
+          raf.fd.sync()
+          HlsCheckpoint.write(spec.checkpointFile, saved.copy(continuity = continuity.state))
+        }
 
-      while (completed < plan.segments.size) {
-        currentCoroutineContext().ensureActive()
-        val segment = plan.segments[completed]
-        var writeAt = offset
-        // Extrapolated from whole segments only: a half-received segment would inflate bytes-per-second of media.
-        val wholeSegmentsTotal = estimateTotal(offset, durations[completed], plan)
-        val estimate = { bytes: Long -> wholeSegmentsTotal?.let { maxOf(it, bytes + 1) } }
-
-        val initIndex = segment.initIndex
-        if (initIndex != null && initIndex != lastInit) {
-          writeAt = append(raf, writeAt, plan.inits[initIndex], spec.context, tokenPropagation, stripId3 = false) { bytes ->
-            onProgress(bytes, estimate(bytes))
+        while (completed < plan.segments.size) {
+          currentCoroutineContext().ensureActive()
+          val segment = plan.segments[completed]
+          val segmentStart = offset
+          var writeAt = offset
+          // Extrapolated from whole segments only: a half-received segment would inflate bytes-per-second of media.
+          val wholeSegmentsTotal = estimateTotal(offset, durations[completed], plan)
+          val estimate = { bytes: Long -> wholeSegmentsTotal?.let { maxOf(it, bytes + 1) } }
+          val report = { bytes: Long ->
+            val ahead = prefetch?.bytesAhead ?: 0L
+            onProgress(bytes + ahead, estimate(bytes + ahead))
           }
-          if (container == null) {
-            // The init section decides the container; an fMP4 file gets room for its one segment index here.
-            container = confirmContainer(raf, plan, spec.role)
-            if (container == Container.MP4) {
-              indexOffset = writeAt
-              indexSize = Fmp4Index.placeholderSize(plan.segments.size)
-              writeAt = Fmp4Index.writePlaceholder(raf, writeAt, plan.segments.size)
+          prefetch?.let { p ->
+            p.assembled = offset
+            p.onAhead = { report(p.assembled) }
+          }
+
+          val initIndex = segment.initIndex
+          if (initIndex != null && initIndex != lastInit) {
+            writeAt = append(raf, writeAt, plan.inits[initIndex], spec.context, tokenPropagation, stripId3 = false, onBytes = report)
+            if (container == null) {
+              // The init section decides the container; an fMP4 file gets room for its one segment index here.
+              container = confirmContainer(raf, plan, spec.role)
+              if (container == Container.MP4) {
+                indexOffset = writeAt
+                indexSize = Fmp4Index.placeholderSize(plan.segments.size)
+                writeAt = Fmp4Index.writePlaceholder(raf, writeAt, plan.segments.size)
+              }
             }
           }
-        }
-        if (container == null && completed == 0 && spec.role == TrackRole.AUDIO && initIndex == null) {
-          packedAudio = startsAsPackedAudio(segment.media, spec.context, tokenPropagation)
-        }
-        val mediaStart = writeAt
-        writeAt = append(
-          raf,
-          writeAt,
-          segment.media,
-          spec.context,
-          tokenPropagation,
-          stripId3 = packedAudio,
-          onTimestamp = { if (timestampUs == null) timestampUs = it },
-        ) { bytes ->
-          onProgress(bytes, estimate(bytes))
-        }
-        if (container == null) container = if (packedAudio) Container.UNKNOWN else confirmContainer(raf, plan, spec.role)
-        // A segment's own index describes that segment alone; in one file it would mislead the player.
-        if (container == Container.MP4) Fmp4Index.neutralizeSegmentIndexes(raf, mediaStart, writeAt)
-        raf.fd.sync()
+          val fetched = prefetch?.take(completed)
+          if (container == null && completed == 0 && spec.role == TrackRole.AUDIO && initIndex == null) {
+            packedAudio = if (fetched != null) SegmentFiles.isPackedAudio(fetched) else startsAsPackedAudio(segment.media, spec.context, tokenPropagation)
+          }
+          val mediaStart = writeAt
+          val onTimestamp = { us: Long -> if (timestampUs == null) timestampUs = us }
+          writeAt = if (fetched != null) {
+            appendFile(raf, writeAt, fetched, segment.media.url, stripId3 = packedAudio, onTimestamp = onTimestamp, onBytes = report)
+              .also { fetched.delete() }
+          } else {
+            append(raf, writeAt, segment.media, spec.context, tokenPropagation, stripId3 = packedAudio, onTimestamp = onTimestamp, onBytes = report)
+          }
+          if (container == null) container = if (packedAudio) Container.UNKNOWN else confirmContainer(raf, plan, spec.role)
+          // A segment's own index describes that segment alone; in one file it would mislead the player.
+          if (container == Container.MP4) Fmp4Index.neutralizeSegmentIndexes(raf, mediaStart, writeAt)
+          if (container == Container.TS) continuity.renumber(raf, segmentStart, writeAt)
+          raf.fd.sync()
 
-        completed += 1
-        offset = writeAt
-        if (initIndex != null) lastInit = initIndex
-        HlsCheckpoint.write(
-          spec.checkpointFile,
-          HlsCheckpoint(plan.fingerprint, completed, offset, lastInit, container, indexOffset, indexSize, packedAudio, timestampUs),
-        )
-        val total = if (completed == plan.segments.size) offset else estimateTotal(offset, durations[completed], plan)
-        onProgress(offset, total)
+          completed += 1
+          offset = writeAt
+          if (initIndex != null) lastInit = initIndex
+          HlsCheckpoint.write(
+            spec.checkpointFile,
+            HlsCheckpoint(
+              plan.fingerprint, completed, offset, lastInit, container, indexOffset, indexSize, packedAudio, timestampUs,
+              continuity = if (container == Container.TS) continuity.state else null,
+            ),
+          )
+          prefetch?.assembled = offset
+          val total = if (completed == plan.segments.size) offset else estimateTotal(offset, durations[completed], plan)
+          onProgress(offset + (prefetch?.bytesAhead ?: 0L), total)
+        }
+        // Idempotent: a re-run after a crash rewrites the same index over the same reserved bytes.
+        val at = indexOffset
+        val size = indexSize
+        if (container == Container.MP4 && at != null && size != null) {
+          currentCoroutineContext().ensureActive()
+          Fmp4Index.writeGlobalIndex(raf, at, size, plan.durationUs)
+          raf.fd.sync()
+        }
       }
-      // Idempotent: a re-run after a crash rewrites the same index over the same reserved bytes.
-      val at = indexOffset
-      val size = indexSize
-      if (container == Container.MP4 && at != null && size != null) {
-        currentCoroutineContext().ensureActive()
-        Fmp4Index.writeGlobalIndex(raf, at, size, plan.durationUs)
-        raf.fd.sync()
-      }
+    } finally {
+      prefetch?.close()
     }
-    return HlsTransferOutcome(
+    HlsTransferOutcome(
       bytesWritten = offset,
       container = container ?: plan.containerHint,
       packedAudio = packedAudio,
       timestampUs = timestampUs,
     )
+  }
+
+  /**
+   * Segments fetched ahead of the one being appended: always the next `connections` segments in playlist order, each
+   * into its own file. [take] hands them over in order and only then reports a fetch's failure, so a segment that
+   * fails never costs the segments before it; nothing is ever appended out of order. A finished file is renamed into
+   * place atomically, so one left by a paused run is whole and is used instead of fetching it again.
+   */
+  private inner class Prefetch(
+    private val scope: CoroutineScope,
+    private val spec: HlsTransferSpec,
+    private val tokens: TokenPropagation,
+  ) {
+    private val window = spec.connections.coerceIn(1, MAX_CONNECTIONS)
+    private val pending = HashMap<Int, Deferred<Result<File>>>()
+    private val ahead = AtomicLong(0)
+
+    /** Bytes in fetched-ahead files not yet appended (combined progress). */
+    val bytesAhead: Long get() = ahead.get()
+
+    /** The assembled length, for progress reported from the fetching threads. */
+    @Volatile var assembled = 0L
+
+    /** Called from a fetching thread whenever bytes arrived ahead (the loop reports the combined progress). */
+    @Volatile var onAhead: () -> Unit = {}
+
+    suspend fun take(index: Int): File {
+      schedule(index)
+      val file = checkNotNull(pending.remove(index)).await().getOrThrow()
+      ahead.addAndGet(-file.length())
+      schedule(index + 1)
+      return file
+    }
+
+    private fun schedule(from: Int) {
+      val until = minOf(from + window, spec.plan.segments.size)
+      for (i in from until until) {
+        if (pending.containsKey(i)) continue
+        val done = SegmentFiles.fileFor(spec.partFile, i)
+        if (done.isFile && done.length() > 0) {
+          ahead.addAndGet(done.length())
+          pending[i] = CompletableDeferred(Result.success(done))
+          continue
+        }
+        val ref = spec.plan.segments[i].media
+        pending[i] = scope.async(Dispatchers.IO) {
+          try {
+            Result.success(
+              fetchToFile(ref, done, spec.context, tokens) { bytes ->
+                ahead.addAndGet(bytes)
+                onAhead()
+              },
+            )
+          } catch (c: CancellationException) {
+            throw c
+          } catch (e: Throwable) {
+            Result.failure(e)
+          }
+        }
+      }
+    }
+
+    /** Stops what is still being fetched; whole files stay for the next run of the same stream. */
+    fun close() {
+      pending.values.forEach { it.cancel() }
+      pending.clear()
+      SegmentFiles.deletePartial(spec.partFile)
+    }
   }
 
   /** An audio rendition's first segment is ID3-tagged ADTS/MP3 (packed audio) rather than MPEG-TS or fMP4. */
@@ -281,32 +416,122 @@ internal class HlsTransfer(private val http: HttpClient) {
   ): Long {
     val response = open(ref, context, tokens)
     response.use {
-      val status = it.status
-      val rangeStart = ref.byteRangeOffset
-      val skip: Long = when {
-        status == 206 && rangeStart != null -> {
-          if (it.contentRange?.start != rangeStart) {
-            throw MediaNetworkException("misaligned range for ${Redact.url(ref.url)}")
-          }
-          0L
-        }
-        // The server ignored Range: the sub-range starts inside this full body.
-        status == 200 && rangeStart != null -> rangeStart
-        status == 200 -> 0L
-        status == 206 && it.contentRange?.start == 0L -> 0L
-        else -> throw MediaHttpException.of(status, ref.url)
-      }
-      val expected: Long? = ref.byteRangeLength ?: it.contentLength.takeIf { status == 200 }
+      val (skip, expected) = bodyOf(it, ref)
       return copy(raf, writeAt, it.byteStream(), skip, expected, ref.url, stripId3, onTimestamp, onBytes)
     }
   }
 
-  private fun open(ref: HlsSegmentRef, context: RequestContext, tokens: TokenPropagation): HttpResponse {
-    val first = http.execute(request(tokens.urlFor(ref.url), ref, context))
+  /** Appends a segment fetched ahead into [file] (exactly the segment's bytes) — the same append, from the disk. */
+  private suspend fun appendFile(
+    raf: RandomAccessFile,
+    writeAt: Long,
+    file: File,
+    url: String,
+    stripId3: Boolean,
+    onTimestamp: (Long) -> Unit,
+    onBytes: (Long) -> Unit,
+  ): Long = FileInputStream(file).use { input ->
+    copy(raf, writeAt, input, skip = 0, expected = file.length(), url = url, stripId3 = stripId3, onTimestamp = onTimestamp, onBytes = onBytes)
+  }
+
+  /**
+   * Where the segment's bytes are in [response]'s body: how many to skip (a server that ignored the Range of a
+   * sub-range sends the whole resource) and how many there are, when known. Throws for any other answer.
+   */
+  private fun bodyOf(response: HttpResponse, ref: HlsSegmentRef): Pair<Long, Long?> {
+    val status = response.status
+    val rangeStart = ref.byteRangeOffset
+    val skip: Long = when {
+      status == 206 && rangeStart != null -> {
+        if (response.contentRange?.start != rangeStart) {
+          throw MediaNetworkException("misaligned range for ${Redact.url(ref.url)}")
+        }
+        0L
+      }
+      // The server ignored Range: the sub-range starts inside this full body.
+      status == 200 && rangeStart != null -> rangeStart
+      status == 200 -> 0L
+      status == 206 && response.contentRange?.start == 0L -> 0L
+      else -> throw MediaHttpException.of(status, ref.url)
+    }
+    val expected: Long? = ref.byteRangeLength ?: response.contentLength.takeIf { status == 200 }
+    return skip to expected
+  }
+
+  /**
+   * Fetches one segment ahead into [file]: exactly its bytes, renamed into place only once complete — else an
+   * exception and no file.
+   */
+  private suspend fun fetchToFile(
+    ref: HlsSegmentRef,
+    file: File,
+    context: RequestContext,
+    tokens: TokenPropagation,
+    onBytes: (Long) -> Unit,
+  ): File {
+    val partial = SegmentFiles.partialFor(file)
+    try {
+      open(ref, context, tokens, aheadHttp).use { response ->
+        val (skip, expected) = bodyOf(response, ref)
+        val input = response.byteStream()
+        val onCancel = currentCoroutineContext().job.invokeOnCompletion {
+          CLOSERS.execute { runCatching { input.close() } }
+        }
+        try {
+          diskWrite { FileOutputStream(partial) }.use { out ->
+            val buffer = ByteArray(BUFFER_BYTES)
+            var toSkip = skip
+            while (toSkip > 0) {
+              currentCoroutineContext().ensureActive()
+              val read = input.read(buffer, 0, minOf(buffer.size.toLong(), toSkip).toInt())
+              if (read < 0) throw MediaNetworkException("segment ended before its byte range: ${Redact.url(ref.url)}")
+              toSkip -= read
+            }
+            var got = 0L
+            while (expected == null || got < expected) {
+              currentCoroutineContext().ensureActive()
+              val want = if (expected == null) buffer.size else minOf(buffer.size.toLong(), expected - got).toInt()
+              val read = input.read(buffer, 0, want)
+              if (read < 0) break
+              diskWrite { out.write(buffer, 0, read) }
+              got += read
+              onBytes(read.toLong())
+            }
+            if (expected != null && got < expected) {
+              throw MediaNetworkException("truncated segment ${Redact.url(ref.url)}: $got/$expected")
+            }
+            if (got == 0L) throw MediaNetworkException("empty segment ${Redact.url(ref.url)}")
+          }
+        } catch (io: IOException) {
+          currentCoroutineContext().ensureActive()
+          if (io is MediaNetworkException || io is MediaHttpException || io is MediaRefusedException || io is StorageWriteException) {
+            throw io
+          }
+          throw MediaNetworkException("segment transfer of ${Redact.url(ref.url)} interrupted", io)
+        } finally {
+          onCancel.dispose()
+        }
+      }
+      diskWrite {
+        try {
+          Files.move(partial.toPath(), file.toPath(), StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: AtomicMoveNotSupportedException) {
+          Files.move(partial.toPath(), file.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
+      }
+    } catch (e: Throwable) {
+      partial.delete()
+      throw e
+    }
+    return file
+  }
+
+  private fun open(ref: HlsSegmentRef, context: RequestContext, tokens: TokenPropagation, client: HttpClient = http): HttpResponse {
+    val first = client.execute(request(tokens.urlFor(ref.url), ref, context))
     if (first.status !in AUTH_STATUS || tokens.active) return first
     val propagated = tokens.alternativeFor(ref.url) ?: return first
     first.close()
-    val second = http.execute(request(propagated, ref, context))
+    val second = client.execute(request(propagated, ref, context))
     if (second.status in 200..299) tokens.active = true
     return second
   }
@@ -435,6 +660,7 @@ internal class HlsTransfer(private val http: HttpClient) {
     const val BUFFER_BYTES = 64 * 1024
     const val SNIFF_BYTES = 64 * 1024
     const val PEEK_BYTES = 16L
+    const val MAX_CONNECTIONS = 4
     val AUTH_STATUS = setOf(401, 403)
 
     /** Daemon threads: aborting a socket read must not keep the process alive or block a caller. */
@@ -442,6 +668,52 @@ internal class HlsTransfer(private val http: HttpClient) {
       Thread(runnable, "vidorax-hls-close").apply { isDaemon = true }
     }
   }
+}
+
+/**
+ * Segments fetched ahead, each in its own file beside the track's `.part` (`download.part.seg12`; `.tmp` while it is
+ * being written, so a file without the suffix is always a whole segment).
+ */
+internal object SegmentFiles {
+  fun fileFor(partFile: File, index: Int): File = File(partFile.parentFile, "${partFile.name}$SUFFIX$index")
+
+  fun partialFor(file: File): File = File(file.path + PARTIAL)
+
+  /**
+   * Before a run: removes half-written files, and whole ones that are already in the `.part` (index below
+   * [keepFrom]) or belong to no checkpoint ([keepFrom] null: a new stream, or segments fetched one by one).
+   */
+  fun prepare(partFile: File, keepFrom: Int?) {
+    val prefix = partFile.name + SUFFIX
+    partFile.parentFile?.listFiles()?.forEach { file ->
+      if (!file.name.startsWith(prefix)) return@forEach
+      val index = file.name.removePrefix(prefix).toIntOrNull()
+      if (keepFrom == null || index == null || index < keepFrom) file.delete()
+    }
+  }
+
+  /** Removes the half-written ones (a run that stopped). */
+  fun deletePartial(partFile: File) {
+    val prefix = partFile.name + SUFFIX
+    partFile.parentFile?.listFiles()?.forEach { if (it.name.startsWith(prefix) && it.name.endsWith(PARTIAL)) it.delete() }
+  }
+
+  /** The file starts as HLS packed audio (an ID3-tagged ADTS/MP3 segment). */
+  fun isPackedAudio(file: File): Boolean = runCatching {
+    FileInputStream(file).use { input ->
+      val head = ByteArray(16)
+      var got = 0
+      while (got < head.size) {
+        val read = input.read(head, got, head.size - got)
+        if (read < 0) break
+        got += read
+      }
+      HlsSegmentFormat.isPackedAudio(head.copyOf(got))
+    }
+  }.getOrDefault(false)
+
+  private const val SUFFIX = ".seg"
+  private const val PARTIAL = ".tmp"
 }
 
 /**

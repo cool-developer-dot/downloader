@@ -29,6 +29,8 @@ import com.vidorax.media.plan.HlsPlan
 import com.vidorax.media.plan.HlsPlanResult
 import com.vidorax.media.transfer.HlsCheckpoint
 import com.vidorax.media.transfer.HlsTransferSpec
+import com.vidorax.media.transfer.PartProgress
+import com.vidorax.media.transfer.RangedDownload
 import com.vidorax.media.plan.DashResolution
 import com.vidorax.media.plan.DashTrack
 import com.vidorax.media.plan.DashTrackSource
@@ -193,7 +195,8 @@ internal class DownloadEngine(
 
   private fun checkpointFileFor(id: String): File = File(paths.workDir(id), HLS_CHECKPOINT_NAME)
 
-  private fun physicalPartBytes(id: String): Long = partFileFor(id).let { if (it.isFile) it.length() else 0L }
+  /** Bytes really downloaded into the `.part` (a multi-connection `.part` is pre-sized: its parts say how much). */
+  private fun physicalPartBytes(id: String): Long = PartProgress.bytesOnDisk(partFileFor(id))
 
   private fun audioPartFor(id: String): File = File(paths.workDir(id), AUDIO_PART_NAME)
 
@@ -206,7 +209,7 @@ internal class DownloadEngine(
   private fun resumableBytes(row: DownloadRow): Long = when (row.kind) {
     SourceKind.HLS ->
       (HlsCheckpoint.read(checkpointFileFor(row.id))?.partBytes ?: 0L) + (HlsCheckpoint.read(audioCheckpointFor(row.id))?.partBytes ?: 0L)
-    SourceKind.DASH, SourceKind.SPLIT -> physicalPartBytes(row.id) + audioPartFor(row.id).let { if (it.isFile) it.length() else 0L }
+    SourceKind.DASH, SourceKind.SPLIT -> physicalPartBytes(row.id) + PartProgress.bytesOnDisk(audioPartFor(row.id))
     else -> physicalPartBytes(row.id)
   }
 
@@ -642,7 +645,12 @@ internal class DownloadEngine(
     ) {
       // The transfer resumes against the validator it recorded beside the `.part`, so If-Range also holds after a
       // process death, a reboot or a renewed (re-signed) link.
-      val spec = TransferSpec(url = probe.finalUrl, context = currentRequest(id, start), partFile = partFile)
+      val spec = TransferSpec(
+        url = probe.finalUrl,
+        context = currentRequest(id, start),
+        partFile = partFile,
+        connections = connectionsFor(probe.sizeBytes),
+      )
       streamWithProgress(id, gen) { onProgress -> transfers.transfer(spec, onProgress) }.also { TrackDone.mark(partFile) }
     } ?: return
 
@@ -868,7 +876,7 @@ internal class DownloadEngine(
 
   /** What is durably on disk for [job] right now (progress and the retry budget's high-water mark). */
   private fun onDisk(job: TrackJob): Long = when (job) {
-    is TrackJob.Whole -> if (job.partFile.isFile) job.partFile.length() else 0L
+    is TrackJob.Whole -> PartProgress.bytesOnDisk(job.partFile)
     is TrackJob.Segmented -> HlsCheckpoint.read(job.checkpoint)?.partBytes ?: 0L
   }
 
@@ -952,18 +960,27 @@ internal class DownloadEngine(
     processAndFinalize(id, gen, start, input, keptContainer = videoContainer, contentType = null)
   }
 
+  /**
+   * "Connections per file" for a file of [sizeBytes]: one for a file known to be too small to split (its requests stay
+   * exactly as they always were), the setting otherwise — the transfer still needs the server to prove its ranges.
+   */
+  private fun connectionsFor(sizeBytes: Long?): Int =
+    if (sizeBytes != null && sizeBytes < RangedDownload.MIN_PARALLEL_BYTES) 1 else settings.connectionsPerFile
+
   private suspend fun runJob(job: TrackJob, context: RequestContext, onProgress: (Long, Long?) -> Unit): TrackResult =
     when (job) {
       is TrackJob.Whole -> {
         val bytes = TrackDone.length(job.partFile) ?: run {
-          val outcome = transfers.transfer(TransferSpec(url = job.url, context = context, partFile = job.partFile), onProgress)
+          val spec = TransferSpec(url = job.url, context = context, partFile = job.partFile, connections = connectionsFor(job.expectedBytes))
+          val outcome = transfers.transfer(spec, onProgress)
           TrackDone.mark(job.partFile)
           outcome.bytesWritten
         }
         TrackResult(job, bytes, TrackContainers.sniff(job.partFile), job.timeOffsetUs)
       }
       is TrackJob.Segmented -> {
-        val outcome = hls.transfer(HlsTransferSpec(job.plan, context, job.partFile, job.checkpoint, job.role), onProgress)
+        val spec = HlsTransferSpec(job.plan, context, job.partFile, job.checkpoint, job.role, connections = settings.connectionsPerFile)
+        val outcome = hls.transfer(spec, onProgress)
         val container = if (outcome.packedAudio) TrackContainer.PACKED_AUDIO else MediaProcessor.trackContainer(outcome.container)
         // Packed audio carries its position on the stream clock in its ID3 tag; everything else in its samples.
         TrackResult(job, outcome.bytesWritten, container, outcome.timestampUs ?: job.timeOffsetUs)
@@ -1316,7 +1333,7 @@ internal class DownloadEngine(
   /** Refuses before the first byte when the volume cannot hold the file, instead of failing near the end. */
   private suspend fun hasRoomFor(id: String, gen: Long, sizeBytes: Long?, partFile: File): Boolean {
     val needed = sizeBytes ?: return true
-    val onDisk = if (partFile.isFile) partFile.length() else 0L
+    val onDisk = PartProgress.bytesOnDisk(partFile)
     val free = runCatching { freeSpace.bytes() }.getOrDefault(Long.MAX_VALUE)
     if (free >= needed - onDisk + FREE_SPACE_MARGIN_BYTES) return true
     fail(id, gen, DownloadErrorCode.NO_SPACE, "Not enough storage left for this video")

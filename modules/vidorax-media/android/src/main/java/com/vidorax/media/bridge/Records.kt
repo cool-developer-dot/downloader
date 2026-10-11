@@ -147,13 +147,19 @@ data class DownloadSettingsRecord(
   @Field val wifiOnly: Boolean = DownloadSettings.DEFAULT.wifiOnly,
   @Field val autoSaveToGallery: Boolean = DownloadSettings.DEFAULT.autoSaveToGallery,
   @Field val preferredMaxHeight: Int? = null,
+  /** Missing from an older JavaScript bundle: the default. */
+  @Field val connectionsPerFile: Int? = null,
 ) : Record {
   fun toModel(): DownloadSettings {
     if (maxConcurrent !in DownloadSettings.MIN_CONCURRENT..DownloadSettings.MAX_CONCURRENT) {
       invalid("maxConcurrent must be ${DownloadSettings.MIN_CONCURRENT}-${DownloadSettings.MAX_CONCURRENT}")
     }
     if (preferredMaxHeight != null && preferredMaxHeight <= 0) invalid("preferredMaxHeight must be positive")
-    return DownloadSettings(maxConcurrent, wifiOnly, autoSaveToGallery, preferredMaxHeight)
+    val connections = connectionsPerFile ?: DownloadSettings.DEFAULT_CONNECTIONS
+    if (connections !in DownloadSettings.MIN_CONNECTIONS..DownloadSettings.MAX_CONNECTIONS) {
+      invalid("connectionsPerFile must be ${DownloadSettings.MIN_CONNECTIONS}-${DownloadSettings.MAX_CONNECTIONS}")
+    }
+    return DownloadSettings(maxConcurrent, wifiOnly, autoSaveToGallery, preferredMaxHeight, connections)
   }
 }
 

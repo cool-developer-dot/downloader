@@ -20,8 +20,8 @@ import com.vidorax.media.transfer.ProgressiveTransfer
 /**
  * The single place the module obtains the download engine, as one process-wide instance wired to the shared
  * [MediaServices]. One HTTP client (public hosts only, session cookies per hop) serves the probe, the HLS and DASH
- * planners and both transfers; progressive files, unencrypted VOD HLS and single-file DASH representations share
- * verify → finalize → library. Segmented, separate-audio, live and protected DASH is refused by the classifier.
+ * planners and both transfers; progressive files, unencrypted VOD HLS and DASH share verify → process → finalize →
+ * library. Live and protected streams are refused by the classifier.
  */
 object DownloadEngineProvider {
   @Volatile
@@ -81,6 +81,8 @@ object DownloadEngineProvider {
       wifiOnly = stored.getBoolean(KEY_WIFI_ONLY, defaults.wifiOnly),
       autoSaveToGallery = stored.getBoolean(KEY_AUTO_GALLERY, defaults.autoSaveToGallery),
       preferredMaxHeight = stored.getInt(KEY_MAX_HEIGHT, 0).takeIf { it > 0 },
+      connectionsPerFile = stored.getInt(KEY_CONNECTIONS, defaults.connectionsPerFile)
+        .coerceIn(DownloadSettings.MIN_CONNECTIONS, DownloadSettings.MAX_CONNECTIONS),
     )
   }
 
@@ -91,6 +93,7 @@ object DownloadEngineProvider {
         .putBoolean(KEY_WIFI_ONLY, settings.wifiOnly)
         .putBoolean(KEY_AUTO_GALLERY, settings.autoSaveToGallery)
         .putInt(KEY_MAX_HEIGHT, settings.preferredMaxHeight ?: 0)
+        .putInt(KEY_CONNECTIONS, settings.connectionsPerFile)
         .apply()
     }
   }
@@ -100,4 +103,5 @@ object DownloadEngineProvider {
   private const val KEY_WIFI_ONLY = "wifiOnly"
   private const val KEY_AUTO_GALLERY = "autoSaveToGallery"
   private const val KEY_MAX_HEIGHT = "preferredMaxHeight"
+  private const val KEY_CONNECTIONS = "connectionsPerFile"
 }

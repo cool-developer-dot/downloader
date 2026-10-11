@@ -136,6 +136,15 @@ class RecordsTest {
   }
 
   @Test
+  fun connectionsPerFileDefaultsToThreeAndIsRangeChecked() {
+    assertEquals("an older bundle that sends no value gets the default", 3, DownloadSettingsRecord().toModel().connectionsPerFile)
+    assertEquals(1, DownloadSettingsRecord(connectionsPerFile = 1).toModel().connectionsPerFile)
+    assertEquals(4, DownloadSettingsRecord(connectionsPerFile = 4).toModel().connectionsPerFile)
+    assertInvalid { DownloadSettingsRecord(connectionsPerFile = 0).toModel() }
+    assertInvalid { DownloadSettingsRecord(connectionsPerFile = 5).toModel() }
+  }
+
+  @Test
   fun legacyMetadataNeedsAnIdAndLeavesBlankFieldsUnchanged() {
     assertInvalid { LegacyMetadataRecord().toModel() }
     assertEquals(

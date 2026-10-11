@@ -435,6 +435,15 @@ export interface DownloadSettings {
   autoSaveToGallery: boolean;
   /** e.g. 1080; null = best available. */
   preferredMaxHeight: number | null;
+  /**
+   * 1..4, default 3 (Download Settings → "Connections per file"). A progressive file of at least 16 MiB whose server
+   * proves byte ranges (a `206` with the total size and a strong ETag/Last-Modified) is fetched over this many
+   * connections, each range written at its offset in one file (dynamic segmentation keeps every connection busy);
+   * HLS/DASH segments are fetched this many at a time, still assembled in order. Anything that refuses ranges or extra
+   * connections continues on one. A download still takes one `maxConcurrent` slot. Optional for older callers
+   * (missing = 3).
+   */
+  connectionsPerFile?: number;
 }
 
 export interface StorageStats {

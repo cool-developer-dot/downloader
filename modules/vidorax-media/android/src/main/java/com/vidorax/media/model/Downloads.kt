@@ -150,10 +150,19 @@ data class DownloadSettings(
   val autoSaveToGallery: Boolean,
   /** Null means best available. */
   val preferredMaxHeight: Int?,
+  /**
+   * Connections one file may use at once (parallel byte ranges of a large progressive file, segments of a stream
+   * fetched ahead). Still one [maxConcurrent] slot per download.
+   */
+  val connectionsPerFile: Int = DEFAULT_CONNECTIONS,
 ) {
   companion object {
     const val MIN_CONCURRENT = 1
     const val MAX_CONCURRENT = 4
+    const val MIN_CONNECTIONS = 1
+    const val MAX_CONNECTIONS = 4
+    /** Tester-facing default of "Connections per file". */
+    const val DEFAULT_CONNECTIONS = 3
     // A finished video also appears in the device gallery unless the user turned that off.
     val DEFAULT = DownloadSettings(maxConcurrent = 2, wifiOnly = false, autoSaveToGallery = true, preferredMaxHeight = null)
   }

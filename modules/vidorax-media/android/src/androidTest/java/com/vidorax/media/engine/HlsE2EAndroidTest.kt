@@ -15,6 +15,7 @@ import com.vidorax.media.library.MediaInfo
 import com.vidorax.media.library.StoragePaths
 import com.vidorax.media.model.Container
 import com.vidorax.media.model.DownloadErrorCode
+import com.vidorax.media.model.DownloadSettings
 import com.vidorax.media.model.DownloadState
 import com.vidorax.media.model.EnqueueRequest
 import com.vidorax.media.model.LibraryQuery
@@ -30,6 +31,7 @@ import com.vidorax.media.plan.Probe
 import com.vidorax.media.transfer.HlsCheckpoint
 import com.vidorax.media.transfer.HlsTransfer
 import com.vidorax.media.transfer.ProgressiveTransfer
+import com.vidorax.media.transfer.TsContinuity
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -79,9 +81,10 @@ class HlsE2EAndroidTest {
   private val throttled = ConcurrentHashMap.newKeySet<String>()
   private val failOnce = ConcurrentHashMap<String, AtomicInteger>()
 
-  private fun newEngine(): DownloadEngine {
+  private fun newEngine(settings: DownloadSettings = DownloadSettings.DEFAULT): DownloadEngine {
     val planner = HlsPlanner(http, AndroidDecoderSupport)
     return DownloadEngine(
+      initialSettings = settings,
       store = store,
       prober = RealProber(Probe(http, planner)),
       transfers = RealTransfers(ProgressiveTransfer(http)),
@@ -117,6 +120,13 @@ class HlsE2EAndroidTest {
     checkNotNull(javaClass.getResourceAsStream(path)) { "missing $path" }.use { it.readBytes() }
 
   private fun segments(variant: String, ext: String = "ts") = (0..3).map { resource("/hls/$variant/seg$it.$ext") }
+
+  /** The assembled transport stream: the segments in order, joins renumbered ([TsContinuity]). */
+  private fun joined(parts: List<ByteArray>): ByteArray {
+    val bytes = parts.reduce { a, b -> a + b }
+    TsContinuity().renumberPackets(bytes, bytes.size)
+    return bytes
+  }
 
   private inner class FixtureDispatcher : Dispatcher() {
     override fun dispatch(request: RecordedRequest): MockResponse {
@@ -248,7 +258,7 @@ class HlsE2EAndroidTest {
     val item = library.get(rec.id)!!
     assertEquals(Container.TS, item.container)
     assertTrue(item.file.name.endsWith(".ts"))
-    assertArrayEquals("segments in order, byte for byte", segments("ts/360").reduce { a, b -> a + b }, item.file.readBytes())
+    assertArrayEquals("segments in order, byte for byte (joins renumbered)", joined(segments("ts/360")), item.file.readBytes())
     assertEquals(640, item.width)
     assertEquals(360, item.height)
     assertTrue("duration from the real file", (item.durationMs ?: 0) in 7_000..9_000)
@@ -264,7 +274,7 @@ class HlsE2EAndroidTest {
     engine.awaitIdle()
 
     val item = library.get(rec.id)!!
-    assertArrayEquals(segments("ts/240").reduce { a, b -> a + b }, item.file.readBytes())
+    assertArrayEquals(joined(segments("ts/240")), item.file.readBytes())
     assertEquals(240, item.height)
     assertPlays(item.file, 426, 240)
   }
@@ -327,7 +337,7 @@ class HlsE2EAndroidTest {
 
     assertEquals(DownloadState.COMPLETED, store.find(rec.id)!!.state)
     val item = library.get(rec.id)!!
-    assertArrayEquals(segments("ts/360").reduce { a, b -> a + b }, item.file.readBytes())
+    assertArrayEquals(joined(segments("ts/360")), item.file.readBytes())
     assertEquals("finished segment not refetched", 1, count("/slow/ts/360/seg0.ts"))
     assertEquals(1, library.list(LibraryQuery()).items.count { it.id == rec.id })
     assertPlays(item.file, 640, 360)
@@ -349,8 +359,40 @@ class HlsE2EAndroidTest {
     second.awaitIdle()
 
     assertEquals(DownloadState.COMPLETED, store.find(rec.id)!!.state)
-    assertArrayEquals(segments("ts/360").reduce { a, b -> a + b }, library.get(rec.id)!!.file.readBytes())
+    assertArrayEquals(joined(segments("ts/360")), library.get(rec.id)!!.file.readBytes())
     assertEquals(1, count("/slow/ts/360/seg0.ts"))
+  }
+
+  // ---------- segments fetched in parallel ----------
+
+  @Test fun segmentsFetchedInParallelAndPausedThreeTimesMatchAnUninterruptedDownloadAndPlay() = runBlocking {
+    val parallel = DownloadSettings.DEFAULT.copy(connectionsPerFile = 3)
+    val uninterrupted = newEngine(parallel)
+    val whole = uninterrupted.enqueue(request("/ts/360/index.m3u8"))
+    uninterrupted.awaitIdle()
+    val reference = library.get(whole.id)!!.file.readBytes()
+
+    throttled += "/slow/ts/360/seg1.ts"
+    val engine = newEngine(parallel)
+    val rec = engine.enqueue(request("/slow/ts/360/index.m3u8"))
+    val checkpoint = File(paths.workDir(rec.id), DownloadEngine.HLS_CHECKPOINT_NAME)
+    for (round in 1..3) {
+      // Segment 1 crawls while throttled, so every pause lands mid-download, after segment 0 is in the checkpoint.
+      pollUntil { (HlsCheckpoint.read(checkpoint)?.completed ?: 0) >= 1 }
+      engine.pause(rec.id)
+      assertEquals(DownloadState.PAUSED, store.find(rec.id)!!.state)
+      engine.resume(rec.id)
+      delay(150)
+    }
+    throttled.clear()
+    engine.awaitIdle()
+
+    assertEquals(DownloadState.COMPLETED, store.find(rec.id)!!.state)
+    val item = library.get(rec.id)!!
+    assertArrayEquals("three pauses change nothing", reference, item.file.readBytes())
+    assertEquals(joined(segments("ts/360")).size, reference.size)
+    assertEquals("a finished segment is never fetched again", 1, count("/slow/ts/360/seg0.ts"))
+    assertPlays(item.file, 640, 360)
   }
 
   // ---------- 10: tokenized HLS ----------
@@ -361,7 +403,7 @@ class HlsE2EAndroidTest {
     engine.awaitIdle()
 
     assertEquals(DownloadState.COMPLETED, store.find(rec.id)!!.state)
-    assertArrayEquals(segments("ts/360").reduce { a, b -> a + b }, library.get(rec.id)!!.file.readBytes())
+    assertArrayEquals(joined(segments("ts/360")), library.get(rec.id)!!.file.readBytes())
   }
 
   // ---------- 14/15: protected, live ----------
@@ -395,7 +437,7 @@ class HlsE2EAndroidTest {
     engine.awaitIdle()
 
     assertEquals(DownloadState.COMPLETED, store.find(rec.id)!!.state)
-    assertArrayEquals(segments("ts/360").reduce { a, b -> a + b }, library.get(rec.id)!!.file.readBytes())
+    assertArrayEquals(joined(segments("ts/360")), library.get(rec.id)!!.file.readBytes())
     assertEquals(2, count("/ts/360/seg2.ts"))
     assertEquals(1, count("/ts/360/seg1.ts"))
     assertNotNull(library.get(rec.id))
