@@ -6,6 +6,7 @@ import com.vidorax.media.net.MediaHttpException
 import com.vidorax.media.net.MediaNetworkException
 import com.vidorax.media.net.MediaRequest
 import com.vidorax.media.net.Redact
+import com.vidorax.media.net.Validators
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
@@ -71,7 +72,7 @@ internal data class PartsCheckpoint(val total: Long, val validator: String, val 
       val array = json.getJSONArray("parts")
       PartsCheckpoint(
         total = json.getLong("total"),
-        validator = json.getString("validator"),
+        validator = Validators.normalize(json.getString("validator")),
         parts = (0 until array.length()).map { i ->
           val p = array.getJSONArray(i)
           Part(p.getLong(0), p.getLong(1), p.getLong(2))

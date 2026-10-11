@@ -231,4 +231,14 @@ class HttpClientTest {
       publicOnly.execute(MediaRequest(url = "http://192.168.1.2/a.mp4", context = context))
     }
   }
+
+  @Test
+  fun validatorsAreSentAsEntityTagsEvenWhenTheServerLeftOffTheQuotes() {
+    assertEquals("\"abc\"", Validators.of("\"abc\"", null))
+    assertEquals("an unquoted ETag is quoted", "\"19a40f3e\"", Validators.of("19a40f3e", "Sat, 03 Oct 2020 18:00:45 GMT"))
+    assertEquals("a weak ETag falls back to Last-Modified", "Sat, 03 Oct 2020 18:00:45 GMT", Validators.of("W/\"x\"", "Sat, 03 Oct 2020 18:00:45 GMT"))
+    assertNull(Validators.of("W/\"x\"", null))
+    assertEquals("an HTTP date is left as it is", "Sat, 03 Oct 2020 18:00:45 GMT", Validators.normalize("Sat, 03 Oct 2020 18:00:45 GMT"))
+    assertEquals("\"q\"", Validators.normalize("\"q\""))
+  }
 }

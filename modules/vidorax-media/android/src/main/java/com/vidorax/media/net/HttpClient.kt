@@ -54,13 +54,9 @@ internal class HttpResponse(
   /**
    * The validator to bind a resume to: a strong ETag, else Last-Modified. A weak ETag (`W/"…"`) is never used —
    * `If-Range` must not carry one (RFC 9110 §13.1.5), and a server would then answer every resume with the whole file.
+   * An ETag sent without its quotes is quoted ([Validators]).
    */
-  val validator: String?
-    get() {
-      val etag = response.header("ETag")?.trim()?.ifBlank { null }
-      if (etag != null && !etag.startsWith("W/")) return etag
-      return response.header("Last-Modified")?.trim()?.ifBlank { null }
-    }
+  val validator: String? get() = Validators.of(response.header("ETag"), response.header("Last-Modified"))
 
   fun header(name: String): String? = response.header(name)
 
@@ -219,6 +215,30 @@ internal class HttpClient(client: OkHttpClient, private val policy: UrlPolicy = 
         .build(),
       urlPolicy,
     )
+  }
+}
+
+/**
+ * Validators sent back as `If-Range`. Some servers send an ETag without its quotes (`ETag: 19a40f3e…`, found on
+ * upload.wikimedia.org 2026-10-11): replayed like that, `If-Range` does not match and every resume — and every part of
+ * a multi-connection download — gets the whole file back (`200`), so a resume silently restarted from byte 0. Sent
+ * quoted, as RFC 9110 spells an entity-tag, the same server answers `206`.
+ */
+internal object Validators {
+  fun of(etagHeader: String?, lastModifiedHeader: String?): String? {
+    val etag = etagHeader?.trim()?.ifBlank { null }
+    if (etag != null && !etag.startsWith("W/")) return normalize(etag)
+    return lastModifiedHeader?.trim()?.ifBlank { null }
+  }
+
+  /**
+   * A stored or received validator in the form to send: an unquoted ETag gets its quotes. An HTTP date (it has spaces)
+   * and a quoted or weak ETag are left as they are.
+   */
+  fun normalize(validator: String): String {
+    val value = validator.trim()
+    if (value.isEmpty() || value.startsWith("\"") || value.startsWith("W/") || value.any { it.isWhitespace() }) return value
+    return "\"$value\""
   }
 }
 

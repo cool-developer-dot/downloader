@@ -63,6 +63,8 @@ class ParallelTransferTest {
     val dropOnceAt = HashSet<Long>()
     /** Delay before the headers of a bounded range (a server slow to answer: an uncached CDN object). */
     var boundedHeadersDelayMs: Long = 0
+    /** Send the ETag without its quotes, and honour If-Range only in the quoted form (upload.wikimedia.org does). */
+    var unquotedEtag = false
 
     fun respond(request: RecordedRequest): MockResponse {
       requests += request
@@ -72,7 +74,8 @@ class ParallelTransferTest {
       if (range == null) return whole()
       rangeRefusal?.let { return MockResponse().setResponseCode(it) }
       if (ignoreRanges) return whole()
-      if (ifRange != null && ifRange != (etag ?: lastModified)) return whole()
+      val expected = if (unquotedEtag) "\"$etag\"" else (etag ?: lastModified)
+      if (ifRange != null && ifRange != expected) return whole()
       val start = range.substringBefore('-').toLong()
       val endText = range.substringAfter('-')
       if (endText.isNotEmpty()) {
@@ -249,6 +252,16 @@ class ParallelTransferTest {
     val third = ((MB17 + 2) / 3).toLong()
     val starts = ranges().map { it.substringAfter('=').substringBefore('-').toLong() }
     assertTrue("a range starting inside the first part: $starts", starts.any { it in 1 until third })
+  }
+
+  @Test fun aServerThatSendsItsEtagUnquotedStillGetsEveryPartAsARange() = runBlocking {
+    origin.etag = "19a40f3ee5e67e2b487b246f207375d3"
+    origin.unquotedEtag = true
+    ProgressiveTransfer(http, retryDelay = noDelay).transfer(spec(3))
+
+    assertEquals(sha256(origin.bytes), sha256(part().readBytes()))
+    assertTrue("no part answered with the whole file", requests.none { it.getHeader("Range") != null && it.getHeader("Range") != "bytes=0-" && it.getHeader("If-Range") != "\"19a40f3ee5e67e2b487b246f207375d3\"" })
+    assertEquals("no fallback to a fresh one-connection download", 0, requests.count { it.getHeader("Range") == null })
   }
 
   @Test fun aServerSlowToAnswerGetsNoLateSplitThatWouldOnlyAddAWait() = runBlocking {
