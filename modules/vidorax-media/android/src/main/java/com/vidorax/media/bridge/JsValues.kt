@@ -2,6 +2,8 @@ package com.vidorax.media.bridge
 
 import android.net.Uri
 import com.vidorax.media.analyze.PageFetchResult
+import com.vidorax.media.incoming.IncomingMedia
+import com.vidorax.media.library.IncomingImport
 import com.vidorax.media.model.AdjacentItems
 import com.vidorax.media.model.DownloadProgress
 import com.vidorax.media.model.DownloadRecord
@@ -41,6 +43,23 @@ internal fun LibraryItem.toJs(): Map<String, Any?> = mapOf(
   "createdAt" to createdAt,
   "completedAt" to completedAt,
 )
+
+internal fun IncomingMedia.toJs(): Map<String, Any?> = mapOf(
+  "token" to token,
+  "displayName" to displayName,
+  "mimeType" to mimeType,
+  "sizeBytes" to sizeBytes,
+  "kind" to kind.wire,
+)
+
+/** Only for `getIncomingMediaSource` (the player): the one place the URI crosses to JavaScript. */
+internal fun IncomingMedia.toSourceJs(): Map<String, Any?> = toJs() + ("uri" to uri.toString())
+
+internal fun IncomingImport.Outcome.toJs(): Map<String, Any?> = when (this) {
+  is IncomingImport.Outcome.Imported -> mapOf("status" to "imported", "item" to item.toJs())
+  is IncomingImport.Outcome.Duplicate ->
+    mapOf("status" to "duplicate", "libraryItemId" to copy.libraryItemId, "galleryUri" to copy.galleryUri)
+}
 
 internal fun LibraryPage.toJs(): Map<String, Any?> = mapOf("items" to items.map { it.toJs() }, "total" to total)
 

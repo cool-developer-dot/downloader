@@ -2,6 +2,7 @@ package com.vidorax.media.files
 
 import android.app.Activity
 import android.content.ClipData
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -28,6 +29,27 @@ class FileActions(private val context: Context) {
       throw NoAppException("No installed app opens ${item.mimeType}")
     }
     start(activity, Intent.createChooser(view, null))
+  }
+
+  /**
+   * System chooser for a file another app opened in VidoraX ([uri] as it came, read access forwarded), without
+   * VidoraX itself among the choices.
+   */
+  fun openIncomingWith(activity: Activity?, uri: Uri, mimeType: String?, title: String?) {
+    val type = mimeType?.takeIf { it.contains('/') && !it.endsWith("/*") } ?: mimeType ?: "video/*"
+    val view = Intent(Intent.ACTION_VIEW)
+      .setDataAndType(uri, type)
+      .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+    view.clipData = ClipData.newRawUri(title, uri)
+    val others = context.packageManager.queryIntentActivities(view, 0)
+      .filter { it.activityInfo.packageName != context.packageName }
+    if (others.isEmpty()) throw NoAppException("No other installed app opens $type")
+    val chooser = Intent.createChooser(view, null)
+    chooser.putExtra(
+      Intent.EXTRA_EXCLUDE_COMPONENTS,
+      arrayOf(ComponentName(context.packageName, "com.anonymous.vidorax.MainActivity")),
+    )
+    start(activity, chooser)
   }
 
   /** Opens the share sheet with the files of [items] attached. [items] must not be empty. */

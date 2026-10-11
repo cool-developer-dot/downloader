@@ -42,7 +42,9 @@ export type SiteId =
   | 'pinterest'
   | 'snapchat'
   | 'linkedin'
-  | 'web';
+  | 'web'
+  /** A file opened in VidoraX from another app and saved to the library (`importIncomingMedia`). */
+  | 'device';
 
 export interface RequestContext {
   /** Exact User-Agent of the WebView frame that observed the media (signed CDN URLs may be bound to it). */
@@ -423,6 +425,35 @@ export interface LibraryPage {
   total: number;
 }
 
+/**
+ * A video or audio file another app asked VidoraX to open (`VIEW` of a `content:`/`file:` URI with a `video/*` or
+ * `audio/*` type). The URI never leaves native code except through `getIncomingMediaSource`, for the player: `token`
+ * stands for it everywhere else (router paths, logs). It is the first 32 hex digits of SHA-256 of the URI, so the same
+ * file opened again has the same token (its resume position is kept under it). Tokens live while the app process does.
+ */
+export interface IncomingMedia {
+  token: string;
+  /** The name the sending app gives the file (`OpenableColumns.DISPLAY_NAME`), when it gives one. */
+  displayName: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  kind: 'video' | 'audio';
+}
+
+/** What the player needs to play an incoming file. */
+export interface IncomingMediaSource extends IncomingMedia {
+  /** `content://` or `file://` URI; read access was granted with the intent. */
+  uri: string;
+}
+
+/**
+ * `importIncomingMedia`: the file was copied into the library (site `device`), or the library / a VidoraX gallery copy
+ * already holds exactly these bytes and nothing was copied.
+ */
+export type ImportIncomingResult =
+  | { status: 'imported'; item: LibraryItem }
+  | { status: 'duplicate'; libraryItemId: string | null; galleryUri: string | null };
+
 export interface DownloadSettings {
   /** 1..4, default 2. */
   maxConcurrent: number;
@@ -464,6 +495,8 @@ export type VidoraMediaEvents = {
    * the screen went off. Sent on the main thread while JavaScript timers are paused — the player's cue to stop.
    */
   onActivityStop: (event: { inPictureInPicture: boolean }) => void;
+  /** A file arrived while the app runs (`onNewIntent`). The launch file is read with `consumeIncomingMedia`. */
+  onIncomingMedia: (event: IncomingMedia) => void;
 };
 
 /** A genuine completion the engine recorded for JavaScript to count once (see `listCompletedDownloads`). */
@@ -554,6 +587,24 @@ export interface VidoraMediaModuleApi {
   listCompletedDownloads(): Promise<CompletedDownload[]>;
   /** Forgets completions JavaScript has counted, so each is reported once. */
   acknowledgeCompletedDownloads(ids: string[]): Promise<void>;
+
+  // Files opened from other apps
+  /**
+   * The file the app was launched with, or one that arrived while nothing listened to `onIncomingMedia` — at most
+   * once per intent (a JS reload does not reopen it). Null when there is none.
+   */
+  consumeIncomingMedia?(): IncomingMedia | null;
+  /** The playable URI and details for a token from this process; null for an unknown token. */
+  getIncomingMediaSource?(token: string): IncomingMediaSource | null;
+  /**
+   * Copies the file into the library (thumbnail, SHA-256 duplicate check), announced with `onLibraryChange`
+   * `imported`. Rejects with ERR_NOT_FOUND (unknown token or the file can no longer be read), ERR_INVALID_REQUEST (not
+   * an audio or video file, or empty), ERR_NO_SPACE (not enough free storage), ERR_STORAGE (the copy failed). Nothing is
+   * left behind when it rejects.
+   */
+  importIncomingMedia?(token: string): Promise<ImportIncomingResult>;
+  /** System chooser to open the incoming file in another app. Rejects with ERR_NO_APP / ERR_NOT_FOUND. */
+  openIncomingWith?(token: string): Promise<void>;
 
   // Player helpers (synchronous)
   /** Media stream volume 0..1. */

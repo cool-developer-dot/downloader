@@ -90,6 +90,16 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="about"/>
       </intent-filter>
+      <!-- "Open with VidoraX" for video and audio files from other apps (Files, Photos, a download): played as an
+           external source, read by the VidoraMedia module. Local files only — web links have the filter above. -->
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="content"/>
+        <data android:scheme="file"/>
+        <data android:mimeType="video/*"/>
+        <data android:mimeType="audio/*"/>
+      </intent-filter>
     </activity>
   </application>
 </manifest>

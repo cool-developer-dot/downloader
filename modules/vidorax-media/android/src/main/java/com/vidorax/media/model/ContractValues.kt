@@ -41,6 +41,8 @@ enum class SiteId(override val wire: String, val folderName: String) : WireEnum 
   SNAPCHAT("snapchat", "Snapchat"),
   LINKEDIN("linkedin", "LinkedIn"),
   WEB("web", "Web"),
+  /** A file opened from another app and saved with "Save to VidoraX" (IncomingImport). */
+  DEVICE("device", "Device"),
 }
 
 enum class Container(override val wire: String) : WireEnum {
