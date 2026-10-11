@@ -1,6 +1,7 @@
 import { persist } from 'zustand/middleware';
 
 import { isSupportedLanguage, normalizeLanguageCode, storageKeys } from '@/constants';
+import { normalizeConnectionsPerFile } from '@/downloads/v2/settings';
 import { bindLanguageReader } from '@/localization/translate';
 import { createStore } from '@/store/shared/create-store';
 import { createPersistStorage } from '@/store/shared/persist-storage';
@@ -67,6 +68,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         language: state.language,
         maxConcurrentDownloads: state.maxConcurrentDownloads,
         saveToGallery: state.saveToGallery,
+        connectionsPerFile: state.connectionsPerFile,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -81,6 +83,10 @@ export const useSettingsStore = createStore<SettingsStore>()(
           wifiOnly: typeof raw.wifiOnly === 'boolean' ? raw.wifiOnly : current.wifiOnly,
           saveToGallery:
             typeof raw.saveToGallery === 'boolean' ? raw.saveToGallery : current.saveToGallery,
+          connectionsPerFile:
+            raw.connectionsPerFile === undefined
+              ? current.connectionsPerFile
+              : normalizeConnectionsPerFile(raw.connectionsPerFile),
           autoResume:
             typeof raw.autoResume === 'boolean' ? raw.autoResume : current.autoResume,
           notifications:

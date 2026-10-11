@@ -161,6 +161,8 @@ export const ur: CatalogStrings<typeof en> = {
     itemsOther: '{count} آئٹمز',
     simultaneousDownloadsOne: '{count} بیک وقت ڈاؤن لوڈ',
     simultaneousDownloadsOther: '{count} بیک وقت ڈاؤن لوڈز',
+    connectionsOne: '{count} کنکشن',
+    connectionsOther: '{count} کنکشنز',
   },
   errors: {
     unexpectedTitle: 'کچھ غلط ہو گیا',
@@ -1178,7 +1180,7 @@ export const ur: CatalogStrings<typeof en> = {
     behaviorSection: 'ڈاؤن لوڈ کا رویہ',
     behaviorDescription: 'نئے ڈاؤن لوڈز کب شروع ہوں اور کیسے بحال ہوں',
     performanceSection: 'کارکردگی',
-    performanceDescription: 'ایک وقت میں کتنے ڈاؤن لوڈز چل سکتے ہیں',
+    performanceDescription: 'ایک وقت میں کتنے ڈاؤن لوڈز چلیں، اور ہر ایک کتنے کنکشنز استعمال کرے',
     downloadNotificationsSection: 'اطلاعات',
     downloadNotificationsDescription: 'ڈاؤن لوڈ مکمل یا ناکام ہونے پر اطلاع پائیں۔',
     wifiOnlyLong: 'صرف Wi-Fi پر ڈاؤن لوڈ',
@@ -1189,6 +1191,9 @@ export const ur: CatalogStrings<typeof en> = {
     autoResumeLongHint: 'موزوں رکے ہوئے ڈاؤن لوڈز محفوظ ہونے پر جاری ہوں گے۔',
     maxConcurrent: 'زیادہ سے زیادہ بیک وقت ڈاؤن لوڈز',
     maxConcurrentHint: 'منتخب کریں ایک وقت میں کتنے ڈاؤن لوڈز چلیں۔',
+    connectionsPerFile: 'فی فائل کنکشنز',
+    connectionsPerFileHint:
+      'بڑی فائلیں اور اسٹریم کے حصے ایک ساتھ کئی کنکشنز پر ڈاؤن لوڈ ہوتے ہیں۔ اگر کسی سائٹ یا نیٹ ورک میں مسئلہ ہو تو کم منتخب کریں۔',
     downloadNotifications: 'ڈاؤن لوڈ اطلاعات',
     downloadNotificationsHint: 'ڈاؤن لوڈ مکمل یا ناکام ہونے پر اطلاع پائیں۔',
     notificationsPermissionRequired: 'اطلاعات کی اجازت درکار ہے',

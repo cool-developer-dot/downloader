@@ -8,6 +8,8 @@ export interface SettingsState {
   maxConcurrentDownloads: number;
   /** Copy every completed download to the device gallery (default on). */
   saveToGallery: boolean;
+  /** Connections one large file (or one stream's segments) may use at once, 1–4 (default 3). */
+  connectionsPerFile: number;
 }
 
 export type SettingsKey = keyof SettingsState;

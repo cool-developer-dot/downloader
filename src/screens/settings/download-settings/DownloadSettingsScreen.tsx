@@ -7,7 +7,8 @@ import { SegmentedControl } from '@/components/inputs/SegmentedControl';
 import { Switch } from '@/components/inputs/Switch';
 
 import { useTranslation } from '@/localization';
-import { selectSaveToGallery, useSettingsStore } from '@/store/settings';
+import { normalizeConnectionsPerFile } from '@/downloads/v2/settings';
+import { selectConnectionsPerFile, selectSaveToGallery, useSettingsStore } from '@/store/settings';
 
 import {
   SettingsFeedbackBanner,
@@ -18,6 +19,7 @@ import {
 import { useSettingsTokens } from '../theme/settings-tokens';
 import {
   CONCURRENT_SEGMENT_OPTIONS,
+  CONNECTION_SEGMENT_OPTIONS,
 } from './constants';
 import { useDownloadSettingsScreen } from './useDownloadSettingsScreen';
 
@@ -39,9 +41,11 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
 
   const preferenceDisabled = !hydrated;
   const saveToGallery = useSettingsStore(selectSaveToGallery);
+  const connectionsPerFile = normalizeConnectionsPerFile(useSettingsStore(selectConnectionsPerFile));
   const concurrentValue = String(
     settings.maxConcurrentDownloads,
   ) as '1' | '2' | '3' | '4';
+  const connectionsValue = String(connectionsPerFile) as '1' | '2' | '3' | '4';
 
   const showPermissionRequired =
     settings.notificationsEnabled &&
@@ -67,6 +71,31 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
         ),
       })),
     [tp],
+  );
+
+  const onConnectionsChange = useCallback((next: '1' | '2' | '3' | '4') => {
+    useSettingsStore.getState().updateSetting('connectionsPerFile', Number(next));
+  }, []);
+
+  const connectionOptions = useMemo(
+    () =>
+      CONNECTION_SEGMENT_OPTIONS.map((option) => ({
+        ...option,
+        accessibilityLabel: tp(
+          Number(option.value) === 1 ? 'plurals.connectionsOne' : 'plurals.connectionsOther',
+          Number(option.value),
+        ),
+      })),
+    [tp],
+  );
+
+  const connectionsA11y = useMemo(
+    () =>
+      `${t('settings.connectionsPerFile')}, ${tp(
+        connectionsPerFile === 1 ? 'plurals.connectionsOne' : 'plurals.connectionsOther',
+        connectionsPerFile,
+      )}`,
+    [connectionsPerFile, t, tp],
   );
 
   const concurrentA11y = useMemo(
@@ -191,6 +220,25 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
                 disabled={!hydrated}
                 accessibilityLabel={concurrentA11y}
                 testID="download-settings-max-concurrent-control"
+              />
+            </Box>
+            <Box gap={12} py={8}>
+              <SettingsRow
+                title={t('settings.connectionsPerFile')}
+                description={t('settings.connectionsPerFileHint')}
+                icon="lan-connect"
+                value={connectionsValue}
+                showDivider={false}
+                accessibilityHint={t('settings.connectionsPerFileHint')}
+                testID="download-settings-connections-per-file"
+              />
+              <SegmentedControl
+                options={connectionOptions}
+                value={connectionsValue}
+                onChange={onConnectionsChange}
+                disabled={!hydrated}
+                accessibilityLabel={connectionsA11y}
+                testID="download-settings-connections-per-file-control"
               />
             </Box>
           </SettingsSection>

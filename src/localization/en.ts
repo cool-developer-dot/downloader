@@ -159,6 +159,8 @@ export const en = {
     itemsOther: '{count} items',
     simultaneousDownloadsOne: '{count} simultaneous download',
     simultaneousDownloadsOther: '{count} simultaneous downloads',
+    connectionsOne: '{count} connection',
+    connectionsOther: '{count} connections',
   },
   errors: {
     unexpectedTitle: 'Something went wrong',
@@ -1175,7 +1177,7 @@ export const en = {
     behaviorSection: 'Download behavior',
     behaviorDescription: 'When new downloads start and how they recover',
     performanceSection: 'Performance',
-    performanceDescription: 'How many downloads can run at once',
+    performanceDescription: 'How many downloads run at once, and how many connections each one uses',
     downloadNotificationsSection: 'Notifications',
     downloadNotificationsDescription: 'Get notified when downloads finish or fail.',
     wifiOnlyLong: 'Download over Wi-Fi only',
@@ -1186,6 +1188,9 @@ export const en = {
     autoResumeLongHint: 'Resume eligible interrupted downloads when safe.',
     maxConcurrent: 'Maximum simultaneous downloads',
     maxConcurrentHint: 'Choose how many downloads can run at once.',
+    connectionsPerFile: 'Connections per file',
+    connectionsPerFileHint:
+      'Large files and stream segments download over several connections at once. Choose fewer if a site or network has trouble.',
     downloadNotifications: 'Download notifications',
     downloadNotificationsHint: 'Get notified when downloads finish or fail.',
     notificationsPermissionRequired: 'Notifications permission required',
