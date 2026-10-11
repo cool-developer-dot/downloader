@@ -247,6 +247,12 @@ anchor is not found) adds a `RNCWebViewHooks` class to react-native-webview and 
    its late evaluation when the document-start registration is in place (the stock path remains the fallback on a
    WebView without the feature).
 
+None of the hooks lives in the WebChromeClient. Website fullscreen (§8) uses react-native-webview's own: with
+`allowsFullscreenVideo` it gives the active tab's WebView an `RNCWebChromeClient` subclass whose `onShowCustomView`
+puts the page's video view over the activity's content view (and sets `SCREEN_ORIENTATION_UNSPECIFIED`); a parked tab
+gets the plain `RNCWebChromeClient`, which does not override `onShowCustomView`, so WebView reports fullscreen as
+unsupported there.
+
 The module also reads links shared to the app (`ACTION_SEND text/plain`, e.g. "Share → VidoraX" from the Instagram
 or TikTok app): the launch intent through `consumeSharedText()`, later intents through `OnNewIntent` →
 `onSharedText`.
@@ -496,7 +502,18 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
   with AppCompat on every start (the launch frames on Android 8–11, the window background everywhere). Until the app has
   recorded a choice (the very first launch after install) the system splash follows the device. Background services
   start after the first frame.
-- One owner for Android back: the browser goes back in page history when it can; otherwise a double press exits.
+- One owner for Android back: a website's fullscreen video is left first, then the browser goes back in page history
+  when it can; otherwise a double press exits.
+- Website video fullscreen (`src/browser/fullscreen`): the page's own fullscreen button works in the active tab
+  (`allowsFullscreenVideo`, §4). The document-start browser-chrome script reports `fullscreen` with the video's size
+  (`videoWidth`/`videoHeight` of the fullscreen video — searched inside containers, open shadow roots and same-origin
+  frames; a cross-origin frame's numeric `width`/`height` attributes; else none) and re-reports when the size arrives.
+  `webFullscreenOrientation`: wide (≥ 1.1 : 1) or unknown → landscape, tall or square → portrait, locked through
+  `src/player/orientation-controller.ts` (`SENSOR_LANDSCAPE` turns even with system auto-rotate off); leaving restores
+  portrait. The app leaves fullscreen itself (injected `document.exitFullscreen()`, portrait restored at once) on Back,
+  a tab switch, the tab switcher, backgrounding and leaving the Browser route; a page that navigates, crashes or unmounts
+  while fullscreen is forgotten. The "Video available" bar is hidden meanwhile. The same script puts the page back at
+  its scroll position after leaving (react-native-webview's video view resets it), once the layout width is back.
 - Theme defaults to Logo; System follows the device's light/dark (`resolveThemeMode(preference, deviceScheme)`).
 - Sharing a link to VidoraX (`ACTION_SEND text/plain`) opens it in a browser tab. Web links opened with VidoraX
   (`VIEW` `http(s)`) belong to the browser too: `src/app/+native-intent.ts` keeps them away from the router (§5.3).

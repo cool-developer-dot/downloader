@@ -2021,6 +2021,16 @@ Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-pl
   (2) an unquoted ETag (Wikimedia) replayed in `If-Range` made every resume restart from zero → `Validators` quotes it.
   On this AVD's ~1.7 MB/s link 1 and 3 connections move bytes at the same rate (host curl agrees); the gain shows
   where a connection is the limit (fixture: 14.6 s → 4.2 s → 2.85 s). Real-phone check BLOCKED (no phone).
+- **F13 Web video fullscreen.** A website's own fullscreen button now works in the active tab (`allowsFullscreenVideo`
+  — react-native-webview's chrome client puts the page's video view over the app). `src/browser/fullscreen`: the
+  document-start browser-chrome script reports `fullscreen` with the video's size; wide or unknown → landscape, tall or
+  square → portrait (`WEB_FULLSCREEN_WIDE_RATIO` 1.1), through `orientation-controller` (turns with system auto-rotate
+  off). Back, backgrounding, leaving the Browser route, a tab switch or the tab switcher take the page out of
+  fullscreen (injected `exitFullscreen()` + portrait at once); a navigation/crash/unmount is forgotten. Found on the
+  device and fixed: a parked tab's page could cover the whole app with a black video view that JS never heard about →
+  only the active tab's WebView is fullscreen-capable. The page also gets its scroll position back after leaving
+  (react-native-webview's video view resets it). "Video available" is hidden while fullscreen. Facebook offers no
+  fullscreen button to logged-out mobile visitors (BLOCKED by the site); real phone BLOCKED (no phone).
 
 ## 5. How to resume
 

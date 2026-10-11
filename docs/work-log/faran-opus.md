@@ -226,3 +226,165 @@ Case 5 (social): TikTok + Facebook in R4; Instagram `/reel/DSxdvp9lcDa/` → off
   this session's own copies were removed). The data partition was at 94 % mid-session.
 - Test tooling: `uiautomator dump` fails while the Downloads progress animates (and occasionally crashes with
   "UiAutomationService already registered" when dumps overlap) — progress is read from `dumpsys notification` instead.
+
+---
+
+## F13 — Web video fullscreen
+
+**Evidence for the PR** (`.claude/pr-evidence/`, not committed): `F13-w3schools-landscape.png`,
+`F13-after-back-portrait.png`, `F13-tall-video-stays-portrait.png`.
+
+### Before (debug build of `5d1703f` + only `allowsFullscreenVideo: true`, w3schools, auto-rotate off)
+
+- react-native-webview's own chrome client shows the page's video view over the whole app and hides the bars; it sets
+  `SCREEN_ORIENTATION_UNSPECIFIED`, so with auto-rotate off a wide video stays **portrait**; leaving restores the
+  orientation captured when the WebView was created (portrait).
+- Back key and the back gesture (navigation mode 2: the first edge swipe shows the bars, the second goes back) already
+  leave fullscreen: Chromium's fullscreen view has focus and consumes Back — the JS Back chain never saw the press, the
+  page did not navigate.
+- **The page lost its place**: after leaving (Back or the page's own button) the page was at the top. Measured with
+  DevTools on the page: `fullscreenchange` (enter) fires with `scrollY` 265 still correct, then a `scroll` to 0 while
+  the element is fullscreen; after leaving `scrollY` stays 0.
+
+### Design
+
+- **Page side** — `buildBrowserChromeBeforeContentScript()` (document start, main frame, every document) gets a
+  fullscreen observer: on `fullscreenchange` / `webkitfullscreenchange` it posts `fullscreen` on the browser-chrome
+  channel with `{ active, width?, height? }`. The size is the video's own (`videoWidth`/`videoHeight`): the fullscreen
+  element itself, else the best `<video>` inside it (playing first, then the largest; open shadow roots and
+  same-origin iframes searched, bounded); a cross-origin iframe (Dailymotion's player) gives its `width`/`height`
+  attributes when it has both; otherwise no size. While fullscreen it listens to the chosen video's
+  `loadedmetadata`/`resize` and posts again when the size becomes known or changes. Posts are de-duplicated.
+- **Keeps the page's place** — the same script remembers the scroll position when fullscreen starts (the last
+  position seen outside fullscreen when that is 0) and, after leaving, scrolls back once the viewport is the
+  pre-fullscreen width again (rotation back to portrait), for up to `FULLSCREEN_RESTORE_MS` (1500 ms) or until the
+  user touches the page.
+- **Decision** — `src/browser/fullscreen/web-fullscreen-orientation.ts`, pure: no/invalid size → landscape (fullscreen
+  is overwhelmingly for wide video, and Dailymotion's cross-origin player reports none); `width / height ≥
+  WEB_FULLSCREEN_WIDE_RATIO` (1.1) → landscape; else (tall or square) → portrait. A later size message re-decides.
+- **Orientation** — through `src/player/orientation-controller.ts` (`lockWebFullscreenOrientation`,
+  `restoreWebFullscreenOrientation`; the player's own mode is untouched). The adapter is bound with
+  `ensurePlayerChromeRuntime()`. `LANDSCAPE` is `SENSOR_LANDSCAPE`, so it rotates with system auto-rotate off. Our lock
+  lands after react-native-webview's `UNSPECIFIED` (the page event follows `onShowCustomView`).
+- **State** — `web-fullscreen.controller.ts` (pure, dependencies injected, unit-tested) holds which tab is fullscreen
+  and the applied orientation. A message from a parked tab is answered with an exit and nothing else.
+- **Only the active tab** — found on the device: a parked tab's page that requests fullscreen (still-valid user
+  activation, e.g. a slow page after a quick tab switch; reproduced with DevTools) **was** shown over the whole app as a
+  black view, and its throttled renderer never fired `fullscreenchange`, so nothing in JS could see it. Fix:
+  `allowsFullscreenVideo={… && isActive}`. A parked WebView then gets react-native-webview's plain
+  `RNCWebChromeClient`, which does not override `onShowCustomView`, so WebView reports fullscreen as unsupported and
+  the request is refused; and on a tab switch react-native-webview calls the old client's `onHideCustomView` first —
+  the old tab's video view closes natively even if its page never runs the exit script. (react-native-webview keeps
+  the flag manager-wide but only reads it when it sets up a view's chrome client — at creation and when that view's
+  own `allowsFullscreenVideo` / `hasOnOpenWindowEvent` prop is applied; tabs mount only while active, so every parked
+  WebView got there through a prop change.)
+- **Leaving** — the app asks the page to leave (`document.exitFullscreen()` injected into that tab) and restores
+  portrait at once, so a page that never answers cannot trap Back or keep the app sideways. Triggers: Back (JS chain,
+  ahead of page history — a fallback, Chromium normally consumes it first), the active tab changing, the tab switcher
+  opening, the app going to the background, leaving the Browser route (e.g. a notification opens Downloads — the video
+  view would otherwise cover every screen). The page navigating away, its renderer going, or its WebView unmounting
+  clear the state and restore portrait without a message.
+- **"Video available" bar** — hidden while fullscreen (`overlayBlocking`), shows the current detection state after.
+- **Patch** — the new chrome client is react-native-webview's own `RNCWebChromeClient` subclass; our hooks live in the
+  WebViewClient, the download listener, `onWebViewCreated` and the document-start script, none in the chrome client.
+  Proven by the patch test and a detection + download after leaving fullscreen.
+- Translated pages (`translate.goog`) are main-frame documents like any other: same script, same path.
+
+Tester constants: `WEB_FULLSCREEN_WIDE_RATIO` = 1.1 (`src/browser/fullscreen/web-fullscreen-orientation.ts`),
+`FULLSCREEN_RESTORE_MS` = 1500 (`src/browser/bridge/browser-chrome.injected.ts`), `allowsFullscreenVideo` = true
+(`src/browser/webview/webview-configuration.ts`, false turns the feature off). No setting: it is the page's own button.
+
+### Automated (final F13 code)
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | 705 tests, 705 pass, 0 fail — new: `web-fullscreen-orientation.test.ts` (5: wide / tall / square & threshold / unknown & invalid / normalise), `web-fullscreen.controller.test.ts` (9: lock, re-decide, page exit, parked tab refused, leave = Back consumed and no trap, tab switch, navigation/crash/unmount, second tab, failing lock), `browser-chrome.bridge.test.ts` (3: `fullscreen` parsing), `browser-chrome.fullscreen.test.ts` (8: the injected observer in a VM — video / container / shadow root / same-origin frame / cross-origin frame attributes / late metadata / scroll restore after rotation, zoom-independent / fallback position, touch ends it / one install per document) |
+| `npm run typecheck` | OK |
+| `npm run lint` | 0 errors, 84 warnings (unchanged) |
+| `node --test scripts/patch-react-native-webview.test.mjs` | 5 / 5 |
+| `gradle :vidorax-media:testDebugUnitTest --rerun :vidorax-web:testDebugUnitTest --rerun` | BUILD SUCCESSFUL — 551 / 0 and 27 / 0 (XMLs written 19:03–19:04); no native code changed in F13 |
+| `git diff --check` | clean |
+
+### Manual cases — debug build (Metro, `EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE=1` for WebView DevTools), system auto-rotate **off**
+
+Orientation read from `dumpsys activity activities` (`requestedOrientation`), page state from WebView DevTools,
+screens from `screencap`. Fixture pages (`fx13.mjs`, scratchpad) serve 360×640 / 480×480 / 640×360 videos, a container
+with a `preload="none"` tall video, and cross-origin frames from a second host.
+
+| Case | Result |
+| --- | --- |
+| w3schools (320×176) — page's own button | PASS: `SENSOR_LANDSCAPE`, plays in landscape, Back → `PORTRAIT`, page back at `scrollY` 238 (was 0 before the fix); page's exit button same |
+| hls.js demo (Mux 1280×720) | PASS: landscape; page controls in fullscreen: pause (paused = true), seek bar → 5:17; Back → portrait, `scrollY` 701.7 restored (page has no viewport meta: comes back at WebView's overview zoom — see limits) |
+| Dailymotion `x9zk0s0` (player in a cross-origin frame, `width/height="100%"` → no size) | PASS: landscape; player controls shown; Back → portrait, "Video available" back; **download after leaving: 288p HLS → Completed, MP4 36.2 MB** |
+| Facebook public video | **BLOCKED (site)**: logged-out mobile Facebook has no fullscreen button in any player — watch viewer (play/pause/±10 s only), reel viewer, embed plugin (none even at 560 px); desktop-site mode keeps the mobile site. Extra: Facebook's own `<video>` (1280×720) put fullscreen via DevTools → landscape, Back → portrait |
+| Tall video, native controls (360×640) | PASS: stays `PORTRAIT`, fills the screen; page's exit button → `scrollY` 301 restored, "Video available" back |
+| Square video (480×480) | PASS: stays portrait |
+| Container, `preload="none"` tall video | PASS: no size → landscape; after `play()` the 360×640 size arrives → re-decided to portrait (`reorient`) |
+| Cross-origin frame 315×560 / 560×315 attributes | PASS: portrait / landscape |
+| "Video available" during fullscreen | PASS: absent from the view tree while fullscreen (tall case), present after |
+| Home while fullscreen, back to the app | PASS: on return out of fullscreen, portrait, same scroll (the WebView ran the exit on resume) |
+| Another screen opens while fullscreen (`vidorax://downloads`, like a notification tap) | PASS: Downloads shown in portrait, not covered (the activity pause already left fullscreen: `leave background`) |
+| Page navigates away while fullscreen | PASS: `gone navigation`, portrait, new page normal |
+| Parked tab requests fullscreen (DevTools, user gesture) | **FAIL first** (black view over the whole app, no `fullscreenchange`, Back needed) → fixed (active-only `allowsFullscreenVideo`) → PASS: `fullscreenEnabled` false in the parked page, request refused "Fullscreen is not supported", app untouched; active tab still enabled; a re-activated tab enters fullscreen |
+| Tab switch / tab switcher while fullscreen | Not reachable from the UI (the video view covers the app); covered by the unit tests and by react-native-webview's `onHideCustomView` on the prop change |
+| Translated page (`www-w3schools-com.translate.goog`, Urdu) | PASS: landscape, Back → portrait, `scrollY` 404.6 restored, "Already downloaded" offer intact |
+| App in Urdu (RTL) | PASS: same behaviour (landscape, Back → portrait, scroll kept); no new strings in F13 |
+| Back gesture (navigation mode 2) | PASS (also before F13: Chromium's view consumes Back; our JS Back is the fallback) |
+| Real phone | BLOCKED: no phone available |
+
+### Manual cases — release build (`F13-release-debugkey.apk`, installed over the seeded test1), auto-rotate off
+
+The release build allows HTTPS only, so the local fixture pages are debug-only; release uses public pages.
+
+| Case | Result |
+| --- | --- |
+| w3schools, page's fullscreen button | PASS: `SENSOR_LANDSCAPE`, plays landscape (`F13-w3schools-landscape.png`); Back → `PORTRAIT`, same place on the page, offer bar back (`F13-after-back-portrait.png`) |
+| Tall public video — Wikimedia Commons "Astrophysics Holiday Vertical Video" (1080×1920, video.js player, fullscreen with its `F` key: the player's control row sits under the "Video available" bar on this page) | PASS: fullscreen stays `PORTRAIT`, fills the screen (`F13-tall-video-stays-portrait.png`); "Video available" absent from the view tree while fullscreen, back after Back |
+| Home while fullscreen, back to the app | PASS: out of fullscreen, portrait, bar shown |
+
+### Regression (release build of the F13 code, debug-key re-signed, installed over a freshly seeded test1)
+
+| Check | Result |
+| --- | --- |
+| R1 cold start | PASS — 6.2 / 6.0 s with the branded splash; the 1.5 s readings are starts where the splash was skipped (see Found, not fixed: test1 does it too, 1 of 6) |
+| R2 HTML video | PASS (offer, 176p MP4 completed, plays) |
+| R3 hls.js | PASS (sheet 3+ rows, 184p completed) |
+| R4 TikTok + Facebook | PASS on rerun (first run blocked by the App Lock left on by R8's scripted disable) |
+| R5 YouTube refused | PASS — toast "YouTube downloads are not supported" confirmed on `F13_r5_toast.png` |
+| R6 pause / resume / force-stop | PASS on rerun (first run: the script could not pick 288p — sheet timing): paused at 33.3 MB of 37.7 MB, unchanged after 8 s, resumed, running again after force-stop, completed |
+| R7 player | PASS (±10 s, seek, fullscreen `ROTATION_90`, PiP) |
+| R8 App Lock | PASS by hand (script's disable step flaky, as in F1): PIN screen after enabling (`F13_r8_locked.png`), no PIN after disabling (`F13_r8_after_disable.png`) |
+| R9 Urdu | PASS on rerun (27 Urdu strings on Settings, no Latin-only labels) |
+| R10 test1 data | PASS (download, favourite, history, recent search, the paused test1 download resumed and completed) |
+| R11 DASH | PASS on rerun (qualities 180–1080, 180p completed, plays) |
+| R12 Wi-Fi only | Behaviour PASS from screenshots: held at 11.4 MB on mobile data (row says "Queued" — known since F1), running 72.1 MB of 92.2 MB after Wi-Fi returned; the script read the row too early |
+
+### Decisions (F13)
+
+- Fullscreen state and size come from the page (`fullscreenchange` in the document-start script), not from a new native
+  hook — no patch change, no rebuild; the native side only matters for the parked-tab case, solved with the existing
+  `allowsFullscreenVideo` prop per tab.
+- Unknown size → landscape (Dailymotion's cross-origin player reports none; web fullscreen is overwhelmingly wide
+  video). A late size re-decides.
+- Square → portrait (as large either way; no rotation). Threshold 1.1 : 1.
+- The app restores portrait at once when it leaves fullscreen itself, without waiting for the page: a page that never
+  answers cannot trap Back or leave the app sideways.
+- Backgrounding leaves fullscreen (the task asks for it); the WebView runs the exit when the app is resumed.
+- The scroll-position fix belongs to F13: the page losing its place is a defect of the fullscreen this task enables.
+- No setting; the constants above are the tester knobs. No user-visible strings were added.
+
+### Found, not fixed (F13)
+
+- **The branded splash is sometimes skipped on a cold start** — the browser shows at ~1.5 s instead of after the ~6 s
+  splash, although `resolve-initial-route.ts` says it is never skipped: test1 1 of 6 cold starts, this build 2 of 5
+  (frame-by-frame sampling). `scripts/qa/coldstart.sh` then reports 1.5 s.
+- **The "Video available" bar covers the bottom of the page** (it overlays the WebView): on Wikimedia Commons the
+  video dialog's control row, including its fullscreen button, sits under it.
+- Pages without a mobile viewport tag (the hls.js demo) come back from fullscreen at WebView's zoomed-out overview
+  scale; the scroll offset itself is restored.
+- Facebook (logged out, mobile site) offers no fullscreen control in its watch viewer, reel viewer or embed player;
+  VidoraX's desktop-site switch keeps the mobile site there.
+- Dailymotion: the legacy embed URL (`/embed/video/<id>`) now redirects to a player page that answers 403 (also from
+  the Mac); the video page itself works. Its cookie banner offers only "I understand" (not tapped).
+- Test tooling: the emulator screen went black for ~1 min under load right after a cold start of the debug build
+  (launcher black too; recovered by itself); `regress.py`'s R12 reads the row before it refreshes.
