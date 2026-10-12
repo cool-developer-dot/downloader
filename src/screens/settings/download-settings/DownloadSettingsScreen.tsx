@@ -4,11 +4,22 @@ import { View } from 'react-native';
 import { Box } from '@/components/base/Box';
 import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { SegmentedControl } from '@/components/inputs/SegmentedControl';
+import {
+  normalizeSpeedLimit,
+  SPEED_LIMIT_CHOICES,
+  speedLimitLabel,
+  speedLimitShortLabel,
+} from '@/downloads/v2/speed-limit';
 import { Switch } from '@/components/inputs/Switch';
 
 import { useTranslation } from '@/localization';
 import { normalizeConnectionsPerFile } from '@/downloads/v2/settings';
-import { selectConnectionsPerFile, selectSaveToGallery, useSettingsStore } from '@/store/settings';
+import {
+  selectConnectionsPerFile,
+  selectDownloadSpeedLimit,
+  selectSaveToGallery,
+  useSettingsStore,
+} from '@/store/settings';
 
 import {
   SettingsFeedbackBanner,
@@ -88,6 +99,29 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
       })),
     [tp],
   );
+
+  const speedLimit = normalizeSpeedLimit(useSettingsStore(selectDownloadSpeedLimit));
+  const speedLimitText = useCallback(
+    (value: number) => {
+      const label = speedLimitLabel(value);
+      return label.kind === 'off'
+        ? t('settings.speedLimitOff')
+        : t(label.kind === 'mb' ? 'settings.speedLimitMb' : 'settings.speedLimitKb', { value: label.value });
+    },
+    [t],
+  );
+  const speedLimitOptions = useMemo(
+    () =>
+      SPEED_LIMIT_CHOICES.map((choice) => ({
+        value: String(choice),
+        label: speedLimitShortLabel(choice, t('settings.speedLimitOff')),
+        accessibilityLabel: speedLimitText(choice),
+      })),
+    [speedLimitText, t],
+  );
+  const onSpeedLimitChange = useCallback((next: string) => {
+    useSettingsStore.getState().updateSetting('downloadSpeedLimit', normalizeSpeedLimit(next));
+  }, []);
 
   const connectionsA11y = useMemo(
     () =>
@@ -239,6 +273,25 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
                 disabled={!hydrated}
                 accessibilityLabel={connectionsA11y}
                 testID="download-settings-connections-per-file-control"
+              />
+            </Box>
+            <Box gap={12} py={8}>
+              <SettingsRow
+                title={t('settings.speedLimit')}
+                description={t('settings.speedLimitHint')}
+                icon="speedometer"
+                value={speedLimitText(speedLimit)}
+                showDivider={false}
+                accessibilityHint={t('settings.speedLimitHint')}
+                testID="download-settings-speed-limit"
+              />
+              <SegmentedControl
+                options={speedLimitOptions}
+                value={String(speedLimit)}
+                onChange={onSpeedLimitChange}
+                disabled={!hydrated}
+                accessibilityLabel={`${t('settings.speedLimit')}, ${speedLimitText(speedLimit)}`}
+                testID="download-settings-speed-limit-control"
               />
             </Box>
           </SettingsSection>

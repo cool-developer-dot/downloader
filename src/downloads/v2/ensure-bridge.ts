@@ -98,7 +98,7 @@ export function ensureV2DownloadBridge(): void {
     return;
   }
   attached = true;
-  // The engine keeps its own copy of the settings, so Wi-Fi-only and the connections per file apply to downloads that
+  // The engine keeps its own copy of the settings, so Wi-Fi-only, the connections per file and the speed limit apply to downloads that
   // resume before the app's JavaScript is running at all.
   const pushSettings = () => {
     const settings = useSettingsStore.getState();
@@ -107,6 +107,7 @@ export function ensureV2DownloadBridge(): void {
       maxConcurrentDownloads: settings.maxConcurrentDownloads,
       saveToGallery: settings.saveToGallery,
       connectionsPerFile: settings.connectionsPerFile,
+      speedLimitBytesPerSecond: settings.downloadSpeedLimit,
     });
   };
   pushSettings();

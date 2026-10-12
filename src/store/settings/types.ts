@@ -12,6 +12,8 @@ export interface SettingsState {
   connectionsPerFile: number;
   /** The player keeps playing (with a media notification) when VidoraX goes to the background (default off). */
   backgroundPlayback: boolean;
+  /** Speed limit for all downloads together, bytes per second; 0 = off (default). */
+  downloadSpeedLimit: number;
 }
 
 export type SettingsKey = keyof SettingsState;

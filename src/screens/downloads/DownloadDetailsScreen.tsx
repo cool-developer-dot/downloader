@@ -34,6 +34,7 @@ import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assi
 import { renameMediaFileOnDevice } from '@/downloads/engine';
 import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads/v2';
 
+import { DownloadBandwidthControls } from './components/DownloadBandwidthControls';
 import { DownloadDeleteDialog } from './components/DownloadDeleteDialog';
 import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
 import { useDownloadDetailsScreen } from './hooks/useDownloadDetailsScreen';
@@ -510,6 +511,10 @@ const DetailsBody = memo(function DetailsBody({
         {created ? <InfoRow label={t('downloads.infoCreatedDate')} value={created} /> : null}
         {completed ? <InfoRow label={t('downloads.infoDownloadedDate')} value={completed} /> : null}
       </Box>
+
+      {item.status === 'DOWNLOADING' || item.status === 'PAUSED' || item.status === 'QUEUED' ? (
+        <DownloadBandwidthControls downloadId={item.id} />
+      ) : null}
 
       {(sourceHost || item.sourceUrl) && (
         <Box mt={8} gap={8}>

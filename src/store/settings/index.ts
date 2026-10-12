@@ -2,6 +2,7 @@ import { persist } from 'zustand/middleware';
 
 import { isSupportedLanguage, normalizeLanguageCode, storageKeys } from '@/constants';
 import { normalizeConnectionsPerFile } from '@/downloads/v2/settings';
+import { normalizeSpeedLimit } from '@/downloads/v2/speed-limit';
 import { bindLanguageReader } from '@/localization/translate';
 import { createStore } from '@/store/shared/create-store';
 import { createPersistStorage } from '@/store/shared/persist-storage';
@@ -70,6 +71,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         saveToGallery: state.saveToGallery,
         connectionsPerFile: state.connectionsPerFile,
         backgroundPlayback: state.backgroundPlayback,
+        downloadSpeedLimit: state.downloadSpeedLimit,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -88,6 +90,10 @@ export const useSettingsStore = createStore<SettingsStore>()(
             raw.connectionsPerFile === undefined
               ? current.connectionsPerFile
               : normalizeConnectionsPerFile(raw.connectionsPerFile),
+          downloadSpeedLimit:
+            raw.downloadSpeedLimit === undefined
+              ? current.downloadSpeedLimit
+              : normalizeSpeedLimit(raw.downloadSpeedLimit),
           backgroundPlayback:
             typeof raw.backgroundPlayback === 'boolean'
               ? raw.backgroundPlayback

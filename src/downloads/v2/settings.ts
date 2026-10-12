@@ -6,6 +6,7 @@
 import type { DownloadSettings } from '@modules/vidorax-media/src/VidoraMedia.types';
 
 import type { V2EnginePort } from './engine-port';
+import { speedLimitForEngine } from './speed-limit';
 
 export type V2SettingsInput = {
   wifiOnly: boolean;
@@ -14,6 +15,8 @@ export type V2SettingsInput = {
   saveToGallery?: boolean;
   /** Settings → Download Settings → "Connections per file" (1–4). */
   connectionsPerFile?: number;
+  /** Settings → Download Settings → "Speed limit", bytes per second (0 = off). */
+  speedLimitBytesPerSecond?: number;
 };
 
 const MIN_CONCURRENT = 1;
@@ -45,6 +48,7 @@ export function v2DownloadSettings(input: V2SettingsInput): DownloadSettings {
     autoSaveToGallery: input.saveToGallery !== false,
     preferredMaxHeight: null,
     connectionsPerFile: normalizeConnectionsPerFile(input.connectionsPerFile),
+    speedLimitBytesPerSecond: speedLimitForEngine(input.speedLimitBytesPerSecond),
   };
 }
 
@@ -54,7 +58,8 @@ export function sameV2Settings(a: DownloadSettings, b: DownloadSettings): boolea
     a.wifiOnly === b.wifiOnly &&
     a.autoSaveToGallery === b.autoSaveToGallery &&
     a.preferredMaxHeight === b.preferredMaxHeight &&
-    a.connectionsPerFile === b.connectionsPerFile
+    a.connectionsPerFile === b.connectionsPerFile &&
+    (a.speedLimitBytesPerSecond ?? null) === (b.speedLimitBytesPerSecond ?? null)
   );
 }
 

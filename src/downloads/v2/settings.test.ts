@@ -35,6 +35,7 @@ describe('v2 download settings', () => {
       autoSaveToGallery: true,
       preferredMaxHeight: null,
       connectionsPerFile: 3,
+      speedLimitBytesPerSecond: null,
     });
   });
 

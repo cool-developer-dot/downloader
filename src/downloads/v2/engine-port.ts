@@ -2,6 +2,7 @@ import { getVidoraMedia, isVidoraMediaAvailable } from '@modules/vidorax-media';
 import type {
   CompletedDownload,
   DeviceVideoPage,
+  DownloadBandwidth,
   DownloadRecord,
   DownloadSettings,
   EnqueueRequest,
@@ -46,6 +47,12 @@ export type V2EnginePort = {
   share(ids: string[]): Promise<void>;
   saveToGallery(ids: string[]): Promise<void>;
   setDownloadSettings(settings: DownloadSettings): Promise<void>;
+  /** A download's own speed limit / Priority mark (F2). Missing on older native builds. */
+  setDownloadBandwidth?(
+    id: string,
+    options: { speedLimitBytesPerSecond?: number | null; priority?: boolean },
+  ): Promise<DownloadBandwidth[]>;
+  listDownloadBandwidth?(): Promise<DownloadBandwidth[]>;
   setFavorite(id: string, favorite: boolean): Promise<void>;
   /** Missing on older native builds; callers check before use. */
   listDeviceVideos?(limit: number, offset: number): Promise<DeviceVideoPage>;
