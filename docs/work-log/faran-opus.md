@@ -686,3 +686,105 @@ F18 data) cold start: no crash, no ANR, browser opens.
   and pushed settings without the new field, which reset the engine's speed limit to 0 until Metro was restarted.
 - The AVD's system server restarted once during an `adb install` under load (load average 35); the install was
   repeated. Space: this session's own gallery copies (F2 a/b/c, BBB 1080p) were removed by name to make room.
+
+---
+
+## F17 — Play online streams
+
+### Design
+
+- **Where**: **Play** in the quality sheet — a play icon on every quality row that plays exactly as chosen, and a Play
+  button beside Download for the selected quality — and a play icon on the "Video available" bar for a single offer
+  (the bar itself still downloads). Several qualities on the bar → choose in the sheet.
+- **Source** (`src/player/remote-stream.ts`, pure): `buildRemoteStream` → URL, headers, `contentType`
+  (`hls` / `dash` / `progressive`), title, thumbnail. Headers: User-Agent, Referer, Origin from the page's request
+  context (Referer falls back to the page, like the download engine) and, when the engine would use cookies
+  (`cookiesRequired || hasCookies`), the WebView's cookies for the stream URL as a `Cookie` header — expo-video's
+  OkHttp has no cookie jar. Not playable: split audio + video (two files), refused/not downloadable (DRM, encrypted,
+  live, YouTube are never offered), non-http.
+- **Fresh link** (`browser-media-play.service.ts`): the same checks a download makes before enqueueing
+  (`refreshStaleDirectSource` + `resolveFreshSourceForEnqueue`, the pre-download gate for a single file). An HLS
+  master is resolved to the chosen height (`chooseHlsVariant`, the engine planner's rule: exact height, else the tallest
+  below, nearest bandwidth), except when its variants use a separate audio rendition (a variant alone is silent → the
+  master plays, adapting). A DASH option is the whole manifest and expo-video cannot pin a representation → it plays
+  adaptively, so DASH rows get no per-quality Play (only the footer "Play this video").
+- **Player**: the stream is kept in memory as `stream:<32 hex>` (no URL in the route; last 8 per run);
+  `resolvePlaybackSource` returns it with `headers`, `contentType`, `artworkUrl`, `remote: true`; `replaceAsync` passes
+  them. No library row, no resume record, no Watch history (`bind-playback-persistence` ignores `stream:` events); no
+  "Open with" on its error screen. Errors: HTTP 401/403/404/410 → **Link expired** ("Reload the page in the browser and
+  tap Play again"); a failed connection → **No connection** with Try again. A `stream:` id from an earlier run → Link
+  expired.
+- **Title**: the live page's name for the media, then the offer's; a media file or manifest opened directly in the tab
+  is titled by its file name (the tab's title there can be the previous page's — Prompt A / F1 "Found, not fixed").
+
+Tester constants: `STREAM_PREPARATION_TIMEOUT_MS` 30 s (local files keep 12 s), `MAX_REMEMBERED_STREAMS` 8.
+
+Found while testing and fixed in F17:
+- *TikTok played "Link expired"* (the download of the same video works): the player sent neither the session cookies
+  nor a Referer (the engine falls back to the page and reads CookieManager per request) → Referer fallback + Cookie
+  header under the engine's own rule. Then it played.
+- *"Play 360p" played 720p*: that offer named the HLS master (its download picks the height natively) → the variant is
+  resolved before playing (server log: the player then fetched `hls/360/index.m3u8` and its segments only).
+- *A dropped connection showed the generic "Playback error"*: OkHttp's message is "unexpected end of stream" wrapped in
+  `java.io.IOException` → classified as a network error.
+- *Title "master.m3u8"* for a page offer: the analysis title came first → the live page's name for the media first
+  (as downloads do) — "F17 local HLS".
+- DASH quality rows each had a Play that would all have played the same adaptive stream → removed for DASH.
+
+Evidence (`.claude/pr-evidence/`): `F17-bar-play.png`, `F17-w3s-player.png`, `F17-mini-player.png`,
+`F17-sheet-hls.png`, `F17-sheet-dash.png`, `F17-dash-player.png`, `F17-airplane-error.png`, `F17-pip.png`,
+`F17-ig-player.png`, `F17-tiktok-bar.png`, `F17-tiktok-player.png`, `F17-split-no-play.png`, `F17-link-expired.png`,
+`F17-watch-history.png`, `F17-bar-urdu.png`, `F17-sheet-urdu.png`, `F17-error-urdu.png`, `F17-sheet-dark.png`,
+`F17-fb-player.png`, `F17-mux-480-release.png`.
+
+### Automated (final F17 code)
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | 744 tests, 744 pass — new `src/player/remote-stream.test.ts` (14: content-type mapping; split / refused / non-http → no Play; HLS/file play as chosen, DASH adapts; headers picked case-insensitively, nothing else; context Referer/UA; Referer falls back to the page and cookies follow the engine's rule; built stream; registry ids route-safe, unknown/old ids, oldest dropped; error classification incl. the device's "unexpected end of stream"; HLS master → chosen variant (exact, tallest below, nearest bandwidth, no match); media playlist / separate audio keep the URL; resolver returns the stream without touching the library; an old id → Link expired), `src/playback/stream-history.test.ts` (stream events never reach persistence) |
+| `npm run typecheck` | OK |
+| `npm run lint` | 0 errors, 84 warnings (unchanged) |
+| Native | no native code changed |
+| `git diff --check` | clean |
+
+### Manual cases — debug build (Metro, local server `fx.127.0.0.1.nip.io` + `adb reverse`), then release (`F17-release-debugkey.apk`)
+
+| Case | Result |
+| --- | --- |
+| w3schools MP4 (single offer) → bar Play | PASS (debug): plays in the VidoraX player, title "HTML Video"; the bar keeps "Already downloaded" (Play works whatever the download state) |
+| Mux HLS via the hls.js demo → Play at a chosen quality | PASS (debug, then the final release): sheet rows 1080/720/480/288/184p each with Play; 480p row → plays (634 s). Local two-variant HLS: "Play 360p" → the player fetches `hls/360/index.m3u8` + its segments only (server log; Hermes shows the stream URL) — after the master fix |
+| DASH (Akamai bbb) → Play | PASS (release): no per-row Play, footer "Play this video" → plays adaptively (640×360 → 1280×720 → 1920×1080 overlay) |
+| Public social video needing Referer/cookies | TikTok `@complex/video/7626254334065511711`: **FAIL first** (Link expired) → fixed → PASS (release): plays, title = the post's caption. Instagram reel `DSxdvp9lcDa` and Facebook watch `1376350954687257` (single MP4 offers) → Play → plays (release; Facebook on the final build). Dailymotion **BLOCKED**: sign-in wall + cookie-consent banner (consent not given on the owner's behalf) |
+| Split audio + video → no Play | PASS (debug): Instagram/Facebook served single MP4 offers today, so a local MediaSource page fed by `v.mp4` (video only) + `a.mp4` (audio only) was used: "Video available" with no Play; its download fetched both files (split) |
+| Expired link | PASS: TikTok before the fix (a real 403) → "Link expired / Reload the page in the browser and tap Play again"; local HLS with the variant answering 403 → the same (debug) |
+| Airplane mode mid-play | PASS (release, DASH): after the buffer ran out (~56 s) "No connection — Couldn't load the stream…" + Try again, no crash; airplane off → Try again → plays |
+| Mini player | PASS (debug): Back from the stream → mini player "HTML Video" with replay/close |
+| PiP | PASS (release): Home while the DASH stream plays → PiP window (`mode=pinned`) keeps playing |
+| No library row / resume / history | PASS: Watch History and Continue Watching list only the earlier library videos after five streams |
+| Urdu | PASS (release): bar play icon; sheet "چلائیں"; error "کنکشن نہیں / اسٹریم لوڈ نہیں ہو سکی…" |
+| Dark theme | PASS (release): sheet Play/Download buttons |
+| Real phone | **BLOCKED**: no phone |
+
+### Regression
+
+Regression: quick check only, full R1–R12 deferred to §7 — release build cold start (4.4 s): no crash, no ANR, browser
+opens.
+
+### Decisions (F17)
+
+- Play does not consume the offer: the bar keeps offering the download afterwards.
+- DASH plays adaptively (no per-quality Play) — expo-video has no way to pin a representation; HLS plays the chosen
+  variant.
+- Cookies travel as a header only when the download engine would send them for the same offer.
+- Retry after a network error starts the stream again from the beginning (no resume record for streams).
+- A stream keeps its source only for the app run (cookies included, never persisted).
+
+### Found, not fixed (F17)
+
+- Detection drops a page's candidates as `STALE_PAGE_GENERATION` when a page loads right after another one in the same
+  tab (seen with two local fixture pages); a reload brings the offer back.
+- The quality sheet's media card says "Audio —" and "Duration —" for HLS/DASH offers, and English-only labels
+  ("Video found", "Audio") in Urdu.
+- The player's error screen places "Try again" off-centre above "Go back" / "Get Help" (existing `ErrorState` layout).
+- Debug builds on this AVD: a Metro reload sometimes leaves the app on a blank/spinner screen for minutes; testing
+  moved to release builds where possible.

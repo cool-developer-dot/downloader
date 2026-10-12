@@ -499,7 +499,23 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
   "Open with…" (also for "unreadable" — a WMV has no decoder here) and Save to VidoraX (kept for another app, the F5
   rule). An `audio/*` source is revealed when ready (`revealsWithoutFirstFrame`): the startup cover otherwise waits for
   a video frame that never comes. `+native-intent.ts` treats `content:`/`file:` links as non-routes, like web links.
-  Network streams are still Phase 16 (F17).
+- **Online streams (F17)** (`src/player/remote-stream.ts`, `src/browser/media-actions/browser-media-play.service.ts`):
+  **Play** beside Download in the quality sheet (one per quality row when that quality plays as chosen, and in the
+  footer for the selected one) and on the "Video available" bar for a single offer. The chosen variant is confirmed
+  current exactly as a download would be (`refreshStaleDirectSource` + `resolveFreshSourceForEnqueue`: a newer signed
+  link the page produced is taken; an expired one → "reload the page"); an HLS master is resolved to the chosen height
+  (`chooseHlsVariant`, the engine planner's rule) unless its variants use a separate audio rendition; a DASH manifest
+  plays adaptively (expo-video cannot pin a representation), so DASH rows have no per-quality Play. The source keeps
+  the page's User-Agent, Referer (falling back to the page, like the engine), Origin, and — when the engine would use
+  cookies (`cookiesRequired || hasCookies`) — the WebView's cookies for the stream URL as a Cookie header (expo-video
+  has no cookie jar); `contentType` is `hls` / `dash` / `progressive`. It is kept in memory under `stream:<token>` (no
+  URL in the route; the last 8 per run); `resolvePlaybackSource` returns it with `remote: true`. No library row, no
+  resume record, no Watch history (`bind-playback-persistence` ignores `stream:` ids); a `stream:` id from an earlier
+  run → "Link expired". Split audio + video offers, refused, live, DRM, encrypted and YouTube offers are never playable
+  (`streamUnavailableReason`). Errors: an HTTP 401/403/404/410 → `STREAM_LINK_EXPIRED`; a failed connection →
+  `STREAM_NETWORK_ERROR` (Retry); the preparation timeout is 30 s (`STREAM_PREPARATION_TIMEOUT_MS`). Title: the live
+  page's name for the media, then the offer's; a file or manifest opened directly in the tab uses its file name (the
+  tab title can be the previous page's). Mini player, PiP and background play work as for any session.
 - Picture-in-picture needs manifest entries mirrored from expo-video's config plugin (this repo does not run
   prebuild). **Background play (F18)**: Settings → Player → "Keep playing in background" (`backgroundPlayback`, off by
   default). The manifest declares expo-video's `ExpoVideoPlaybackService` (`mediaPlayback`) and

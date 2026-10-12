@@ -2056,6 +2056,15 @@ Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-pl
   `CREATE TABLE IF NOT EXISTS`; upgrade from v4 with real rows tested), dropped on completion/removal. Queue rules for
   H4/F2 in ARCHITECTURE §3.6. Measured on the device: 512 KB/s → 511.2 KB/s over 100 s; 256 KB/s beside an unlimited
   download → 249.7 vs 2448 KB/s; Priority under 1 MB/s → 764 vs 256 KB/s; all survive a force-stop. Real phone BLOCKED.
+- **F17 Play online streams.** **Play** beside Download in the quality sheet (per quality row when it plays as chosen,
+  and in the footer) and on the "Video available" bar for a single offer — nothing downloaded or consumed. The variant
+  is confirmed current like a download (fresh signed link, else "reload the page"); an HLS master is resolved to the
+  chosen height; DASH plays adaptively (no per-row Play). Headers: page User-Agent, Referer (fallback: the page),
+  Origin, and the WebView cookies as a Cookie header when the engine would use cookies. In memory as `stream:<token>`
+  (`src/player/remote-stream.ts`); no library row, resume record or Watch history. Errors: Link expired (401/403/404/
+  410) / No connection (+ Try again). Split audio+video, refused, live, DRM, YouTube: no Play. Found and fixed on the
+  device: TikTok refused the player (no cookies/Referer); "Play 360p" played 720p (offer named the master); a dropped
+  connection read as a generic error. Dailymotion BLOCKED (sign-in wall + cookie consent); real phone BLOCKED.
 
 ## 5. How to resume
 
