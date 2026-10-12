@@ -42,6 +42,7 @@ import {
 } from '@/player/picture-in-picture';
 import { externalTokenOf } from '@/player/external-media';
 import { isStreamMediaId } from '@/player/remote-stream';
+import { useSeekPreview } from '@/player/use-seek-preview';
 import {
   openIncomingWithOtherApp,
   saveIncomingMedia,
@@ -167,6 +168,12 @@ const PlayerSessionView = memo(function PlayerSessionView({
     onPictureInPictureStop,
   } = live;
   const activeMediaId = session.mediaId ?? mediaId;
+  // F14: a frame above the scrubber while dragging (files on the device that show video; not streams or audio).
+  const seekPreview = useSeekPreview(player, {
+    mediaId: activeMediaId,
+    hasVideoFrame: session.hasFirstFrame,
+    scrubSeconds: session.isSeeking ? seekPreviewSeconds : null,
+  });
   // Resume seek and autoplay run with the session (PlayerSessionHost), not here: reopening the Player from the mini
   // player continues where it is — and shows the paused frame there, which a new surface lacks.
   const [reopened] = useState(() => session.isSurfaceRevealed);
@@ -516,12 +523,14 @@ const PlayerSessionView = memo(function PlayerSessionView({
     return () => clearTimeout(timer);
   }, [doubleTapSide]);
 
+  const beginPreviewDrag = seekPreview.beginDrag;
   const onSeekStart = useCallback(
     (seconds: number) => {
+      beginPreviewDrag();
       beginSeekPreview(seconds);
       showControls();
     },
-    [beginSeekPreview, showControls],
+    [beginPreviewDrag, beginSeekPreview, showControls],
   );
 
   const onSeekCommit = useCallback(() => {
@@ -692,6 +701,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
             positionSeconds={session.positionSeconds}
             durationSeconds={session.durationSeconds}
             previewSeconds={seekPreviewSeconds}
+            previewFrame={seekPreview.frame}
             disabled={!session.isReady || Boolean(session.error)}
             onSeekStart={onSeekStart}
             onSeekChange={updateSeekPreview}

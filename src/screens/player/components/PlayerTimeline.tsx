@@ -1,3 +1,5 @@
+import { Image } from 'expo-image';
+import type { VideoThumbnail } from 'expo-video';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
@@ -15,12 +17,15 @@ import {
   writePersistedDurationLabelMode,
   type DurationLabelMode,
 } from '@/player';
+import { seekPreviewLeft, seekPreviewSize } from '@/player/seek-preview';
 import { useTranslation } from '@/localization';
 
 export type PlayerTimelineProps = {
   positionSeconds: number;
   durationSeconds: number | null;
   previewSeconds: number | null;
+  /** F14: the frame at the dragged position, shown above the thumb while scrubbing. */
+  previewFrame?: VideoThumbnail | null;
   disabled?: boolean;
   onSeekStart: (seconds: number) => void;
   onSeekChange: (seconds: number) => void;
@@ -44,6 +49,7 @@ export const PlayerTimeline = memo(function PlayerTimeline({
   positionSeconds,
   durationSeconds,
   previewSeconds,
+  previewFrame = null,
   disabled = false,
   onSeekStart,
   onSeekChange,
@@ -165,8 +171,35 @@ export const PlayerTimeline = memo(function PlayerTimeline({
     [pan, tap],
   );
 
+  const previewSize = previewFrame ? seekPreviewSize(previewFrame.width, previewFrame.height) : null;
+
   return (
     <Box gap={8} style={styles.wrap}>
+      {previewFrame && previewSize && previewSeconds != null && trackWidth > 0 ? (
+        <View
+          pointerEvents="none"
+          testID="player-seek-preview"
+          style={[
+            styles.preview,
+            {
+              width: previewSize.width,
+              height: previewSize.height + 22,
+              left: seekPreviewLeft(progress, trackWidth, previewSize.width),
+              bottom: '100%',
+            },
+          ]}>
+          <Image
+            source={previewFrame}
+            style={{ width: previewSize.width, height: previewSize.height, borderRadius: 6 }}
+            contentFit="cover"
+            transition={0}
+            accessibilityIgnoresInvertColors
+          />
+          <Text variant="caption" color="white" align="center" style={styles.previewTime}>
+            {formatPlaybackTime(previewSeconds)}
+          </Text>
+        </View>
+      ) : null}
       <GestureDetector gesture={gesture}>
         <View
           style={styles.hit}
@@ -262,6 +295,19 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     borderWidth: 2,
+  },
+  preview: {
+    position: 'absolute',
+    marginBottom: 6,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    overflow: 'hidden',
+    zIndex: 5,
+  },
+  previewTime: {
+    lineHeight: 22,
   },
   times: {
     width: '100%',
