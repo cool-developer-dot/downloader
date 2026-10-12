@@ -928,3 +928,114 @@ Regression: quick check only, full R1–R12 deferred to §7 — release cold sta
 
 - The Storage screen's v1 location cards label `{VidoraXDownloads}/{id}/.hls/` and `.mranges` sizes from the same
   `tempBytes` total, so a `.hls` workspace also showed under "Temporary Download Parts" (5.0 MB) before the clean-up.
+
+---
+
+## F3 — Scheduling and conditions
+
+### Design
+
+Research and the full design are in docs/ARCHITECTURE.md §3.7. In short:
+
+- **Compliant by construction.** No exact alarms, no battery-optimization exemption, no new permission. One persisted
+  JobScheduler job (`WAKE_JOB_ID`, the boot job's service) wakes the engine: not before the earliest time a rule
+  changes (`setMinimumLatency`), with the device constraints the rules ask for (charging, battery not low, not
+  roaming / unmetered), and — for a timed wake-up — a deadline 10 min later (`WAKE_DEADLINE_SLACK_MS`), because
+  Android 14+ may otherwise add "flexible" constraints and hold a job for hours. Android picks the moment; the UI says
+  a scheduled start can be a few minutes late.
+- **Rules** (`engine/DownloadRules`, pure): Start time → Download hours → Not on roaming → Only while charging → Pause
+  when battery is low (≤ `LOW_BATTERY_PERCENT` 15 % and not charging). The first that holds names the wait.
+- **Engine**: new state `waiting_conditions` with `waitReason` / `waitUntil` on the record; checked before a slot is
+  taken and watched during a transfer (stops at a rule, keeps the part, continues from it). A per-download start time
+  lives in `download_schedule` (schema v6, `CREATE TABLE IF NOT EXISTS`). Settings in the engine's SharedPreferences
+  (pushed by `ensure-bridge`), so they hold before JavaScript runs; the notification wait texts follow the pushed
+  language.
+- **UI**: Download Settings → "Schedule & conditions" (Download hours with From/Until quarter-hour steppers and weekday
+  chips, Not on roaming, Pause when battery is low, Only while charging, the late-start note). Download details →
+  "Start at…" (Today/Tomorrow, quarter hours, Set / Start now, the note). Wait labels in the Downloads list, the
+  details and the notification, en + ur.
+
+### Automated (final F3 code)
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | 762 tests, 762 pass — new `src/downloads/v2/conditions.test.ts` (7: defaults off / engine form; stored hours repaired; quarter-hour steppers wrap at midnight; weekday toggle keeps one; a changed window/rule/language is pushed again, an equal one not; wait labels with time and weekday, en + ur; "Start at…" today/tomorrow, a past time means tomorrow); `settings.test.ts` (the five new fields); `projection.test.ts` (`waiting_conditions` → Queued with its reason/until/start time, a stale reason on a running record never shown) |
+| `npm run typecheck` | OK |
+| `npm run lint` | 0 errors, 84 warnings (unchanged) |
+| `gradle :vidorax-media:testDebugUnitTest --rerun :vidorax-web:testDebugUnitTest --rerun` | 616 / 0 (+25) and 27 / 0 — `DownloadRulesTest` 9 (fake clock in Asia/Karachi, fake battery and network: no rules hold nothing; a start time holds until it arrives; weekday hours incl. Saturday → Monday; a window across midnight belongs to its start day; equal start/end is the whole day; roaming, charging, battery ≤ 15 % only off the charger, no reading never holds; combined rules report time first; next time change; a rule changed while waiting answers at once), `DownloadEngineTest` F3 (charging hold then release; battery low mid-transfer resumes from the part; roaming rule off ignores roaming; hours set while running stop it and it continues at the opening; a start time arrives; a paused download given a start time waits for it; a restarted engine keeps the start time; the wake plan), `MediaDatabaseUpgradeTest` (v4 with a queued download, library and completion rows → v6 with every row and the new table; v5 → v6; migration 6 twice is safe), `DownloadScheduleStoreTest`, `ConditionRecordsTest` (window validation, language), `WaitingNotificationTextTest` (en/ur, weekday), `DownloadRunnerTest` (a download held in the last process loses its waiting notification once it runs again) |
+| `gradle :vidorax-media:connectedDebugAndroidTest` | 38 / 0 (first run: no room for the test APK — this session's test videos and their gallery copies were removed, then rerun) |
+| `git diff --check` | clean |
+
+### Manual cases — debug build (Metro, local server `fx.127.0.0.1.nip.io`), then release (`F3-release-debugkey.apk`)
+
+| Case | Result |
+| --- | --- |
+| Settings section (en, light + dark) | PASS: four switches, hours editor 01:00–06:00 with all days, the summary and the late-start note; the values reach the engine's prefs (`downloadWindow` `60,360,1234567`, `notOnRoaming`, `pauseOnLowBattery`, `onlyWhileCharging`, `language`) |
+| Window excludes now → waits with a label | PASS (debug, 19:23, hours 01:00–06:00): new download stays `waiting_conditions` with 0 bytes — list "Outside download hours", details "🕒 Outside download hours", notification "Outside download hours"; wake job persisted, delay +5 h 36 m (01:00) + 10 min deadline. Turning the hours off started it at once |
+| `dumpsys battery unplug` / `set level 10` / reset | PASS (debug): at 10 % unplugged → "Paused — battery low · 3.9 MB of 144.8 MB" (list + notification), the 4.1 MB part kept; level 50 → all three parts re-requested **in the same second** from their own offsets |
+| Only while charging | PASS (debug): unplugged → "Waiting for charging"; plugged → resumed in the same second. **App closed** (process killed): plugging in (emulator power console) → the wake job started the process and bytes flowed **4 s** later; one notification only (after the runner fix below). `dumpsys battery set ac 1` alone does not satisfy JobScheduler's charging constraint ("stable power" needs status *charging*) — the emulator console does |
+| Schedule ahead with the app closed | PASS (debug, Urdu): at 20:27:07 "Start at… today 20:30" on a running download → notification "20:30 کے لیے شیڈول", details "20:30 پر شروع ہوگا۔"; process killed at 20:27:33; Android ran the job at **20:31:56**, bytes at 20:32:04 — **2 min 4 s late**, inside the 10-min deadline (quarter-hour steps, so "3 min ahead" was set at hh:27 for hh:30) |
+| Survives force-stop | PASS (debug): only-while-charging on, unplugged, download held → `am force-stop` → relaunch: the engine re-posted "Waiting for charging" at ~20:17:05, **before JavaScript ran** (20:17:07), and made no request; plugging in resumed it |
+| Roaming (`adb emu gsm data roaming` / `home`) | **BLOCKED**: the emulator cannot produce roaming — the radio reports `networkRegistrationState=ROAMING`, but Android keeps `isRoaming=false` because network and SIM are the same operator (T-Mobile 310260; same-named operators are home), also with voice roaming. The setting reaches the engine; the rule is covered by `DownloadRulesTest` |
+| Reboot | **BLOCKED**: an emulator reboot needs the owner's OK. The job is `setPersisted(true)` (RECEIVE_BOOT_COMPLETED is already held) and the start time is in the database |
+| Urdu (list, details, notification, settings, editor) | PASS after three fixes (see Decisions): settings mirrored (weekday chips from the right, steppers and buttons mirrored), list "ڈاؤن لوڈ کے اوقات سے باہر · 52.6 MB of 144.8 MB", details label whole, notification Urdu, scheduled "20:30 کے لیے شیڈول" |
+| Upgrade from `v1.0.0-test1` with paused + queued downloads | PASS (release over a seeded test1): a 286.5 MB download paused and a 92.2 MB download queued for Wi-Fi on test1 → F3 installed over it → both rows intact; Wi-Fi back → the queued one ran and completed; the paused one resumed and completed. (The release DB is not readable without `run-as`; v4 → v6 with real rows is `MediaDatabaseUpgradeTest`) |
+| Release quick check | PASS: settings section; charging hold "Waiting for charging · 240.0 MB of …"; app closed + plug-in → job started the process in 2 s, then opening VidoraX into that process: warm launch **875 ms**, no ANR; "Start at…" tomorrow 02:00 → details + notification "Scheduled for Tue 02:00", **Start now** → resumed from 17.5 MB; dark theme of the editor |
+| Real phone | **BLOCKED**: no phone |
+
+Evidence (`.claude/pr-evidence/`): `F3-settings-en.png`, `F3-settings-ur.png`, `F3-settings-dark.png`,
+`F3-outside-hours-list.png`, `F3-outside-hours-details.png`, `F3-battery-low-list.png`, `F3-list-ur.png`,
+`F3-details-ur.png`, `F3-start-at-editor-ur.png`, `F3-scheduled-details-ur.png`, `F3-release-waiting-charging.png`,
+`F3-release-scheduled-details.png`, `F3-release-start-at-set.png`, `F3-release-start-now.png`, `F3-start-at-dark.png`,
+`F3-upgrade-queued-running.png`, `F3-upgrade-both.png`.
+
+### Regression
+
+Regression: quick check only, full R1–R12 deferred to §7 — release over test1: no crash, no ANR; browser, Downloads,
+Player and Settings open; downloads run, pause, resume; warm launch into a job-started process 875 ms.
+
+### Decisions (F3)
+
+- **Compliance over precision**: JobScheduler only (no exact alarms, no battery exemption); a timed wake-up gets a
+  10-minute deadline (`WAKE_DEADLINE_SLACK_MS`) so Android 14+ flexibility cannot hold it for hours. A wait that only
+  depends on the device (charging, battery, roaming) gets **no** deadline: a deadline there would wake VidoraX again
+  and again while unplugged. With VidoraX closed such a wait resumes when Android runs the job; opening VidoraX
+  resumes at once.
+- **Rule order** Start time → Download hours → Roaming → Charging → Battery: time first so the label can say when.
+  "Only while charging" covers the battery rule (plugged in at 10 % is fine).
+- **Hours across midnight belong to the start day** (Fri 22:00–06:00 covers Saturday 03:00, not Friday 03:00); equal
+  start and end mean the whole day. Quarter-hour steppers (`TIME_STEP_MINUTES` 15) and Today/Tomorrow for "Start at…"
+  — no date-picker dependency; the default offered start is 02:00 (`DEFAULT_START_MINUTE`).
+- **"Pause when battery is low" = 15 %** (`LOW_BATTERY_PERCENT`, Android's own "battery low" level); no battery
+  reading never holds.
+- **A held download keeps its part** and continues from it; an engine restart requeues held rows keeping their bytes.
+- **A start time is one-shot**: dropped once it has passed and the download is let through, and when the download
+  completes or is removed. Setting one on a running download stops it until then; on a paused one, it waits for it.
+- **Held downloads are not "live" for the runner**: no foreground service while everything waits (battery), and their
+  notification can be swiped away.
+- **Runner restore clears leftover per-download notifications** of downloads its own notification now shows (found
+  on device: the old process's "Waiting for charging" stayed beside "Downloading").
+- **RTL**: sizes after an Urdu wait label are wrapped in LRM marks (as in F15); the details wait label takes the
+  remaining width (Android mis-measured it and dropped the last word); the editor's Set/Cancel row mirrors. The day
+  selector uses the app's SegmentedControl, which never mirrors (consistent with the speed-limit control).
+- Native notification wait texts are localized natively (en/ur) from the language JavaScript pushes; weekday names in
+  Urdu, times always 24-hour with Latin digits (as elsewhere in the app).
+
+New settings (all default **off**): Download hours (when first turned on: 01:00–06:00, every day), Not on roaming,
+Pause when battery is low, Only while charging; per download: Start at… (none). Constants: `LOW_BATTERY_PERCENT` 15,
+`WAKE_DEADLINE_SLACK_MS` 10 min, `TIME_STEP_MINUTES` 15, `DEFAULT_START_MINUTE` 02:00, `WAKE_JOB_ID` 0x5646,
+`CONTINUE_JOB_ID` 0x5647, `WAKE_SETTLE_MS` 500 ms.
+
+### Found, not fixed (F3)
+
+- **The AVD is memory-starved** (2.5 GB RAM, ~140 MB free, 1.1 GB swapped): the debug build took 60–100 s to start and
+  showed ANR dialogs when input arrived before its first frame. The traces (bugreport) show no VidoraX code on the
+  main thread (React Native frame callbacks in the interpreter; androidx ProfileInstaller in `bindApplication` with
+  the thread 17.8 s waiting for a CPU), and the same report has VidoraX startup ANRs from 18:09 and a system_server
+  watchdog block from 16:35 — before any F3 build was installed. The release build launched in 875 ms. The owner
+  may want to restart the AVD or give it more RAM.
+- Downloads list progress text ("52.6 MB of 144.8 MB", "downloaded") and the native progress notification
+  ("Downloading · …") are English in Urdu (`buildProgressMeta`, `DownloadNotificationContent`) — pre-existing.
+- The app's `SegmentedControl` does not mirror in RTL (speed limit, Start-at day) — pre-existing.
+- Debug only: when the disk is full, Expo's dev font loader caches an empty `material-community` font and keeps
+  failing (no icons) until that cache file is removed.

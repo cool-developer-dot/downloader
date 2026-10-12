@@ -194,6 +194,10 @@ gallery_exports(uri TEXT PRIMARY KEY, library_id TEXT, identity_key TEXT, create
 -- boot job and background runner while no JavaScript runs. JS lists it (`listCompletedDownloads`), counts each id
 -- once for the in-app review, then acknowledges (`acknowledgeCompletedDownloads`), which deletes the rows. Bounded:
 -- the newest 500 unacknowledged rows are kept.
+download_bandwidth(...)                                                    -- schema v5 (F2, §3.6)
+download_schedule(download_id TEXT PRIMARY KEY, start_at INTEGER NOT NULL) -- schema v6 (F3, §3.7)
+-- A download's own "Start at…" time (epoch ms). Dropped when the download completes or is removed, and once the
+-- time has passed and the download is let through. New table only: migration 6 is CREATE TABLE IF NOT EXISTS.
 ```
 
 Request context (`request_json`) contains User-Agent, Referer, Origin and extra headers, never cookie values.
@@ -206,16 +210,18 @@ one (the stock system WebView UA in mobile mode), so UA-bound signed URLs still 
 
 ```
 queued → probing → downloading ⇄ paused
-                        │  ⇅ waiting_network (Wi-Fi-only / offline)
-                        │  ⇅ waiting_retry   (transient error, backoff)
+   ⇅                    │  ⇅ waiting_network (Wi-Fi-only / offline)
+waiting_conditions      │  ⇅ waiting_retry   (transient error, backoff)
+(F3 rules, §3.7)        │  ⇅ waiting_conditions (a rule changed mid-transfer; the part is kept)
                         ▼
                    verifying (file validation / metadata / thumbnail / optional gallery export)
                         ▼
                    completed          failed(code)    cancelled
 ```
 
-- On engine start, `downloading`/`probing`/`verifying` rows with no live worker become `queued` (they resume from
-  the segment ledger for HLS, or from the `.part` file byte offset for progressive).
+- On engine start, `downloading`/`probing`/`verifying`/`waiting_conditions` rows with no live worker become `queued`
+  (they resume from the segment ledger for HLS, or from the `.part` file byte offset for progressive); a rule that
+  still holds sends them straight back to `waiting_conditions`.
 - **One download per video.** `enqueueUnique` checks, atomically with creating the row (engine mutex): a non-terminal
   download with the same identity → `ALREADY_DOWNLOADING` (that download; a paused one is resumed); a saved copy
   (library or VidoraX gallery) → `ALREADY_DOWNLOADED`. `findDuplicate` is the same check without creating anything
@@ -245,6 +251,48 @@ Two separate decisions, so the queue work (Hamza's H4) and the speed limits (F2)
   together). Per-download limits and Priority live in `download_bandwidth` (schema v5) and are dropped when the
   download completes or is removed. A bucket allows a quarter-second burst and goes into debt instead of splitting a
   read; changing a limit applies to the next read.
+
+### 3.7 Scheduling and conditions (F3)
+
+**Research — what Android allows (no restricted permissions).** Exact alarms (`SCHEDULE_EXACT_ALARM` /
+`USE_EXACT_ALARM`) are restricted on Play to alarm/calendar apps, and a battery-optimization exemption
+(`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) to apps whose core function breaks without it — neither applies to a
+downloader, so neither is used. Implicit broadcasts (`ACTION_POWER_CONNECTED`, connectivity) cannot be received by a
+manifest receiver since Android 8. What remains, and is enough: **JobScheduler** — `setMinimumLatency` (not before),
+`setOverrideDeadline` (at the latest), `setRequiresCharging`, `setRequiresBatteryNotLow`, `NETWORK_TYPE_NOT_ROAMING` /
+`UNMETERED`, `setPersisted(true)` (survives reboot with `RECEIVE_BOOT_COMPLETED`, which the boot job already holds).
+Android picks the moment, so a start can be late: **the UI says so** ("a scheduled start can be a few minutes late").
+On Android 14+ a job without a deadline may get "flexible" constraints (charging, idle) for hours, so timed wake-ups get
+a deadline `WAKE_DEADLINE_SLACK_MS` (10 min) after their time. A force-stop cancels an app's jobs (Android's rule); the
+schedule lives in the engine's database, so the next start of VidoraX re-plans it.
+
+**Rules** (`engine/DownloadRules`, pure, Calendar/TimeZone for minSdk 24): the first that holds wins — time first, so
+the label can say when:
+
+| Rule | Setting / source | Holds while | Wait label (list, details, notification) |
+| --- | --- | --- | --- |
+| Start time | Download details → "Start at…" (today/tomorrow, quarter hours), `download_schedule` | now < start | "Scheduled for 02:00" / "Scheduled for Tue 02:00" |
+| Download hours | Download Settings, `downloadWindow` {startMinute, endMinute, ISO days} | outside the window | "Outside download hours" |
+| Not on roaming | Download Settings, `notOnRoaming` | default network lacks `NET_CAPABILITY_NOT_ROAMING` | "Paused — roaming" |
+| Only while charging | Download Settings, `onlyWhileCharging` | not plugged in | "Waiting for charging" |
+| Pause when battery is low | Download Settings, `pauseOnLowBattery` | ≤ 15 % (`LOW_BATTERY_PERCENT`) and not charging | "Paused — battery low" |
+
+A window that crosses midnight belongs to the day it starts (Fri 22:00–06:00 covers Saturday 03:00); equal start and
+end mean the whole day of the chosen days. The settings live in the engine's SharedPreferences (pushed by
+`ensure-bridge`, like Wi-Fi only), so they hold for downloads resumed before JavaScript runs; the notification's
+language comes from the same push.
+
+**Engine.** Before taking a slot a worker calls `awaitConditions`: while a rule holds the download is
+`waiting_conditions` with `waitReason` / `waitUntil` on its record, and it waits for `policyVersion` (bumped by a
+settings push, a start-time change, a device change from `AndroidDeviceConditions` — sticky battery broadcast and the
+default network's capabilities — or the next time the rules' answer changes). A running transfer watches the same
+version and stops at a rule (`NetworkNoLongerAllowed`), keeping its part; it continues from there when allowed. A
+start time set on a paused download moves it to waiting; on a running one, it stops it until then.
+
+**Background** (`runner/BackgroundDownloads`): whenever downloads wait on rules, one persisted wake job
+(`WAKE_JOB_ID`) — not before the earliest time a rule changes, with the device constraints the rules ask for; cancelled
+when nothing waits. The job starts the engine, which re-checks everything and lets the downloads run (under the
+user-initiated job / foreground service when allowed, else a plain continuation job, `CONTINUE_JOB_ID`).
 
 ## 4. Native module: `modules/vidorax-web`
 

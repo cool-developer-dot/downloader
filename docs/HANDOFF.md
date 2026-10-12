@@ -2077,6 +2077,16 @@ Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-pl
   `.mranges` / `*.part` of v1 downloads JS reports inactive; finished files never. Device: 20 MB orphan + 5 MB v1
   workspace beside a paused 38 MB download → 25.0 MB shown → freed; the paused download resumed byte-identical and
   plays.
+- **F3 Scheduling and conditions.** Download Settings → "Schedule & conditions": Download hours (weekdays, quarter
+  hours, a window past midnight belongs to its start day), Not on roaming, Pause when battery is low (≤ 15 % off the
+  charger), Only while charging — all off by default, engine prefs pushed by `ensure-bridge`. Download details →
+  "Start at…" (today/tomorrow; `download_schedule`, schema v6). A held download is `waiting_conditions` with a reason
+  ("Scheduled for 02:00", "Outside download hours", "Paused — roaming", "Waiting for charging", "Paused — battery
+  low"; list, details, notification, en/ur) and keeps its part. Background: one persisted JobScheduler wake job
+  (latency + charging/battery/network constraints, a 10-min deadline for timed wake-ups) — no exact alarms, no battery
+  exemption, no new permission. Device: battery/charging holds and releases (also with the app closed: 4 s after
+  plug-in), a start time with the app closed ran 2 min late, holds survive force-stop before JS runs, test1 upgrade
+  with paused + queued downloads; roaming and reboot BLOCKED (emulator cannot roam; reboot needs the owner).
 
 ## 5. How to resume
 
