@@ -11,8 +11,8 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
 
 /**
- * Upgrading an installed database (the v4 schema of `v1.0.0-test1`) with real rows: nothing is lost, the new table
- * exists, and the migration is safe to run twice.
+ * Upgrading an installed database (the v4 schema of `v1.0.0-test1`, and v5 of the F2 builds) with real rows: nothing is
+ * lost, the new tables exist, and every migration is safe to run twice.
  */
 @RunWith(RobolectricTestRunner::class)
 class MediaDatabaseUpgradeTest {
@@ -29,11 +29,16 @@ class MediaDatabaseUpgradeTest {
   private fun createV4WithRows() {
     file.parentFile?.mkdirs()
     SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
-      Schema.CREATE.filterNot { it.contains("download_bandwidth") }.forEach(db::execSQL)
+      Schema.CREATE.filterNot { it.contains("download_bandwidth") || it.contains("download_schedule") }.forEach(db::execSQL)
       db.execSQL(
         "INSERT INTO downloads (id, state, kind, url, request_json, title, site, bytes_done, total_bytes, " +
           "created_at, updated_at) VALUES ('paused-1', 'paused', 'hls', 'https://cdn.example/a.m3u8', '{}', " +
           "'A paused stream', 'web', 1000, 5000, 1, 2)",
+      )
+      db.execSQL(
+        "INSERT INTO downloads (id, state, kind, url, request_json, title, site, bytes_done, total_bytes, " +
+          "created_at, updated_at) VALUES ('queued-1', 'queued', 'progressive', 'https://cdn.example/b.mp4', '{}', " +
+          "'A queued file', 'web', 0, NULL, 3, 4)",
       )
       db.execSQL(
         "INSERT INTO library (id, title, site, file_path, mime_type, container, has_audio, size_bytes, created_at, " +
@@ -69,6 +74,43 @@ class MediaDatabaseUpgradeTest {
         assertEquals(262144L, it.getLong(0))
         assertEquals(1, it.getInt(1))
       }
+      // v6 (F3): the start-time table, and the queued download is still queued.
+      db.execSQL("INSERT INTO download_schedule (download_id, start_at) VALUES ('queued-1', 1800000000000)")
+      Schema.MIGRATIONS.getValue(6).forEach(db::execSQL)
+      db.rawQuery("SELECT start_at FROM download_schedule WHERE download_id = 'queued-1'", null).use {
+        assertTrue(it.moveToFirst())
+        assertEquals(1800000000000L, it.getLong(0))
+      }
+      db.rawQuery("SELECT state FROM downloads WHERE id = 'queued-1'", null).use {
+        assertTrue(it.moveToFirst())
+        assertEquals("queued", it.getString(0))
+      }
+    } finally {
+      database.close()
+    }
+  }
+
+  @Test fun upgradingFromV5KeepsTheBandwidthRowsAndAddsTheScheduleTable() {
+    file.parentFile?.mkdirs()
+    SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+      Schema.CREATE.filterNot { it.contains("download_schedule") }.forEach(db::execSQL)
+      db.execSQL(
+        "INSERT INTO downloads (id, state, kind, url, request_json, title, site, bytes_done, total_bytes, " +
+          "created_at, updated_at) VALUES ('d', 'waiting_network', 'progressive', 'https://cdn.example/d.mp4', '{}', " +
+          "'Waiting', 'web', 10, 100, 1, 2)",
+      )
+      db.execSQL("INSERT INTO download_bandwidth (download_id, limit_bps, priority) VALUES ('d', 524288, 0)")
+      db.version = 5
+    }
+    val database = MediaDatabase(context)
+    try {
+      val db = database.writableDatabase
+      assertEquals(Schema.VERSION, db.version)
+      db.rawQuery("SELECT limit_bps FROM download_bandwidth WHERE download_id = 'd'", null).use {
+        assertTrue(it.moveToFirst())
+        assertEquals(524288L, it.getLong(0))
+      }
+      db.rawQuery("SELECT COUNT(*) FROM download_schedule", null).use { it.moveToFirst(); assertEquals(0, it.getInt(0)) }
     } finally {
       database.close()
     }

@@ -67,10 +67,21 @@ enum class DownloadState(override val wire: String) : WireEnum {
   PAUSED("paused"),
   WAITING_NETWORK("waiting_network"),
   WAITING_RETRY("waiting_retry"),
+  /** F3: held by a rule (start time, download hours, roaming, charging, low battery) until it clears. */
+  WAITING_CONDITIONS("waiting_conditions"),
   PROCESSING("processing"),
   COMPLETED("completed"),
   FAILED("failed"),
   CANCELLED("cancelled"),
+}
+
+/** F3: which rule holds a [DownloadState.WAITING_CONDITIONS] download (docs/VidoraMedia.types.ts DownloadWaitReason). */
+enum class WaitReason(override val wire: String) : WireEnum {
+  SCHEDULED("scheduled"),
+  OUTSIDE_HOURS("outside_hours"),
+  ROAMING("roaming"),
+  CHARGING("charging"),
+  BATTERY_LOW("battery_low"),
 }
 
 enum class DownloadErrorCode : WireEnum {

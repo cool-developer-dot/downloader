@@ -36,6 +36,7 @@ import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads
 
 import { DownloadBandwidthControls } from './components/DownloadBandwidthControls';
 import { DownloadDeleteDialog } from './components/DownloadDeleteDialog';
+import { DownloadStartAtControl } from './components/DownloadStartAtControl';
 import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
 import { useDownloadDetailsScreen } from './hooks/useDownloadDetailsScreen';
 import { useDownloadsTokens } from './theme/downloads-tokens';
@@ -52,6 +53,7 @@ import {
   formatTransferSpeed,
   getExecutionStatusLabel,
   sanitizeErrorMessage,
+  waitingLabelFor,
   type DownloadCardAction,
 } from './utils/download-format';
 import { formatDuration } from '@/media-detection/utils';
@@ -217,6 +219,8 @@ const DetailsBody = memo(function DetailsBody({
     item.status === 'DOWNLOADING' || item.status === 'PAUSED'
       ? formatEtaSeconds(transfer?.etaSeconds ?? null)
       : null;
+  // F3: why a queued download is held ("Scheduled for 02:00", "Waiting for charging"…).
+  const waitingLabel = waitingLabelFor(transfer);
   const localAvailability =
     transfer?.localState === 'missing'
       ? t('downloads.missingOnDevice')
@@ -340,6 +344,14 @@ const DetailsBody = memo(function DetailsBody({
             <Text variant="bodySmall" color="textSecondary">
               {[speedLabel, etaLabel].filter(Boolean).join(' · ')}
             </Text>
+          ) : null}
+          {waitingLabel ? (
+            <Box row rtlRow gap={6} style={{ alignItems: 'center' }} testID="download-details-wait">
+              <Icon name="clock-outline" size={16} color="secondary" />
+              <Text variant="bodySmall" color="textSecondary" style={{ flex: 1 }}>
+                {waitingLabel}
+              </Text>
+            </Box>
           ) : null}
         </Box>
       ) : null}
@@ -513,7 +525,10 @@ const DetailsBody = memo(function DetailsBody({
       </Box>
 
       {item.status === 'DOWNLOADING' || item.status === 'PAUSED' || item.status === 'QUEUED' ? (
-        <DownloadBandwidthControls downloadId={item.id} />
+        <>
+          <DownloadStartAtControl downloadId={item.id} startAt={transfer?.startAt ?? null} />
+          <DownloadBandwidthControls downloadId={item.id} />
+        </>
       ) : null}
 
       {(sourceHost || item.sourceUrl) && (

@@ -36,6 +36,11 @@ describe('v2 download settings', () => {
       preferredMaxHeight: null,
       connectionsPerFile: 3,
       speedLimitBytesPerSecond: null,
+      downloadWindow: null,
+      notOnRoaming: false,
+      pauseOnLowBattery: false,
+      onlyWhileCharging: false,
+      language: 'en',
     });
   });
 

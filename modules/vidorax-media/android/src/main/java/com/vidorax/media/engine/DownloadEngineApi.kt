@@ -78,6 +78,16 @@ interface DownloadEngineApi {
   suspend fun cleanLeftovers(keepLegacyIds: Set<String>?): LeftoverSummary = LeftoverSummary.NONE
 
   /**
+   * F3 "Start at…": the earliest moment [id] may run (null: as soon as the rules allow). A paused download starts by
+   * itself then; a running one stops and waits. Throws NotFoundException / InvalidStateException (finished).
+   */
+  suspend fun setDownloadStartAt(id: String, startAt: Long?): DownloadRecord =
+    throw UnsupportedOperationException("setDownloadStartAt")
+
+  /** F3: when and under which conditions the waiting downloads may next run (the background wake-up); null: none wait. */
+  suspend fun wakePlan(): WakePlan? = null
+
+  /**
    * Downloads that reached COMPLETED with their verified library item and that JavaScript has not acknowledged yet —
    * including completions that happened while no JavaScript was running. Oldest first.
    */
@@ -86,3 +96,15 @@ interface DownloadEngineApi {
   /** Marks completions as counted, so each is reported once. */
   suspend fun acknowledgeCompletions(ids: List<String>)
 }
+
+/**
+ * F3: the background wake-up for downloads held by a rule — not before [earliestAt] (a start time, the download hours
+ * opening), and only with the device conditions the rules ask for. Android's JobScheduler decides the exact moment.
+ */
+data class WakePlan(
+  val earliestAt: Long,
+  val requiresCharging: Boolean,
+  val requiresBatteryNotLow: Boolean,
+  val notRoaming: Boolean,
+  val unmetered: Boolean,
+)

@@ -16,6 +16,7 @@ import {
   getStatusLabel,
   getSupportedActions,
   resolveTransferRuntime,
+  waitingLabelFor,
   type DownloadCardAction,
 } from '../utils/download-format';
 
@@ -190,11 +191,14 @@ export const DownloadCard = memo(function DownloadCard({
     item.status === 'PAUSED' ||
     (item.status === 'QUEUED' && progressValue > 0);
   const showPercentLabel = hasKnownTotal && item.status !== 'COMPLETED';
+  // F3: a held download that has no progress line yet still says why it waits.
+  const waitingLine = showProgress ? null : waitingLabelFor(transfer);
   const showCompletedBadge = item.status === 'COMPLETED';
 
   const accessibilityParts = [
     title,
     statusLabel,
+    waitingLine,
     metaLine,
     // Progress percent lives on ProgressBar accessibilityValue — avoid
     // re-announcing every ~250ms tick via this parent label.
@@ -298,6 +302,16 @@ export const DownloadCard = memo(function DownloadCard({
             {item.fileName && item.fileName !== title ? (
               <Text variant="caption" color="textSecondary" numberOfLines={1}>
                 {item.fileName}
+              </Text>
+            ) : null}
+
+            {waitingLine ? (
+              <Text
+                variant="caption"
+                color="textSecondary"
+                numberOfLines={1}
+                testID={testID ? `${testID}-wait` : undefined}>
+                {waitingLine}
               </Text>
             ) : null}
 

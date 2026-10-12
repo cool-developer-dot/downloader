@@ -349,3 +349,36 @@ class DownloadBandwidthStoreTest {
     assertTrue(store.listBandwidth().isEmpty())
   }
 }
+
+/** F3: start times in `download_schedule`. */
+@RunWith(RobolectricTestRunner::class)
+class DownloadScheduleStoreTest {
+  private val context = RuntimeEnvironment.getApplication()
+  private lateinit var database: MediaDatabase
+  private lateinit var store: SqliteDownloadStore
+
+  @Before fun setUp() {
+    database = MediaDatabase(context)
+    store = SqliteDownloadStore(database)
+  }
+
+  @After fun tearDown() {
+    database.close()
+    File(context.noBackupFilesDir, MediaDatabase.NAME).delete()
+  }
+
+  @Test fun startTimesAreKeptReplacedAndCleared() = runBlocking {
+    store.saveSchedule("a", 1_000L)
+    store.saveSchedule("b", 2_000L)
+    store.saveSchedule("a", 3_000L)
+    assertEquals(mapOf("a" to 3_000L, "b" to 2_000L), store.listSchedules())
+    store.saveSchedule("b", null)
+    assertEquals(mapOf("a" to 3_000L), store.listSchedules())
+  }
+
+  @Test fun deletingADownloadDeletesItsStartTime() = runBlocking {
+    store.saveSchedule("a", 1_000L)
+    store.delete("a")
+    assertTrue(store.listSchedules().isEmpty())
+  }
+}

@@ -16,7 +16,8 @@ import {
 import type { QueueWaitingReason } from '@/downloads/scheduler';
 import type { ProcessingStage } from '@modules/vidorax-media/src/VidoraMedia.types';
 
-import { translate } from '@/localization/translate';
+import { waitLabel } from '@/downloads/v2/conditions';
+import { getActiveLanguage, translate } from '@/localization/translate';
 import type { TranslationKey } from '@/localization/types';
 
 import { DOWNLOAD_SECTION_ORDER } from '../constants/downloads.constants';
@@ -369,7 +370,22 @@ export function buildProgressMeta(
         ? `${downloaded} downloaded`
         : null;
 
+  // F3: a download held by a rule says why ("Scheduled for 02:00", "Waiting for charging"…) and keeps its bytes.
+  const waiting = waitingLabelFor(transfer);
+  if (waiting) {
+    // Left-to-right marks keep "52.6 MB of 144.8 MB" in order after an Urdu label (no effect in English).
+    const size = transfer?.bytesWritten && sizePart ? `\u200E${sizePart}\u200E` : null;
+    return [waiting, size].filter(Boolean).join(' · ');
+  }
+
   return [sizePart, speed, eta].filter(Boolean).join(' · ') || null;
+}
+
+/** F3: the wait label of a `waiting_conditions` download, in the app's language; null otherwise. */
+export function waitingLabelFor(transfer?: TransferProgressSnapshot | null, now: number = Date.now()): string | null {
+  return waitLabel(transfer?.waitReason, transfer?.waitUntil, now, getActiveLanguage(), (key, params) =>
+    translate(key as TranslationKey, params),
+  );
 }
 
 export function groupDownloadsIntoSections(

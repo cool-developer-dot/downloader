@@ -114,6 +114,12 @@ internal interface DownloadStore {
   suspend fun saveBandwidth(entry: DownloadBandwidth) {}
 
   suspend fun deleteBandwidth(id: String) {}
+
+  /** F3: every download's own start time (epoch ms), by download id. */
+  suspend fun listSchedules(): Map<String, Long> = emptyMap()
+
+  /** F3: sets (or with null removes) [id]'s start time. */
+  suspend fun saveSchedule(id: String, startAt: Long?) {}
 }
 
 /** The real SQLite-backed store. Request context is JSON in `request_json`, stripped of secrets on the way in. */
@@ -180,6 +186,33 @@ internal class SqliteDownloadStore(private val database: MediaDatabase) : Downlo
     database.transaction { db ->
       db.delete(TABLE, "id = ?", arrayOf(id))
       db.delete(BANDWIDTH, "download_id = ?", arrayOf(id))
+      db.delete(SCHEDULE, "download_id = ?", arrayOf(id))
+    }
+  }
+
+  override suspend fun listSchedules(): Map<String, Long> = database.read { db ->
+    db.rawQuery("SELECT download_id, start_at FROM $SCHEDULE", null).use { cursor ->
+      buildMap(cursor.count) {
+        while (cursor.moveToNext()) put(cursor.getString(0), cursor.getLong(1))
+      }
+    }
+  }
+
+  override suspend fun saveSchedule(id: String, startAt: Long?) {
+    database.transaction { db ->
+      if (startAt == null) {
+        db.delete(SCHEDULE, "download_id = ?", arrayOf(id))
+      } else {
+        db.insertWithOnConflict(
+          SCHEDULE,
+          null,
+          ContentValues().apply {
+            put("download_id", id)
+            put("start_at", startAt)
+          },
+          SQLiteDatabase.CONFLICT_REPLACE,
+        )
+      }
     }
   }
 
@@ -281,6 +314,7 @@ internal class SqliteDownloadStore(private val database: MediaDatabase) : Downlo
   private companion object {
     const val TABLE = "downloads"
     const val BANDWIDTH = "download_bandwidth"
+    const val SCHEDULE = "download_schedule"
     const val COMPLETIONS = "completions"
     const val MAX_UNACKNOWLEDGED = 500
     const val COMPLETED_RETENTION_MS = 24L * 60 * 60 * 1000

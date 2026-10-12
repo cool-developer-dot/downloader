@@ -2,7 +2,7 @@ package com.vidorax.media.db
 
 /** Schema of vidorax-media.db (docs/ARCHITECTURE.md section 3.4). */
 internal object Schema {
-  const val VERSION = 5
+  const val VERSION = 6
 
   val CREATE: List<String> = listOf(
     // downloads: the v2 engine reads/writes the columns marked ACTIVE below.
@@ -99,6 +99,7 @@ internal object Schema {
     GALLERY_EXPORTS_TABLE,
     GALLERY_EXPORTS_IDENTITY_INDEX,
     DOWNLOAD_BANDWIDTH_TABLE,
+    DOWNLOAD_SCHEDULE_TABLE,
   )
 
   /**
@@ -131,6 +132,8 @@ internal object Schema {
     // v5 (F2): a download's own speed limit and the Priority mark — a new table, no existing table touched; safe to
     // run twice.
     5 to listOf(DOWNLOAD_BANDWIDTH_TABLE),
+    // v6 (F3): a download's own start time — a new table, no existing table touched; safe to run twice.
+    6 to listOf(DOWNLOAD_SCHEDULE_TABLE),
   )
 
   /**
@@ -158,6 +161,10 @@ internal object Schema {
   private const val DOWNLOAD_BANDWIDTH_TABLE =
     "CREATE TABLE IF NOT EXISTS download_bandwidth " +
       "(download_id TEXT PRIMARY KEY, limit_bps INTEGER, priority INTEGER NOT NULL DEFAULT 0)"
+
+  /** F3 "Start at…": the earliest moment (epoch ms) a download may run. */
+  private const val DOWNLOAD_SCHEDULE_TABLE =
+    "CREATE TABLE IF NOT EXISTS download_schedule (download_id TEXT PRIMARY KEY, start_at INTEGER NOT NULL)"
 
   private const val GALLERY_EXPORTS_IDENTITY_INDEX =
     "CREATE INDEX gallery_exports_identity ON gallery_exports(identity_key)"

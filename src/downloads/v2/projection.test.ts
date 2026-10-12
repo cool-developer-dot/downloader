@@ -15,6 +15,7 @@ describe('v2 engine state → the existing Downloads row', () => {
       completed: { status: 'COMPLETED', execution: 'COMPLETED' },
       failed: { status: 'FAILED', execution: 'FAILED' },
       cancelled: { status: 'CANCELLED', execution: 'CANCELLED' },
+      waiting_conditions: { status: 'QUEUED', execution: 'QUEUED' },
     };
     for (const [state, want] of Object.entries(expected)) {
       const record = downloadRecord({ state: state as never });
@@ -134,5 +135,20 @@ describe('processing stage', () => {
       const entry = projectV2Download(downloadRecord({ state: 'failed', errorCode: code }));
       assert.ok(entry.item.errorMessage && entry.item.errorMessage !== 'The download failed.', code);
     }
+  });
+
+  test('F3: a held download carries why and until when; its own start time travels with every state', () => {
+    const held = projectV2Download(
+      downloadRecord({ state: 'waiting_conditions', waitReason: 'scheduled', waitUntil: 1_800_000, startAt: 1_800_000 }),
+    );
+    assert.equal(held.item.status, 'QUEUED');
+    assert.equal(held.transfer.waitReason, 'scheduled');
+    assert.equal(held.transfer.waitUntil, 1_800_000);
+    assert.equal(held.transfer.startAt, 1_800_000);
+    // A stale reason on a running record is never shown.
+    const running = projectV2Download(downloadRecord({ state: 'downloading', waitReason: 'charging', startAt: 5 }));
+    assert.equal(running.transfer.waitReason, null);
+    assert.equal(running.transfer.waitUntil, null);
+    assert.equal(running.transfer.startAt, 5);
   });
 });

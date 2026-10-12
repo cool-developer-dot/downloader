@@ -11,3 +11,7 @@ export const selectNotifications = (state: SettingsStore) => state.notifications
 export const selectLanguage = (state: SettingsStore) => state.language;
 export const selectMaxConcurrentDownloads = (state: SettingsStore) =>
   state.maxConcurrentDownloads;
+export const selectDownloadHours = (state: SettingsStore) => state.downloadHours;
+export const selectNotOnRoaming = (state: SettingsStore) => state.notOnRoaming;
+export const selectPauseOnLowBattery = (state: SettingsStore) => state.pauseOnLowBattery;
+export const selectOnlyWhileCharging = (state: SettingsStore) => state.onlyWhileCharging;

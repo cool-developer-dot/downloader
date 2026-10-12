@@ -282,6 +282,17 @@ class DownloadRunnerTest {
   }
 
   @Test
+  fun `F3 a download held in the last process loses its waiting notification once it runs again`() {
+    // The old process posted "Waiting for charging" as this download's own notification; on the wake-up the engine
+    // requeues the row before the runner restores, so the runner only ever sees it live.
+    runner.restore(listOf(record(state = DownloadState.QUEUED, bytesDone = 400)))
+
+    assertEquals("the leftover notification is taken away", listOf("dl-1"), notifier.cleared)
+    assertEquals("the runner's notification shows it", 1, host.summary.activeCount)
+    assertNull("and it is not posted twice", notifier.latest("dl-1"))
+  }
+
+  @Test
   fun `9 a restored download reconnects to its notification`() {
     runner.restore(listOf(record(state = DownloadState.DOWNLOADING, bytesDone = 400)))
 

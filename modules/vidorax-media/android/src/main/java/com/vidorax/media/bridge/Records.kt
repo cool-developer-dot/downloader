@@ -4,6 +4,7 @@ import com.vidorax.media.InvalidRequestException
 import com.vidorax.media.analyze.PageFetchRequest
 import com.vidorax.media.library.Titles
 import com.vidorax.media.model.DownloadSettings
+import com.vidorax.media.model.DownloadWindow
 import com.vidorax.media.model.EnqueueRequest
 import com.vidorax.media.model.LegacyMetadata
 import com.vidorax.media.model.LibraryQuery
@@ -151,6 +152,13 @@ data class DownloadSettingsRecord(
   @Field val connectionsPerFile: Int? = null,
   /** Missing, null or 0: no speed limit. */
   @Field val speedLimitBytesPerSecond: Double? = null,
+  /** F3: the daily download hours; missing or null = any time. */
+  @Field val downloadWindow: DownloadWindowRecord? = null,
+  @Field val notOnRoaming: Boolean = false,
+  @Field val pauseOnLowBattery: Boolean = false,
+  @Field val onlyWhileCharging: Boolean = false,
+  /** The app's language ("en" / "ur") for the F3 notification texts. */
+  @Field val language: String? = null,
 ) : Record {
   fun toModel(): DownloadSettings {
     if (maxConcurrent !in DownloadSettings.MIN_CONCURRENT..DownloadSettings.MAX_CONCURRENT) {
@@ -170,7 +178,26 @@ data class DownloadSettingsRecord(
       preferredMaxHeight,
       connections,
       speedLimit?.toLong()?.takeIf { it > 0 },
+      window = downloadWindow?.toModel(),
+      notOnRoaming = notOnRoaming,
+      pauseOnLowBattery = pauseOnLowBattery,
+      onlyWhileCharging = onlyWhileCharging,
+      language = if (language == "ur") "ur" else "en",
     )
+  }
+}
+
+/** F3: `DownloadSettings.downloadWindow` — minutes after midnight and ISO weekdays (at least one). */
+data class DownloadWindowRecord(
+  @Field val startMinute: Int = 0,
+  @Field val endMinute: Int = 0,
+  @Field val days: List<Int> = emptyList(),
+) : Record {
+  fun toModel(): DownloadWindow {
+    val range = 0 until DownloadWindow.MINUTES_PER_DAY
+    if (startMinute !in range || endMinute !in range) invalid("downloadWindow minutes must be 0-1439")
+    if (days.isEmpty() || days.any { it !in 1..7 }) invalid("downloadWindow days must be ISO weekdays 1-7, at least one")
+    return DownloadWindow(startMinute, endMinute, days.toSet())
   }
 }
 

@@ -76,7 +76,10 @@ internal class DownloadRunner(
       if (record.state in TERMINAL) continue
       onState(record)
     }
-    apply(Plan(host = synchronized(lock) { hostActionLocked() }))
+    // A previous process may have left a download's own notification up — one held by an F3 rule, which the engine
+    // requeues before this runs — that the runner's notification shows now. This process never posted it, so it
+    // would never take it away; cancelling an id that is not posted is a no-op.
+    apply(synchronized(lock) { Plan(clear = (tracked.keys - ownNotification).toList(), host = hostActionLocked()) })
   }
 
   fun onState(record: DownloadRecord) {

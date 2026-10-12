@@ -108,6 +108,11 @@ export function ensureV2DownloadBridge(): void {
       saveToGallery: settings.saveToGallery,
       connectionsPerFile: settings.connectionsPerFile,
       speedLimitBytesPerSecond: settings.downloadSpeedLimit,
+      downloadHours: settings.downloadHours,
+      notOnRoaming: settings.notOnRoaming,
+      pauseOnLowBattery: settings.pauseOnLowBattery,
+      onlyWhileCharging: settings.onlyWhileCharging,
+      language: settings.language,
     });
   };
   pushSettings();

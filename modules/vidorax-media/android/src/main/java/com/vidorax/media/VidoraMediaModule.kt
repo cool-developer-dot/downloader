@@ -197,6 +197,11 @@ class VidoraMediaModule : Module() {
       engine.setDownloadBandwidth(id, options.limit(), options.priority == true).map { it.toJs() }
     }
 
+    AsyncFunction("setDownloadStartAt") Coroutine { id: String, startAt: Double? ->
+      val at = startAt?.takeIf { !it.isNaN() && it > 0 }?.toLong()
+      engine.setDownloadStartAt(id, at).toJs()
+    }
+
     AsyncFunction("listDownloadBandwidth") Coroutine { ->
       engine.listDownloadBandwidth().map { it.toJs() }
     }

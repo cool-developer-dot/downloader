@@ -5,6 +5,7 @@
 
 import type { DownloadSettings } from '@modules/vidorax-media/src/VidoraMedia.types';
 
+import { downloadWindowForEngine, sameDownloadWindow, type DownloadHours } from './conditions';
 import type { V2EnginePort } from './engine-port';
 import { speedLimitForEngine } from './speed-limit';
 
@@ -17,6 +18,16 @@ export type V2SettingsInput = {
   connectionsPerFile?: number;
   /** Settings → Download Settings → "Speed limit", bytes per second (0 = off). */
   speedLimitBytesPerSecond?: number;
+  /** F3: "Download hours" (null or off = any time). */
+  downloadHours?: DownloadHours | null;
+  /** F3: "Not on roaming". */
+  notOnRoaming?: boolean;
+  /** F3: "Pause when battery is low". */
+  pauseOnLowBattery?: boolean;
+  /** F3: "Only while charging". */
+  onlyWhileCharging?: boolean;
+  /** The app's language, for the engine's own notification texts. */
+  language?: string;
 };
 
 const MIN_CONCURRENT = 1;
@@ -49,6 +60,11 @@ export function v2DownloadSettings(input: V2SettingsInput): DownloadSettings {
     preferredMaxHeight: null,
     connectionsPerFile: normalizeConnectionsPerFile(input.connectionsPerFile),
     speedLimitBytesPerSecond: speedLimitForEngine(input.speedLimitBytesPerSecond),
+    downloadWindow: downloadWindowForEngine(input.downloadHours),
+    notOnRoaming: input.notOnRoaming === true,
+    pauseOnLowBattery: input.pauseOnLowBattery === true,
+    onlyWhileCharging: input.onlyWhileCharging === true,
+    language: input.language === 'ur' ? 'ur' : 'en',
   };
 }
 
@@ -59,7 +75,12 @@ export function sameV2Settings(a: DownloadSettings, b: DownloadSettings): boolea
     a.autoSaveToGallery === b.autoSaveToGallery &&
     a.preferredMaxHeight === b.preferredMaxHeight &&
     a.connectionsPerFile === b.connectionsPerFile &&
-    (a.speedLimitBytesPerSecond ?? null) === (b.speedLimitBytesPerSecond ?? null)
+    (a.speedLimitBytesPerSecond ?? null) === (b.speedLimitBytesPerSecond ?? null) &&
+    sameDownloadWindow(a.downloadWindow, b.downloadWindow) &&
+    (a.notOnRoaming ?? false) === (b.notOnRoaming ?? false) &&
+    (a.pauseOnLowBattery ?? false) === (b.pauseOnLowBattery ?? false) &&
+    (a.onlyWhileCharging ?? false) === (b.onlyWhileCharging ?? false) &&
+    (a.language ?? 'en') === (b.language ?? 'en')
   );
 }
 

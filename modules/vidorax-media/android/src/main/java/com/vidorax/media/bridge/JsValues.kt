@@ -101,6 +101,9 @@ internal fun DownloadRecord.toJs(): Map<String, Any?> = mapOf(
   "libraryItemId" to libraryItemId,
   "createdAt" to createdAt,
   "updatedAt" to updatedAt,
+  "waitReason" to waitReason?.wire,
+  "waitUntil" to waitUntil,
+  "startAt" to startAt,
 )
 
 internal fun EnqueueResult.toJs(): Map<String, Any?> = when (this) {

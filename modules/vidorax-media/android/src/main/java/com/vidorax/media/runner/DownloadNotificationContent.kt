@@ -4,6 +4,12 @@ import com.vidorax.media.model.DownloadErrorCode
 import com.vidorax.media.model.DownloadRecord
 import com.vidorax.media.model.DownloadState
 import com.vidorax.media.model.ProcessingStage
+import com.vidorax.media.model.WaitReason
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import kotlin.math.abs
 
 /**
@@ -82,6 +88,46 @@ internal object DownloadNotificationText {
     ProcessingStage.VERIFYING, null -> PROCESSING
   }
   const val COMPLETED = "Download complete"
+
+  /**
+   * F3: the app's language for the wait texts ("en" or "ur"), set from the download settings JavaScript pushes. The
+   * other texts here are English (as before F3).
+   */
+  @Volatile
+  var language: String = "en"
+
+  /** F3: what a download held by a rule says — the same words as its Downloads row. */
+  fun waiting(
+    reason: WaitReason?,
+    until: Long?,
+    now: Long = System.currentTimeMillis(),
+    zone: TimeZone = TimeZone.getDefault(),
+  ): String {
+    val urdu = language == "ur"
+    return when (reason) {
+      WaitReason.SCHEDULED -> {
+        val at = until?.let { whenText(it, now, zone, urdu) }
+        if (urdu) (at?.let { "$it کے لیے شیڈول" } ?: "شیڈول") else (at?.let { "Scheduled for $it" } ?: "Scheduled")
+      }
+      WaitReason.OUTSIDE_HOURS -> if (urdu) "ڈاؤن لوڈ کے اوقات سے باہر" else "Outside download hours"
+      WaitReason.ROAMING -> if (urdu) "رکا ہوا — رومنگ" else "Paused — roaming"
+      WaitReason.CHARGING -> if (urdu) "چارجنگ کا انتظار" else "Waiting for charging"
+      WaitReason.BATTERY_LOW -> if (urdu) "رکا ہوا — بیٹری کم" else "Paused — battery low"
+      null -> if (urdu) "انتظار" else "Waiting"
+    }
+  }
+
+  /** "02:00" today, else with the weekday ("Tue 02:00"); 24-hour, Latin digits. */
+  internal fun whenText(at: Long, now: Long, zone: TimeZone, urdu: Boolean): String {
+    val time = SimpleDateFormat("HH:mm", Locale.US).apply { timeZone = zone }.format(Date(at))
+    val day = Calendar.getInstance(zone).apply { timeInMillis = at }
+    val today = Calendar.getInstance(zone).apply { timeInMillis = now }
+    val sameDay = day.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
+      day.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR)
+    if (sameDay) return time
+    val weekday = SimpleDateFormat("EEE", if (urdu) Locale("ur") else Locale.US).apply { timeZone = zone }.format(Date(at))
+    return "$weekday $time"
+  }
 
   /** Short, non-sensitive reasons; the Downloads row carries the fuller message. */
   fun failure(code: DownloadErrorCode?): String = when (code) {
@@ -203,6 +249,16 @@ internal fun notificationContentFor(
       content(DownloadNotificationText.WAITING_NETWORK, active, progress = true, ongoing = true, actions = pauseAndCancel)
     DownloadState.WAITING_RETRY ->
       content(DownloadNotificationText.WAITING_RETRY, active, progress = true, ongoing = true, actions = pauseAndCancel)
+    // F3: held by a rule — not running work, so not ongoing; it goes on by itself when the rule clears.
+    DownloadState.WAITING_CONDITIONS ->
+      content(
+        DownloadNotificationText.waiting(record.waitReason, record.waitUntil),
+        DownloadNotificationContent.Kind.PAUSED,
+        progress = true,
+        ongoing = false,
+        withDetail = false,
+        actions = pauseAndCancel,
+      )
     // Finishing up is verify → finalize → library: stopping it there is not something the engine allows.
     DownloadState.PROCESSING ->
       content(DownloadNotificationText.processing(stage), active, progress = true, ongoing = true)

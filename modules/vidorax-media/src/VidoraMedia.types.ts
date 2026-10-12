@@ -270,6 +270,11 @@ export type DownloadState =
   | 'paused'
   | 'waiting_network'
   | 'waiting_retry'
+  /**
+   * F3: held by a rule until it clears — its start time, the daily download hours, roaming, charging or low battery
+   * (`DownloadRecord.waitReason`). Resumes by itself from the bytes on disk; not counted as running work.
+   */
+  | 'waiting_conditions'
   /** Merging / remuxing / converting the downloaded tracks, verifying the result and adding it to the library. */
   | 'processing'
   | 'completed'
@@ -331,6 +336,30 @@ export interface DownloadRecord {
   /** Epoch milliseconds. */
   createdAt: number;
   updatedAt: number;
+  /** `waiting_conditions` only: which rule holds it. Missing on older native builds. */
+  waitReason?: DownloadWaitReason | null;
+  /** `waiting_conditions` only: when a time rule ends (the start time, the download hours opening), epoch ms. */
+  waitUntil?: number | null;
+  /** F3 "Start at…": the earliest moment this download may run, epoch ms; null = now. */
+  startAt?: number | null;
+}
+
+/**
+ * F3: why a download waits. `scheduled` — its own start time; `outside_hours` — the daily download hours;
+ * `roaming` — "Not on roaming"; `charging` — "Only while charging"; `battery_low` — "Pause when battery is low"
+ * (≤ 15 % and not charging).
+ */
+export type DownloadWaitReason = 'scheduled' | 'outside_hours' | 'roaming' | 'charging' | 'battery_low';
+
+/**
+ * F3: the daily download hours. Minutes after local midnight; `startMinute > endMinute` crosses midnight (22:00 →
+ * 06:00), equal values mean the whole day. `days` are ISO weekdays (1 = Monday … 7 = Sunday) on which the window
+ * *starts* — the hours after midnight of a crossing window belong to the day before.
+ */
+export interface DownloadWindow {
+  startMinute: number;
+  endMinute: number;
+  days: number[];
 }
 
 /** What the `processing` phase is doing (progress events only). */
@@ -481,6 +510,16 @@ export interface DownloadSettings {
    * (single file, parallel parts, segments), so it holds whatever the connections per file.
    */
   speedLimitBytesPerSecond?: number | null;
+  /** F3: downloads run only inside these daily hours; null or missing = any time. */
+  downloadWindow?: DownloadWindow | null;
+  /** F3: hold downloads while the phone is roaming. Default false. */
+  notOnRoaming?: boolean;
+  /** F3: hold downloads while the battery is at 15 % or less and not charging. Default false. */
+  pauseOnLowBattery?: boolean;
+  /** F3: run downloads only while the phone is charging. Default false. */
+  onlyWhileCharging?: boolean;
+  /** The app's language for the engine's own notification texts of F3 waits ('en' | 'ur'). Default 'en'. */
+  language?: string;
 }
 
 /**
@@ -568,6 +607,13 @@ export interface VidoraMediaModuleApi {
     id: string,
     options: { speedLimitBytesPerSecond?: number | null; priority?: boolean },
   ): Promise<DownloadBandwidth[]>;
+  /**
+   * F3 "Start at…": the earliest moment (epoch ms) this unfinished download may run; null starts it as soon as the
+   * other rules allow. A running download set to a later time stops and waits (its bytes stay). Persisted, survives
+   * restarts and reboots; the actual start can be a few minutes late (Android decides when background work runs).
+   * Rejects with ERR_NOT_FOUND for an unknown id, ERR_INVALID_STATE for a finished one. Missing on older native builds.
+   */
+  setDownloadStartAt?(id: string, startAt: number | null): Promise<DownloadRecord>;
   /** Every download that has its own limit or the priority mark. Missing on older native builds. */
   listDownloadBandwidth?(): Promise<DownloadBandwidth[]>;
 

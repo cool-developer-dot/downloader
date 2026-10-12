@@ -32,6 +32,7 @@ import {
   CONCURRENT_SEGMENT_OPTIONS,
   CONNECTION_SEGMENT_OPTIONS,
 } from './constants';
+import { DownloadConditionsSection } from './DownloadConditionsSection';
 import { useDownloadSettingsScreen } from './useDownloadSettingsScreen';
 
 export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
@@ -298,6 +299,10 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
         </SettingsStaggerItem>
 
         <SettingsStaggerItem index={2}>
+          <DownloadConditionsSection disabled={preferenceDisabled} />
+        </SettingsStaggerItem>
+
+        <SettingsStaggerItem index={3}>
           <SettingsSection
             testID="download-settings-notifications"
             title={t('settings.downloadNotificationsSection')}

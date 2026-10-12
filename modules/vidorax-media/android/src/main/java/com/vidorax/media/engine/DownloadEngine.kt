@@ -69,6 +69,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import java.util.TimeZone
 
 /**
  * The download engine. It owns the queue and the `downloads` table and drives each download through:
@@ -101,6 +105,10 @@ internal class DownloadEngine(
   private val paths: StoragePaths,
   private val scope: CoroutineScope,
   private val network: NetworkGate = NetworkGate.ALWAYS_USABLE,
+  /** F3: battery, charging and roaming for the download rules. */
+  private val device: DeviceConditions = DeviceConditions.UNKNOWN,
+  /** F3: the zone the daily download hours are in (the device's own). */
+  private val zone: () -> TimeZone = { TimeZone.getDefault() },
   private val freeSpace: FreeSpace = FreeSpace { Long.MAX_VALUE },
   initialSettings: DownloadSettings = DownloadSettings.DEFAULT,
   /** Persists the settings, so a download that resumes before JavaScript runs still obeys them. */
@@ -132,6 +140,23 @@ internal class DownloadEngine(
   /** Speed limits (F2): the global limit from the settings, per-download limits and Priority from `download_bandwidth`. */
   private val bandwidth = BandwidthLimiter().apply { setGlobalLimit(initialSettings.speedLimitBytesPerSecond) }
   private val bandwidthLoaded = AtomicBoolean(false)
+
+  /** F3 "Start at…": per-download start times from `download_schedule`, loaded once per process. */
+  private val schedules = ConcurrentHashMap<String, Long>()
+  private val schedulesLoaded = AtomicBoolean(false)
+
+  /** F3: the rule holding each `waiting_conditions` download, for its record (reason, until when). */
+  private val holds = ConcurrentHashMap<String, Hold>()
+
+  /**
+   * F3: bumped whenever an input of the rules changes — the settings, a start time, the device. Every wait and every
+   * running transfer's rule watch looks again on each bump (and when a time rule is due).
+   */
+  private val policyVersion = MutableStateFlow(0L)
+
+  init {
+    scope.launch { device.changes.collect { policyVersion.update { it + 1 } } }
+  }
 
   /** Serializes all state/generation reads and writes. */
   private val mutex = Mutex()
@@ -176,7 +201,10 @@ internal class DownloadEngine(
         DownloadState.WAITING_NETWORK,
         DownloadState.WAITING_RETRY,
         -> requeueFromPart(row, keepBytes = false)
-        DownloadState.DOWNLOADING -> requeueFromPart(row, keepBytes = true)
+        // Held by a rule, possibly mid-transfer: back in the queue with its bytes; the rules are looked at again.
+        DownloadState.WAITING_CONDITIONS,
+        DownloadState.DOWNLOADING,
+        -> requeueFromPart(row, keepBytes = true)
         DownloadState.PROCESSING -> recoverProcessing(row)
         DownloadState.COMPLETED, DownloadState.FAILED, DownloadState.CANCELLED -> Unit
       }
@@ -240,7 +268,7 @@ internal class DownloadEngine(
       val bytes = if (keepBytes) resumableBytes(row) else 0L
       save(current.copy(state = DownloadState.QUEUED, bytesDone = bytes, errorCode = null, errorMessage = null, updatedAt = now()))
     }
-    stateFlow.tryEmit(requeued.toRecord())
+    stateFlow.tryEmit(recordOf(requeued))
     launchWorker(row.id)
   }
 
@@ -253,7 +281,7 @@ internal class DownloadEngine(
       val current = store.find(row.id) ?: return
       save(current.copy(state = DownloadState.QUEUED, bytesDone = resumableBytes(row), filePath = null, updatedAt = now()))
     }
-    stateFlow.tryEmit(requeued.toRecord())
+    stateFlow.tryEmit(recordOf(requeued))
     launchWorker(row.id)
   }
 
@@ -279,7 +307,7 @@ internal class DownloadEngine(
         if (current.state.isTerminal) return@withLock null
         save(current.copy(state = DownloadState.FAILED, errorCode = DownloadErrorCode.DUPLICATE, errorMessage = DUPLICATE_MESSAGE, updatedAt = now()))
       }
-      failed?.let { stateFlow.tryEmit(it.toRecord()) }
+      failed?.let { stateFlow.tryEmit(recordOf(it)) }
       cleanupWork(row.id)
       return true
     }
@@ -295,7 +323,7 @@ internal class DownloadEngine(
       saveCompleted(current.copy(state = DownloadState.COMPLETED, bytesDone = dest.length(), totalBytes = dest.length(), errorCode = null, errorMessage = null, updatedAt = now()))
     }
     completed?.let {
-      stateFlow.tryEmit(it.toRecord())
+      stateFlow.tryEmit(recordOf(it))
       cleanupWork(row.id)
       if (toGallery) gallery.publish(row.id)
     }
@@ -361,7 +389,7 @@ internal class DownloadEngine(
     val identity = identityOf(request)
     val result = mutex.withLock {
       identity?.let { duplicateLocked(it) }?.let { return@withLock it }
-      EnqueueResult.Enqueued(createRow(request, identity).toRecord())
+      EnqueueResult.Enqueued(recordOf(createRow(request, identity)))
     }
     when (result) {
       is EnqueueResult.Enqueued -> {
@@ -385,7 +413,7 @@ internal class DownloadEngine(
   /** Must be called while holding [mutex]. A live download of the video first, then a saved copy of it. */
   private suspend fun duplicateLocked(identity: String): EnqueueResult? {
     store.list(now()).firstOrNull { it.identityKey == identity && !it.state.isTerminal }
-      ?.let { return EnqueueResult.AlreadyDownloading(it.toRecord()) }
+      ?.let { return EnqueueResult.AlreadyDownloading(recordOf(it)) }
     val saved = runCatching { savedVideos.findByIdentity(identity) }.getOrNull() ?: return null
     return EnqueueResult.AlreadyDownloaded(saved.libraryItemId, saved.galleryUri)
   }
@@ -445,7 +473,7 @@ internal class DownloadEngine(
     // Returns only once the transfer has really stopped: no bytes land after the caller sees PAUSED, and a
     // resume that follows cannot start a second writer on the same `.part`.
     stopWorker(id) // transfer sees CancellationException and preserves the .part
-    paused?.let { stateFlow.tryEmit(it.toRecord()) }
+    paused?.let { stateFlow.tryEmit(recordOf(it)) }
   }
 
   override suspend fun resume(id: String) =
@@ -475,7 +503,7 @@ internal class DownloadEngine(
         ),
       )
     }
-    stateFlow.tryEmit(requeued.toRecord())
+    stateFlow.tryEmit(recordOf(requeued))
     launchWorker(id)
   }
 
@@ -489,7 +517,7 @@ internal class DownloadEngine(
     // Wait for the worker to stop before deleting its work directory, so nothing recreates the `.part` after it.
     stopWorker(id)
     cleanupWork(id)
-    stateFlow.tryEmit(cancelled.toRecord())
+    stateFlow.tryEmit(recordOf(cancelled))
   }
 
   override suspend fun removeDownload(id: String) {
@@ -500,6 +528,8 @@ internal class DownloadEngine(
       store.delete(id)
     }
     bandwidth.forget(id)
+    schedules.remove(id)
+    holds.remove(id)
     cleanupWork(id)
   }
 
@@ -515,13 +545,18 @@ internal class DownloadEngine(
     }
   }
 
-  override suspend fun listDownloads(): List<DownloadRecord> = store.list(now()).map { it.toRecord() }
+  override suspend fun listDownloads(): List<DownloadRecord> {
+    loadSchedules()
+    return store.list(now()).map { recordOf(it) }
+  }
 
   override suspend fun setDownloadSettings(settings: DownloadSettings) {
     this.settings = settings
     slots.setLimit(settings.maxConcurrent)
     bandwidth.setGlobalLimit(settings.speedLimitBytesPerSecond)
     runCatching { onSettingsChanged(settings) }
+    // F3: a changed rule applies at once to waiting and running downloads.
+    policyVersion.update { it + 1 }
   }
 
   override suspend fun setDownloadBandwidth(
@@ -613,7 +648,8 @@ internal class DownloadEngine(
   private suspend fun runWorker(id: String, gen: Long) {
     val start = store.find(id) ?: return
     loadBandwidth()
-    if (!awaitNetwork(id, gen)) return
+    // F3: a download held by a rule waits here, before it takes a slot, so it never blocks the queue.
+    if (!awaitAllowed(id, gen)) return
     // Beyond the configured limit the download simply stays QUEUED until a slot frees.
     slots.acquire()
     try {
@@ -1191,7 +1227,7 @@ internal class DownloadEngine(
   private suspend fun waitBeforeRetry(id: String, gen: Long, delayMs: Long, resumeAs: DownloadState): Boolean {
     if (setState(id, gen, DownloadState.WAITING_RETRY) == null) return false
     retryDelay(delayMs)
-    if (!awaitNetwork(id, gen, force = true)) return false
+    if (!awaitAllowed(id, gen, force = true)) return false
     return setState(id, gen, resumeAs) != null
   }
 
@@ -1244,9 +1280,9 @@ internal class DownloadEngine(
         transientCode = DownloadErrorCode.HTTP_ERROR
         transientMessage = "Server returned HTTP ${e.statusCode}"
       } catch (e: NetworkNoLongerAllowed) {
-        // Not a failure and not an attempt: the download waits for a connection it may use, then resumes
-        // from the bytes already on disk.
-        if (!awaitNetwork(id, gen, force = true)) return null
+        // Not a failure and not an attempt: the download waits for a connection it may use (or for a rule that
+        // stopped it — F3 — to clear), then resumes from the bytes already on disk.
+        if (!awaitAllowed(id, gen, force = true)) return null
         if (setState(id, gen, DownloadState.DOWNLOADING) == null) return null
         continue
       } catch (e: MediaNetworkException) {
@@ -1371,7 +1407,7 @@ internal class DownloadEngine(
       }
     }
     if (completed != null) {
-      stateFlow.tryEmit(completed.toRecord())
+      stateFlow.tryEmit(recordOf(completed))
       cleanupWork(id)
       // After COMPLETED, never before: only the final verified file is ever published, and a gallery failure can
       // no longer touch the download or its library item.
@@ -1394,6 +1430,114 @@ internal class DownloadEngine(
     if (setState(id, gen, DownloadState.WAITING_NETWORK) == null) return false
     network.awaitUsable(wifiOnly)
     return store.find(id)?.let { generations[id] == gen && !it.state.isTerminal } ?: false
+  }
+
+  // --- F3: rules (start time, download hours, roaming, charging, battery) ---
+
+  /** The download's own record, with what holds it (F3) and its start time. */
+  private fun recordOf(row: DownloadRow): DownloadRecord {
+    val hold = holds[row.id]?.takeIf { row.state == DownloadState.WAITING_CONDITIONS }
+    return row.toRecord().copy(waitReason = hold?.reason, waitUntil = hold?.until, startAt = schedules[row.id])
+  }
+
+  private fun holdFor(id: String): Hold? = DownloadRules.hold(schedules[id], settings, device.current(), now(), zone())
+
+  /** How long until the time part of the rules next changes for [id] (null: nothing timed). */
+  private fun untilNextTimeChange(id: String): Long? =
+    DownloadRules.nextTimeChange(schedules[id], settings, now(), zone())?.let { (it - now()).coerceAtLeast(1L) }
+
+  /** Waits for the next change of any rule input, or until the time rules are due. */
+  private suspend fun awaitPolicyChange(id: String, version: Long) {
+    withTimeoutOrNull(untilNextTimeChange(id) ?: Long.MAX_VALUE) { policyVersion.first { it != version } }
+  }
+
+  /** Once per process: the persisted start times (they survive restarts and reboots). */
+  private suspend fun loadSchedules() {
+    if (!schedulesLoaded.compareAndSet(false, true)) return
+    runCatching { store.listSchedules() }.getOrNull()?.let { schedules.putAll(it) }
+  }
+
+  /** The rules, then the network: true once the download may run, false when it was superseded meanwhile. */
+  private suspend fun awaitAllowed(id: String, gen: Long, force: Boolean = false): Boolean {
+    if (!awaitConditions(id, gen)) return false
+    return awaitNetwork(id, gen, force)
+  }
+
+  /**
+   * Holds the download in WAITING_CONDITIONS while a rule holds it, with the rule and its end time in the record
+   * ("Scheduled for 02:00", "Waiting for charging"…), then lets it go on. False when the user superseded it.
+   */
+  private suspend fun awaitConditions(id: String, gen: Long): Boolean {
+    loadSchedules()
+    var held = false
+    while (true) {
+      val version = policyVersion.value
+      val hold = holdFor(id)
+      if (hold == null) {
+        holds.remove(id)
+        // A start time that has arrived has done its job.
+        schedules[id]?.takeIf { it <= now() }?.let {
+          schedules.remove(id)
+          runCatching { store.saveSchedule(id, null) }
+        }
+        return !held || setState(id, gen, DownloadState.QUEUED) != null
+      }
+      val reported = holds.put(id, hold)
+      if (!held || reported != hold) {
+        if (setState(id, gen, DownloadState.WAITING_CONDITIONS) == null) {
+          holds.remove(id)
+          return false
+        }
+      }
+      held = true
+      awaitPolicyChange(id, version)
+      if (store.find(id)?.let { generations[id] == gen && !it.state.isTerminal } != true) {
+        holds.remove(id)
+        return false
+      }
+    }
+  }
+
+  /** Returns once a rule holds [id]; a running transfer is then stopped and waits (see [streamWithProgress]). */
+  private suspend fun awaitHeld(id: String) {
+    while (true) {
+      val version = policyVersion.value
+      if (holdFor(id) != null) return
+      awaitPolicyChange(id, version)
+    }
+  }
+
+  override suspend fun setDownloadStartAt(id: String, startAt: Long?): DownloadRecord {
+    loadSchedules()
+    val row = store.find(id) ?: throw NotFoundException("Unknown download $id")
+    if (row.state.isTerminal) throw InvalidStateException("Cannot schedule a ${row.state.wire} download")
+    store.saveSchedule(id, startAt)
+    if (startAt == null) schedules.remove(id) else schedules[id] = startAt
+    policyVersion.update { it + 1 }
+    val later = startAt != null && startAt > now()
+    when {
+      // A paused download given a start time starts then by itself.
+      row.state == DownloadState.PAUSED && later -> restart(id, allowed = setOf(DownloadState.PAUSED), bumpAttempts = false)
+      // A running one gives its slot back and waits (its bytes stay); one already waiting just looks again.
+      later && row.state in RUNNING && row.state != DownloadState.WAITING_CONDITIONS -> launchWorker(id)
+      else -> Unit
+    }
+    return recordOf(store.find(id) ?: row)
+  }
+
+  override suspend fun wakePlan(): WakePlan? {
+    loadSchedules()
+    val waiting = store.list(now()).filter { it.state == DownloadState.WAITING_CONDITIONS }
+    if (waiting.isEmpty()) return null
+    val current = settings
+    val earliest = waiting.minOf { row -> holdFor(row.id)?.until ?: now() }
+    return WakePlan(
+      earliestAt = earliest,
+      requiresCharging = current.onlyWhileCharging,
+      requiresBatteryNotLow = current.pauseOnLowBattery,
+      notRoaming = current.notOnRoaming,
+      unmetered = current.wifiOnly,
+    )
   }
 
   /** Refuses before the first byte when the volume cannot hold the file, instead of failing near the end. */
@@ -1489,12 +1633,19 @@ internal class DownloadEngine(
         stoppedByPolicy.set(true)
         transfer.cancel()
       }
+      // F3: the same for the download rules — the hours ending, roaming, the charger unplugged, the battery low.
+      val ruleWatch = launch {
+        awaitHeld(id)
+        stoppedByPolicy.set(true)
+        transfer.cancel()
+      }
       try {
         transfer.await()
       } catch (c: kotlinx.coroutines.CancellationException) {
         if (stoppedByPolicy.get()) throw NetworkNoLongerAllowed() else throw c
       } finally {
         watchdog.cancel()
+        ruleWatch.cancel()
         channel.close()
         collector.join()
       }
@@ -1547,7 +1698,7 @@ internal class DownloadEngine(
       if (generations[id] != gen || row.state.isTerminal) return null
       save(mutate(row).copy(state = state, updatedAt = now()))
     }
-    stateFlow.tryEmit(updated.toRecord())
+    stateFlow.tryEmit(recordOf(updated))
     return updated
   }
 
@@ -1557,7 +1708,7 @@ internal class DownloadEngine(
       if (generations[id] != gen || row.state.isTerminal) return
       save(row.copy(state = DownloadState.FAILED, errorCode = code, errorMessage = message, updatedAt = now()))
     }
-    stateFlow.tryEmit(failed.toRecord())
+    stateFlow.tryEmit(recordOf(failed))
   }
 
   private suspend fun persistProgress(id: String, gen: Long, bytes: Long, total: Long?) {
@@ -1589,6 +1740,10 @@ internal class DownloadEngine(
     // A finished download no longer needs its own limit or priority.
     bandwidth.forget(row.id)
     runCatching { store.deleteBandwidth(row.id) }
+    // …nor its start time (F3).
+    schedules.remove(row.id)
+    holds.remove(row.id)
+    runCatching { store.saveSchedule(row.id, null) }
     return row
   }
 
@@ -1723,6 +1878,7 @@ internal class DownloadEngine(
       DownloadState.DOWNLOADING,
       DownloadState.WAITING_NETWORK,
       DownloadState.WAITING_RETRY,
+      DownloadState.WAITING_CONDITIONS,
     )
 
     /** Already-running states: a repeated Resume/Retry is a no-op rather than an error. */
@@ -1732,6 +1888,7 @@ internal class DownloadEngine(
       DownloadState.DOWNLOADING,
       DownloadState.WAITING_NETWORK,
       DownloadState.WAITING_RETRY,
+      DownloadState.WAITING_CONDITIONS,
     )
     val SANITIZED_HEADERS = setOf("cookie", "authorization", "proxy-authorization")
 

@@ -31,6 +31,8 @@ const STATES: Record<DownloadState, StateProjection> = {
   probing: { status: 'QUEUED', workerState: 'STARTING', executionState: 'PREPARING', localState: 'not_started' },
   waiting_network: { status: 'QUEUED', workerState: 'WAITING', executionState: 'QUEUED', localState: 'not_started' },
   waiting_retry: { status: 'QUEUED', workerState: 'RETRY_WAIT', executionState: 'RETRYING', localState: 'not_started' },
+  // F3: held by a rule; the row shows why (transfer.waitReason) instead of "Queued".
+  waiting_conditions: { status: 'QUEUED', workerState: 'WAITING', executionState: 'QUEUED', localState: 'not_started' },
   downloading: { status: 'DOWNLOADING', workerState: 'TRANSFERRING', executionState: 'DOWNLOADING', localState: 'transferring' },
   // Verify → finalize → library insert: the existing "Finalizing" presentation.
   processing: { status: 'DOWNLOADING', workerState: 'VERIFYING', executionState: 'FINALIZING', localState: 'finalizing' },
@@ -151,6 +153,10 @@ export function projectV2Download(
     etaSeconds: progress ? progress.etaSeconds : null,
     // A completed record without its library item is not playable yet: never claim a file.
     localUri: library?.fileUri ?? null,
+    // F3: why it waits and its own start time.
+    waitReason: record.state === 'waiting_conditions' ? (record.waitReason ?? null) : null,
+    waitUntil: record.state === 'waiting_conditions' ? (record.waitUntil ?? null) : null,
+    startAt: record.startAt ?? null,
     localState: completed && !library ? 'finalizing' : projection.localState,
     workerState: projection.workerState,
     executionState: projection.executionState,

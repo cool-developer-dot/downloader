@@ -178,3 +178,37 @@ class SpeedLimitRecordsTest {
     org.junit.Assert.assertEquals(262144L, DownloadBandwidthRecord(speedLimitBytesPerSecond = 262144.0).limit())
   }
 }
+
+/** F3: the download-hours and condition settings from JavaScript. */
+class ConditionRecordsTest {
+  @Test fun windowAndRulesAreReadAndDefaultOff() {
+    val off = DownloadSettingsRecord().toModel()
+    org.junit.Assert.assertNull(off.window)
+    org.junit.Assert.assertFalse(off.notOnRoaming || off.pauseOnLowBattery || off.onlyWhileCharging)
+    org.junit.Assert.assertEquals("en", off.language)
+
+    val on = DownloadSettingsRecord(
+      downloadWindow = DownloadWindowRecord(startMinute = 22 * 60, endMinute = 6 * 60, days = listOf(5, 6)),
+      notOnRoaming = true,
+      pauseOnLowBattery = true,
+      onlyWhileCharging = true,
+      language = "ur",
+    ).toModel()
+    org.junit.Assert.assertEquals(com.vidorax.media.model.DownloadWindow(1320, 360, setOf(5, 6)), on.window)
+    org.junit.Assert.assertTrue(on.notOnRoaming && on.pauseOnLowBattery && on.onlyWhileCharging)
+    org.junit.Assert.assertEquals("ur", on.language)
+    org.junit.Assert.assertEquals("an unknown language is English", "en", DownloadSettingsRecord(language = "fr").toModel().language)
+  }
+
+  @Test fun anInvalidWindowIsRefused() {
+    org.junit.Assert.assertThrows(Exception::class.java) {
+      DownloadSettingsRecord(downloadWindow = DownloadWindowRecord(0, 60, emptyList())).toModel()
+    }
+    org.junit.Assert.assertThrows(Exception::class.java) {
+      DownloadSettingsRecord(downloadWindow = DownloadWindowRecord(0, 60, listOf(8))).toModel()
+    }
+    org.junit.Assert.assertThrows(Exception::class.java) {
+      DownloadSettingsRecord(downloadWindow = DownloadWindowRecord(1440, 60, listOf(1))).toModel()
+    }
+  }
+}

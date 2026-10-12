@@ -290,6 +290,23 @@ internal interface NetworkGate {
   }
 }
 
+/** F3: battery level, charging and roaming as the download rules need them. */
+internal interface DeviceConditions {
+  fun current(): DeviceSnapshot
+
+  /** The latest snapshot, emitted again whenever battery, charging or roaming change. */
+  val changes: kotlinx.coroutines.flow.Flow<DeviceSnapshot>
+
+  companion object {
+    /** No device information (unit tests, a host without sensors): never holds a download. */
+    val UNKNOWN = object : DeviceConditions {
+      override fun current() = DeviceSnapshot.UNKNOWN
+
+      override val changes: kotlinx.coroutines.flow.Flow<DeviceSnapshot> = kotlinx.coroutines.flow.emptyFlow()
+    }
+  }
+}
+
 /** Free bytes on the volume that holds the work and library folders. */
 internal fun interface FreeSpace {
   fun bytes(): Long

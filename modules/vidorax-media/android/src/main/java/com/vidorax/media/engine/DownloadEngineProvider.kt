@@ -2,7 +2,9 @@ package com.vidorax.media.engine
 
 import android.content.Context
 import com.vidorax.media.model.DownloadSettings
+import com.vidorax.media.model.DownloadWindow
 import com.vidorax.media.MediaServices
+import com.vidorax.media.net.AndroidDeviceConditions
 import com.vidorax.media.net.AndroidNetworkGate
 import com.vidorax.media.net.HttpClient
 import com.vidorax.media.plan.AndroidDecoderSupport
@@ -14,6 +16,7 @@ import com.vidorax.media.process.MediaProcessor
 import com.vidorax.media.process.Remuxer
 import com.vidorax.media.process.TransformerTranscoder
 import com.vidorax.media.runner.BackgroundDownloads
+import com.vidorax.media.runner.DownloadNotificationText
 import com.vidorax.media.transfer.HlsTransfer
 import com.vidorax.media.transfer.ProgressiveTransfer
 
@@ -37,6 +40,8 @@ object DownloadEngineProvider {
     val http = HttpClient.create()
     val planner = HlsPlanner(http, AndroidDecoderSupport)
     val probe = Probe(http, planner, DashPlanner(http, AndroidDecoderSupport))
+    val settings = readSettings(context)
+    DownloadNotificationText.language = settings.language
     val engine = DownloadEngine(
       store = SqliteDownloadStore(services.database),
       prober = RealProber(probe),
@@ -55,8 +60,12 @@ object DownloadEngineProvider {
       paths = services.paths,
       scope = services.scope,
       network = AndroidNetworkGate(context),
-      initialSettings = readSettings(context),
-      onSettingsChanged = { writeSettings(context, it) },
+      device = AndroidDeviceConditions(context),
+      initialSettings = settings,
+      onSettingsChanged = {
+        writeSettings(context, it)
+        DownloadNotificationText.language = it.language
+      },
       // The work folder and the library live on the same volume, so one free-space reading answers for both.
       freeSpace = { services.paths.workRoot.usableSpace },
     )
@@ -84,8 +93,20 @@ object DownloadEngineProvider {
       connectionsPerFile = stored.getInt(KEY_CONNECTIONS, defaults.connectionsPerFile)
         .coerceIn(DownloadSettings.MIN_CONNECTIONS, DownloadSettings.MAX_CONNECTIONS),
       speedLimitBytesPerSecond = stored.getLong(KEY_SPEED_LIMIT, 0L).takeIf { it > 0 },
+      window = readWindow(stored),
+      notOnRoaming = stored.getBoolean(KEY_NOT_ON_ROAMING, false),
+      pauseOnLowBattery = stored.getBoolean(KEY_PAUSE_LOW_BATTERY, false),
+      onlyWhileCharging = stored.getBoolean(KEY_ONLY_CHARGING, false),
+      language = stored.getString(KEY_LANGUAGE, null) ?: "en",
     )
   }
+
+  /** F3: the download hours as stored ("start,end,days" with days like "1234567"); anything unreadable is no window. */
+  private fun readWindow(stored: android.content.SharedPreferences): DownloadWindow? = runCatching {
+    val raw = stored.getString(KEY_WINDOW, null) ?: return null
+    val (start, end, days) = raw.split(",")
+    DownloadWindow(start.toInt(), end.toInt(), days.map { it.digitToInt() }.toSet()).takeIf { it.days.isNotEmpty() }
+  }.getOrNull()
 
   private fun writeSettings(context: Context, settings: DownloadSettings) {
     runCatching {
@@ -96,6 +117,14 @@ object DownloadEngineProvider {
         .putInt(KEY_MAX_HEIGHT, settings.preferredMaxHeight ?: 0)
         .putInt(KEY_CONNECTIONS, settings.connectionsPerFile)
         .putLong(KEY_SPEED_LIMIT, settings.speedLimitBytesPerSecond ?: 0L)
+        .putString(
+          KEY_WINDOW,
+          settings.window?.let { "${it.startMinute},${it.endMinute},${it.days.sorted().joinToString("")}" },
+        )
+        .putBoolean(KEY_NOT_ON_ROAMING, settings.notOnRoaming)
+        .putBoolean(KEY_PAUSE_LOW_BATTERY, settings.pauseOnLowBattery)
+        .putBoolean(KEY_ONLY_CHARGING, settings.onlyWhileCharging)
+        .putString(KEY_LANGUAGE, settings.language)
         .apply()
     }
   }
@@ -107,4 +136,9 @@ object DownloadEngineProvider {
   private const val KEY_MAX_HEIGHT = "preferredMaxHeight"
   private const val KEY_CONNECTIONS = "connectionsPerFile"
   private const val KEY_SPEED_LIMIT = "speedLimitBytesPerSecond"
+  private const val KEY_WINDOW = "downloadWindow"
+  private const val KEY_NOT_ON_ROAMING = "notOnRoaming"
+  private const val KEY_PAUSE_LOW_BATTERY = "pauseOnLowBattery"
+  private const val KEY_ONLY_CHARGING = "onlyWhileCharging"
+  private const val KEY_LANGUAGE = "language"
 }

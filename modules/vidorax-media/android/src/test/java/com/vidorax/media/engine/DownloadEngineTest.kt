@@ -30,6 +30,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicInteger
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
@@ -1374,6 +1375,248 @@ class DownloadEngineTest {
 
   // ---------- helpers ----------
 
+  // ---------- F3: start times and conditions ----------
+
+  /** Battery, charging and roaming the test sets by hand. */
+  private class TestDevice(initial: DeviceSnapshot) : DeviceConditions {
+    val state = kotlinx.coroutines.flow.MutableStateFlow(initial)
+
+    override fun current(): DeviceSnapshot = state.value
+
+    override val changes: kotlinx.coroutines.flow.Flow<DeviceSnapshot> = state
+  }
+
+  private val onBattery = DeviceSnapshot(batteryPercent = 60, charging = false, roaming = false)
+
+  @Test fun onlyWhileChargingHoldsANewDownloadUntilTheChargerIsPluggedIn() = runBlocking {
+    val device = TestDevice(onBattery)
+    val engine = engine(
+      prober = probeSuccess(Container.MP4, 1000),
+      transfers = writeAll(1000),
+      device = device,
+      settings = com.vidorax.media.model.DownloadSettings.DEFAULT.copy(onlyWhileCharging = true),
+    )
+    val record = engine.enqueue(request("https://cdn.example/clip.mp4"))
+    waitFor { store.current(record.id)?.state == DownloadState.WAITING_CONDITIONS }
+    val waiting = engine.listDownloads().single { it.id == record.id }
+    assertEquals(com.vidorax.media.model.WaitReason.CHARGING, waiting.waitReason)
+    assertNull(waiting.waitUntil)
+
+    device.state.value = onBattery.copy(charging = true)
+    engine.awaitIdle()
+    assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
+    assertNull(engine.listDownloads().single { it.id == record.id }.waitReason)
+  }
+
+  @Test fun aRunningDownloadStopsWhenTheBatteryRunsLowAndContinuesFromItsPart() = runBlocking {
+    val device = TestDevice(onBattery)
+    val started = CompletableDeferred<Unit>()
+    val resumedFrom = java.util.Collections.synchronizedList(mutableListOf<Long>())
+    val pool = workerPool()
+    try {
+      val engine = engine(
+        prober = probeSuccess(Container.MP4, 1000),
+        transfers = FakeTransfers { call, spec, onProgress ->
+          spec.partFile.parentFile?.mkdirs()
+          resumedFrom += if (spec.partFile.exists()) spec.partFile.length() else 0L
+          if (call == 0) {
+            spec.partFile.writeBytes(ByteArray(400))
+            onProgress(400, 1000)
+            started.complete(Unit)
+            kotlinx.coroutines.awaitCancellation()
+          }
+          spec.partFile.writeBytes(ByteArray(1000))
+          onProgress(1000, 1000)
+          TransferOutcome.Completed(1000, 1000, null, spec.url)
+        },
+        workerScope = CoroutineScope(pool),
+        device = device,
+        settings = com.vidorax.media.model.DownloadSettings.DEFAULT.copy(pauseOnLowBattery = true),
+      )
+      val record = engine.enqueue(request("https://cdn.example/clip.mp4"))
+      started.await()
+
+      device.state.value = onBattery.copy(batteryPercent = 14)
+      waitFor { store.current(record.id)?.state == DownloadState.WAITING_CONDITIONS }
+      assertEquals(
+        com.vidorax.media.model.WaitReason.BATTERY_LOW,
+        engine.listDownloads().single { it.id == record.id }.waitReason,
+      )
+      assertEquals("the part is kept while it waits", 400L, File(paths.workDir(record.id), "download.part").length())
+
+      device.state.value = onBattery.copy(batteryPercent = 14, charging = true) // plugged in
+      engine.awaitIdle()
+      assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
+      assertEquals("not a failure, not an attempt", 0, store.current(record.id)!!.attempts)
+      assertEquals(listOf(0L, 400L), resumedFrom.toList())
+    } finally {
+      pool.close()
+    }
+  }
+
+  @Test fun roamingHoldsADownloadOnlyWhileTheRuleIsOn() = runBlocking {
+    val device = TestDevice(onBattery.copy(roaming = true))
+    val engine = engine(
+      prober = probeSuccess(Container.MP4, 1000),
+      transfers = writeAll(1000),
+      device = device,
+      settings = com.vidorax.media.model.DownloadSettings.DEFAULT.copy(notOnRoaming = true),
+    )
+    val record = engine.enqueue(request("https://cdn.example/clip.mp4"))
+    waitFor { store.current(record.id)?.state == DownloadState.WAITING_CONDITIONS }
+    assertEquals(com.vidorax.media.model.WaitReason.ROAMING, engine.listDownloads().single().waitReason)
+    // The user turns the rule off while it waits: it goes on at once.
+    engine.setDownloadSettings(com.vidorax.media.model.DownloadSettings.DEFAULT.copy(notOnRoaming = false))
+    engine.awaitIdle()
+    assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
+  }
+
+  @Test fun downloadHoursSetWhileRunningStopItAndLiftingThemResumesIt() = runBlocking {
+    val started = CompletableDeferred<Unit>()
+    val pool = workerPool()
+    try {
+      val engine = engine(
+        prober = probeSuccess(Container.MP4, 1000),
+        transfers = FakeTransfers { call, spec, onProgress ->
+          spec.partFile.parentFile?.mkdirs()
+          if (call == 0) {
+            spec.partFile.writeBytes(ByteArray(300))
+            onProgress(300, 1000)
+            started.complete(Unit)
+            kotlinx.coroutines.awaitCancellation()
+          }
+          spec.partFile.writeBytes(ByteArray(1000))
+          onProgress(1000, 1000)
+          TransferOutcome.Completed(1000, 1000, null, spec.url)
+        },
+        workerScope = CoroutineScope(pool),
+      )
+      val record = engine.enqueue(request("https://cdn.example/clip.mp4"))
+      started.await()
+      // Hours that exclude every moment of today: the next opening is at least a day away.
+      val now = java.util.Calendar.getInstance()
+      val today = (now.get(java.util.Calendar.DAY_OF_WEEK) + 5) % 7 + 1
+      val otherDay = if (today == 7) 1 else today + 1
+      engine.setDownloadSettings(
+        com.vidorax.media.model.DownloadSettings.DEFAULT.copy(
+          window = com.vidorax.media.model.DownloadWindow(9 * 60, 10 * 60, setOf(otherDay)),
+        ),
+      )
+      waitFor { store.current(record.id)?.state == DownloadState.WAITING_CONDITIONS }
+      val waiting = engine.listDownloads().single()
+      assertEquals(com.vidorax.media.model.WaitReason.OUTSIDE_HOURS, waiting.waitReason)
+      assertTrue("it says when the hours open", (waiting.waitUntil ?: 0) > System.currentTimeMillis())
+
+      engine.setDownloadSettings(com.vidorax.media.model.DownloadSettings.DEFAULT)
+      engine.awaitIdle()
+      assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
+    } finally {
+      pool.close()
+    }
+  }
+
+  @Test fun aStartTimeHoldsTheDownloadAndItStartsByItselfWhenTheTimeArrives() = runBlocking {
+    val gate = CompletableDeferred<Unit>()
+    val pool = workerPool()
+    try {
+      val engine = engine(
+        prober = probeSuccess(Container.MP4, 1000),
+        transfers = FakeTransfers { call, spec, onProgress ->
+          spec.partFile.parentFile?.mkdirs()
+          if (call == 0) {
+            gate.complete(Unit)
+            kotlinx.coroutines.awaitCancellation()
+          }
+          spec.partFile.writeBytes(ByteArray(1000))
+          onProgress(1000, 1000)
+          TransferOutcome.Completed(1000, 1000, null, spec.url)
+        },
+        workerScope = CoroutineScope(pool),
+      )
+      val record = engine.enqueue(request("https://cdn.example/clip.mp4"))
+      gate.await()
+      val startAt = System.currentTimeMillis() + 600
+      val scheduled = engine.setDownloadStartAt(record.id, startAt)
+      assertEquals(startAt, scheduled.startAt)
+      waitFor { store.current(record.id)?.state == DownloadState.WAITING_CONDITIONS }
+      val waiting = engine.listDownloads().single()
+      assertEquals(com.vidorax.media.model.WaitReason.SCHEDULED, waiting.waitReason)
+      assertEquals(startAt, waiting.waitUntil)
+      assertEquals("persisted", startAt, store.schedules[record.id])
+
+      engine.awaitIdle()
+      assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
+      assertTrue("it did not start before its time", System.currentTimeMillis() >= startAt)
+      assertNull("a finished download keeps no start time", store.schedules[record.id])
+    } finally {
+      pool.close()
+    }
+  }
+
+  @Test fun aPausedDownloadGivenAStartTimeWaitsForItInsteadOfStayingPaused() = runBlocking {
+    val release = CompletableDeferred<Unit>()
+    val engine = engine(
+      prober = probeSuccess(Container.MP4, 1000),
+      transfers = FakeTransfers { _, spec, onProgress ->
+        release.await()
+        spec.partFile.parentFile?.mkdirs()
+        spec.partFile.writeBytes(ByteArray(1000))
+        onProgress(1000, 1000)
+        TransferOutcome.Completed(1000, 1000, null, spec.url)
+      },
+    )
+    val record = engine.enqueue(request("https://cdn.example/clip.mp4"))
+    waitFor { store.current(record.id)?.state == DownloadState.DOWNLOADING }
+    engine.pause(record.id)
+    assertEquals(DownloadState.PAUSED, store.current(record.id)!!.state)
+
+    engine.setDownloadStartAt(record.id, System.currentTimeMillis() + 60 * 60 * 1000)
+    waitFor { store.current(record.id)?.state == DownloadState.WAITING_CONDITIONS }
+    assertEquals(com.vidorax.media.model.WaitReason.SCHEDULED, engine.listDownloads().single().waitReason)
+
+    // Cleared again: it runs now.
+    engine.setDownloadStartAt(record.id, null)
+    release.complete(Unit)
+    engine.awaitIdle()
+    assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
+  }
+
+  @Test fun startTimesSurviveARestartAndAWaitingDownloadWaitsAgain() = runBlocking {
+    val first = engine(prober = probeSuccess(Container.MP4, 1000), transfers = FakeTransfers { _, _, _ -> awaitCancellation() })
+    val record = first.enqueue(request("https://cdn.example/clip.mp4"))
+    val later = System.currentTimeMillis() + 60 * 60 * 1000
+    first.setDownloadStartAt(record.id, later)
+    waitFor { store.current(record.id)?.state == DownloadState.WAITING_CONDITIONS }
+
+    // A new process: the row is still waiting, the start time comes back from the database.
+    val second = engine(prober = probeSuccess(Container.MP4, 1000), transfers = writeAll(1000))
+    second.restore()
+    waitFor { store.stateHistory(record.id).count { it == DownloadState.WAITING_CONDITIONS } >= 2 }
+    val restored = second.listDownloads().single()
+    assertEquals(DownloadState.WAITING_CONDITIONS, restored.state)
+    assertEquals(later, restored.startAt)
+    assertEquals(later, restored.waitUntil)
+  }
+
+  @Test fun theWakePlanCarriesTheEarliestTimeAndTheRuleConstraints() = runBlocking {
+    val engine = engine(
+      prober = probeSuccess(Container.MP4, 1000),
+      transfers = writeAll(1000),
+      device = TestDevice(onBattery),
+      settings = com.vidorax.media.model.DownloadSettings.DEFAULT.copy(
+        onlyWhileCharging = true,
+        notOnRoaming = true,
+        pauseOnLowBattery = true,
+      ),
+    )
+    assertNull("nothing waits: no wake-up", engine.wakePlan())
+    val record = engine.enqueue(request("https://cdn.example/clip.mp4"))
+    waitFor { store.current(record.id)?.state == DownloadState.WAITING_CONDITIONS }
+    val plan = engine.wakePlan()!!
+    assertTrue(plan.requiresCharging && plan.requiresBatteryNotLow && plan.notRoaming)
+    assertTrue("held by the charger only: as soon as possible", plan.earliestAt <= System.currentTimeMillis())
+  }
+
   private fun engine(
     prober: Prober,
     transfers: Transfers,
@@ -1386,6 +1629,7 @@ class DownloadEngineTest {
     settings: com.vidorax.media.model.DownloadSettings = com.vidorax.media.model.DownloadSettings.DEFAULT,
     hls: HlsDownloads = HlsDownloads.UNSUPPORTED,
     now: () -> Long = System::currentTimeMillis,
+    device: DeviceConditions = DeviceConditions.UNKNOWN,
   ): DownloadEngine = DownloadEngine(
     store = store,
     prober = prober,
@@ -1397,6 +1641,7 @@ class DownloadEngineTest {
     paths = paths,
     scope = workerScope,
     network = network,
+    device = device,
     freeSpace = freeSpace,
     initialSettings = settings,
     hls = hls,
@@ -1528,7 +1773,19 @@ internal class RecordingStore : DownloadStore {
   override suspend fun acknowledgeCompletions(ids: List<String>) { ids.forEach { completions.remove(it) } }
   override suspend fun list(now: Long): List<DownloadRow> =
     rows.values.filter { !it.state.isTerminal || it.updatedAt >= now - 86_400_000 }.sortedByDescending { it.createdAt }
-  override suspend fun delete(id: String) { rows.remove(id) }
+  override suspend fun delete(id: String) {
+    rows.remove(id)
+    schedules.remove(id)
+  }
+
+  /** F3 start times, as `download_schedule` keeps them. */
+  val schedules = ConcurrentHashMap<String, Long>()
+
+  override suspend fun listSchedules(): Map<String, Long> = schedules.toMap()
+
+  override suspend fun saveSchedule(id: String, startAt: Long?) {
+    if (startAt == null) schedules.remove(id) else schedules[id] = startAt
+  }
 
   fun current(id: String): DownloadRow? = rows[id]
   fun bytesHistory(id: String): List<Long> = history.filter { it.id == id }.map { it.bytesDone }
