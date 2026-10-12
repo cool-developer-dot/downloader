@@ -863,3 +863,68 @@ opens.
   (existing layout).
 - With the controls visible the Next/Previous buttons sit on the double-tap zones; a quick double tap there changes the
   video instead of seeking (seen while testing — existing behaviour).
+
+---
+
+## F15 — Leftover download files cleaner
+
+### Design
+
+- **Native** (`engine/LeftoverFiles`, `DownloadEngine.measureLeftovers` / `cleanLeftovers`, module
+  `measureLeftoverFiles` / `cleanLeftoverFiles`, contract `LeftoverFiles {count, bytes}` + `LeftoverFilesOptions
+  {keepLegacyIds}`): both run under the engine's lock, so no download is created or finishes between deciding what to
+  keep and looking.
+  - `work/` (`no_backup/work/<id>`): every entry not kept — folders of completed, cancelled or unknown downloads, with
+    everything inside (single `.part`, F1's per-part `.part` + `.parts`, segments, split tracks, merge output, F6
+    recordings) and loose files. **Kept**: every listed download that may still use its files — queued, probing,
+    downloading, paused, waiting (network/retry), processing, recording, and **failed** (Retry resumes from the part).
+  - v1 folders (`files/VidoraXDownloads/<id>/`): only `.hls` and `.mranges` workspaces and `*.part` files of v1
+    downloads JavaScript does not list as active (`activeLegacyIds`: QUEUED, DOWNLOADING, PAUSED, FAILED); a v1
+    folder's finished file is a library video and is never listed. Without the list (`null`) v1 folders are not read.
+  - `clearTempFiles` (in the contract, unused by JS) now follows the same rule and leaves v1 folders alone.
+- **Storage screen**: in Storage Actions, "Leftover download files — X MB" with a hint and **Clean up** → confirmation
+  ("This deletes X that no download needs…") → "Freed X MB"; the Storage snapshot refreshes; pull-to-refresh measures
+  again. Hidden when there is nothing to clean (and on builds without the native call). Urdu: mirrored row, sizes kept
+  left-to-right with LRM marks.
+
+### Automated (final F15 code)
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | 754 tests, 754 pass — new `src/downloads/v2/leftovers.test.ts` (active v1 ids: queued, downloading, paused, failed kept; completed/cancelled not) |
+| `npm run typecheck` | OK |
+| `npm run lint` | 0 errors, 84 warnings (unchanged) |
+| `gradle :vidorax-media:testDebugUnitTest --rerun :vidorax-web:testDebugUnitTest --rerun` | 591 / 0 (+4 `LeftoverFilesTest`: an orphan folder with per-part files and a loose file → leftovers, measured without deleting, deleted with exact counts, a kept folder untouched; v1: only `.hls`/`.mranges`/`*.part` of inactive downloads, the finished file stays, active ones untouched, null → v1 not read; the engine keeps queued/probing/downloading/paused/waiting network/waiting retry/processing/failed and cleans completed/cancelled/unknown; `clearTempFiles` same rule, v1 untouched) and 27 / 0 |
+| `gradle :vidorax-media:connectedDebugAndroidTest` | 38 / 0 (first run: the AVD had no room for the test APK — this session's F14/F15 test media were removed, then rerun) |
+| `git diff --check` | clean |
+
+### Manual cases — debug build (`run-as`), release quick check
+
+| Case | Result |
+| --- | --- |
+| Orphan + paused download (spec case) | PASS: a 145.6 MB download paused at 38 MB (work folder 39.1 MB) + `run-as` orphan `no_backup/work/orphan-test` 20 MB + a v1 folder with a 5 MB `.hls` workspace beside a 3 MB "finished" file → Storage "Leftover download files — **25.0 MB**" (the paused download not counted) → Clean up → confirmation → "**Freed 25.0 MB**", the row disappears; orphan and `.hls` gone, the paused download's 38 MB and the v1 finished file intact |
+| The paused download still resumes and plays | PASS: resumed → completed, **byte-identical** to the server file (SHA-256); a second run with a normal 1080p H.264 file (paused at ~30 MB, 12 MB orphan → "12.0 MB" → freed) → resumed, byte-identical, plays with picture. (The first test file, a ~240 Mbit/s level 5.2 clip, plays without picture on the AVD — its original from device storage never shows a frame either) |
+| Nothing to clean | PASS (release): the row is hidden |
+| Urdu | PASS (after an RTL fix: the size read "MB 7.0" and the icon sat on the left → LRM marks + mirrored row): "بچی ہوئی ڈاؤن لوڈ فائلیں — 7.0 MB", confirmation, "7.0 MB جگہ خالی ہو گئی" |
+| Real phone | **BLOCKED**: no phone |
+
+Evidence (`.claude/pr-evidence/`): `F15-storage-leftovers.png`, `F15-confirm.png`, `F15-freed.png`,
+`F15-resumed-plays.png`, `F15-leftovers-urdu.png`, `F15-freed-urdu.png`.
+
+### Regression
+
+Regression: quick check only, full R1–R12 deferred to §7 — release cold start (5.5 s): no crash, no ANR, browser opens
+(build before the two-attribute Urdu layout fix, which was checked on the debug build).
+
+### Decisions (F15)
+
+- **Failed downloads keep their files**: Retry resumes from the part (the spec's protected list did not name failed;
+  deleting them would turn a retry into a restart).
+- v1 records live in JavaScript, so JavaScript passes the active v1 ids; v1 folders are only cleaned of their
+  temporary workspaces and parts — never a finished file.
+- Imports in progress (`no_backup/imports/`) are not leftovers: `IncomingImport` cleans its own crash leftovers.
+
+### Found, not fixed (F15)
+
+- The Storage screen's v1 location cards label `{VidoraXDownloads}/{id}/.hls/` and `.mranges` sizes from the same
+  `tempBytes` total, so a `.hls` workspace also showed under "Temporary Download Parts" (5.0 MB) before the clean-up.

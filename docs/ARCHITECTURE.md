@@ -146,6 +146,15 @@ noBackupFilesDir/
   imports/<id>/                                 a file from another app being saved (IncomingImport)
 ```
 
+**Leftover download files (F15)** — `engine/LeftoverFiles` + `measureLeftoverFiles` / `cleanLeftoverFiles`, Storage →
+"Leftover download files — X MB" → Clean up (confirmation, then "Freed X MB"; hidden when there is nothing). Leftovers:
+entries of `work/` that no listed download may still use — the keep rule keeps queued, probing, downloading, paused,
+waiting, processing (and F6 recording) **and failed** downloads (Retry resumes from the part); completed, cancelled and
+unknown ones go — and in v1 folders (`files/VidoraXDownloads/<id>/`) only the `.hls` / `.mranges` workspaces and
+`*.part` files of v1 downloads JavaScript does not report as active (`keepLegacyIds`: QUEUED, DOWNLOADING, PAUSED,
+FAILED). Finished files, `imports/`, the library and thumbnails are never listed. Measure and clean run under the
+engine's lock. `clearTempFiles` uses the same rule (v1 folders untouched).
+
 The library copy is private (App Lock protects it). Since 2026-09-26 every completed download is **also** published
 to `Movies/VidoraX/<Site>` by default (`autoSaveToGallery`, Settings → Download Settings → "Save to Gallery"; the
 per-item "Save to gallery" action reuses that copy). Deleting a video in VidoraX leaves the user's gallery copy alone.

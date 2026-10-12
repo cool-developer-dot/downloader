@@ -2071,6 +2071,12 @@ Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-pl
   external files with video only (not streams, not audio). Checked: H.264 1080p 10 min, HEVC, VP9 WebM (frames take
   ~1.2–1.5 s there on the AVD), landscape fullscreen, Urdu, time-left label and double-tap unchanged, memory back to
   baseline after 2 × 20 scrubs. Real phone BLOCKED.
+- **F15 Leftover download files cleaner.** Storage → "Leftover download files — X MB" → Clean up (confirm → "Freed X
+  MB"; hidden when nothing). Native `LeftoverFiles` under the engine lock: `work/` entries of no listed download that
+  may still use them (queued/running/paused/waiting/processing/recording and failed keep theirs) and v1 `.hls` /
+  `.mranges` / `*.part` of v1 downloads JS reports inactive; finished files never. Device: 20 MB orphan + 5 MB v1
+  workspace beside a paused 38 MB download → 25.0 MB shown → freed; the paused download resumed byte-identical and
+  plays.
 
 ## 5. How to resume
 
