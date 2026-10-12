@@ -7,6 +7,7 @@ import {
   subscribePlaybackEvents,
   type PlaybackEventListener,
 } from '../player/playback-events';
+import { isStreamMediaId } from '../player/remote-stream';
 import { PLAYBACK_LOCAL_NAMESPACE } from './constants';
 import {
   PlaybackPersistenceCoordinator,
@@ -91,6 +92,10 @@ export function bindPlaybackPersistence(
     });
 
   const listener: PlaybackEventListener = (event) => {
+    // An online stream (F17) is not a library video: no resume record, no Watch history, no Continue watching.
+    if (isStreamMediaId(event.mediaId)) {
+      return;
+    }
     coordinator?.handleEvent(event);
   };
   unsubEvents = subscribePlaybackEvents(listener);

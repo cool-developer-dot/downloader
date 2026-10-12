@@ -41,6 +41,7 @@ import {
   subscribeActivityStopped,
 } from '@/player/picture-in-picture';
 import { externalTokenOf } from '@/player/external-media';
+import { isStreamMediaId } from '@/player/remote-stream';
 import {
   openIncomingWithOtherApp,
   saveIncomingMedia,
@@ -760,10 +761,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
                 : undefined
             }
           />
-          {session.error === 'UNSUPPORTED_MEDIA' ||
-          session.error === 'PLAYBACK_FAILED' ||
-          // A file from another app that this device cannot read may still open in that kind of app.
-          (incomingToken != null && session.error === 'CORRUPT_MEDIA') ? (
+          {!isStreamMediaId(activeMediaId) &&
+          (session.error === 'UNSUPPORTED_MEDIA' ||
+            session.error === 'PLAYBACK_FAILED' ||
+            // A file from another app that this device cannot read may still open in that kind of app.
+            (incomingToken != null && session.error === 'CORRUPT_MEDIA')) ? (
             <Button
               title={t('library.openWith')}
               onPress={() => { void openExternal(); }}

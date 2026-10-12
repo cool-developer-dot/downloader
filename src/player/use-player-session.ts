@@ -43,6 +43,7 @@ import {
   normalizePlaybackRate,
 } from './playback-rates';
 import { PreparationWatchdog } from './preparation-watchdog';
+import { classifyStreamError, isStreamMediaId, STREAM_PREPARATION_TIMEOUT_MS } from './remote-stream';
 import { resolvePlaybackSource } from './resolve-playback-source';
 import {
   applyFirstFrameAccepted,
@@ -335,6 +336,8 @@ export function usePlayerSession(
     lastKnownPositionRef.current = 0;
     watchdogRef.current?.dispose();
     watchdogRef.current = new PreparationWatchdog({
+      // An online stream waits on the network: its first frame may take longer than a local file's.
+      timeoutMs: isStreamMediaId(mediaId) ? STREAM_PREPARATION_TIMEOUT_MS : undefined,
       onTimeout: () => {
         if (gen !== resolveGenRef.current || !mountedRef.current) {
           return;
@@ -401,9 +404,11 @@ export function usePlayerSession(
         if (shouldReplace) {
           await player.replaceAsync({
             uri: source.uri,
-            contentType: 'auto',
+            // A local file is recognised by its content; an online stream says what it is (F17).
+            contentType: source.contentType ?? 'auto',
+            ...(source.headers && Object.keys(source.headers).length > 0 ? { headers: source.headers } : null),
             // Shown by the media notification when background play is on.
-            metadata: nowPlayingMetadata(source.mediaId, source.displayName),
+            metadata: nowPlayingMetadata(source.mediaId, source.displayName, source.artworkUrl),
           });
           lastAssignedUriRef.current = source.uri;
           lastAssignedGenerationRef.current = gen;
@@ -655,7 +660,9 @@ export function usePlayerSession(
         return;
       }
       watchdogRef.current?.clear();
-      const code = classifyNativePlayerError(error);
+      // An online stream's refused link or lost network gets its own message (and Retry for the network).
+      const code =
+        (sourceRef.current?.remote ? classifyStreamError(error) : null) ?? classifyNativePlayerError(error);
       applyTerminalError(code);
       return;
     }
@@ -1022,12 +1029,23 @@ function applyBackgroundPlayback(player: { staysActiveInBackground: boolean; sho
 const PIP_DISMISS_STOP_WINDOW_MS = 2_000;
 
 /** Title, "Playing in VidoraX" and the library thumbnail (when there is one) for the media notification. */
-function nowPlayingMetadata(mediaId: string, displayName: string): { title: string; artist: string; artwork?: string } {
+function nowPlayingMetadata(
+  mediaId: string,
+  displayName: string,
+  artworkUrl?: string | null,
+): { title: string; artist: string; artwork?: string } {
   const state = useDownloadsStore.getState();
   const thumbnail = (state.engineRowsById[mediaId] ?? state.itemsById[mediaId])?.thumbnailUrl;
+  // A library video's own thumbnail file; an online stream's offer thumbnail (F17).
+  const artwork =
+    typeof thumbnail === 'string' && thumbnail.startsWith('file://')
+      ? thumbnail
+      : typeof artworkUrl === 'string' && /^https?:\/\//i.test(artworkUrl)
+        ? artworkUrl
+        : null;
   return {
     title: displayName,
     artist: translate('player.nowPlayingSubtitle'),
-    ...(typeof thumbnail === 'string' && thumbnail.startsWith('file://') ? { artwork: thumbnail } : null),
+    ...(artwork ? { artwork } : null),
   };
 }

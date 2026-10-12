@@ -31,6 +31,7 @@ import { useDownloadsStore } from '@/store/downloads';
 import { isDeviceMediaId, knownDeviceVideo } from './device-media';
 import { externalTokenOf, isExternalMediaId, knownIncomingMedia } from './external-media';
 import { getIncomingMediaSource } from './incoming-media.runtime';
+import { knownRemoteStream } from './remote-stream';
 
 import {
   configureResolvePlaybackSourceDeps,
@@ -177,6 +178,7 @@ export function ensurePlaybackSourceRuntime(): void {
       const mime = item?.mimeType?.trim();
       return mime || null;
     },
+    getRemoteStream: knownRemoteStream,
     resolveFileUri: (uri) => {
       if (typeof uri === 'string' && uri.startsWith('content://')) {
         return uri;
