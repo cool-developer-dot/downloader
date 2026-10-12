@@ -1129,3 +1129,117 @@ downloads, player open; no crash, no ANR.
   instead of the file name.
 - The quality label of a non-square picture is its shorter side ("368p" for 368×480).
 - Download details never show a duration for v2 downloads (the screen reads a field the v2 item does not carry).
+
+## F6 — Live stream recording (HLS)
+
+### Design
+
+- **Setting.** Settings → Downloads → Advanced (new section) → **"Live recording (beta)"** (`liveRecording`, default
+  off) and, when on, **"Maximum length"** (`liveRecordingMaxMinutes`: 30 min / 1 h / 2 h / 4 h / 8 h, default 2 h, the
+  engine accepts 15–720). Settings store → `ensure-bridge` → engine SharedPreferences, like every download setting.
+- **Contract.** `SourceKind 'live'` (stored in the existing `downloads.kind` column — **no schema change**),
+  `DownloadState 'recording'`, `recordedMs` on records and progress events, `stopRecording(id)`; a `probe` of a live
+  HLS stream with the setting on answers `ok` with `kind: 'live'`.
+- **Offer.** The engine's probe classifies a stream refused only as live again through `Probe.probeLive`
+  (`HlsPlanner.planLive` + `confirmMedia`): same variant choice and refusals (encrypted, DRM, YouTube, not a video);
+  only variants that carry their own sound (a live separate-audio rendition is not recorded). JS marks the offer's
+  qualities `isLive` (general source → analysis variant → quality option); the bar says "Live stream" with a red
+  record icon and "Recording…" while it runs, the quality sheet "Record 720p", Play is not offered, and the hand-off
+  enqueues `kind: 'live'` after classifying it as a recording. Pasted links take the same path.
+- **Recording** (`transfer/LiveHlsRecorder`): from the live edge (last 3 segments of the first read), reload every
+  target duration (half of it when nothing new came — RFC 8216 §6.3.4), segments keyed by media sequence and
+  appended strictly in order through `HlsTransfer.liveIo` (F1 fetch-ahead with `connectionsPerFile`, F2 limiter, token
+  propagation); TS continuity renumbered at every join (as F1's VOD fix), fMP4 init once. After each segment: fsync +
+  `live.checkpoint` (atomic JSON, no URL). Missed: left the window / `EXT-X-GAP` / 404 / 410. Retried next reload:
+  network errors, 5xx. Discontinuity → recorded, the file is kept as `.ts` like VOD. Stops: Stop, `EXT-X-ENDLIST`,
+  maximum length, low storage (free < recorded + 64 MiB), stall (no new segment for max(30 s, 3 × target) — also a
+  network that stays down), fMP4 init change. The playlist link is re-planned once (same variant) on 401/403.
+- **Finalize** (`finalizeRecording`): cut to the checkpoint → verify → video gate → remux to MP4 (no re-encode).
+  After a process death the engine finalizes a `recording` row from its checkpoint on start (`recoverRecording`); it
+  never records on. Nothing recorded → failed (`NO_SPACE` when storage ran out, else `NETWORK`).
+- **UI.** Downloads row: "● Recording · 12:34 · 85 MB", badge RECORDING, **Stop** (labelled) + Cancel, no progress bar
+  or "0 B"; details: the clock, the same line, "Stop recording" / "Cancel download" (no Start-at or speed controls).
+  Notification: "Recording · 12:34 · 85 MB" (Urdu "ریکارڈنگ"), ongoing, Stop + Cancel; Stop goes to
+  `DownloadActionReceiver.ACTION_STOP`. `pause` refuses a recording, `pauseAll` skips it.
+
+### Automated (final F6 code)
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | 779 tests, 779 pass (+9) — `src/downloads/v2/live-recording.test.ts` (3: the recorded clock 0:07 / 12:34 / 1:15:03; "Recording · 12:34 · 85 MB" with left-to-right marks after the Urdu label; maximum-length labels, one hour singular), `settings.test.ts` (+1: off by default, 2 h, clamped 15–720, pushed once per change), `handoff.test.ts` (+3: a live offer is classified as `live` and enqueued `kind: 'live'` with its variant; turned off / encrypted → refused, nothing enqueued; only HLS can be live), `projection.test.ts` (+1, +1 state: `recording` is an active row with `recordedMs`, no total, not resumable; progress keeps the length; finalizing drops it), general-source (+1: an engine `kind: 'live'` answer becomes a Record offer, every quality `isLive`), remote-stream (+1 assert: no online Play for live) |
+| `npm run typecheck` | OK |
+| `npm run lint` | 0 errors, 84 warnings (unchanged) |
+| `gradle :vidorax-media:testDebugUnitTest --rerun :vidorax-web:testDebugUnitTest --rerun` | 668 / 0 (+27) and 27 / 0 — `LiveHlsRecorderTest` 12 on a fake live playlist and clock (**sliding window** from the live edge and joining a running stream at its edge; fetched-ahead segments keep their order; **discontinuity**; **gap** — segments that left the window and a 404 counted as missed; a dropped connection retried; **stall** and a network that stays down; **endlist**; **max duration**; Stop; low storage; **kill mid-recording** — the `.part` holds exactly the segments the checkpoint names), `DownloadEngineLiveTest` 8 (real planner + segment fetches + HTTP: setting off → refused, nothing fetched; a stream that grows and ends → one library file, every segment once in order, `recordedMs` in progress; Stop → finalized, nothing fetched after; pause refused / pauseAll skips / a finished one cannot be stopped; process death → finalized on the next start from exactly the checkpoint, never records on; no space → `NO_SPACE`, no item; encrypted → protected and never offered; the probe offers `kind: 'live'` only with the setting on and a stream that ended is a download again), `HlsPlannerTest` +5 (live plan with target duration, no size; the window by media sequence with absolute discontinuities and gaps skipped; variants with their own sound only, a separate-audio choice refused; encrypted at plan time and when it turns encrypted; HTTP and non-media failures), `DownloadRunnerTest` +1 (notification "Recording · 12:34 · 2.5 MB" / "1:15:03", Stop + Cancel, ongoing; Urdu with marks), `RecordsTest` +1 (defaults and 15–720 validation) |
+| `gradle :vidorax-media:connectedDebugAndroidTest` | 43 / 0 |
+| `git diff --check` | clean |
+
+### Manual cases — debug build, then release (`F6-release-debugkey.apk`)
+
+Stream: Unified Streaming's public live HLS (`demo.unified-streaming.com/k8s/live/stable/live.isml/.m3u8`, verified
+live with curl: TS segments of 1.92 s, `TARGETDURATION:2`, no `EXT-X-ENDLIST`, no `EXT-X-KEY`, sound muxed), played by
+the hls.js demo page and pasted as a direct link.
+
+| Case | Result |
+| --- | --- |
+| Setting off by default | PASS: Advanced → "Live recording (beta)" off (screenshot) |
+| **Switch off → no Record anywhere** | PASS: the live page gets no bar (verification `LIVE_HLS_UNSUPPORTED`); **found and fixed**: an offer verified while the setting was on stayed after turning it off (a verified offer is not looked at again) → turning it off now withdraws it at once (`live_recording_off`), and it stays gone; release: a restored live tab shows nothing |
+| Switch on → Record | PASS: prefs `liveRecording=true`, `liveRecordingMaxMinutes=120`; the bar becomes **"Live stream" + red REC** within 5 s (no reload: the player keeps asking for the playlist); a pasted `.m3u8` link the same |
+| **Record ~2 min → Stop → plays ~2 min** | PASS: "Recording · 0:19 · 1.4 MB" with Stop + Cancel in Downloads, details with the clock and "Stop recording"; Stop at 2:08 → MP4 1280×720 H.264 + AAC, **136.32 s** (71 segments × 1.92 s), 9.5 MB, ffmpeg decodes without an error, plays in the app (00:24 / 02:16) |
+| **Force-stop mid-recording → reopen → finalized file plays** | PASS: force-stopped at 0:53 (row `recording`, `.part` 4.4 MB + checkpoint `recordedUs` 53,760,000); reopen → completed `Download_35489fa4.mp4`, **53.76 s** = the checkpoint, 1280×720 + AAC, work folder removed; plays |
+| Stop from the notification | PASS: Stop (Urdu session) → completed, 99.84 s |
+| Background | PASS (release): Home during a recording — 1:01 → 1:39 in 40 s; reopen → Stop from the row → 2:14 MP4 plays at once |
+| Urdu + RTL | PASS: Advanced section, bar "لائیو سٹریم", row "ریکارڈنگ · 0:24 · 2.0 MB" with "بند کریں", notification; **found and fixed**: the notification read "MB 6.3" (an RTL line reorders the size) → left-to-right marks as in the app; "1 گھنٹے" → "1 گھنٹہ" |
+| Dark theme | PASS (release): Advanced section and the recording row |
+| Bar while recording | **Found and fixed**: said "Downloading…" (the consumed offer) → "Recording…" from the followed download |
+| Max length / low storage / stall / endlist on the device | Not run on the device (2 h minimum choice; the AVD has 845 MB free and the test stream never ends) — covered by `LiveHlsRecorderTest` and `DownloadEngineLiveTest` |
+| Release quick check | PASS: cold start 951 / 873 ms, no crash, no ANR |
+| Real phone | **BLOCKED**: no phone |
+
+Evidence (`.claude/pr-evidence/`): `f6-settings-off.png`, `f6-off-browser.png`, `f6-settings-on.png`,
+`f6-live-offer.png`, `f6-row-recording.png`, `f6-details-recording.png`, `f6-details-stopped.png`, `f6-play.png`,
+`f6-paste-live.png`, `f6-after-kill-list.png`, `f6-after-kill-play.png`, `f6-settings-ur.png`, `f6-row-ur.png`,
+`f6-notif-ur.png`, `f6-notif-ur-fixed.png`, `f6-bar-recording.png`, `f6-release-settings-dark.png`,
+`f6-release-row-dark.png`, `f6-release-play.png`, `f6-off-after-offer.png`, `f6-release-final-off.png`.
+
+### Regression
+
+Regression: quick check only, full R1–R12 deferred to §7 — release installed over the F6 debug build (the F4 release
+before it, data kept): cold start 873 ms, browser,
+downloads, player, settings; no crash, no ANR. No schema change (no upgrade test needed: `kind 'live'` is a value of
+the existing column).
+
+### Decisions (F6)
+
+- **Start at the live edge** (the last `LIVE_EDGE_SEGMENTS` = 3 segments of the first read, where players start), not
+  the whole window — the recording is "from now".
+- **Reload every target duration, half of it when nothing new came** (RFC 8216 §6.3.4); a target under 2 s is taken
+  as 2 s (`HlsPlanner.MIN_TARGET_DURATION_US`).
+- **Stall** = no new segment for max(`STALL_MIN_MS` 30 s, 3 × target): ends the recording with what it has (a network
+  that stays down is a stall too — the recording is not left waiting forever).
+- **Low storage** = free < recorded + `LIVE_FREE_MARGIN_BYTES` (64 MiB): the MP4 copy at the end needs as much again.
+- **Never resumed after a process death**: finalized from the checkpoint instead — continuing later would leave a hole
+  in the middle of the video.
+- **No Pause**, only Stop (keeps) and Cancel (discards); `pauseAll` skips recordings.
+- **Only variants with their own sound** are offered for recording (two live tracks are not recorded and merged).
+- **No identity / duplicate check** for recordings: two recordings of one stream are two videos.
+- **Online Play not offered** for a live offer (recording only).
+- **Turning the setting off withdraws a standing live offer**; turning it on applies as the player asks for the
+  playlist again (a reload otherwise).
+- New settings: `liveRecording` (default **off**), `liveRecordingMaxMinutes` (default **120**; UI 30/60/120/240/480,
+  engine 15–720). New constants: `LiveHlsRecorder.LIVE_EDGE_SEGMENTS` 3, `LIVE_FREE_MARGIN_BYTES` 64 MiB,
+  `STALL_MIN_MS` 30 s, `HlsPlanner.MIN_TARGET_DURATION_US` 2 s, `DownloadEngine.LIVE_CHECKPOINT_NAME`,
+  `DownloadSettings.MIN/MAX/DEFAULT_LIVE_MAX_MINUTES`, JS `LIVE_RECORDING_MAX_MINUTES_CHOICES`. Strings en + ur:
+  `settings.advanced*`, `settings.liveRecording*`, `browser.media.liveAvailable*`, `recordingVideo`,
+  `chooseLiveQualityHint`, `downloads.recording`, `statusRecording`, `stop`, `primaryStop`, `recordAction`,
+  `recordNamed`, `recordingStartedToast`.
+
+### Found, not fixed (F6)
+
+- Debug build only: the first video played after a cold start sometimes shows a black picture for a while (sound
+  plays); the release build shows the picture at once.
+- Downloads rows of other downloads with an unknown total still show "0 B" in their meta line (hidden for recordings
+  only).
+- While a live stream is refused (setting off), every playlist request of the page's player re-runs the native probe
+  (~every 2 s with hls.js) — as before F6.
+- Notification action labels (Stop, Pause, Cancel…) stay English in Urdu (as all action labels before F6).
+- A pasted direct `.m3u8` link is titled "Download" (the generic name of direct links).

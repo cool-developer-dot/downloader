@@ -2095,6 +2095,14 @@ Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-pl
   AOSP one is TV-only) the file is kept as `.mpg`, its length/size read from the stream, and the player now says
   "Unsupported format" + "Open with…" instead of spinning. Device: local VOB/MPEG-1/scrambled and archive.org's "Duck and
   Cover" (kept, 9:15); conversion on a device with an MPEG-2 decoder BLOCKED.
+- **F6 Live stream recording.** Settings → Downloads → Advanced → "Live recording (beta)" (off) + "Maximum length"
+  (2 h). On: the engine's probe offers a live, unencrypted HLS stream as `kind: 'live'` (same refusals; muxed variants
+  only); the bar says "Live stream" + REC, the sheet "Record 720p"; `transfer/LiveHlsRecorder` records from the live
+  edge (reload per target duration, F1 fetch-ahead, F2 limiter, TS renumbered, `live.checkpoint` per segment) until
+  Stop / `ENDLIST` / max length / low storage / stall, then remux to MP4. Downloads row and notification "Recording ·
+  12:34 · 85 MB" with Stop (en/ur); a process death finalizes from the checkpoint on the next start. No schema change.
+  Device: Unified Streaming live → 2:16 MP4 plays; force-stop at 0:53 → 53.76 s MP4 plays; background, Urdu, dark OK;
+  turning the setting off withdraws a standing offer (found and fixed). Real phone BLOCKED.
 
 ## 5. How to resume
 

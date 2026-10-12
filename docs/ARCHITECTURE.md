@@ -22,6 +22,9 @@ Goals
   - **Split audio/video:** a video-only file and an audio-only file of one video (a MediaSource player fed from two
     SourceBuffers — Instagram/Facebook-style), resolved, checked to be one video's, downloaded and merged.
   - **Extensionless URLs** when probe/verification confirms one of the above formats.
+  - **Live HLS recording** (F6, Settings → Downloads → Advanced → "Live recording (beta)", off by default): an
+    unencrypted live HLS stream is offered as **Record** and recorded from now until Stop, its end, the maximum length
+    or low storage, then finalized to MP4 like any download (§3.8).
 - Progressive files are streamed directly to disk and kept byte for byte when they already play (MP4/M4V/MOV,
   WebM/MKV, 3GP/3G2); a container that plays or seeks poorly is remuxed without re-encoding (MPEG-TS, fragmented MP4, AVI,
   FLV → MP4); only a track the output cannot carry is re-encoded (MP3/AC-3 → AAC, VP8/MPEG-2 → H.264) with the
@@ -57,7 +60,7 @@ Non-goals (refused, with a clear message to the user)
 - Unresolved `blob:` / MSE-only sources: a player whose files cannot be tied to it exactly (e.g. several candidate
   files from a feed that prefetches the next item) is not guessed.
 - Merging tracks whose lengths or starts disagree (they are not one video's): `TRACK_MISMATCH`.
-- Live streams (v2 may add "record from now").
+- Live streams while "Live recording (beta)" is off; live DASH always (F6 records live HLS only, §3.8).
 - Bypassing logins or paywalls. Content is only reachable when the user can already play it in the browser.
 
 ## 2. System overview
@@ -118,8 +121,9 @@ All Media3 artifacts pinned to **exactly** the version expo-video uses (`1.9.0`,
 | `net/HttpClient` | One OkHttp client. Per request: tab User-Agent, Referer, Origin, extra headers (never `Cookie`/`Authorization`), `Accept-Encoding: identity`, `Range`/`If-Range`, bounded `Range` for `EXT-X-BYTERANGE`. Redirects are followed by the client itself (max 20; a loop is a permanent `NOT_MEDIA`), and every hop — plus every HLS child URL — must pass `net/UrlSafety` (public http(s) hosts only; the page detector's SSRF rule, without DNS). Cookies: the WebView session per hop when `useCookies` (`net/SessionCookies`), plus an in-memory jar of cookies the servers set during the download; nothing persisted. |
 | `plan/Probe` | The one classifier: DOWNLOADABLE (`ProbeResult.Success`), PROTECTED (`DRM_PROTECTED`), UNSUPPORTED (`UNSUPPORTED_FORMAT`, `LIVE_UNSUPPORTED`, `NOT_MEDIA`, `POLICY_BLOCKED`) or transient (`NETWORK`, `HTTP_ERROR` 5xx/408/429, `HTTP_403`/`HTTP_404` = refresh from the page). Progressive: bounded 64 KiB range sniff (magic bytes win over extension/Content-Type; a 206 must start at 0; encrypted MP4/WebM → PROTECTED; an MP4 whose track list in those bytes has sound and no video → UNSUPPORTED — the audio half of a split stream is not a video). `kind: hls`, or bytes that are a playlist, go to `plan/HlsPlanner` with the request's `variant` (the engine fills in the preferred-quality setting exactly as enqueue does), so the verdict is about the variant that would be downloaded; then `HlsPlanner.confirmMedia` reads that variant's init section (fMP4) or the first 4 KiB of its first segment and refuses WebVTT, packed audio, a track list without video, and Common Encryption boxes — a media playlist found on its own can be a stream's subtitle or audio rendition. A read that fails is no verdict (the transfer re-checks the bytes). `kind: dash`, or bytes that are an MPD, go to `plan/DashPlanner`; the representation it picks is then classified by its own bytes exactly as a progressive file, so DASH is DOWNLOADABLE only when that one file is a complete, clear video. MP3/AAC/M4A(B) are named as audio files (an `M4A `/`M4B ` brand even when the track list is past the probe). YouTube hosts, HTML/JSON pages, `blob:` and inline manifests (`manifestText`) refused. |
 | `plan/DashPlanner` | Media3 `DashManifestParser` over a bounded (4 MiB) fetch. Refuses: any `ContentProtection` (raw, namespace-aware scan — Media3 records nothing for a bare `mp4protection`) or DRM init data → PROTECTED; `type="dynamic"` → LIVE; several periods and audio-only manifests → UNSUPPORTED; 401/403, 404/410, 5xx and transport failures keep their transient codes. Every decodable video representation on a public host is eligible: single-file (BaseURL/SegmentBase → `DashTrackSource.File`) or segmented (SegmentTemplate `$Number$`/`$Time$`/SegmentTimeline, SegmentList → init + every segment as an `HlsPlan`-shaped segment plan, bounded 20 000 segments; unbounded templates refused). Selection: `variant.videoId` exactly (never swapped), else best ≤ `maxHeight`, else best. Sound: the representation's own (muxed codecs), else the separate audio adaptation set's `variant.audioId`, else main role > unlabelled > AAC > Opus/Vorbis > others, highest bitrate. `presentationTimeOffset` becomes the track's time offset. A plan that is one complete muxed file keeps the progressive path (`DashResolution.Ready`); anything else is `DashResolution.Tracks` (file tracks classified by their own bytes for their role, segment tracks by their init section). The engine re-reads the manifest on every run. |
-| `plan/HlsPlanner` | Media3 `HlsPlaylistParser` (multivariant with its `EXT-X-DEFINE` imports, or media). Variant: `variant.videoId` exactly (never substituted), else best ≤ `maxHeight`, else best decodable. A variant whose `AUDIO` group has only renditions with a URI gets that group's rendition (`variant.audioId`, else `DEFAULT`, else `AUTOSELECT`, else the first) planned too, as `HlsPlan.audio` (same refusals; discontinuities with separate audio refused). Refuses: any `EXT-X-KEY`/`EXT-X-SESSION-KEY` method other than `NONE` (decided from the tag text too — Media3 records nothing for SAMPLE-AES identity or FairPlay), DRM init data, live (no `EXT-X-ENDLIST`), `EXT-X-GAP`, audio-only, fMP4 that changes init section or timeline mid-stream, segments on non-public hosts. `confirmTrack` checks a track's first bytes for its role (video: a picture; audio: TS, packed audio or a sound track; never encrypted). A child playlist refused 401/403 is retried once with the parent's query (token propagation). Output: an `HlsPlan` with a structure fingerprint (not token-sensitive). |
+| `plan/HlsPlanner` | Media3 `HlsPlaylistParser` (multivariant with its `EXT-X-DEFINE` imports, or media). Variant: `variant.videoId` exactly (never substituted), else best ≤ `maxHeight`, else best decodable. A variant whose `AUDIO` group has only renditions with a URI gets that group's rendition (`variant.audioId`, else `DEFAULT`, else `AUTOSELECT`, else the first) planned too, as `HlsPlan.audio` (same refusals; discontinuities with separate audio refused). Refuses: any `EXT-X-KEY`/`EXT-X-SESSION-KEY` method other than `NONE` (decided from the tag text too — Media3 records nothing for SAMPLE-AES identity or FairPlay), DRM init data, live (no `EXT-X-ENDLIST`; F6's `planLive` / `liveWindow` accept it for a recording, §3.8), `EXT-X-GAP`, audio-only, fMP4 that changes init section or timeline mid-stream, segments on non-public hosts. `confirmTrack` checks a track's first bytes for its role (video: a picture; audio: TS, packed audio or a sound track; never encrypted). A child playlist refused 401/403 is retried once with the parent's query (token propagation). Output: an `HlsPlan` with a structure fingerprint (not token-sensitive). |
 | `transfer/ProgressiveTransfer` | Streamed write to `.part` file. Resume at byte level with `Range` + `If-Range`: the validator (a strong ETag, else Last-Modified — never a weak ETag) of the response that started the `.part` is kept beside it (`download.part.validator`), so it survives pause, process death, reboot and a re-signed link. On server 200 to a ranged request, restart from zero (never append a 200 onto an existing partial). A write the disk refuses is a `StorageWriteException` (ENOSPC → `NO_SPACE`), never a network error. A superseded worker never touches the `.part`. Atomic rename on completion. **Several connections** (`DownloadSettings.connectionsPerFile` > 1, F1): the first request asks `bytes=<from>-`; when the answer proves ranges — a `206` at `<from>` with the total size, ≥ 16 MiB left, a strong validator — the rest goes to `transfer/RangedDownload`. A file the probe already knows is under 16 MiB gets one connection and today's exact requests. |
+| `transfer/LiveHlsRecorder` | F6: a live HLS media playlist recorded into `download.part` (§3.8): reload every target duration (half of it when nothing new came, RFC 8216 §6.3.4), segments keyed by media sequence, appended strictly in order through `HlsTransfer.liveIo` (the same fetch, token propagation, F1 fetch-ahead and F2 limiter), TS continuity renumbered and an fMP4 init written once; after each segment the `.part` is synced and `work/<id>/live.checkpoint` (JSON: last sequence, bytes, recorded µs, container, TS counters, discontinuities, missed — no URL) written atomically. Stops: Stop, `EXT-X-ENDLIST`, the maximum length, low storage (free < recorded + 64 MiB), a stall (no new segment for max(30 s, 3 × target)), an fMP4 init change. |
 | `transfer/RangedDownload` | One file over up to N connections: the `.part` pre-sized to the whole file, N equal parts, each a bounded `Range` with `If-Range` written at its offset (positional `FileChannel` writes — no join step, no second copy). `download.part.parts` (total, validator, `[start, end, done]` per part) is written ~1/s and whenever it stops, after `force()` — pause, network loss and process death resume every part. Dynamic segmentation: a free connection takes the second half of the largest running part (halves ≥ 1 MiB). Never a failure of its own: `200`/`416`/misaligned to a part → continue on one connection from the contiguous prefix; another validator → restart from 0 on one connection; `401`/`403`/`429` while others are open → carry on with one connection; a dropped part retries alone. `PartProgress.bytesOnDisk` is what the engine counts as downloaded (not the pre-sized length). |
 | `transfer/HlsTransfer` | One segment track (an HLS media playlist, the audio rendition, or a DASH segment representation — `HlsTransferSpec.role`) appended to its own `.part` (`download.part` / `audio.part`) in order; after each one the `.part` is synced and `work/<id>/hls.checkpoint` advanced (segments done, bytes, fingerprint, container, TS continuity counters — no URL, no token). Resume truncates to the checkpoint and continues at the next segment; a checkpoint for another stream restarts from zero. With `connections` > 1 (F1) up to N segments are fetched at once into `download.part.seg<i>` (`.tmp` until whole) and still appended strictly in order; a fetch's failure surfaces only when its turn comes, and whole fetched-ahead files of the same stream are reused after a pause or restart. MPEG-TS: byte concatenation with each packet's continuity counter renumbered so the joins are continuous (`transfer/TsContinuity`: per-segment counters made Media3's `TsExtractor` drop the last frame before every join, and frames after it when segments do not start on key frames; an older build's prefix is renumbered once on resume). fMP4: init once, each segment's own `sidx` renamed `free`, one global `sidx` written into space reserved after the init (`transfer/Fmp4Index`) so players get the real duration and seeking — no sample byte changes, no sample byte changes. The container is confirmed from the bytes (subtitles refused; DASH WebM accepted; `plan/HlsSegmentFormat`, shared with the classifier). An audio track may be HLS packed audio: each segment's ID3 tag is dropped and the first one's `com.apple.streaming.transportStreamTimestamp` is kept (checkpointed) as the track's time offset, so the merge keeps it in sync with an MPEG-TS video. |
 | `process/MediaProcessor` | After the transfers: keep (MP4/MOV/M4V/F4V not fragmented, WebM/MKV, 3GP/3G2, and anything Media3 cannot read — WMV, an AVI whose video only an external player decodes — byte for byte), remux (MPEG-TS, fragmented MP4, AVI, FLV → MP4), merge (separate video + audio → MP4, or WebM for VP8/VP9 + Opus/Vorbis) or transcode (only the track the output cannot carry, into its own file, then merged losslessly with the copied track at its original timeline offset). Split inputs are refused before a byte is written when their stated lengths disagree (`TRACK_MISMATCH`), and every produced file is read back: a video track, the audio when one went in, the source's length, and merged tracks that start within 2 s and last as long as each other (from the samples actually written). Failures: `VIDEO_TRACK_MISSING`, `AUDIO_TRACK_MISSING`, `TRACK_MISMATCH`, `MUX_FAILED`, `TRANSCODE_FAILED`, `INVALID_MEDIA`, `DRM_PROTECTED`. |
@@ -177,7 +181,8 @@ downloads(id TEXT PRIMARY KEY, state TEXT NOT NULL, kind TEXT NOT NULL, url TEXT
           page_url TEXT, thumbnail_url TEXT, quality_label TEXT, bytes_done INTEGER NOT NULL DEFAULT 0,
           total_bytes INTEGER, error_code TEXT, error_message TEXT, attempts INTEGER NOT NULL DEFAULT 0,
           next_retry_at INTEGER, save_to_gallery INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)
--- kind: 'progressive', 'hls', 'dash' (url = the MPD) or 'split' (url = the video file, audio_url = the audio file).
+-- kind: 'progressive', 'hls', 'dash' (url = the MPD) or 'split' (url = the video file, audio_url = the audio file);
+--       'live' (F6, url = the live playlist; no schema change — a value of the same column, no identity_key).
 -- No manifest_text (inline manifests are refused).
 -- variant_json (HLS/DASH): {"videoId": HLS playlist scheme://host/path | DASH representation id,
 --   "audioId": HLS rendition scheme://host/path | DASH audio representation id, "maxHeight": n}
@@ -219,6 +224,8 @@ one (the stock system WebView UA in mobile mode), so UA-bound signed URLs still 
 ### 3.5 Download state machine
 
 ```
+queued → probing → recording (F6, kind 'live': Stop / end / max length / low storage / stall → processing)
+   │        │
 queued → probing → downloading ⇄ paused
    ⇅                    │  ⇅ waiting_network (Wi-Fi-only / offline)
 waiting_conditions      │  ⇅ waiting_retry   (transient error, backoff)
@@ -239,6 +246,9 @@ waiting_conditions      │  ⇅ waiting_retry   (transient error, backoff)
   under a finalize lock, the finished file is compared by size + SHA-256 with the library and VidoraX's gallery
   copies; a match deletes the new file and ends the download `failed(DUPLICATE)` ("Video already downloaded", final,
   no Retry, no library item, no gallery copy). The gallery copy is made only after COMPLETED, from the final file.
+- A `recording` row is never paused (`pause` refuses it, `pauseAll` skips it): **Stop** (`stopRecording`, the
+  notification's Stop) ends it and finalizes what was recorded; **Cancel** discards it. On engine start a `recording`
+  row is finalized from its checkpoint (`recoverRecording`) — a recording never records on after a process death.
 - `retry` is allowed from `failed`; `resume` from `paused`; `cancel` from any non-terminal state and deletes temp
   files. `completed` rows stay in `downloads` for 24 h for the Downloads screen, then are pruned (the library row
   remains).
@@ -303,6 +313,32 @@ start time set on a paused download moves it to waiting; on a running one, it st
 (`WAKE_JOB_ID`) — not before the earliest time a rule changes, with the device constraints the rules ask for; cancelled
 when nothing waits. The job starts the engine, which re-checks everything and lets the downloads run (under the
 user-initiated job / foreground service when allowed, else a plain continuation job, `CONTINUE_JOB_ID`).
+
+### 3.8 Live recording (F6)
+
+Behind Settings → Downloads → Advanced → **"Live recording (beta)"** (`DownloadSettings.liveRecording`, default off)
+and **"Maximum length"** (`liveRecordingMaxMinutes`, 30 min / 1 / 2 / 4 / 8 h offered, 15–720 accepted, default 2 h);
+both live in the engine's SharedPreferences (pushed by `ensure-bridge`), so a recording obeys them with the app closed.
+
+- **Offer.** With the setting on, the engine's `probe` of an HLS source refused only as live (`LIVE_UNSUPPORTED`)
+  classifies it again as a recording would meet it (`Prober.probeLive` → `HlsPlanner.planLive` + `confirmMedia`) and
+  answers `ok` with `kind: 'live'`: the same variant choice, the same refusals — any `EXT-X-KEY` other than `NONE`,
+  DRM, YouTube, not a video — plus a variant whose sound is a separate rendition (only variants with their own sound
+  are offered; two live tracks are not recorded and merged). Live DASH stays refused. JS marks every quality
+  `isLive`; the browser bar says "Live stream" with a record icon ("Recording…" while it runs), the quality sheet
+  "Record 720p", and the hand-off enqueues `kind: 'live'` with the chosen variant. Online Play is not offered for a
+  live stream. With the setting off nothing changes: "Live streams can't be downloaded".
+- **Recording.** `DownloadEngine.runRecording`: refused (`LIVE_UNSUPPORTED`) when the setting is off; plan
+  (`planLive`, re-planned once — same variant — when the playlist link answers 401/403), state `recording`, then
+  `LiveHlsRecorder` (§3.2) from the live edge (the last 3 segments of the first playlist read). A segment that left
+  the window, `EXT-X-GAP`, or answers 404/410 is counted as missed and skipped; a dropped connection or a 5xx is
+  retried on the next reload; a discontinuity is recorded as one. Progress events carry `recordedMs`; the notification
+  and the Downloads row say "Recording · 12:34 · 85 MB" with **Stop** (and Cancel).
+- **Finalize.** The `.part` is cut to the checkpoint, verified, gated as a video, then processed like an HLS
+  download: MPEG-TS or fMP4 → MP4 (remux, no re-encode); a TS recording with discontinuities is kept as `.ts` (the VOD
+  rule). Nothing recorded → `failed` (`NO_SPACE` when storage ran out, else `NETWORK`). A recording has no identity:
+  two recordings of one stream are two videos. A Retry of a failed recording finalizes what is on disk, else records
+  anew.
 
 ## 4. Native module: `modules/vidorax-web`
 
