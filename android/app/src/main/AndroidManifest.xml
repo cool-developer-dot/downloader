@@ -5,9 +5,11 @@
   <!-- Gallery export on Android 7-9 only. Android 10+ publishes through MediaStore without storage permissions. -->
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" tools:replace="android:maxSdkVersion"/>
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" tools:replace="android:maxSdkVersion"/>
-  <!-- No expo-video background playback service: the player pauses in the background (PiP excepted) and never sets
-       staysActiveInBackground / showNowPlayingNotification, so an unused mediaPlayback FGS type is not declared to Play.
-       Re-add the service and FOREGROUND_SERVICE_MEDIA_PLAYBACK together if background audio is ever shipped. -->
+  <!-- Background play (F18): expo-video's mediaPlayback service, used only while Settings → Player → "Keep playing in
+       background" is on (off by default) and a video plays — the player then sets staysActiveInBackground and
+       showNowPlayingNotification. Declared to Play: docs/play-console/PLAY_SUBMISSION.md (B2). FOREGROUND_SERVICE
+       itself comes from the vidorax-media module (downloads). -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>
@@ -101,5 +103,10 @@
         <data android:mimeType="audio/*"/>
       </intent-filter>
     </activity>
+    <service android:name="expo.modules.video.playbackService.ExpoVideoPlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback">
+      <intent-filter>
+        <action android:name="androidx.media3.session.MediaSessionService"/>
+      </intent-filter>
+    </service>
   </application>
 </manifest>
