@@ -20,6 +20,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Box } from '@/components/base/Box';
+import { IconButton } from '@/components/buttons/IconButton';
 import { Icon } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
 import { BROWSER_TOUCH_TARGET } from '@/browser/constants';
@@ -215,6 +216,25 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
     }
   }, [action, showToast, t]);
 
+  const playInFlightRef = useRef(false);
+  const [playBusy, setPlayBusy] = useState(false);
+  const handlePlay = useCallback(async () => {
+    if (playInFlightRef.current) {
+      return;
+    }
+    playInFlightRef.current = true;
+    setPlayBusy(true);
+    try {
+      const result = await action.play();
+      if (!result.ok) {
+        showToast(result.message);
+      }
+    } finally {
+      playInFlightRef.current = false;
+      setPlayBusy(false);
+    }
+  }, [action, showToast]);
+
   const handleBarPress = useCallback(() => {
     if (presentation.buttonDisabled) {
       return;
@@ -345,13 +365,31 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
                   ? noticeLabel
                   : t('browser.media.videoAvailable')}
             </Text>
-            <Animated.View style={iconStyle}>
-              <Icon
-                name="download"
-                size={20}
-                color={barEnabled ? 'primary' : 'disabled'}
-              />
-            </Animated.View>
+            <Box row style={{ alignItems: 'center' }} gap={4}>
+              {action.canPlay && !isPreparing ? (
+                // Online play (F17): its own button inside the bar — the rest of the bar still downloads.
+                <IconButton
+                  icon="play-circle-outline"
+                  variant="ghost"
+                  size="small"
+                  color="primary"
+                  loading={playBusy}
+                  onPress={() => {
+                    void handlePlay();
+                  }}
+                  accessibilityLabel={t('browser.media.playVideoA11y')}
+                  accessibilityHint={t('downloads.playHint')}
+                  testID="browser-media-play-button"
+                />
+              ) : null}
+              <Animated.View style={iconStyle}>
+                <Icon
+                  name="download"
+                  size={20}
+                  color={barEnabled ? 'primary' : 'disabled'}
+                />
+              </Animated.View>
+            </Box>
           </Pressable>
         </Animated.View>
       ) : notice && noticeLabel ? (

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { selectIsHome, selectBrowserError, useBrowserStore } from '@/browser/stores';
-import { navigation, routePaths } from '@/navigation';
+import { navigation, openPlayer, routePaths } from '@/navigation';
+import { translate } from '@/localization';
+import { isPlayableOffer } from '@/player/remote-stream';
 import { buildAnalysisFromVerification } from '@/downloads/analyze/analyze-from-verification';
 import { normalizeAnalysisToSelection } from '@/downloads/quality';
 import { verifyMediaCandidate } from '@/media-detection/services/candidate-verifier.service';
@@ -85,6 +87,7 @@ import {
 import { logMediaResolveTrace } from './media-resolve-diagnostics';
 import { recordVerificationOutcome } from './pipeline-trace';
 import { pickOfferedQualityOption } from './offered-option';
+import { prepareOfferStream } from './browser-media-play.service';
 import {
   pipelineRejectionFor,
   recordPipelineOutcome,
@@ -157,6 +160,10 @@ export type BrowserMediaActionViewModel = BrowserMediaActionState & {
   }>;
   viewDownloads: () => void;
   openLibrary: () => void;
+  /** A single verified offer the player can open online (F17); several qualities choose in the sheet instead. */
+  canPlay: boolean;
+  /** Plays the offer online in the VidoraX player (F17) — the offer stays available, nothing is downloaded. */
+  play: () => Promise<{ ok: true } | { ok: false; message: string }>;
 };
 
 /**
@@ -1976,6 +1983,54 @@ export function useBrowserMediaAction(
     }
   }, [hasMultipleQualities, options]);
 
+  const offeredOption = useMemo(
+    () => (selection ? pickOfferedQualityOption(selection.options, actionState.mediaUrl) : null),
+    [actionState.mediaUrl, selection],
+  );
+  const canPlay =
+    actionState.status === 'verified' &&
+    !actionState.selectionLocked &&
+    !hasMultipleQualities &&
+    isPlayableOffer(offeredOption);
+
+  const play = useCallback(async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    const state = browserMediaActionService.getState();
+    const tabId =
+      browserMediaActionService.getActiveTabId() ?? useBrowserStore.getState().activeTabId ?? '__default__';
+    const pageUrl = state.pageUrl ?? useMediaDetectionStore.getState().lastNavigation;
+    if (state.status !== 'verified' || !state.analysis) {
+      return { ok: false, message: translate('downloads.playUnavailable') };
+    }
+    // The page shows another video (the next reel) than the offer names: never play the old one as the current one.
+    const liveIdentity = liveMediaIdentityOf(tabId, pageUrl);
+    if (
+      generalPageMediaContextStore.get(tabId)?.activeOwnerHidden ||
+      (state.contentIdentity != null && liveIdentity != null && state.contentIdentity !== liveIdentity)
+    ) {
+      return { ok: false, message: translate('downloads.playUnavailable') };
+    }
+    const offerSelection = normalizeAnalysisToSelection(state.analysis);
+    const option = pickOfferedQualityOption(offerSelection.options, state.mediaUrl);
+    if (!option) {
+      return { ok: false, message: translate('downloads.playUnavailable') };
+    }
+    try {
+      const result = await prepareOfferStream({
+        selection: offerSelection,
+        option,
+        requestContext: state.requestContext,
+        pageUrl,
+      });
+      if (!result.ok) {
+        return { ok: false, message: result.message };
+      }
+      openPlayer(result.mediaId);
+      return { ok: true };
+    } catch {
+      return { ok: false, message: translate('downloads.playFailed') };
+    }
+  }, []);
+
   const viewDownloads = useCallback(() => {
     navigation.navigate(routePaths.downloads);
   }, []);
@@ -2012,6 +2067,8 @@ export function useBrowserMediaAction(
     download,
     viewDownloads,
     openLibrary,
+    canPlay,
+    play,
   };
 }
 

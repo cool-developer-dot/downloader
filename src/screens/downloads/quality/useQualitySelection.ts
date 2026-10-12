@@ -35,6 +35,8 @@ import {
 } from '@/media-detection/services/request-context.service';
 import { browserMediaActionService } from '@/browser/media-actions/browser-media-action.service';
 import { enqueueVerifiedBrowserVariant } from '@/browser/media-actions/browser-media-download.service';
+import { prepareOfferStream } from '@/browser/media-actions/browser-media-play.service';
+import { openPlayer } from '@/navigation/helpers/open-player';
 import { selectVerifiedStandaloneQualities } from '@/browser/media-actions/verified-quality-options';
 import { buildResourceIdentityKey, sameResourceFamily } from '@/media-detection/social-source/resource-identity';
 import {
@@ -182,6 +184,10 @@ export type UseQualitySelectionResult = {
   resetToInput: () => void;
   selectOption: (id: string) => void;
   confirmDownload: () => Promise<boolean>;
+  /** True while a Play tap is confirming its source (F17). */
+  playing: boolean;
+  /** Plays the option (the selected one by default) online in the VidoraX player — nothing is downloaded (F17). */
+  playOption: (optionId?: string) => Promise<boolean>;
   openPendingInBrowser: () => void;
   dismissForPlaybackHandoff: () => void;
   isBrowserHandoffActive: () => boolean;
@@ -215,12 +221,14 @@ export function useQualitySelection(
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [playing, setPlaying] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const mountedRef = useRef(true);
   const requestIdRef = useRef(0);
   const analyzingRef = useRef(false);
   const creatingRef = useRef(false);
+  const playingRef = useRef(false);
   const requestContextRef = useRef<MediaRequestContext | null>(null);
   const browserHandoffActiveRef = useRef(false);
   /** The sheet on screen was opened for the browser's locked offer (see `qualityConfirmRoute`). */
@@ -524,6 +532,66 @@ export function useQualitySelection(
       applyAnalysis(analysis);
     },
     [applyAnalysis],
+  );
+
+  const playOption = useCallback(
+    async (optionId?: string) => {
+      if (playingRef.current || creatingRef.current || analyzingRef.current) {
+        return false;
+      }
+      const option = selection ? findQualityOptionById(selection.options, optionId ?? selectedId) : null;
+      if (!selection || !option) {
+        setCreateError(translate('downloads.selectionHint'));
+        return false;
+      }
+      const tabIdForScope = browserMediaActionService.getActiveTabId() ?? '__default__';
+      const selectionLocked = browserMediaActionService.isSelectionLocked();
+      const route = qualityConfirmRoute({
+        openedForBrowserOffer: browserOfferRef.current,
+        selectionLocked,
+        offerCurrent: selectionLocked && isQualityFreezeStillCurrent(tabIdForScope),
+      });
+      // The page moved on to another video since the sheet opened: never play the old one as if it were current.
+      if (route === 'stale') {
+        setCreateError(translate('downloads.selectionHint'));
+        return false;
+      }
+      playingRef.current = true;
+      setPlaying(true);
+      setCreateError(null);
+      try {
+        const pageUrl =
+          (route === 'browser_offer' ? browserMediaActionService.getState().pageUrl : null) ??
+          requestContextRef.current?.pageUrl ??
+          selection.sourceUrl ??
+          null;
+        const requestContext =
+          requestContextRef.current ?? buildMediaRequestContextSync({ mediaUrl: option.sourceUrl, pageUrl });
+        const result = await prepareOfferStream({ selection, option, requestContext, pageUrl });
+        if (!mountedRef.current) {
+          return false;
+        }
+        if (!result.ok) {
+          setCreateError(result.message);
+          return false;
+        }
+        // Playing is not downloading: the offer stays available on the page.
+        close();
+        openPlayer(result.mediaId);
+        return true;
+      } catch {
+        if (mountedRef.current) {
+          setCreateError(translate('downloads.playFailed'));
+        }
+        return false;
+      } finally {
+        playingRef.current = false;
+        if (mountedRef.current) {
+          setPlaying(false);
+        }
+      }
+    },
+    [close, selectedId, selection],
   );
 
   const openPendingInBrowser = useCallback(() => {
@@ -941,6 +1009,8 @@ export function useQualitySelection(
     resetToInput,
     selectOption,
     confirmDownload,
+    playing,
+    playOption,
     openPendingInBrowser,
     dismissForPlaybackHandoff,
     isBrowserHandoffActive: () => browserHandoffActiveRef.current,
