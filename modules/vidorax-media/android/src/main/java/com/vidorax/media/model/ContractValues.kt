@@ -57,6 +57,11 @@ enum class Container(override val wire: String) : WireEnum {
   THREE_GP("3gp"),
   /** 3GPP2 (`ftyp 3g2*`): ISO-BMFF, kept as `.3g2` / `video/3gpp2`. */
   THREE_G2("3g2"),
+  /**
+   * MPEG Program Stream (F4): `.mpg`/`.mpeg`/`.vob`, MPEG-1 and MPEG-2 system streams. Converted to MP4 (MPEG-1/2 video
+   * → H.264, MP2/AC-3 → AAC); kept as `.mpg` / `video/mpeg` only when this device cannot decode a track.
+   */
+  MPEG_PS("mpg"),
   UNKNOWN("unknown"),
 }
 

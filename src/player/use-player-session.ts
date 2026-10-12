@@ -50,9 +50,10 @@ import {
   applySurfaceReveal,
   canAcceptFirstFrameEvent,
   createRequestAnimationFrameScheduler,
+  hasOnlyUndecodableVideo,
+  revealsWithoutFirstFrame,
   scheduleCompositionSyncedReveal,
   shouldAssignPlaybackSource,
-  revealsWithoutFirstFrame,
 } from './first-frame-state';
 import { isCurrentPlayerSession } from './session-generation';
 import { ensurePlaybackSourceRuntime } from './resolve-playback-source.runtime';
@@ -679,6 +680,11 @@ export function usePlayerSession(
     }
     if (status === 'readyToPlay') {
       watchdogRef.current?.clear();
+      if (hasOnlyUndecodableVideo(player.availableVideoTracks)) {
+        playerLog('player.undecodable_video', { mediaId: sourceRef.current?.mediaId });
+        applyTerminalError('UNSUPPORTED_MEDIA');
+        return;
+      }
       const duration =
         Number.isFinite(player.duration) && player.duration > 0
           ? player.duration

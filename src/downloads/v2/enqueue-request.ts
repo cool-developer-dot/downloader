@@ -65,6 +65,10 @@ const PROGRESSIVE_VIDEO_CONTAINERS = new Set([
   // F4V is MP4 and DivX is AVI by their bytes; the engine names the finished file by its container.
   'f4v',
   'divx',
+  // MPEG program streams (F4); the engine converts them to MP4 when this device decodes their tracks.
+  'mpg',
+  'mpeg',
+  'vob',
   'unknown',
 ]);
 

@@ -277,6 +277,7 @@ export type MediaAnalysisContainer =
   | 'm4v'
   | 'avi'
   | 'wmv'
+  | 'mpg'
   | 'mp3'
   | 'm4a'
   | 'aac'

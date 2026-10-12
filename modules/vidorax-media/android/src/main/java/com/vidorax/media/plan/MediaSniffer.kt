@@ -71,6 +71,14 @@ internal object MediaSniffer {
       else unsupported("MPEG-TS stream lost packet sync")
     }
     if (matchesAscii(prefix, 0, "FLV")) return unsupported("FLV is not a supported container")
+    if (MpegProgramStream.isProgramStream(prefix)) {
+      // F4: .mpg/.mpeg/.vob. A CSS-protected DVD title marks its packets scrambled; VidoraX never decrypts.
+      return if (MpegProgramStream.isScrambled(prefix)) {
+        SniffResult.Unsupported(ProbeFailure.DRM_PROTECTED, "scrambled (CSS) MPEG program stream")
+      } else {
+        SniffResult.Supported(Container.MPEG_PS)
+      }
+    }
     audioFileVerdict(prefix)?.let { return it }
 
     textVerdict(prefix, contentType)?.let { return it }

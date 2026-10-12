@@ -38,6 +38,21 @@ class MediaTypesTest {
   }
 
   @Test
+  fun mpegProgramStreams() {
+    // F4: .mpg, .mpeg and a DVD's .vob are MPEG program streams; kept (when kept) as .mpg / video/mpeg.
+    for (name in listOf("film.mpg", "film.MPEG", "VTS_01_1.VOB")) assertEquals(name, Container.MPEG_PS, MediaTypes.forFileName(name)?.container)
+    for (type in listOf("video/mpeg", "video/dvd", "video/mpg", "video/x-mpeg", "video/mp2p")) {
+      assertEquals(type, Container.MPEG_PS, MediaTypes.forMimeType(type)?.container)
+    }
+    assertEquals("mpg", MediaTypes.forContainer(Container.MPEG_PS)?.extension)
+    assertEquals("video/mpeg", MediaTypes.libraryMimeType(Container.MPEG_PS, null))
+    assertTrue(MediaTypes.isSupportedVideo("video/mpeg", "film.mpg"))
+    assertTrue(MediaTypes.isSupportedVideo(null, "VTS_01_1.vob"))
+    // MP3 is still music, not an MPEG video.
+    assertFalse(MediaTypes.isSupportedVideo("audio/mpeg", "song.mp3"))
+  }
+
+  @Test
   fun byMimeTypeIgnoresParametersAndCase() {
     assertEquals("webm", MediaTypes.forMimeType("Video/WebM; codecs=\"vp9, opus\"")?.extension)
     assertEquals("ts", MediaTypes.forMimeType("video/mp2ts")?.extension)

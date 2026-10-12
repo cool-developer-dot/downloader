@@ -25,6 +25,7 @@ const BLOCKED = new Set([
 export type PlayerDiagnosticEvent =
   | 'player.resolve_started'
   | 'player.ready'
+  | 'player.undecodable_video'
   | 'player.first_frame'
   | 'player.surface_revealed'
   | 'player.play'

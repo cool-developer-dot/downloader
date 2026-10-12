@@ -20,6 +20,7 @@ export const PROGRESSIVE_VIDEO_EXTENSIONS = [
   '3g2',
   'f4v',
   'divx',
+  'vob',
   'flv',
   'wmv',
 ] as const satisfies readonly ProgressiveVideoContainer[];
@@ -38,6 +39,7 @@ export const STRONG_VIDEO_EXTENSIONS = [
   '3g2',
   'f4v',
   'divx',
+  'vob',
   'flv',
   'wmv',
 ] as const;
@@ -77,6 +79,7 @@ export const EXTENSION_TO_CONTAINER: Record<string, MediaContainer> = {
   '3g2': '3g2',
   f4v: 'f4v',
   divx: 'divx',
+  vob: 'vob',
   flv: 'flv',
   wmv: 'wmv',
   mp3: 'mp3',
@@ -102,6 +105,7 @@ export const EXTENSION_TO_MIME: Record<string, string> = {
   '3g2': 'video/3gpp2',
   f4v: 'video/x-f4v',
   divx: 'video/divx',
+  vob: 'video/dvd',
   flv: 'video/x-flv',
   wmv: 'video/x-ms-wmv',
   mp3: 'audio/mpeg',
@@ -127,6 +131,11 @@ export const MIME_TO_EXTENSION: Record<string, string> = {
   'video/x-f4v': 'f4v',
   'video/divx': 'divx',
   'video/x-divx': 'divx',
+  // MPEG program streams (F4): .mpg/.mpeg and a DVD's .vob.
+  'video/mpg': 'mpg',
+  'video/x-mpeg': 'mpeg',
+  'video/mp2p': 'mpg',
+  'video/dvd': 'vob',
   'video/x-flv': 'flv',
   'video/x-ms-wmv': 'wmv',
   'audio/mpeg': 'mp3',

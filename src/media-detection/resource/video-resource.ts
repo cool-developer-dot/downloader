@@ -11,6 +11,8 @@ export const VIDEO_FORMATS = {
   webm: { mime: 'video/webm', aliases: ['video/webm'] },
   avi: { mime: 'video/x-msvideo', aliases: ['video/x-msvideo', 'video/avi', 'video/msvideo', 'video/divx', 'video/x-divx'] },
   wmv: { mime: 'video/x-ms-wmv', aliases: ['video/x-ms-wmv', 'video/x-ms-asf', 'application/vnd.ms-asf'] },
+  // MPEG program streams (F4): .mpg, .mpeg, a DVD's .vob.
+  mpg: { mime: 'video/mpeg', aliases: ['video/mpeg', 'video/mpg', 'video/x-mpeg', 'video/mp2p', 'video/dvd'] },
   hls: { mime: 'application/vnd.apple.mpegurl', aliases: ['application/vnd.apple.mpegurl', 'application/x-mpegurl', 'audio/mpegurl', 'audio/x-mpegurl', 'application/mpegurl'] },
 } as const;
 
@@ -40,6 +42,7 @@ export function videoFormatFromExtension(ext?: string | null): VideoResourceForm
   if (normalized === 'm3u8' || normalized === 'm3u') return 'hls';
   if (normalized === 'f4v') return 'mp4';
   if (normalized === 'divx') return 'avi';
+  if (normalized === 'mpeg' || normalized === 'vob') return 'mpg';
   return normalized && Object.hasOwn(VIDEO_FORMATS, normalized)
     ? normalized as VideoResourceFormat : null;
 }

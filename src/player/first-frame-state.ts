@@ -47,6 +47,16 @@ export function revealsWithoutFirstFrame(mimeType: string | null | undefined): b
 }
 
 /**
+ * The file's video tracks are all ones this device cannot decode (Android reports `isSupported: false` — an MPEG-1/2
+ * `.mpg`/`.vob` kept as downloaded on a phone without an MPEG-2 decoder, a DivX 3 AVI): the player gets ready but never
+ * paints a frame, so it is an unsupported format (with "Open with"), not an endless "Preparing video". Unknown support
+ * (iOS, no tracks yet) is never treated as unsupported.
+ */
+export function hasOnlyUndecodableVideo(tracks: readonly { isSupported?: boolean }[] | null | undefined): boolean {
+  return Array.isArray(tracks) && tracks.length > 0 && tracks.every((track) => track.isSupported === false);
+}
+
+/**
  * Mid-playback buffering must not re-cover an already painted / revealed frame.
  */
 export function shouldShowStartupCoverWhileBuffering(input: {

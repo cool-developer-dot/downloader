@@ -389,6 +389,40 @@ class DownloadEngineTest {
     assertTrue(library.items.isEmpty())
   }
 
+  @Test fun anMpeg1ProgramStreamIsAVideoAlthoughAndroidReadsOnlyItsSound() = runBlocking {
+    // F4: MediaMetadataRetriever sees only the MP2 of an MPEG-1 system stream; its video packets prove the video.
+    val bytes = resourceBytes("/media/process/ps-mpeg1.mpg")
+    val engine = engine(
+      prober = probeSuccess(Container.MPEG_PS, bytes.size.toLong()),
+      transfers = writesBytes(bytes),
+      inspector = { metadata(hasAudio = true, mime = "video/mpeg").copy(hasVideo = false, videoCodec = null) },
+    )
+    val record = engine.enqueue(request("https://archive.example/film.mpg"))
+    engine.awaitIdle()
+
+    val row = store.current(record.id)!!
+    assertEquals(row.errorMessage, DownloadState.COMPLETED, row.state)
+    val item = library.items.values.single()
+    assertTrue("named by its container", item.file.name.endsWith(".mpg"))
+    assertEquals("video/mpeg", item.mimeType)
+  }
+
+  @Test fun aProgramStreamWithOnlySoundIsStillNotAVideo() = runBlocking {
+    val bytes = resourceBytes("/media/process/ps-audio-only.mpg")
+    val engine = engine(
+      prober = probeSuccess(Container.MPEG_PS, bytes.size.toLong()),
+      transfers = writesBytes(bytes),
+      inspector = { metadata(hasAudio = true, mime = "audio/mpeg").copy(hasVideo = false, videoCodec = null) },
+    )
+    val record = engine.enqueue(request("https://archive.example/sound.mpg"))
+    engine.awaitIdle()
+
+    val row = store.current(record.id)!!
+    assertEquals(DownloadState.FAILED, row.state)
+    assertEquals(DownloadErrorCode.UNSUPPORTED_FORMAT, row.errorCode)
+    assertTrue(library.items.isEmpty())
+  }
+
   // ---------- J: stale-generation completion is idempotent ----------
 
   @Test fun supersededWorkerCannotCreateDuplicateLibraryEntry() = runBlocking {

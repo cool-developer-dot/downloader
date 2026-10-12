@@ -227,7 +227,23 @@ internal class RealDashDownloads(private val probe: Probe) : DashDownloads {
 }
 
 internal class RealMediaInspector(private val mediaInfo: MediaInfo) : MediaInspector {
-  override fun inspect(file: File): MediaMetadata = mediaInfo.read(file)
+  override fun inspect(file: File): MediaMetadata = withProgramStreamFacts(file, mediaInfo.read(file))
+}
+
+/**
+ * F4: Android's reader says little about MPEG program streams (no length; for MPEG-1 system streams not even the
+ * video). What it leaves out is filled from the stream's own bytes ([MpegProgramStream.inspect]); what it says wins.
+ */
+internal fun withProgramStreamFacts(file: File, metadata: MediaMetadata): MediaMetadata {
+  if (metadata.durationMs != null && metadata.width != null && metadata.hasVideo) return metadata
+  val ps = com.vidorax.media.plan.MpegProgramStream.inspect(file) ?: return metadata
+  return metadata.copy(
+    durationMs = metadata.durationMs ?: ps.durationMs,
+    width = metadata.width ?: ps.width,
+    height = metadata.height ?: ps.height,
+    hasVideo = metadata.hasVideo || ps.hasVideo,
+    videoCodec = metadata.videoCodec ?: ps.videoCodec,
+  )
 }
 
 internal class RealThumbnails(private val thumbnails: com.vidorax.media.library.Thumbnails) : ThumbnailMaker {

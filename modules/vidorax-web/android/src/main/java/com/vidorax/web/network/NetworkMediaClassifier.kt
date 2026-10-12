@@ -19,7 +19,7 @@ internal enum class NetworkMediaHint(val value: String) {
 internal object NetworkMediaClassifier {
   private const val MAX_URL_LENGTH = 8192
 
-  private val PROGRESSIVE_EXTENSIONS = setOf("mp4", "webm", "mov", "m4v", "m4a", "f4v")
+  private val PROGRESSIVE_EXTENSIONS = setOf("mp4", "webm", "mov", "m4v", "m4a", "f4v", "mpg", "mpeg", "vob")
   // .aac is HLS packed audio far more often than a standalone file.
   private val SEGMENT_EXTENSIONS = setOf("ts", "m4s", "aac")
   private val NON_MEDIA_EXTENSIONS = setOf(
@@ -39,7 +39,7 @@ internal object NetworkMediaClassifier {
 
   // Downloads (responses the WebView cannot render): which ones the detection pipeline classifies.
   private val VIDEO_FILE_EXTENSIONS =
-    setOf("mp4", "m4v", "f4v", "mov", "webm", "mkv", "avi", "divx", "wmv", "3gp", "3g2", "flv")
+    setOf("mp4", "m4v", "f4v", "mov", "webm", "mkv", "avi", "divx", "wmv", "3gp", "3g2", "flv", "mpg", "mpeg", "vob")
   private val HLS_TYPES = setOf("application/vnd.apple.mpegurl", "application/x-mpegurl", "audio/mpegurl", "audio/x-mpegurl")
   private val GENERIC_BINARY_TYPES = setOf(
     "application/octet-stream", "binary/octet-stream", "application/binary", "application/x-binary",

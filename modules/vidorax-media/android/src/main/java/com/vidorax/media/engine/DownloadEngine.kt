@@ -31,6 +31,7 @@ import com.vidorax.media.plan.DashTrack
 import com.vidorax.media.plan.DashTrackSource
 import com.vidorax.media.plan.HlsPlan
 import com.vidorax.media.plan.HlsPlanResult
+import com.vidorax.media.plan.MpegProgramStream
 import com.vidorax.media.plan.SplitResolution
 import com.vidorax.media.plan.TrackRole
 import com.vidorax.media.process.AviHeader
@@ -750,7 +751,9 @@ internal class DownloadEngine(
     // An AVI whose own header declares a video stream is a video even when Android cannot decode its picture (DivX 3):
     // it is kept for "Open with" (MediaProcessor), never refused as an audio file.
     val declaredAviVideo = probe.container == Container.AVI && AviHeader.declaresVideoStream(partFile)
-    if (!declaredAviVideo && failedAsAudioOnly(id, gen, partFile, "This file has no video")) return
+    // Likewise an MPEG program stream with video packets: Android's reader misses the video of MPEG-1 system streams.
+    val programStreamVideo = probe.container == Container.MPEG_PS && MpegProgramStream.hasVideoStream(partFile)
+    if (!declaredAviVideo && !programStreamVideo && failedAsAudioOnly(id, gen, partFile, "This file has no video")) return
     // Kept byte for byte when it already is a playable file; a fragmented MP4, AVI or FLV is remuxed into an MP4.
     processAndFinalize(
       id,

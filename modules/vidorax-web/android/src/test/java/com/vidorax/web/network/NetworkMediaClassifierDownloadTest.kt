@@ -26,6 +26,11 @@ class NetworkMediaClassifierDownloadTest {
     assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/files/show.F4V", "application/octet-stream"))
     assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/files/clip.3g2", "application/octet-stream"))
     assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/dl?id=2", null, "attachment; filename=movie.divx"))
+    // F4: MPEG program streams.
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://archive.example.org/download/film/film.mpg", "video/mpeg"))
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://dvd.example.com/VTS_01_1.VOB", "video/dvd"))
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/files/clip.mpeg", "application/octet-stream"))
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/dl?id=3", null, "attachment; filename=VTS_01_1.vob"))
   }
 
   @Test

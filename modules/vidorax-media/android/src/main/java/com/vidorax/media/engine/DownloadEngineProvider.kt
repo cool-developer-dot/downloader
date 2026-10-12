@@ -12,6 +12,7 @@ import com.vidorax.media.plan.DashPlanner
 import com.vidorax.media.plan.HlsPlanner
 import com.vidorax.media.plan.Probe
 import com.vidorax.media.process.AndroidCodecSupport
+import com.vidorax.media.process.RoutingTranscoder
 import com.vidorax.media.process.MediaProcessor
 import com.vidorax.media.process.Remuxer
 import com.vidorax.media.process.TransformerTranscoder
@@ -49,7 +50,7 @@ object DownloadEngineProvider {
       dash = RealDashDownloads(probe),
       split = RealSplitDownloads(probe),
       // Lossless remux/merge with Media3's muxers; re-encoding only through the platform codecs (Transformer).
-      processing = RealMediaProcessing(MediaProcessor(Remuxer(), TransformerTranscoder(context), AndroidCodecSupport)),
+      processing = RealMediaProcessing(MediaProcessor(Remuxer(), RoutingTranscoder(TransformerTranscoder(context)), AndroidCodecSupport)),
       transfers = RealTransfers(ProgressiveTransfer(http)),
       verification = RealVerification,
       inspector = RealMediaInspector(services.mediaInfo),
