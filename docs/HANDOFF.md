@@ -2087,6 +2087,14 @@ Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-pl
   exemption, no new permission. Device: battery/charging holds and releases (also with the app closed: 4 s after
   plug-in), a start time with the app closed ran 2 min late, holds survive force-stop before JS runs, test1 upgrade
   with paused + queued downloads; roaming and reboot BLOCKED (emulator cannot roam; reboot needs the owner).
+- **F4 MPEG Program Stream.** `.mpg`/`.mpeg`/`.vob` (`Container.MPEG_PS`, wire `mpg`) detected everywhere a container
+  is (native sniffer, web classifier, JS detection/enqueue); CSS-scrambled packets → protected. Converted to MP4:
+  MPEG-1/2 video → H.264 via Transformer and the platform MPEG-2 decoder; MP2 → AAC via VidoraX's own Layer II decoder
+  (`process/MpegAudioDecoder`, a minimp3 port, + `MpegAudioTranscoder`, routed by `RoutingTranscoder`); MPEG-1 system
+  streams re-packaged as MPEG-2 first (`process/Mpeg1SystemStream`). Without a decoder (most phones lack MPEG-2: the
+  AOSP one is TV-only) the file is kept as `.mpg`, its length/size read from the stream, and the player now says
+  "Unsupported format" + "Open with…" instead of spinning. Device: local VOB/MPEG-1/scrambled and archive.org's "Duck and
+  Cover" (kept, 9:15); conversion on a device with an MPEG-2 decoder BLOCKED.
 
 ## 5. How to resume
 

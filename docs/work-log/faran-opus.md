@@ -1039,3 +1039,93 @@ Pause when battery is low, Only while charging; per download: Start at… (none)
 - The app's `SegmentedControl` does not mirror in RTL (speed limit, Start-at day) — pre-existing.
 - Debug only: when the disk is full, Expo's dev font loader caches an empty `material-community` font and keeps
   failing (no icons) until that cache file is removed.
+
+---
+
+## F4 — MPEG Program Stream (.mpg, .mpeg, .vob)
+
+### Design
+
+Followed Prompt A's F5 (`cad62b8`) through every place a container touches, plus what MPEG-PS needed beyond it:
+
+- **Detection**: `Container.MPEG_PS` (wire `mpg`); `plan/MpegProgramStream` recognises MPEG-1 (`0010`) and MPEG-2 (`01`)
+  pack headers; `.mpg`/`.mpeg`/`.vob`, `video/mpeg`, `video/dvd`, `video/mpg`, `video/x-mpeg`, `video/mp2p` in
+  `MediaTypes`, the web classifier, JS constants/types, the pasted-link analyzer, the in-page observer, the engine-event
+  filter, the JS byte signature (`mpg`) and the enqueue container set (which lacked even `mpg` before). Library label MPG.
+- **Protected**: a PES header with `PES_scrambling_control ≠ 00` (CSS) → `DRM_PROTECTED` at the probe (first 16 KB) and
+  in the Verifier (first 4 MB, for titles that start clear); the JS sniffer refuses the same bytes.
+- **Processing**: an MPEG program stream always needs conversion (nothing in it fits an MP4). Video MPEG-1/2 → H.264
+  through Media3 Transformer and the platform MPEG-2 decoder; audio:
+  - **MP2 → AAC with VidoraX's own decoder.** No Android device ships an MP2 decoder, yet MP2 is the sound of nearly
+    every `.mpg`/`.vob`/VCD. `process/MpegAudioDecoder` is a Kotlin port of minimp3's Layer I/II path and synthesis
+    (public domain, CC0) — matched against minimp3 itself (C, scalar, no FMA) sample for sample on every allocation
+    table; minimp3 matches ffmpeg to ≥ 70 dB. `process/MpegAudioTranscoder` feeds it to the platform AAC encoder and
+    `Mp4Muxer`; `RoutingTranscoder` sends Layer II there and everything else to Transformer.
+  - AC-3 → AAC through the platform decoder where the device has one (Dolby-licensed devices).
+- **MPEG-1 system streams**: Media3's `PsExtractor` accepts only MPEG-2 packaging (`sniff` checks `0x44`), so
+  `process/Mpeg1SystemStream` re-packages them first (headers only; every payload byte and PTS kept — tested).
+- **Keep rule**: a track this device cannot decode → kept as downloaded (`.mpg`, `video/mpeg`) for "Open with". In the
+  player such a file used to sit on "Preparing video" forever (ExoPlayer is ready but no renderer can decode): now a
+  source whose video tracks are all `isSupported: false` is "Unsupported format" with "Open with…" (also fixes kept
+  DivX 3 AVIs).
+- **Engine**: Android's metadata reader misses the video of MPEG-1 system streams, so the audio-only gate trusts the
+  stream's video packets (`MpegProgramStream.hasVideoStream`, as F5 trusts a DivX AVI's header), and a kept stream's
+  length/size/codec come from its own bytes when the reader gives none (`withProgramStreamFacts`).
+
+### Automated (final F4 code)
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | 770 tests, 770 pass — new `src/media-detection/parsers/mpeg-program-stream.test.ts` (5: extension → mpg/video/mpeg incl. `.MPEG` and `.VOB`; the five MIME aliases; pasted links and the in-page observer; byte signatures of the native fixtures — MPEG-1 and MPEG-2 ok, scrambled `drm_protected`; `resolveVideoResource` VERIFIED / PROVEN_UNSUPPORTED; a verified `.mpg` enqueues as progressive; label MPG), `src/player/first-frame-state.test.ts` (3: all-unsupported video → unsupported; any supported, unknown or no tracks → not) |
+| `npm run typecheck` | OK |
+| `npm run lint` | 0 errors, 84 warnings (unchanged) |
+| `gradle :vidorax-media:testDebugUnitTest --rerun :vidorax-web:testDebugUnitTest --rerun` | 641 / 0 (+25) and 27 / 0 — `MpegAudioDecoderTest` 6 (four ffmpeg `mp2` streams — 48 kHz stereo 192 kb/s, 44.1 kHz mono 48 kb/s, 32 kHz 256 kb/s 30 subbands, MPEG-2 24 kHz — equal to minimp3's output by SHA-256; 1 kHz sine → 1,000 ± 10 zero crossings per 0.5 s; cut frames, non-frames and Layer III refused), `MpegProgramStreamTest` 6 (MPEG-1/2 pack headers; probe accepts, scrambled → protected; late scrambling only the Verifier sees; video packets; length/size/codec from the bytes; damaged stretch), `Mpeg1SystemStreamTest` 3 (every payload byte and PTS kept; cut last packet; junk refused), `MpegProgramStreamProcessingTest` 5 (Media3 reads MPEG-2 PS, MPEG-1 after re-packaging; both tracks converted into one MP4; kept when a decoder is missing — the original, not the copy; MP2 in TS converted with H.264 copied; routing), `ProgramStreamFactsTest` 2, `DownloadEngineTest` +2 (MPEG-1 stream the inspector calls audio-only completes as `.mpg`; audio-only PS refused), `MediaTypesTest` +1, web classifier +4 asserts |
+| `gradle :vidorax-media:connectedDebugAndroidTest` | 43 / 0 (+5): **H.264 + MP2 in MPEG-TS → MP4 with the H.264 copied and the MP2 decoded by `MpegAudioDecoder`, encoded by the platform AAC encoder — ExoPlayer plays both tracks, right length, seeks**; MPEG-2 PS, MPEG-1 system stream, MPEG-2-in-MPEG-1 packaging and AC-3 VOB → converted where the device decodes MPEG-2, else kept (this AVD: kept) |
+| `git diff --check` | clean |
+
+### Manual cases — debug build (local server `fx.127.0.0.1.nip.io`), then release (`F4-release-debugkey.apk`)
+
+| Case | Result |
+| --- | --- |
+| Local `.vob` (20 s MPEG-2 + MP2, `video/dvd`) | PASS: link → "Video available" → downloaded → **kept as `.mpg`** ("MPG · 4.2 MB · 480p", `video/mpeg`) because this AVD has no MPEG-2 decoder (below); the player says **"Unsupported format" + "Open with…"** (before the fix: "Preparing video" forever) |
+| Local MPEG-1 system stream (20 s, `-f mpeg`) | PASS after a fix: first run **failed "This file has no video"** — Android's reader sees only the MP2 of MPEG-1 system streams → the engine now trusts the video packets; second run completes, kept as `.mpg` |
+| Scrambled `.vob` (CSS bits set) | PASS: "Protected video — can't be downloaded" with the lock, nothing downloaded |
+| Public-domain `.mpeg` from archive.org (Prelinger "Duck and Cover", 1951, MPEG-2 368×480 + MP2, 256 MB) | PASS on release (download 101 s): detected, downloaded, kept as `.mpg` (no MPEG-2 decoder here), library length **555,186 ms = 9:15** (from the clock references — Android's reader gave none), 368×480, `video/mpeg2`; the player says "Unsupported format" + "Open with…"; the link afterwards says "Already downloaded" |
+| `.mpg` → **MP4 in the library, plays and seeks** | **BLOCKED** on this AVD: Android's own MPEG-2 decoder (`c2.android.mpeg2.decoder`) is declared `domain="tv"` and is enabled only on TV devices; phones have one only when the chip vendor ships it, and this phone image has none. Covered instead by: the MP2 → AAC path on the device (above), the Transformer video path (same as the passing VP8 → H.264 case), Media3 reading MPEG-2 PS and re-packaged MPEG-1 (JVM), and adaptive device tests that convert where a decoder exists. A TV system image would be a multi-GB download (not done) |
+| Release quick check | PASS: cold start 1.86 s, no crash, no ANR |
+| Real phone | **BLOCKED**: no phone |
+
+Evidence (`.claude/pr-evidence/`): `F4-vob-detected.png`, `F4-vob-kept-mpg.png`, `F4-player-unsupported-open-with.png`,
+`F4-scrambled-vob-protected.png`, `F4-archive-org-mpeg-downloaded.png`, `F4-archive-org-details.png`,
+`F4-release-player-unsupported.png`.
+
+### Regression
+
+Regression: quick check only, full R1–R12 deferred to §7 — release over the F3 install: cold start 1.86 s, browser,
+downloads, player open; no crash, no ANR.
+
+### Decisions (F4)
+
+- **MP2 decoded by VidoraX**, not left to the platform: without it no `.mpg` on any phone could become an MP4 with
+  sound. A port (not a dependency): minimp3 is CC0 and its output is the reference the port is tested against. Layer II
+  only — ffmpeg cannot encode Layer I, so there would be no test vector (Layer I streams are rare).
+- **AAC-LC at 80 kb/s per channel** (`MpegAudioTranscoder.AAC_BITRATE_PER_CHANNEL`); a frame that does not decode
+  becomes silence of its length (sync), more than half undecodable → `TRANSCODE_FAILED`.
+- **MPEG-1 re-packaged, not refused**: header rewrite only, original kept when nothing can be converted.
+- **No software MPEG-1/2 *video* decoder**: that is a decoder project of its own (VLC/ffmpeg-sized); without a
+  platform decoder the existing keep-and-"Open with" rule applies (as for WMV and DivX 3).
+- **Scrambling checked in the first 4 MB** (`SCRAMBLING_SCAN_BYTES`) of the finished file, after the probe's first
+  16 KB.
+- New constants: `MpegAudioDecoder.SAMPLES_PER_FRAME` 1152, `MpegAudioTranscoder.AAC_BITRATE_PER_CHANNEL` 80 000,
+  `MpegProgramStream.SCRAMBLING_SCAN_BYTES` 4 MB, `MediaProcessor.REWRAPPED_PS`. No new setting (a format, not a
+  behaviour); no new strings.
+
+### Found, not fixed (F4)
+
+- F17's Play button is offered for every verified single offer, including containers this device cannot decode (a
+  WMV, an `.mpg`/`.vob` without an MPEG-2 decoder): the player then says "Unsupported format" (online streams get no
+  "Open with").
+- A direct file link opened in a tab that shows an error page is titled after that page ("Webpage not available")
+  instead of the file name.
+- The quality label of a non-square picture is its shorter side ("368p" for 368×480).
+- Download details never show a duration for v2 downloads (the screen reads a field the v2 item does not carry).
