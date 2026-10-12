@@ -2047,6 +2047,15 @@ Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-pl
   in PLAY_SUBMISSION.md B2. Found and fixed: seeks from the notification stalled (undrawn TextureView surface) →
   views let go of the player while the activity is stopped; a closed PiP window left the session thinking PiP was on.
   Lock-screen controls / headphones / real phone BLOCKED on the AVD.
+- **F2 Speed control.** `transfer/BandwidthLimiter`: token buckets (0.25 s burst, debt instead of split reads) taken
+  after every network read in all four read loops, so the limit holds for any connection count. Download Settings →
+  Performance → "Speed limit" (Off / 256 KB/s / 512 KB/s / 1 / 2 / 5 MB/s; engine prefs `speedLimitBytesPerSecond`,
+  pushed by `ensure-bridge`). Download details (while downloading/paused/queued): its own limit + **Priority** (one at
+  a time; while it reads, the others together get 25 % of the global limit, or of its measured speed without one) —
+  `setDownloadBandwidth`/`listDownloadBandwidth`, stored in the new `download_bandwidth` table (**schema v5**,
+  `CREATE TABLE IF NOT EXISTS`; upgrade from v4 with real rows tested), dropped on completion/removal. Queue rules for
+  H4/F2 in ARCHITECTURE §3.6. Measured on the device: 512 KB/s → 511.2 KB/s over 100 s; 256 KB/s beside an unlimited
+  download → 249.7 vs 2448 KB/s; Priority under 1 MB/s → 764 vs 256 KB/s; all survive a force-stop. Real phone BLOCKED.
 
 ## 5. How to resume
 

@@ -218,6 +218,25 @@ queued → probing → downloading ⇄ paused
   files. `completed` rows stay in `downloads` for 24 h for the Downloads screen, then are pruned (the library row
   remains).
 
+### 3.6 Queue and bandwidth rules (F2 bandwidth, H4 start order)
+
+Two separate decisions, so the queue work (Hamza's H4) and the speed limits (F2) never fight:
+
+- **Start order (H4 owns it).** Which queued download takes the next of `maxConcurrent` slots. A download waits in
+  `queued` until a slot frees; F2 never starts, holds back or reorders a download. A Priority download that is still
+  `queued` gets nothing until the queue starts it.
+- **Bandwidth (F2 owns it).** How fast the *running* downloads read. `transfer/BandwidthLimiter` — one per engine — is
+  consulted after every network read of every stream (single file, `RangedDownload` parts, HLS/DASH segments and
+  segments fetched ahead; disk-to-disk appends are not counted). Token buckets: the **global limit**
+  (`DownloadSettings.speedLimitBytesPerSecond`, Download Settings → "Speed limit": Off, 256 KB/s, 512 KB/s, 1, 2, 5
+  MB/s; engine SharedPreferences, so it holds for downloads resumed before JavaScript runs); a **per-download limit**
+  (Download details), always inside the global one; **Priority** (Download details, at most one download): while the
+  priority download read in the last 2 s, all other downloads together get at most `PRIORITY_OTHERS_SHARE` (25 %) of
+  the global limit, or of the priority download's measured speed when there is no global limit (never below 32 KB/s
+  together). Per-download limits and Priority live in `download_bandwidth` (schema v5) and are dropped when the
+  download completes or is removed. A bucket allows a quarter-second burst and goes into debt instead of splitting a
+  read; changing a limit applies to the next read.
+
 ## 4. Native module: `modules/vidorax-web`
 
 Contract: `modules/vidorax-web/src/VidoraWeb.types.ts`. Kotlin package `com.vidorax.web`.

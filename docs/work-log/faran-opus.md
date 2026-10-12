@@ -598,3 +598,91 @@ Regression: quick check only, full R1–R12 deferred to §7 — release cold sta
 - expo-video's own notification builder sets only the title (Android 13+ draws the card from the session metadata, so
   the subtitle and artwork show there); on Android ≤ 12 the classic notification shows the title only.
 - The emulator was closed between sessions and restarted from its snapshot (data kept); system auto-rotate is now on.
+
+---
+
+## F2 — Speed control
+
+### Design
+
+- **Limiter** — `transfer/BandwidthLimiter` (one per engine): token buckets in bytes/s with a 0.25 s burst that go
+  into debt rather than splitting a read; a read reserves from every bucket it belongs to and waits for the longest.
+  `Throttle.take(bytes)` is called right after every network read in the four read loops (single file, `RangedDownload`
+  parts, HLS segments, segments fetched ahead), so the limit holds whatever "Connections per file" is.
+- **Global limit** — `DownloadSettings.speedLimitBytesPerSecond` (contract, record, engine prefs, `ensure-bridge`),
+  Download Settings → Performance → "Speed limit": Off (default), 256 KB/s, 512 KB/s, 1, 2, 5 MB/s.
+- **Per-download limit and Priority** — Download details (while downloading, paused or queued): same choices +
+  Priority switch. `setDownloadBandwidth` / `listDownloadBandwidth`; stored in a **new table** `download_bandwidth`
+  (schema **v5**, `CREATE TABLE IF NOT EXISTS`, no existing table changed); loaded into the limiter once per process
+  before the first transfer; dropped on completion and removal. One priority at a time (setting it clears the others).
+- **Priority rule** — while the priority download read within the last 2 s, the others together get at most 25 % of
+  the global limit, or of the priority download's measured speed when no global limit is set (≥ 32 KB/s together).
+- **Queue rules** written into ARCHITECTURE §3.6 for H4 (start order) and F2 (bandwidth). ARCHITECTURE's §5 is
+  detection, so the rules sit beside the download state machine (§3.5).
+
+Tester constants: `PRIORITY_OTHERS_SHARE` 0.25, `MIN_OTHERS_BYTES_PER_SECOND` 32 KiB, `PRIORITY_ACTIVE_NS` 2 s
+(`BandwidthLimiter`), burst 0.25 s / ≥ 16 KiB (`TokenBucket`).
+
+Evidence (`.claude/pr-evidence/`): `F2-speed-limit-setting.png`, `F2-per-download-256k.png`, `F2-priority-on.png`,
+`F2-priority-after-force-stop.png`, `F2-speed-limit-urdu.png`, `F2-details-urdu.png`.
+
+### Automated (final F2 code)
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | 729 tests, 729 pass — new: `speed-limit.test.ts` (6: choices, normalise unknown/negative to Off, engine value 0 → null, labels KB/MB, short labels, settings merge), `settings.test.ts` (the engine settings carry `speedLimitBytesPerSecond`) |
+| `npm run typecheck` | OK |
+| `npm run lint` | 0 errors, 84 warnings (unchanged) |
+| `gradle :vidorax-media:testDebugUnitTest --rerun :vidorax-web:testDebugUnitTest --rerun` | 587 / 0 (+17) and 27 / 0 — `BandwidthLimiterTest` 11 (fake clock: off = no wait; 512 KiB/s over 60 s within 2 %; one global limit shared by three readers; burst then rate, idle refills only the burst; per-download inside global; per-download without global; priority with global ≥ 72 % / others ≤ 28 %; priority without global → others ≈ 25 % of its speed; priority idle → others full speed; limit changed mid-transfer 1 MiB/s → 256 KiB/s → off; forget), `DownloadBandwidthStoreTest` 3 (save/list, one priority, empty entry deletes, delete with the download), `MediaDatabaseUpgradeTest` 2 (a v4 database with real download, library and completion rows → v5 with every row intact and the new table; migration 5 run twice is safe), `SpeedLimitRecordsTest` 2 |
+| `gradle :vidorax-media:connectedDebugAndroidTest` | 38 / 0 on the Pixel_8 AVD (the transfer loops now take the throttle; `Throttle.NONE` by default). The first run could not install the test APK (AVD storage full: "not enough space") — this session's own F2 test videos were deleted and it was rerun |
+| `git diff --check` | clean |
+
+### Manual cases — debug build (Metro), then release (`F2-release-debugkey.apk`)
+
+Measured on the device: the bytes written into each download's work folder (`run-as … du -sk no_backup/work/<id>`,
+the ranged `.part` is sparse), sampled every 10 s (`measure.py`); the server is a local measuring server
+(`fx.127.0.0.1.nip.io` + `adb reverse`, 150 MB MP4s with ETag/Last-Modified so F1 splits them into 3 parts) that
+also logs what it sends.
+
+| Case | Result |
+| --- | --- |
+| Global 512 KB/s, one large download, 100 s | PASS (debug): **511.2 KB/s average**, every 10 s sample 504.8–517.9 KB/s; server 505 KB/s. Release, Wikimedia BBB 1080p (286.5 MB): wlan0 RX **529 KB/s over 60 s** (the row read 512.2 KB/s) |
+| Global 512 KB/s shared by two downloads, 3 connections each, 60 s | PASS: 244.7 + 265.5 = **510.2 KB/s** |
+| Per-download 256 KB/s beside an unlimited download (global Off), 60 s | PASS: the limited one **249.7 KB/s** (samples 244.6–256.0), the unlimited Wikimedia Elephants Dream 1080p **2448 KB/s** |
+| Priority (global 1 MB/s, two downloads), 60 s | PASS: before, 494 + 532 KB/s; Priority on → **764.4 KB/s (75 %) vs 256.1 KB/s** |
+| Off → full speed | PASS: switched Off mid-download → 15.6 MB/s and 41.9 MB/s at once (the local link), both done in seconds |
+| Survives force-stop | PASS: global 1 MB/s (engine prefs + MMKV), Priority on g, own 256 KB/s on f → `am force-stop` → relaunch: both resumed at **763.5 / 251.2 KB/s**; details show Priority on and 256K; when g finished, f alone stayed at **256.5 KB/s** with 1 MB/s free (its own limit held); the database (v5) kept only f's row — g's went with its completion |
+| Contract → engine | PASS: the setting reaches `vidorax-media-settings.xml` (`speedLimitBytesPerSecond` 524288 / 262144 / 1048576 / 0) through `ensure-bridge` |
+| Urdu | PASS: Download Settings row RTL ("رفتار کی حد", "بند"), details "اس ڈاؤن لوڈ کی رفتار کی حد" + "ترجیح" switch on the left |
+| Real phone | **BLOCKED**: no phone |
+
+### Regression
+
+Regression: quick check only, full R1–R12 deferred to §7 — release build (`F2-release-debugkey.apk`, installed over the
+F18 data) cold start: no crash, no ANR, browser opens.
+
+### Decisions (F2)
+
+- **The limit counts network bytes after every read** (not decoded or written bytes): it holds for every connection
+  count, for parts and segments alike; disk-to-disk copies are never throttled.
+- **Debt instead of splitting reads**: a 64 KiB read is never cut; the next read waits longer. A 0.25 s burst keeps
+  short downloads (thumbnails, playlists, small segments) from waiting at all.
+- **Per-download limits and Priority live in the engine's database** (new table, schema v5), not in MMKV: the engine
+  owns downloads and must apply them before JavaScript is up (a download resumed by the system job).
+- **Priority without a global limit** gives the others 25 % of the priority download's measured speed (a phone's link
+  has no known capacity); with a global limit, 25 % of that limit. A priority download that has not read for 2 s
+  (paused, waiting) holds nobody back.
+- **One priority at a time**: marking another download clears the previous one (the switch says so).
+- The queue rules (H4 start order / F2 bandwidth) are written in ARCHITECTURE §3.6 next to the download state machine:
+  ARCHITECTURE's §5 is about detection.
+- Measured on the debug build against a local server where the release build's network security config blocks
+  cleartext; the release build was measured on Wikimedia over HTTPS.
+
+### Found, not fixed (F2)
+
+- **Download details jumps by one line while downloading**: the "speed · time left" line under the progress hides and
+  shows, so the content below moves ~33 px — a tap on the speed segments can land on the wrong one (seen twice).
+- Debug-build tooling: a CI=1 Metro does not see edited files — the debug app ran an old bundle (no Speed limit row)
+  and pushed settings without the new field, which reset the engine's speed limit to 0 until Metro was restarted.
+- The AVD's system server restarted once during an `adb install` under load (load average 35); the install was
+  repeated. Space: this session's own gallery copies (F2 a/b/c, BBB 1080p) were removed by name to make room.
