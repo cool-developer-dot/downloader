@@ -15,6 +15,10 @@ import {
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { translate } from '@/localization';
+import { useDownloadsStore } from '@/store/downloads';
+import { selectBackgroundPlayback, useSettingsStore } from '@/store/settings';
+
 import { invalidateLibraryAvailability, reconcileAvailability } from '@/library';
 import {
   decideActivityStopped,
@@ -152,6 +156,15 @@ export function usePlayerSession(
     instance.volume = 1;
     instance.muted = false;
   });
+
+  // Settings → Player → "Keep playing in background" (off by default).
+  const backgroundPlayback = useSettingsStore(selectBackgroundPlayback);
+  const backgroundPlaybackRef = useRef(backgroundPlayback);
+  useEffect(() => {
+    backgroundPlaybackRef.current = backgroundPlayback;
+  }, [backgroundPlayback]);
+  // When the PiP window last closed: an activity stop right after it is the window being dismissed.
+  const pictureInPictureEndedAtRef = useRef(0);
 
   const controller = useMemo(
     () =>
@@ -389,6 +402,8 @@ export function usePlayerSession(
           await player.replaceAsync({
             uri: source.uri,
             contentType: 'auto',
+            // Shown by the media notification when background play is on.
+            metadata: nowPlayingMetadata(source.mediaId, source.displayName),
           });
           lastAssignedUriRef.current = source.uri;
           lastAssignedGenerationRef.current = gen;
@@ -560,10 +575,12 @@ export function usePlayerSession(
         nextState: next,
         isPlaying: sessionRef.current.isPlaying,
         pictureInPicture: pictureInPictureRef.current,
+        backgroundPlayback: backgroundPlaybackRef.current,
       });
       if (decision.action === 'background_pause') {
         pauseForBackground('background');
       }
+      // continue_in_background: the media notification's service keeps the sound going.
       // await_picture_in_picture: keeps playing into the PiP window; the activity stopping (below) ends it otherwise.
       // foreground_no_autoplay: intentionally no play()
     };
@@ -577,13 +594,28 @@ export function usePlayerSession(
   // No one can see the video any more (PiP dismissed, no PiP window opened, screen off): stop it.
   useEffect(
     () =>
-      subscribeActivityStopped(() => {
+      subscribeActivityStopped((event) => {
         if (!mountedRef.current) {
           return;
         }
         const playing = sessionRef.current.isPlaying || player.playing;
-        if (decideActivityStopped({ isPlaying: playing }) === 'pause') {
+        const pictureInPictureEnded =
+          Boolean(event?.inPictureInPicture) ||
+          pictureInPictureRef.current.active ||
+          Date.now() - pictureInPictureEndedAtRef.current < PIP_DISMISS_STOP_WINDOW_MS;
+        const decision = decideActivityStopped({
+          isPlaying: playing,
+          backgroundPlayback: backgroundPlaybackRef.current,
+          pictureInPictureEnded,
+        });
+        if (decision === 'pause') {
           pauseForBackground('activity_stopped');
+        }
+        // A stopped activity shows no PiP window. expo-video's stop event does not come when the window was closed
+        // while its view had let go of the player (background play), so the state is cleared here.
+        if (pictureInPictureRef.current.active) {
+          pictureInPictureRef.current = { ...pictureInPictureRef.current, active: false };
+          pictureInPictureEndedAtRef.current = Date.now();
         }
       }),
     [pauseForBackground, player],
@@ -602,8 +634,17 @@ export function usePlayerSession(
   // listener above pauses.
   const onPictureInPictureStop = useCallback(() => {
     pictureInPictureRef.current = { ...pictureInPictureRef.current, active: false };
+    pictureInPictureEndedAtRef.current = Date.now();
     playerLog('player.pip_stop', { mediaId: sourceRef.current?.mediaId ?? undefined });
   }, []);
+
+  // Background play: expo-video's media session and its foreground service while a video is ready and not finished.
+  // Reaching the end (or an error) turns them off, which removes the notification; Replay turns them on again.
+  const backgroundSessionActive =
+    backgroundPlayback && session.isReady && !session.isCompleted && session.error == null;
+  useEffect(() => {
+    applyBackgroundPlayback(player, backgroundSessionActive);
+  }, [backgroundSessionActive, player]);
 
   useEventListener(player, 'statusChange', ({ status, error }) => {
     if (!mountedRef.current) {
@@ -966,3 +1007,27 @@ export function usePlayerSession(
 }
 
 export { SEEK_STEP_SECONDS };
+
+/** expo-video keeps playing and shows the media notification (its playback service) only while both are on. */
+function applyBackgroundPlayback(player: { staysActiveInBackground: boolean; showNowPlayingNotification: boolean }, active: boolean): void {
+  try {
+    player.staysActiveInBackground = active;
+    player.showNowPlayingNotification = active;
+  } catch {
+    // A released player: nothing to keep alive.
+  }
+}
+
+/** A stop this soon after the PiP window closed is that window being dismissed (which pauses). */
+const PIP_DISMISS_STOP_WINDOW_MS = 2_000;
+
+/** Title, "Playing in VidoraX" and the library thumbnail (when there is one) for the media notification. */
+function nowPlayingMetadata(mediaId: string, displayName: string): { title: string; artist: string; artwork?: string } {
+  const state = useDownloadsStore.getState();
+  const thumbnail = (state.engineRowsById[mediaId] ?? state.itemsById[mediaId])?.thumbnailUrl;
+  return {
+    title: displayName,
+    artist: translate('player.nowPlayingSubtitle'),
+    ...(typeof thumbnail === 'string' && thumbnail.startsWith('file://') ? { artwork: thumbnail } : null),
+  };
+}

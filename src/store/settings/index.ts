@@ -69,6 +69,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         maxConcurrentDownloads: state.maxConcurrentDownloads,
         saveToGallery: state.saveToGallery,
         connectionsPerFile: state.connectionsPerFile,
+        backgroundPlayback: state.backgroundPlayback,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -87,6 +88,10 @@ export const useSettingsStore = createStore<SettingsStore>()(
             raw.connectionsPerFile === undefined
               ? current.connectionsPerFile
               : normalizeConnectionsPerFile(raw.connectionsPerFile),
+          backgroundPlayback:
+            typeof raw.backgroundPlayback === 'boolean'
+              ? raw.backgroundPlayback
+              : current.backgroundPlayback,
           autoResume:
             typeof raw.autoResume === 'boolean' ? raw.autoResume : current.autoResume,
           notifications:

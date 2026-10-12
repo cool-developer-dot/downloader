@@ -64,6 +64,8 @@ export type PlayerVideoSurfaceProps = {
   onSurfaceLayout?: (size: { width: number; height: number }) => void;
   /** Native first painted frame — prefer over readyToPlay for cover dismissal. */
   onFirstFrameRender?: () => void;
+  /** False while VidoraX is stopped with background play on: the view lets go of the player (sound only). */
+  surfaceAttached?: boolean;
 };
 
 export const PlayerVideoSurface = memo(function PlayerVideoSurface({
@@ -88,6 +90,7 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
   onPictureInPictureStop,
   onSurfaceLayout,
   onFirstFrameRender,
+  surfaceAttached = true,
 }: PlayerVideoSurfaceProps) {
   const theme = useTheme();
   const { t } = useTranslation();
@@ -426,6 +429,7 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
       style={[styles.surface, { backgroundColor: theme.colors.black }]}
       onLayout={onLayout}>
       <Animated.View style={[styles.video, zoomStyle]} pointerEvents="none">
+        {surfaceAttached ? (
         <VideoView
           player={player}
           style={styles.video}
@@ -441,6 +445,7 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
           pointerEvents="none"
           onFirstFrameRender={onFirstFrameRender}
         />
+        ) : null}
       </Animated.View>
 
       <GestureDetector gesture={gesture}>

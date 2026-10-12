@@ -35,7 +35,11 @@ import { usePlayerOrientation } from '@/player/hooks/use-player-orientation';
 import type { OrientationMode } from '@/player/orientation-mode';
 import { usePlayerVolume } from '@/player/hooks/use-player-volume';
 import { usePlayerSideGestures } from '@/player/use-player-side-gestures';
-import { armNativePictureInPicture, pictureInPictureSupported } from '@/player/picture-in-picture';
+import {
+  armNativePictureInPicture,
+  pictureInPictureSupported,
+  subscribeActivityStopped,
+} from '@/player/picture-in-picture';
 import { externalTokenOf } from '@/player/external-media';
 import {
   openIncomingWithOtherApp,
@@ -51,6 +55,7 @@ import {
   setPlayerSessionPictureInPicture,
   useFullPlayerSession,
   useRedrawOnAttach,
+  useVideoSurfaceAttachment,
   type LivePlayerSession,
 } from '@/player/session-host';
 import { Button } from '@/components/buttons/Button';
@@ -165,6 +170,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
   // player continues where it is — and shows the paused frame there, which a new surface lacks.
   const [reopened] = useState(() => session.isSurfaceRevealed);
   useRedrawOnAttach(player, reopened);
+  // Background play lets the surface go while VidoraX is stopped; a paused frame is drawn again on return.
+  const surface = useVideoSurfaceAttachment();
+  useRedrawOnAttach(player, surface.generation > 0, surface.generation);
 
   const {
     isFullscreen,
@@ -289,6 +297,16 @@ const PlayerSessionView = memo(function PlayerSessionView({
       setPlayerSessionPictureInPicture(false);
     },
     [setPictureInPictureArmed],
+  );
+
+  // A stopped activity shows no PiP window, also when expo-video's stop event never came (see use-player-session).
+  useEffect(
+    () =>
+      subscribeActivityStopped(() => {
+        setPipActive(false);
+        setPlayerSessionPictureInPicture(false);
+      }),
+    [],
   );
 
   const hud = sideGestures.hud;
@@ -581,6 +599,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           zoomResetKey={activeMediaId ?? ''}
           contentSize={contentSize}
           pictureInPictureAutoEnter={pipAutoEnter}
+          surfaceAttached={surface.attached}
           onPictureInPictureStart={handlePictureInPictureStart}
           onPictureInPictureStop={handlePictureInPictureStop}
         />

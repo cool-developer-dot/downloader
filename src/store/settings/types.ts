@@ -10,6 +10,8 @@ export interface SettingsState {
   saveToGallery: boolean;
   /** Connections one large file (or one stream's segments) may use at once, 1–4 (default 3). */
   connectionsPerFile: number;
+  /** The player keeps playing (with a media notification) when VidoraX goes to the background (default off). */
+  backgroundPlayback: boolean;
 }
 
 export type SettingsKey = keyof SettingsState;
