@@ -788,3 +788,78 @@ opens.
 - The player's error screen places "Try again" off-centre above "Go back" / "Get Help" (existing `ErrorState` layout).
 - Debug builds on this AVD: a Metro reload sometimes leaves the app on a blank/spinner screen for minutes; testing
   moved to release builds where possible.
+
+---
+
+## F14 — Seek preview frames
+
+### Design
+
+- **Loader** (`src/player/seek-preview.ts`, pure, injected clock/timers/generator): `request(seconds)` while the
+  finger moves. A cached 1-second bucket shows at once; otherwise at most one `generateThumbnailsAsync` in flight, the
+  latest position wins (positions passed on the way are skipped), a new request starts at most every 150 ms. Frames are
+  cached in an LRU of 40 (evicted ones released); `dispose()` on close or media change releases everything and
+  ignores what is still in flight; 3 failures in a row → it stops asking (audio, unreadable source). A failed position
+  is not retried by itself.
+- **Hook** (`use-seek-preview.ts`): frames ≤ 256 px wide; released 1 s after leaving the cache (an Image may still be
+  drawing one). On only when the media is not a stream (F17) and a video frame has been shown (`hasFirstFrame` — audio
+  never has one). A new drag clears the last drag's frame from its start handler (never shown at the new position).
+- **UI** (`PlayerTimeline`): a 160 dp frame (shape kept, portrait videos too) with its time, centred over the thumb and
+  kept inside the track; the existing centre time pill stays. Physical left-to-right like the timeline (Urdu too).
+- Expo's Android implementation opens a new MediaMetadataRetriever per call and decodes the exact frame
+  (`OPTION_CLOSEST`): fast for H.264 here, ~1.2–1.5 s for 1080p VP9 on the AVD — the throttle keeps that off the UI.
+
+Tester constants: `SEEK_PREVIEW_INTERVAL_MS` 150, `SEEK_PREVIEW_BUCKET_SECONDS` 1, `SEEK_PREVIEW_CACHE_LIMIT` 40,
+`SEEK_PREVIEW_MAX_WIDTH_PX` 256, `SEEK_PREVIEW_WIDTH_DP` 160, `SEEK_PREVIEW_MAX_FAILURES` 3 (`seek-preview.ts`);
+release delay 1 s (`use-seek-preview.ts`).
+
+Evidence (`.claude/pr-evidence/`): `F14-preview-h264.png`, `F14-drag-strip.png`, `F14-preview-hevc.png`,
+`F14-preview-webm.png`, `F14-preview-landscape.png`, `F14-audio-only.png`, `F14-preview-urdu.png`.
+
+### Automated (final F14 code)
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | 753 tests, 753 pass — new `src/player/seek-preview.test.ts` (9: buckets; one in flight and the latest position wins; ≤ 1 start per interval; cache hit without a request; LRU bound releases the least recently used; dispose releases all and a late frame; a source without frames stops after 3 failures; a failed position is not retried in a loop and a success resets; preview size and position) |
+| `npm run typecheck` | OK |
+| `npm run lint` | 0 errors, 84 warnings (unchanged) |
+| Native | no native code changed |
+| `git diff --check` | clean |
+
+### Manual cases — release build (`F14-release-debugkey.apk`)
+
+Test files made with ffmpeg and pushed to `/sdcard/Movies/F14/`, opened through `VIEW` intents (the F16 path — the
+media-permission prompt of "Videos on this device" was dismissed, not granted on the owner's emulator); WebM from the
+library.
+
+| Case | Result |
+| --- | --- |
+| H.264 1080p, 10 min (external file) | PASS: frame + time above the thumb (04:35, 07:24); a 4 s continuous drag shows new frames along the way (03:17 → 05:38 → 08:04) |
+| HEVC 1080p | PASS (01:13) |
+| WebM VP9 1080p (library, Elephants Dream) | PASS: real scene frames (06:41); ~1.2–1.5 s per new frame on the AVD, the scrubber itself never waits |
+| Audio only (`.m4a`) | PASS: no frame, no crash, scrubbing works |
+| Landscape fullscreen | PASS (04:46 frame above the thumb) |
+| Urdu | PASS: RTL top bar; frame above the thumb (05:02) |
+| Time-left label / double-tap | PASS: label toggles "Time left −05:36" ↔ "Total length 10:58" (left as it was); double-tap right third +10 s (00:37 → 00:47) |
+| Memory after 20 scrubs (`dumpsys meminfo`, BBB 1080p WebM) | PASS: native heap 101.0 MB → 184.5 MB right after the first 20 (garbage not yet collected) → 96.4 MB a minute later; second 20: 96.4 → 126.6 → 97.4 MB after 60 s; player closed: 97.6 MB. TOTAL PSS 320.8 MB before → 291.6 MB at the end |
+| Real phone | **BLOCKED**: no phone |
+
+### Regression
+
+Regression: quick check only, full R1–R12 deferred to §7 — release cold start (6.4 s): no crash, no ANR, browser
+opens.
+
+### Decisions (F14)
+
+- The frame shows the exact position (`OPTION_CLOSEST`, expo-video's choice); a keyframe-only option would be faster
+  for VP9 but is not exposed by expo-video and would show a different frame than the seek lands on.
+- Cache of 40 one-second buckets (~6 MB at most) — enough to re-visit a scrubbed area, small enough for low-end
+  phones.
+- The preview follows the timeline's physical left-to-right layout in Urdu (as the timeline and double-tap zones do).
+
+### Found, not fixed (F14)
+
+- In landscape fullscreen the video is drawn inside a smaller area above the controls dock rather than the full height
+  (existing layout).
+- With the controls visible the Next/Previous buttons sit on the double-tap zones; a quick double tap there changes the
+  video instead of seeking (seen while testing — existing behaviour).

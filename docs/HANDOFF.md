@@ -2065,6 +2065,12 @@ Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-pl
   410) / No connection (+ Try again). Split audio+video, refused, live, DRM, YouTube: no Play. Found and fixed on the
   device: TikTok refused the player (no cookies/Referer); "Play 360p" played 720p (offer named the master); a dropped
   connection read as a generic error. Dailymotion BLOCKED (sign-in wall + cookie consent); real phone BLOCKED.
+- **F14 Seek preview frames.** Dragging the scrubber shows a small frame + time above the thumb
+  (`generateThumbnailsAsync`, `src/player/seek-preview.ts`: one request in flight, latest position wins, ≤ 1 start
+  per 150 ms, 1-second buckets, 40-frame LRU released on eviction/close, stops after 3 failures). Local, device and
+  external files with video only (not streams, not audio). Checked: H.264 1080p 10 min, HEVC, VP9 WebM (frames take
+  ~1.2–1.5 s there on the AVD), landscape fullscreen, Urdu, time-left label and double-tap unchanged, memory back to
+  baseline after 2 × 20 scrubs. Real phone BLOCKED.
 
 ## 5. How to resume
 

@@ -480,6 +480,14 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
   bottom; a lock control. Picture-in-picture is entered automatically when the user leaves the app while a video plays
   (no button). Auto-hide after 3 s while playing. *(Not built yet, planned in Phase 20 — `docs/ROADMAP.md`:
   fit/fill/crop, audio and subtitle track menus.)*
+- **Seek preview frames (F14)** (`src/player/seek-preview.ts`, `use-seek-preview.ts`, `PlayerTimeline`): while the
+  scrubber is dragged, a 160 dp frame with its time sits above the thumb (kept inside the track). Frames come from
+  `player.generateThumbnailsAsync` (≤ 256 px wide; on Android a new MediaMetadataRetriever per call, exact frame):
+  one request in flight, the latest position wins, a request starts at most every 150 ms, frames are cached by
+  1-second buckets (40 at most, least recently used released a second after leaving the cache), all dropped when the
+  player closes or changes media; three failures in a row stop asking (a source without frames). On only for files on
+  the device that have shown a video frame — library, device videos, files from other apps — never for streams (F17)
+  or audio.
 - Gestures: tap toggles controls; double-tap: while zoomed it only resets the zoom, otherwise the surface is split in
   thirds — left −10 s, middle play/pause, right +10 s (`resolveDoubleTapAction`; physical sides, not mirrored in
   Urdu); vertical swipe on the left 25 % changes **window** brightness (no system settings permission); right 25 %
