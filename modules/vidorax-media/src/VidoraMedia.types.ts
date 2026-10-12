@@ -475,6 +475,25 @@ export interface DownloadSettings {
    * (missing = 3).
    */
   connectionsPerFile?: number;
+  /**
+   * Speed limit for all downloads together, bytes per second (Download Settings → "Speed limit": Off, 256 KB/s,
+   * 512 KB/s, 1, 2 or 5 MB/s). Null, 0 or missing = no limit. Applied in the read loop of every transfer stream
+   * (single file, parallel parts, segments), so it holds whatever the connections per file.
+   */
+  speedLimitBytesPerSecond?: number | null;
+}
+
+/**
+ * A download's own speed limit and the Priority mark (Download details). Persisted by the engine (survives restarts);
+ * only one download has priority — marking one clears the others. While the priority download receives bytes, all
+ * other downloads together get at most a quarter of its bandwidth. Bandwidth only: the queue's start order is not
+ * changed (docs/ARCHITECTURE.md §3.6).
+ */
+export interface DownloadBandwidth {
+  id: string;
+  /** Bytes per second; null = no limit of its own (the global limit still applies). */
+  speedLimitBytesPerSecond: number | null;
+  priority: boolean;
 }
 
 export interface StorageStats {
@@ -530,6 +549,16 @@ export interface VidoraMediaModuleApi {
   /** Every non-completed record plus records completed in the last 24 h, newest first. */
   listDownloads(): Promise<DownloadRecord[]>;
   setDownloadSettings(settings: DownloadSettings): Promise<void>;
+  /**
+   * Sets a download's own speed limit and its Priority mark — both are applied (a missing limit is no limit, a missing
+   * priority is off); priority on clears it from every other download. Resolves with every download's entry. Rejects with ERR_NOT_FOUND for an unknown id. Missing on older native builds.
+   */
+  setDownloadBandwidth?(
+    id: string,
+    options: { speedLimitBytesPerSecond?: number | null; priority?: boolean },
+  ): Promise<DownloadBandwidth[]>;
+  /** Every download that has its own limit or the priority mark. Missing on older native builds. */
+  listDownloadBandwidth?(): Promise<DownloadBandwidth[]>;
 
   // Library
   listLibrary(query: LibraryQuery): Promise<LibraryPage>;
