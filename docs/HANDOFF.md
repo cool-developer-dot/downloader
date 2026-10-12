@@ -2040,6 +2040,13 @@ Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-pl
   cold start's Player was replaced by the splash's own navigation (`launch-handover.ts`), an MP3 stayed on "Preparing
   video" (audio revealed when ready). Google Photos BLOCKED (its first-run asks to turn on backup for the owner's
   account); real phone BLOCKED. From F16 on, R1–R12 runs once at §7 (owner's request); per task a quick release check.
+- **F18 Background play.** Settings → Player → "Keep playing in background" (off by default, MMKV). On: leaving the
+  app or locking the screen keeps the sound going with expo-video's media notification/session (title, "Playing in
+  VidoraX", thumbnail; play/pause/seek); end of video or closing the player removes it; PiP unchanged (closing the
+  window pauses). Manifest: `ExpoVideoPlaybackService` + `FOREGROUND_SERVICE_MEDIA_PLAYBACK`; Play Console declaration
+  in PLAY_SUBMISSION.md B2. Found and fixed: seeks from the notification stalled (undrawn TextureView surface) →
+  views let go of the player while the activity is stopped; a closed PiP window left the session thinking PiP was on.
+  Lock-screen controls / headphones / real phone BLOCKED on the AVD.
 
 ## 5. How to resume
 

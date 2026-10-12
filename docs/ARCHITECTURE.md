@@ -482,10 +482,16 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
   a video frame that never comes. `+native-intent.ts` treats `content:`/`file:` links as non-routes, like web links.
   Network streams are still Phase 16 (F17).
 - Picture-in-picture needs manifest entries mirrored from expo-video's config plugin (this repo does not run
-  prebuild). Background audio is **off**: expo-video's `ExpoVideoPlaybackService` and
-  `FOREGROUND_SERVICE_MEDIA_PLAYBACK` were removed on 2026-10-01 (app.json `supportsBackgroundPlayback: false`), so
-  playback pauses in the background (PiP excepted) and there is no media notification. Re-adding it (Phase 16) needs
-  both manifest entries back plus the Play Console foreground-service declaration.
+  prebuild). **Background play (F18)**: Settings → Player → "Keep playing in background" (`backgroundPlayback`, off by
+  default). The manifest declares expo-video's `ExpoVideoPlaybackService` (`mediaPlayback`) and
+  `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (app.json `supportsBackgroundPlayback: true`; Play declaration in
+  `docs/play-console/PLAY_SUBMISSION.md` B2). With the setting on, `decideAppLifecycleAction` →
+  `continue_in_background` and `decideActivityStopped` keeps playing (closing a PiP window still pauses); the session
+  sets `staysActiveInBackground` + `showNowPlayingNotification` while a video is ready and not finished, and the source
+  carries `metadata` (title, "Playing in VidoraX" in the app's language, library thumbnail). While the activity is
+  stopped the player views let go of the player (`session-host/video-surface-attachment`: an undrawn TextureView
+  surface would stall seeks from the notification) and take it back when the app is active. Setting off → the player
+  pauses in the background exactly as before (PiP excepted).
 - **One session, two views** (`src/player/session-host`). The session (`usePlayerSession`: the native player, resume
   seek, autoplay, background/PiP pause policy, playback events) runs in `PlayerSessionHost`, mounted once in the
   `(app)` stack beside the navigator — not in the Player screen. The Player route attaches to it

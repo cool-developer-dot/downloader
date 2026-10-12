@@ -511,3 +511,90 @@ Regression: quick check only, full R1–R12 deferred to §7 — release build co
   "format not supported".
 - The Player's not-found message for an external token from an earlier process says "could not be found in your
   library" (only reachable after the app process died while the Player route was kept).
+
+---
+
+## F18 — Background play
+
+### Design
+
+- **Setting** — Settings → new **Player** section → "Keep playing in background" (`backgroundPlayback`, default
+  **off**), in the persisted settings store (MMKV, survives a force-stop). It acts in the player session (JavaScript
+  owns the pause policy; the native side only reports activity stops), so nothing native reads it.
+- **Manifest / config** — `FOREGROUND_SERVICE_MEDIA_PLAYBACK` and expo-video's `ExpoVideoPlaybackService`
+  (`exported=false`, `foregroundServiceType=mediaPlayback`, `androidx.media3.session.MediaSessionService` filter),
+  exactly as `withExpoVideo.js` writes them; app.json `supportsBackgroundPlayback: true`; the 2026-10-01 comment
+  replaced. `FOREGROUND_SERVICE` itself is already declared (downloads).
+- **Policy** (`src/player/app-lifecycle-policy.ts`, pure): with the setting on, going to the background while playing
+  → `continue_in_background` instead of `background_pause` (also from landscape fullscreen — the policy does not
+  depend on fullscreen), and the activity stopping (screen off, left without PiP) keeps playing. PiP unchanged: armed
+  → the window opens; a dismissed PiP window still pauses (`decideActivityStopped` gets "PiP just ended"). Setting off
+  → exactly today's decisions.
+- **Player** (`use-player-session.ts`): setting on → `staysActiveInBackground` and `showNowPlayingNotification` on the
+  expo-video player (live when toggled), the source carries `metadata` (title, "Playing in VidoraX" in the app's
+  language, the library thumbnail as artwork when there is one). Reaching the end turns both off (the notification
+  and its service go); Replay turns them on again; closing the player releases it.
+- **Play Console** — `docs/play-console/PLAY_SUBMISSION.md`: the mediaPlayback foreground-service declaration
+  (description, user impact, demo-video steps).
+- **Found while testing and fixed in F18:**
+  - *A seek from the notification while backgrounded never finished* (stuck BUFFERING, Media3's stuck-player timeout
+    failed it 10 min later): both player views use a TextureView, whose surface stays set but undrawn while the
+    activity is stopped, so the decoder cannot hand out the frame a seek needs. `session-host/video-surface-attachment`:
+    with background play on, an activity stop makes the views let go of the player (ExoPlayer drops the destroyed
+    TextureView surface and plays sound only; the player stays registered with the playback service, so the
+    notification stays); `AppState` active re-attaches them and a paused frame is redrawn. PiP is a paused activity —
+    never affected.
+  - *After closing a PiP window every later background exit paused*: the window closed while its view had let go of
+    the player, so expo-video's PiP-stop event never came and the session believed PiP was still on. A stopped
+    activity has no PiP window: the session and the Player clear their PiP state on every activity stop.
+
+Evidence (`.claude/pr-evidence/`): `F18-setting-on-after-force-stop.png`, `F18-media-controls.png`,
+`F18-pip-with-setting-on.png`, `F18-setting-urdu.png`, `F18-notification-urdu.png`, `F18-release-media-notification.png`.
+
+### Automated (final F18 code)
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | 723 tests, 723 pass — new: `app-lifecycle-policy.test.ts` +6 (on: continue in background incl. fullscreen; off: today's pause; PiP unchanged either way; paused stays paused, no autoplay; activity stop keeps playing only when on; closing PiP still pauses), `video-surface-attachment.test.ts` (2) |
+| `npm run typecheck` | OK |
+| `npm run lint` | 0 errors, 84 warnings |
+| `gradle :vidorax-media:testDebugUnitTest --rerun :vidorax-web:testDebugUnitTest --rerun` | 570 / 0 and 27 / 0 (00:27–00:28); no native code changed |
+| `apkanalyzer manifest print` (release APK) | `ExpoVideoPlaybackService` declared once (`foregroundServiceType` mediaPlayback), `FOREGROUND_SERVICE_MEDIA_PLAYBACK` once; none of the restricted permissions |
+| `git diff --check` | clean |
+
+### Manual cases — debug build, then release (`F18-release-debugkey.apk`)
+
+| Case | Result |
+| --- | --- |
+| Setting in Settings → Player, off by default; on survives force-stop (debug + release); off survives force-stop (release) | PASS |
+| Setting on → play → (mini player) → Home | PASS (debug + release): sound continues, media notification + media session "hls.js demo · Playing in VidoraX", library thumbnail as artwork |
+| Notification controls | PASS: pause, play, −10 s, +10 s (session PAUSED/PLAYING, position moves) |
+| Screen off 5 min | PASS: kept playing to the video's end (498 s → 634.6 s); release: 1 min screen off, still playing |
+| End of video / closing the player | PASS: notification and foreground service gone; close → no service, no sound |
+| Setting off → Home | PASS (debug + release): pauses, no notification — today's behaviour |
+| PiP, setting on | PASS: Home from the Player opens PiP; closing the PiP window pauses (unchanged) |
+| Landscape fullscreen → Home, setting on | PASS: PiP window keeps playing |
+| External file (F16) | PASS: keeps playing in the background, its own title in the session |
+| Mini player after returning | PASS: picture back (≈3–8 s on this overloaded AVD while the TextureView re-attaches) |
+| Urdu | PASS: Settings row RTL; notification subtitle "VidoraX میں چل رہی ہے" |
+| Lock-screen controls | **BLOCKED**: the AVD has its lock screen disabled (`locksettings get-disabled` = true); enabling one is a security-setting change not made on the owner's emulator. The same media session drives them (its actions include play/pause/seek) |
+| Bluetooth / headphones | **BLOCKED**: none on the AVD |
+| Real phone | **BLOCKED**: no phone |
+
+### Regression
+
+Regression: quick check only, full R1–R12 deferred to §7 — release cold start: no crash, no ANR, browser opens.
+
+### Decisions (F18)
+
+- The setting lives in the JS settings store (MMKV) — the pause policy and the expo-video flags are JS; nothing native
+  reads it, so there is no bridge push.
+- The notification's second line is set when a video is opened (expo-video takes metadata only with the source): a
+  language change applies to the next video opened.
+- Closing the PiP window pauses even with background play on ("PiP behaviour unchanged").
+
+### Found, not fixed (F18)
+
+- expo-video's own notification builder sets only the title (Android 13+ draws the card from the session metadata, so
+  the subtitle and artwork show there); on Android ≤ 12 the classic notification shows the title only.
+- The emulator was closed between sessions and restarted from its snapshot (data kept); system auto-rotate is now on.
