@@ -165,7 +165,7 @@ download keeps its real bytes across a restart, cancel removes the part and its 
 | 2 | Pause ~40 %, airplane ~60 %, force-stop ~70 % (Wikimedia 168 MB WebM, 3 connections) | release | PASS | pause at 67 MB → held 67 MB for 8 s → resume; airplane mode at 101 MB, 16 s offline, network back → 121 MB 12 s later (no restart); force-stop at 121 MB → reopen → resumed on its own (144 MB 15 s later) → completed, SHA-256 `139b7ba2…` = source. 139 notification samples: one 103 → 101 MB step at the waiting → downloading switch (the notification rendering the row's last persisted count; the parts' checkpoint provably holds every reported byte — two new JVM tests). First attempt (before `b52c534`) found the unquoted-ETag bug |
 | 3 | SHA-256 of the app's file vs `curl … \| shasum -a 256` | debug (`run-as`) | PASS | BBB 30 MB: both `5b603ec1…b453bc`; release: 168 MB WebM over 3 connections = source |
 | 4 | Mux HLS high quality (720p, 64 segments, 170 MB) | release | PASS | uninterrupted 3 connections: transfer 106 s; 1 connection 113 s; 3 connections with **3 pause/resume cycles**: 160 s incl. pauses — all three files: **38,075 video / 27,312 audio frames = the source** (`ffprobe -count_frames` on the playlist), 0 decode errors, identical per-packet hash `6687ed7b…`. Player: PLAYING; seeks to 86 s, 96 s, 319 s, 578 s each played on (pause-position deltas 6.1 s per 6 s; no stall near the old 80–84 s point) |
-| 5 | TikTok, Facebook, Instagram still succeed | release | see R4 below | small files take the unchanged one-connection path (`connectionsFor`) |
+| 5 | TikTok, Facebook, Instagram still succeed | release | PASS — TikTok + Facebook in R4 below, Instagram reel `DSxdvp9lcDa` downloaded via the pasted-link analyzer | small files take the unchanged one-connection path (`connectionsFor`) |
 | 6 | "Connections per file" really changes the connection count | debug + fixture log | PASS | default 3: probe `bytes=0-` + 3 parallel ranges, peak 3 open, 4.2 s; set 1 (engine prefs `connectionsPerFile=1`): probe + one plain GET, 14.6 s; set 4 → **force-stop** → reopen → without touching Settings: 4 parallel ranges, peak 4, 2.85 s. All three files SHA-256 = what the server sent |
 | 7 | A download paused on `v1.0.0-test1` resumes after upgrading | release over test1 | PASS | (a) 288p HLS paused on test1 at 29.6/37.6 MB → upgrade → resumed → 19,039 / 13,656 frames, 0 decode errors (its test1-assembled prefix renumbered); (b) WebM paused on test1 at 28.2 MB (one-connection `.part`, unquoted-ETag validator) → R10 → resumed and completed, SHA-256 = source |
 
@@ -326,7 +326,7 @@ with a `preload="none"` tall video, and cross-origin frames from a second host.
 | Another screen opens while fullscreen (`vidorax://downloads`, like a notification tap) | PASS: Downloads shown in portrait, not covered (the activity pause already left fullscreen: `leave background`) |
 | Page navigates away while fullscreen | PASS: `gone navigation`, portrait, new page normal |
 | Parked tab requests fullscreen (DevTools, user gesture) | **FAIL first** (black view over the whole app, no `fullscreenchange`, Back needed) → fixed (active-only `allowsFullscreenVideo`) → PASS: `fullscreenEnabled` false in the parked page, request refused "Fullscreen is not supported", app untouched; active tab still enabled; a re-activated tab enters fullscreen |
-| Tab switch / tab switcher while fullscreen | Not reachable from the UI (the video view covers the app); covered by the unit tests and by react-native-webview's `onHideCustomView` on the prop change |
+| Tab switch / tab switcher while fullscreen | **BLOCKED** from the UI: not reachable (the page's video view covers the app and the tab bar); covered by the unit tests and by react-native-webview's `onHideCustomView` on the prop change |
 | Translated page (`www-w3schools-com.translate.goog`, Urdu) | PASS: landscape, Back → portrait, `scrollY` 404.6 restored, "Already downloaded" offer intact |
 | App in Urdu (RTL) | PASS: same behaviour (landscape, Back → portrait, scroll kept); no new strings in F13 |
 | Back gesture (navigation mode 2) | PASS (also before F13: Chromium's view consumes Back; our JS Back is the fallback) |
@@ -1190,8 +1190,8 @@ the hls.js demo page and pasted as a direct link.
 | Background | PASS (release): Home during a recording — 1:01 → 1:39 in 40 s; reopen → Stop from the row → 2:14 MP4 plays at once |
 | Urdu + RTL | PASS: Advanced section, bar "لائیو سٹریم", row "ریکارڈنگ · 0:24 · 2.0 MB" with "بند کریں", notification; **found and fixed**: the notification read "MB 6.3" (an RTL line reorders the size) → left-to-right marks as in the app; "1 گھنٹے" → "1 گھنٹہ" |
 | Dark theme | PASS (release): Advanced section and the recording row |
-| Bar while recording | **Found and fixed**: said "Downloading…" (the consumed offer) → "Recording…" from the followed download |
-| Max length / low storage / stall / endlist on the device | Not run on the device (2 h minimum choice; the AVD has 845 MB free and the test stream never ends) — covered by `LiveHlsRecorderTest` and `DownloadEngineLiveTest` |
+| Bar while recording | PASS after a fix: it said "Downloading…" (the consumed offer) → now "Recording…", from the download the bar follows |
+| Max length / low storage / stall / endlist on the device | **BLOCKED** on the device: the shortest length the engine accepts is 15 min (30 min in the UI), the public test stream never ends or stalls, and filling the AVD's storage would endanger the owner's emulator — covered by `LiveHlsRecorderTest` (fake playlist and clock) and `DownloadEngineLiveTest` (real HTTP) |
 | Release quick check | PASS: cold start 951 / 873 ms, no crash, no ANR |
 | Real phone | **BLOCKED**: no phone |
 
@@ -1243,3 +1243,43 @@ the existing column).
   (~every 2 s with hls.js) — as before F6.
 - Notification action labels (Stop, Pause, Cancel…) stay English in Urdu (as all action labels before F6).
 - A pasted direct `.m3u8` link is titled "Download" (the generic name of direct links).
+
+## §7 Finish (2026-10-12/13)
+
+### Full automated gate — branch head `e00f425`
+
+| Gate | Result |
+| --- | --- |
+| `npm test` | 779 / 779 (baseline 678: **+101** over the batch) |
+| `npm run typecheck` | OK |
+| `npm run lint` | 0 errors, 84 warnings (= baseline) |
+| `gradle :vidorax-media:testDebugUnitTest --rerun` | 668 / 0 (baseline 505: **+163**) |
+| `gradle :vidorax-web:testDebugUnitTest --rerun` | 27 / 0 |
+| `gradle :vidorax-media:connectedDebugAndroidTest` | 43 / 0 on the Pixel_8 AVD (baseline 33: **+10**) |
+| `git diff --check` | clean |
+
+### R1–R12 — `F6-release-uploadkey.apk` (Gradle-signed with the upload key, built from `e00f425`'s code) installed over `test1-release-uploadkey.apk` without re-signing
+
+Seed: `seed_test1.sh` (MP4 + favourite, history, recent search "cats"); its paused step missed (the 160 MB WebM
+finished first on today's fast link), so a 300 MB WebM was started on test1 and paused by hand at 286 MB-of-row before
+the upgrade. Before seeding, this batch's own gallery copies were removed for room (`Movies/VidoraX`, 13 items).
+
+| # | Result | Note |
+| --- | --- | --- |
+| R1 | PASS | browser chrome at 6.5, 6.2, 6.3 s (test1 baseline 6.2–6.4 s); no crash |
+| R2 | PASS | w3schools MP4 offered, completed, plays |
+| R3 | PASS | Mux HLS: sheet 3+ qualities, 184p completed (19.1 MB) |
+| R4 | PASS (2nd run) | TikTok 576p completed; Facebook (separate audio + video) completed with sound. 1st run FAIL: the app sat on the App Lock PIN screen left by R8's scripted disable |
+| R5 | PASS | YouTube: toast "YouTube downloads are not supported" confirmed on `S7_r5_toast.png`; AES (`oceans_aes.m3u8`): "Protected video — can't be downloaded" (`S7-r5-aes.png`) |
+| R6 | PASS | paused at 17.0 MB of 37.0 MB, unchanged after 8 s, resumed; force-stop → running again → completed |
+| R7 | PASS | ±10 s, seek to 05:19, play, fullscreen (rotation 90), PiP |
+| R8 | PASS (`r8.sh`) | PIN asked after enabling, none after disabling. The scripted R8 in `regress.py` FAILed: its disable left App Lock on (known flake since F1) — App Lock turned off by hand, then `r8.sh` |
+| R9 | PASS (2nd run) | Urdu: 29 Urdu strings on Settings, no Latin-only labels; System / Red / Dark. 1st run FAIL: PIN screen (R8) |
+| R10 | PASS | 2 download rows, favourite kept, 6 history pages, recent searches; **the download paused on test1 resumed on F6 and completed** |
+| R11 | PASS (2nd run) | DASH: qualities 180–1080p, 180p completed (35.2 MB), plays. 1st run FAIL: PIN screen |
+| R12 | Behaviour PASS, label pre-existing | Wi-Fi only + `svc wifi disable`: held at 57.8 MB of 92.2 MB (row "Queued" — the "Waiting for Wi-Fi" label is F1's Found-not-fixed), Wi-Fi back → completed (screenshots `S7b_r12_waiting.png`, `S7b_r12_resumed.png`) |
+| Real phone | **BLOCKED** | no phone available |
+
+Afterwards (owner's request): every test video deleted from the VidoraX library (Player → Delete from VidoraX), the
+gallery copies in `Movies/VidoraX` and this batch's F16 test files in `Download/` removed — the AVD has 2.2 GB free.
+App left in English, System theme, App Lock off, Live recording off, Wi-Fi on.
