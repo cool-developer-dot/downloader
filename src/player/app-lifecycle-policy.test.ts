@@ -69,3 +69,74 @@ describe('leaving the player', () => {
     assert.equal(shouldArmPictureInPicture({ ...ready, isReady: false }), false);
   });
 });
+
+describe('Keep playing in background (Settings → Player)', () => {
+  const states = ['background', 'inactive'] as const;
+
+  test('on: a playing video keeps playing in the background, also from landscape fullscreen', () => {
+    for (const nextState of states) {
+      // Landscape fullscreen leaves the app the same way: the decision does not depend on it.
+      for (const pictureInPicture of [undefined, { armed: false, active: false }]) {
+        assert.deepEqual(
+          decideAppLifecycleAction({ nextState, isPlaying: true, pictureInPicture, backgroundPlayback: true }),
+          { action: 'continue_in_background' },
+        );
+      }
+    }
+  });
+
+  test('off: exactly today’s pause', () => {
+    for (const nextState of states) {
+      assert.deepEqual(decideAppLifecycleAction({ nextState, isPlaying: true, backgroundPlayback: false }), {
+        action: 'background_pause',
+      });
+      assert.deepEqual(decideAppLifecycleAction({ nextState, isPlaying: true }), { action: 'background_pause' });
+    }
+  });
+
+  test('PiP is unchanged either way: armed opens the window, inside it nothing pauses', () => {
+    for (const backgroundPlayback of [true, false]) {
+      assert.deepEqual(
+        decideAppLifecycleAction({
+          nextState: 'background',
+          isPlaying: true,
+          pictureInPicture: { armed: true, active: false },
+          backgroundPlayback,
+        }),
+        { action: 'await_picture_in_picture' },
+      );
+      assert.deepEqual(
+        decideAppLifecycleAction({
+          nextState: 'background',
+          isPlaying: true,
+          pictureInPicture: { armed: true, active: true },
+          backgroundPlayback,
+        }),
+        { action: 'none' },
+      );
+    }
+  });
+
+  test('a paused video stays paused and coming back never autoplays', () => {
+    assert.deepEqual(decideAppLifecycleAction({ nextState: 'background', isPlaying: false, backgroundPlayback: true }), {
+      action: 'none',
+    });
+    assert.deepEqual(decideAppLifecycleAction({ nextState: 'active', isPlaying: false, backgroundPlayback: true }), {
+      action: 'foreground_no_autoplay',
+    });
+  });
+
+  test('the activity stopping (screen off, left without PiP) keeps playing only when on', () => {
+    assert.equal(decideActivityStopped({ isPlaying: true, backgroundPlayback: true }), 'none');
+    assert.equal(decideActivityStopped({ isPlaying: true, backgroundPlayback: false }), 'pause');
+    assert.equal(decideActivityStopped({ isPlaying: true }), 'pause');
+    assert.equal(decideActivityStopped({ isPlaying: false, backgroundPlayback: true }), 'none');
+  });
+
+  test('dismissing the PiP window still pauses with the setting on', () => {
+    assert.equal(
+      decideActivityStopped({ isPlaying: true, backgroundPlayback: true, pictureInPictureEnded: true }),
+      'pause',
+    );
+  });
+});
