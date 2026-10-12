@@ -1261,8 +1261,8 @@ the existing column).
 ### R1–R12 — `F6-release-uploadkey.apk` (Gradle-signed with the upload key, built from `e00f425`'s code) installed over `test1-release-uploadkey.apk` without re-signing
 
 Seed: `seed_test1.sh` (MP4 + favourite, history, recent search "cats"); its paused step missed (the 160 MB WebM
-finished first on today's fast link), so a 300 MB WebM was started on test1 and paused by hand at 286 MB-of-row before
-the upgrade. Before seeding, this batch's own gallery copies were removed for room (`Movies/VidoraX`, 13 items).
+finished first on today's fast link), so the 300 MB 1080p WebM was started on test1 and paused by hand before the
+upgrade. Before seeding, this batch's own gallery copies were removed for room (`Movies/VidoraX`, 13 items).
 
 | # | Result | Note |
 | --- | --- | --- |
