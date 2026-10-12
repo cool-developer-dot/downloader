@@ -303,3 +303,49 @@ private const val V1_LIBRARY_TABLE =
     "audio_codec TEXT, has_audio INTEGER NOT NULL, width INTEGER, height INTEGER, duration_ms INTEGER, " +
     "size_bytes INTEGER NOT NULL, thumb_path TEXT, favorite INTEGER NOT NULL DEFAULT 0, gallery_uri TEXT, " +
     "created_at INTEGER NOT NULL, completed_at INTEGER NOT NULL)"
+
+/** F2: a download's own speed limit and the Priority mark, kept in `download_bandwidth`. */
+@RunWith(RobolectricTestRunner::class)
+class DownloadBandwidthStoreTest {
+  private val context = RuntimeEnvironment.getApplication()
+  private lateinit var database: MediaDatabase
+  private lateinit var store: SqliteDownloadStore
+
+  @Before fun setUp() {
+    database = MediaDatabase(context)
+    store = SqliteDownloadStore(database)
+  }
+
+  @After fun tearDown() {
+    database.close()
+    File(context.noBackupFilesDir, MediaDatabase.NAME).delete()
+  }
+
+  @Test fun limitsAndPriorityAreKeptAndOnlyOneDownloadHasPriority() = runBlocking {
+    store.saveBandwidth(com.vidorax.media.model.DownloadBandwidth("a", 256L * 1024, priority = true))
+    store.saveBandwidth(com.vidorax.media.model.DownloadBandwidth("b", null, priority = true))
+    val entries = store.listBandwidth().associateBy { it.id }
+    assertEquals(256L * 1024, entries.getValue("a").speedLimitBytesPerSecond)
+    assertFalse("priority moved to b", entries.getValue("a").priority)
+    assertTrue(entries.getValue("b").priority)
+  }
+
+  @Test fun anEntryWithNoLimitAndNoPriorityIsRemoved() = runBlocking {
+    store.saveBandwidth(com.vidorax.media.model.DownloadBandwidth("a", 512L * 1024, priority = false))
+    store.saveBandwidth(com.vidorax.media.model.DownloadBandwidth("a", null, priority = false))
+    assertTrue(store.listBandwidth().isEmpty())
+    // Priority taken over by b leaves a with nothing: a's row goes too.
+    store.saveBandwidth(com.vidorax.media.model.DownloadBandwidth("a", null, priority = true))
+    store.saveBandwidth(com.vidorax.media.model.DownloadBandwidth("b", null, priority = true))
+    assertEquals(listOf("b"), store.listBandwidth().map { it.id })
+  }
+
+  @Test fun deletingADownloadDeletesItsEntry() = runBlocking {
+    store.saveBandwidth(com.vidorax.media.model.DownloadBandwidth("a", 1024L * 1024, priority = false))
+    store.delete("a")
+    assertTrue(store.listBandwidth().isEmpty())
+    store.saveBandwidth(com.vidorax.media.model.DownloadBandwidth("b", 1024L * 1024, priority = false))
+    store.deleteBandwidth("b")
+    assertTrue(store.listBandwidth().isEmpty())
+  }
+}

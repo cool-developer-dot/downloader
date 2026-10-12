@@ -7,6 +7,7 @@ import com.vidorax.media.library.MediaMetadata
 import com.vidorax.media.library.MediaTypes
 import com.vidorax.media.library.StoragePaths
 import com.vidorax.media.model.Container
+import com.vidorax.media.model.DownloadBandwidth
 import com.vidorax.media.model.DownloadErrorCode
 import com.vidorax.media.model.DownloadProgress
 import com.vidorax.media.model.DownloadRecord
@@ -25,15 +26,11 @@ import com.vidorax.media.model.VariantChoice
 import com.vidorax.media.net.MediaHttpException
 import com.vidorax.media.net.MediaNetworkException
 import com.vidorax.media.net.MediaRefusedException
-import com.vidorax.media.plan.HlsPlan
-import com.vidorax.media.plan.HlsPlanResult
-import com.vidorax.media.transfer.HlsCheckpoint
-import com.vidorax.media.transfer.HlsTransferSpec
-import com.vidorax.media.transfer.PartProgress
-import com.vidorax.media.transfer.RangedDownload
 import com.vidorax.media.plan.DashResolution
 import com.vidorax.media.plan.DashTrack
 import com.vidorax.media.plan.DashTrackSource
+import com.vidorax.media.plan.HlsPlan
+import com.vidorax.media.plan.HlsPlanResult
 import com.vidorax.media.plan.SplitResolution
 import com.vidorax.media.plan.TrackRole
 import com.vidorax.media.process.AviHeader
@@ -44,6 +41,12 @@ import com.vidorax.media.process.ProcessingResult
 import com.vidorax.media.process.TrackContainer
 import com.vidorax.media.process.TrackContainers
 import com.vidorax.media.process.TrackFile
+import com.vidorax.media.transfer.BandwidthLimiter
+import com.vidorax.media.transfer.HlsCheckpoint
+import com.vidorax.media.transfer.HlsTransferSpec
+import com.vidorax.media.transfer.PartProgress
+import com.vidorax.media.transfer.RangedDownload
+import com.vidorax.media.transfer.Throttle
 import com.vidorax.media.transfer.TrackDone
 import com.vidorax.media.transfer.TransferOutcome
 import com.vidorax.media.transfer.TransferSpec
@@ -56,8 +59,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.async
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
@@ -125,6 +128,10 @@ internal class DownloadEngine(
   @Volatile private var settings: DownloadSettings = initialSettings
 
   private val slots = Slots(initialSettings.maxConcurrent)
+
+  /** Speed limits (F2): the global limit from the settings, per-download limits and Priority from `download_bandwidth`. */
+  private val bandwidth = BandwidthLimiter().apply { setGlobalLimit(initialSettings.speedLimitBytesPerSecond) }
+  private val bandwidthLoaded = AtomicBoolean(false)
 
   /** Serializes all state/generation reads and writes. */
   private val mutex = Mutex()
@@ -491,6 +498,7 @@ internal class DownloadEngine(
       bumpGenerationLocked(id)
       store.delete(id)
     }
+    bandwidth.forget(id)
     cleanupWork(id)
   }
 
@@ -511,7 +519,37 @@ internal class DownloadEngine(
   override suspend fun setDownloadSettings(settings: DownloadSettings) {
     this.settings = settings
     slots.setLimit(settings.maxConcurrent)
+    bandwidth.setGlobalLimit(settings.speedLimitBytesPerSecond)
     runCatching { onSettingsChanged(settings) }
+  }
+
+  override suspend fun setDownloadBandwidth(
+    id: String,
+    speedLimitBytesPerSecond: Long?,
+    priority: Boolean,
+  ): List<DownloadBandwidth> {
+    loadBandwidth()
+    store.find(id) ?: throw NotFoundException("Unknown download $id")
+    val limit = speedLimitBytesPerSecond?.takeIf { it > 0 }
+    store.saveBandwidth(DownloadBandwidth(id, limit, priority))
+    bandwidth.setDownloadLimit(id, limit)
+    if (priority) {
+      bandwidth.setPriority(id)
+    } else if (bandwidth.priority == id) {
+      bandwidth.setPriority(null)
+    }
+    return listDownloadBandwidth()
+  }
+
+  override suspend fun listDownloadBandwidth(): List<DownloadBandwidth> = store.listBandwidth()
+
+  /** Once per process: the persisted per-download limits and Priority (they survive restarts). */
+  private suspend fun loadBandwidth() {
+    if (!bandwidthLoaded.compareAndSet(false, true)) return
+    runCatching { store.listBandwidth() }.getOrNull()?.forEach { entry ->
+      bandwidth.setDownloadLimit(entry.id, entry.speedLimitBytesPerSecond)
+      if (entry.priority) bandwidth.setPriority(entry.id)
+    }
   }
 
   override suspend fun listCompletions(): List<CompletionRecord> = store.listCompletions()
@@ -567,6 +605,7 @@ internal class DownloadEngine(
 
   private suspend fun runWorker(id: String, gen: Long) {
     val start = store.find(id) ?: return
+    loadBandwidth()
     if (!awaitNetwork(id, gen)) return
     // Beyond the configured limit the download simply stays QUEUED until a slot frees.
     slots.acquire()
@@ -650,6 +689,7 @@ internal class DownloadEngine(
         context = currentRequest(id, start),
         partFile = partFile,
         connections = connectionsFor(probe.sizeBytes),
+        throttle = bandwidth.throttleFor(id),
       )
       streamWithProgress(id, gen) { onProgress -> transfers.transfer(spec, onProgress) }.also { TrackDone.mark(partFile) }
     } ?: return
@@ -922,7 +962,7 @@ internal class DownloadEngine(
         var before = 0L
         for ((index, job) in jobs.withIndex()) {
           val later = jobs.drop(index + 1).sumOf { it.expectedBytes ?: 0L }
-          val result = runJob(job, context) { bytes, total ->
+          val result = runJob(job, context, bandwidth.throttleFor(id)) { bytes, total ->
             onProgress(before + bytes, total?.let { before + it + later })
           }
           done += result
@@ -967,11 +1007,22 @@ internal class DownloadEngine(
   private fun connectionsFor(sizeBytes: Long?): Int =
     if (sizeBytes != null && sizeBytes < RangedDownload.MIN_PARALLEL_BYTES) 1 else settings.connectionsPerFile
 
-  private suspend fun runJob(job: TrackJob, context: RequestContext, onProgress: (Long, Long?) -> Unit): TrackResult =
+  private suspend fun runJob(
+    job: TrackJob,
+    context: RequestContext,
+    throttle: Throttle,
+    onProgress: (Long, Long?) -> Unit,
+  ): TrackResult =
     when (job) {
       is TrackJob.Whole -> {
         val bytes = TrackDone.length(job.partFile) ?: run {
-          val spec = TransferSpec(url = job.url, context = context, partFile = job.partFile, connections = connectionsFor(job.expectedBytes))
+          val spec = TransferSpec(
+            url = job.url,
+            context = context,
+            partFile = job.partFile,
+            connections = connectionsFor(job.expectedBytes),
+            throttle = throttle,
+          )
           val outcome = transfers.transfer(spec, onProgress)
           TrackDone.mark(job.partFile)
           outcome.bytesWritten
@@ -979,7 +1030,15 @@ internal class DownloadEngine(
         TrackResult(job, bytes, TrackContainers.sniff(job.partFile), job.timeOffsetUs)
       }
       is TrackJob.Segmented -> {
-        val spec = HlsTransferSpec(job.plan, context, job.partFile, job.checkpoint, job.role, connections = settings.connectionsPerFile)
+        val spec = HlsTransferSpec(
+          job.plan,
+          context,
+          job.partFile,
+          job.checkpoint,
+          job.role,
+          connections = settings.connectionsPerFile,
+          throttle = throttle,
+        )
         val outcome = hls.transfer(spec, onProgress)
         val container = if (outcome.packedAudio) TrackContainer.PACKED_AUDIO else MediaProcessor.trackContainer(outcome.container)
         // Packed audio carries its position on the stream clock in its ID3 tag; everything else in its samples.
@@ -1520,6 +1579,9 @@ internal class DownloadEngine(
   /** COMPLETED is only ever written here: with the completion recorded for JavaScript in the same transaction. */
   private suspend fun saveCompleted(row: DownloadRow): DownloadRow {
     store.saveCompleted(row)
+    // A finished download no longer needs its own limit or priority.
+    bandwidth.forget(row.id)
+    runCatching { store.deleteBandwidth(row.id) }
     return row
   }
 

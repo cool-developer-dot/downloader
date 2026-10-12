@@ -158,3 +158,23 @@ class RecordsTest {
     assertEquals("ERR_INVALID_REQUEST", error.code)
   }
 }
+
+class SpeedLimitRecordsTest {
+  @Test fun theGlobalSpeedLimitIsOptionalAndZeroMeansOff() {
+    org.junit.Assert.assertNull(DownloadSettingsRecord().toModel().speedLimitBytesPerSecond)
+    org.junit.Assert.assertNull(DownloadSettingsRecord(speedLimitBytesPerSecond = 0.0).toModel().speedLimitBytesPerSecond)
+    org.junit.Assert.assertEquals(
+      524288L,
+      DownloadSettingsRecord(speedLimitBytesPerSecond = 524288.0).toModel().speedLimitBytesPerSecond,
+    )
+    org.junit.Assert.assertThrows(Exception::class.java) {
+      DownloadSettingsRecord(speedLimitBytesPerSecond = -1.0).toModel()
+    }
+  }
+
+  @Test fun bandwidthOptionsTreatMissingAsOff() {
+    org.junit.Assert.assertNull(DownloadBandwidthRecord().limit())
+    org.junit.Assert.assertNull(DownloadBandwidthRecord(speedLimitBytesPerSecond = 0.0).limit())
+    org.junit.Assert.assertEquals(262144L, DownloadBandwidthRecord(speedLimitBytesPerSecond = 262144.0).limit())
+  }
+}

@@ -1,5 +1,6 @@
 package com.vidorax.media.engine
 
+import com.vidorax.media.model.DownloadBandwidth
 import com.vidorax.media.model.DownloadProgress
 import com.vidorax.media.model.DownloadRecord
 import com.vidorax.media.model.DownloadSettings
@@ -54,6 +55,15 @@ interface DownloadEngineApi {
   suspend fun listDownloads(): List<DownloadRecord>
 
   suspend fun setDownloadSettings(settings: DownloadSettings)
+
+  /**
+   * Sets download [id]'s own speed limit and Priority mark (F2); priority on clears it from every other download.
+   * Returns every download's entry. Throws NotFoundException for an unknown id.
+   */
+  suspend fun setDownloadBandwidth(id: String, speedLimitBytesPerSecond: Long?, priority: Boolean): List<DownloadBandwidth> =
+    emptyList()
+
+  suspend fun listDownloadBandwidth(): List<DownloadBandwidth> = emptyList()
 
   /** Deletes work folders no download owns; returns the bytes freed. */
   suspend fun clearTempFiles(): Long

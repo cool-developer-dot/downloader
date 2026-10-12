@@ -3,6 +3,7 @@ package com.vidorax.media
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.vidorax.media.bridge.DownloadBandwidthRecord
 import com.vidorax.media.bridge.DownloadSettingsRecord
 import com.vidorax.media.bridge.EnqueueRequestRecord
 import com.vidorax.media.bridge.LegacyMetadataRecord
@@ -182,6 +183,14 @@ class VidoraMediaModule : Module() {
     }
 
     AsyncFunction("clearTempFiles") Coroutine { -> engine.clearTempFiles() }
+
+    AsyncFunction("setDownloadBandwidth") Coroutine { id: String, options: DownloadBandwidthRecord ->
+      engine.setDownloadBandwidth(id, options.limit(), options.priority == true).map { it.toJs() }
+    }
+
+    AsyncFunction("listDownloadBandwidth") Coroutine { ->
+      engine.listDownloadBandwidth().map { it.toJs() }
+    }
 
     // Completions for JavaScript to count once (the in-app review), including ones that happened while it was not running
 

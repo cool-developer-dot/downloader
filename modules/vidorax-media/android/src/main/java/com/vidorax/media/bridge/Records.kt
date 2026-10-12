@@ -149,6 +149,8 @@ data class DownloadSettingsRecord(
   @Field val preferredMaxHeight: Int? = null,
   /** Missing from an older JavaScript bundle: the default. */
   @Field val connectionsPerFile: Int? = null,
+  /** Missing, null or 0: no speed limit. */
+  @Field val speedLimitBytesPerSecond: Double? = null,
 ) : Record {
   fun toModel(): DownloadSettings {
     if (maxConcurrent !in DownloadSettings.MIN_CONCURRENT..DownloadSettings.MAX_CONCURRENT) {
@@ -159,7 +161,28 @@ data class DownloadSettingsRecord(
     if (connections !in DownloadSettings.MIN_CONNECTIONS..DownloadSettings.MAX_CONNECTIONS) {
       invalid("connectionsPerFile must be ${DownloadSettings.MIN_CONNECTIONS}-${DownloadSettings.MAX_CONNECTIONS}")
     }
-    return DownloadSettings(maxConcurrent, wifiOnly, autoSaveToGallery, preferredMaxHeight, connections)
+    val speedLimit = speedLimitBytesPerSecond
+    if (speedLimit != null && (speedLimit.isNaN() || speedLimit < 0)) invalid("speedLimitBytesPerSecond must be 0 or more")
+    return DownloadSettings(
+      maxConcurrent,
+      wifiOnly,
+      autoSaveToGallery,
+      preferredMaxHeight,
+      connections,
+      speedLimit?.toLong()?.takeIf { it > 0 },
+    )
+  }
+}
+
+/** `setDownloadBandwidth` options: both are applied — a missing limit is no limit, a missing priority is off. */
+data class DownloadBandwidthRecord(
+  @Field val speedLimitBytesPerSecond: Double? = null,
+  @Field val priority: Boolean? = null,
+) : Record {
+  fun limit(): Long? {
+    val value = speedLimitBytesPerSecond ?: return null
+    if (value.isNaN() || value < 0) invalid("speedLimitBytesPerSecond must be 0 or more")
+    return value.toLong().takeIf { it > 0 }
   }
 }
 

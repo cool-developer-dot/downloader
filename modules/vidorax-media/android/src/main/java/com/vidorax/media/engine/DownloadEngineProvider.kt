@@ -83,6 +83,7 @@ object DownloadEngineProvider {
       preferredMaxHeight = stored.getInt(KEY_MAX_HEIGHT, 0).takeIf { it > 0 },
       connectionsPerFile = stored.getInt(KEY_CONNECTIONS, defaults.connectionsPerFile)
         .coerceIn(DownloadSettings.MIN_CONNECTIONS, DownloadSettings.MAX_CONNECTIONS),
+      speedLimitBytesPerSecond = stored.getLong(KEY_SPEED_LIMIT, 0L).takeIf { it > 0 },
     )
   }
 
@@ -94,6 +95,7 @@ object DownloadEngineProvider {
         .putBoolean(KEY_AUTO_GALLERY, settings.autoSaveToGallery)
         .putInt(KEY_MAX_HEIGHT, settings.preferredMaxHeight ?: 0)
         .putInt(KEY_CONNECTIONS, settings.connectionsPerFile)
+        .putLong(KEY_SPEED_LIMIT, settings.speedLimitBytesPerSecond ?: 0L)
         .apply()
     }
   }
@@ -104,4 +106,5 @@ object DownloadEngineProvider {
   private const val KEY_AUTO_GALLERY = "autoSaveToGallery"
   private const val KEY_MAX_HEIGHT = "preferredMaxHeight"
   private const val KEY_CONNECTIONS = "connectionsPerFile"
+  private const val KEY_SPEED_LIMIT = "speedLimitBytesPerSecond"
 }

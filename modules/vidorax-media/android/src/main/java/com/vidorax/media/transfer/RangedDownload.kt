@@ -449,6 +449,7 @@ internal class RangedDownload(
         if (left <= 0) break
         val read = input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
         if (read < 0) break
+        spec.throttle.take(read)
         writer.write(position, buffer, 0, read)
         part.written.addAndGet(read.toLong())
         onProgress(bytesDone.addAndGet(read.toLong()), total)

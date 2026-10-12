@@ -35,6 +35,8 @@ internal data class TransferSpec(
    * ([RangedDownload]). An existing multi-connection `.part` always resumes as one, with at most this many at once.
    */
   val connections: Int = 1,
+  /** Paces every network read of this file (F2 speed limits; [BandwidthLimiter.throttleFor]). */
+  val throttle: Throttle = Throttle.NONE,
 )
 
 internal sealed interface TransferOutcome {
@@ -287,6 +289,7 @@ internal class ProgressiveTransfer(
         currentCoroutineContext().ensureActive() // pause/cancel: throws, `.part` kept by the finally below
         val read = input.read(buffer)
         if (read < 0) break
+        spec.throttle.take(read)
         diskWrite { file.write(buffer, 0, read) }
         written += read
         onProgress(written, totalBytes)

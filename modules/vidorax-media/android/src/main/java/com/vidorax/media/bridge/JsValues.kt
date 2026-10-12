@@ -5,6 +5,7 @@ import com.vidorax.media.analyze.PageFetchResult
 import com.vidorax.media.incoming.IncomingMedia
 import com.vidorax.media.library.IncomingImport
 import com.vidorax.media.model.AdjacentItems
+import com.vidorax.media.model.DownloadBandwidth
 import com.vidorax.media.model.DownloadProgress
 import com.vidorax.media.model.DownloadRecord
 import com.vidorax.media.model.EnqueueResult
@@ -60,6 +61,9 @@ internal fun IncomingImport.Outcome.toJs(): Map<String, Any?> = when (this) {
   is IncomingImport.Outcome.Duplicate ->
     mapOf("status" to "duplicate", "libraryItemId" to copy.libraryItemId, "galleryUri" to copy.galleryUri)
 }
+
+internal fun DownloadBandwidth.toJs(): Map<String, Any?> =
+  mapOf("id" to id, "speedLimitBytesPerSecond" to speedLimitBytesPerSecond, "priority" to priority)
 
 internal fun LibraryPage.toJs(): Map<String, Any?> = mapOf("items" to items.map { it.toJs() }, "total" to total)
 

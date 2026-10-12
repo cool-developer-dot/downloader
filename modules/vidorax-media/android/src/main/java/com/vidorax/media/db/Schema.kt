@@ -2,7 +2,7 @@ package com.vidorax.media.db
 
 /** Schema of vidorax-media.db (docs/ARCHITECTURE.md section 3.4). */
 internal object Schema {
-  const val VERSION = 4
+  const val VERSION = 5
 
   val CREATE: List<String> = listOf(
     // downloads: the v2 engine reads/writes the columns marked ACTIVE below.
@@ -98,6 +98,7 @@ internal object Schema {
     COMPLETIONS_TABLE,
     GALLERY_EXPORTS_TABLE,
     GALLERY_EXPORTS_IDENTITY_INDEX,
+    DOWNLOAD_BANDWIDTH_TABLE,
   )
 
   /**
@@ -127,6 +128,9 @@ internal object Schema {
       "INSERT OR IGNORE INTO gallery_exports (uri, library_id, identity_key, created_at) " +
         "SELECT gallery_uri, id, NULL, completed_at FROM library WHERE gallery_uri IS NOT NULL",
     ),
+    // v5 (F2): a download's own speed limit and the Priority mark — a new table, no existing table touched; safe to
+    // run twice.
+    5 to listOf(DOWNLOAD_BANDWIDTH_TABLE),
   )
 
   /**
@@ -150,6 +154,11 @@ internal object Schema {
    */
   private const val GALLERY_EXPORTS_TABLE =
     "CREATE TABLE gallery_exports (uri TEXT PRIMARY KEY, library_id TEXT, identity_key TEXT, created_at INTEGER NOT NULL)"
+  /** A download's own speed limit (bytes/s, NULL = none) and Priority mark (at most one row with priority = 1). */
+  private const val DOWNLOAD_BANDWIDTH_TABLE =
+    "CREATE TABLE IF NOT EXISTS download_bandwidth " +
+      "(download_id TEXT PRIMARY KEY, limit_bps INTEGER, priority INTEGER NOT NULL DEFAULT 0)"
+
   private const val GALLERY_EXPORTS_IDENTITY_INDEX =
     "CREATE INDEX gallery_exports_identity ON gallery_exports(identity_key)"
 }

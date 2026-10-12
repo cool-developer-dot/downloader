@@ -59,6 +59,8 @@ internal data class HlsTransferSpec(
    * their own temporary files beside the `.part` while the file is still assembled strictly in playlist order.
    */
   val connections: Int = 1,
+  /** Paces every network read of this track, fetched-ahead segments included (F2 speed limits). */
+  val throttle: Throttle = Throttle.NONE,
 )
 
 internal data class HlsTransferOutcome(
@@ -245,7 +247,7 @@ internal class HlsTransfer(private val http: HttpClient) {
 
           val initIndex = segment.initIndex
           if (initIndex != null && initIndex != lastInit) {
-            writeAt = append(raf, writeAt, plan.inits[initIndex], spec.context, tokenPropagation, stripId3 = false, onBytes = report)
+            writeAt = append(raf, writeAt, plan.inits[initIndex], spec.context, tokenPropagation, stripId3 = false, throttle = spec.throttle, onBytes = report)
             if (container == null) {
               // The init section decides the container; an fMP4 file gets room for its one segment index here.
               container = confirmContainer(raf, plan, spec.role)
@@ -266,7 +268,7 @@ internal class HlsTransfer(private val http: HttpClient) {
             appendFile(raf, writeAt, fetched, segment.media.url, stripId3 = packedAudio, onTimestamp = onTimestamp, onBytes = report)
               .also { fetched.delete() }
           } else {
-            append(raf, writeAt, segment.media, spec.context, tokenPropagation, stripId3 = packedAudio, onTimestamp = onTimestamp, onBytes = report)
+            append(raf, writeAt, segment.media, spec.context, tokenPropagation, stripId3 = packedAudio, onTimestamp = onTimestamp, throttle = spec.throttle, onBytes = report)
           }
           if (container == null) container = if (packedAudio) Container.UNKNOWN else confirmContainer(raf, plan, spec.role)
           // A segment's own index describes that segment alone; in one file it would mislead the player.
@@ -354,7 +356,7 @@ internal class HlsTransfer(private val http: HttpClient) {
         pending[i] = scope.async(Dispatchers.IO) {
           try {
             Result.success(
-              fetchToFile(ref, done, spec.context, tokens) { bytes ->
+              fetchToFile(ref, done, spec.context, tokens, spec.throttle) { bytes ->
                 ahead.addAndGet(bytes)
                 onAhead()
               },
@@ -412,12 +414,13 @@ internal class HlsTransfer(private val http: HttpClient) {
     tokens: TokenPropagation,
     stripId3: Boolean = false,
     onTimestamp: (Long) -> Unit = {},
+    throttle: Throttle = Throttle.NONE,
     onBytes: (Long) -> Unit,
   ): Long {
     val response = open(ref, context, tokens)
     response.use {
       val (skip, expected) = bodyOf(it, ref)
-      return copy(raf, writeAt, it.byteStream(), skip, expected, ref.url, stripId3, onTimestamp, onBytes)
+      return copy(raf, writeAt, it.byteStream(), skip, expected, ref.url, stripId3, onTimestamp, onBytes, throttle)
     }
   }
 
@@ -467,6 +470,7 @@ internal class HlsTransfer(private val http: HttpClient) {
     file: File,
     context: RequestContext,
     tokens: TokenPropagation,
+    throttle: Throttle,
     onBytes: (Long) -> Unit,
   ): File {
     val partial = SegmentFiles.partialFor(file)
@@ -485,6 +489,7 @@ internal class HlsTransfer(private val http: HttpClient) {
               currentCoroutineContext().ensureActive()
               val read = input.read(buffer, 0, minOf(buffer.size.toLong(), toSkip).toInt())
               if (read < 0) throw MediaNetworkException("segment ended before its byte range: ${Redact.url(ref.url)}")
+              throttle.take(read)
               toSkip -= read
             }
             var got = 0L
@@ -493,6 +498,7 @@ internal class HlsTransfer(private val http: HttpClient) {
               val want = if (expected == null) buffer.size else minOf(buffer.size.toLong(), expected - got).toInt()
               val read = input.read(buffer, 0, want)
               if (read < 0) break
+              throttle.take(read)
               diskWrite { out.write(buffer, 0, read) }
               got += read
               onBytes(read.toLong())
@@ -557,6 +563,8 @@ internal class HlsTransfer(private val http: HttpClient) {
     stripId3: Boolean,
     onTimestamp: (Long) -> Unit,
     onBytes: (Long) -> Unit,
+    // Network bodies only: a segment fetched ahead was paced while it was fetched.
+    throttle: Throttle = Throttle.NONE,
   ): Long {
     // A pause must stop the network now, even mid-read: closing the body unblocks a read waiting on a stalled
     // connection, on its own thread so the pausing thread never waits for the network.
@@ -570,6 +578,7 @@ internal class HlsTransfer(private val http: HttpClient) {
         currentCoroutineContext().ensureActive()
         val read = input.read(buffer, 0, minOf(buffer.size.toLong(), toSkip).toInt())
         if (read < 0) throw MediaNetworkException("segment ended before its byte range: ${Redact.url(url)}")
+        throttle.take(read)
         toSkip -= read
       }
       currentCoroutineContext().ensureActive()
@@ -593,6 +602,7 @@ internal class HlsTransfer(private val http: HttpClient) {
         val want = if (expected == null) buffer.size else minOf(buffer.size.toLong(), expected - consumed).toInt()
         val read = input.read(buffer, 0, want)
         if (read < 0) break
+        throttle.take(read)
         diskWrite { raf.write(buffer, 0, read) }
         consumed += read
         onDisk += read

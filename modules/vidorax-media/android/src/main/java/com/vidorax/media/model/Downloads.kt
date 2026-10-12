@@ -131,6 +131,9 @@ data class DownloadRecord(
   val updatedAt: Long,
 )
 
+/** A download's own speed limit and Priority mark (F2), persisted in `download_bandwidth`. */
+data class DownloadBandwidth(val id: String, val speedLimitBytesPerSecond: Long?, val priority: Boolean)
+
 data class DownloadProgress(
   val id: String,
   val phase: ProgressPhase,
@@ -155,6 +158,8 @@ data class DownloadSettings(
    * fetched ahead). Still one [maxConcurrent] slot per download.
    */
   val connectionsPerFile: Int = DEFAULT_CONNECTIONS,
+  /** All downloads together, bytes per second (Download Settings → "Speed limit"); null = no limit. */
+  val speedLimitBytesPerSecond: Long? = null,
 ) {
   companion object {
     const val MIN_CONCURRENT = 1

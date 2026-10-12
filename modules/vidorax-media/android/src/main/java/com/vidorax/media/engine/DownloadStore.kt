@@ -6,6 +6,7 @@ import android.database.sqlite.SQLiteDatabase
 import com.vidorax.media.db.MediaDatabase
 import com.vidorax.media.model.DownloadErrorCode
 import com.vidorax.media.model.DownloadRecord
+import com.vidorax.media.model.DownloadBandwidth
 import com.vidorax.media.model.DownloadState
 import com.vidorax.media.model.RequestContext
 import com.vidorax.media.model.SiteId
@@ -105,6 +106,14 @@ internal interface DownloadStore {
   suspend fun list(now: Long): List<DownloadRow>
 
   suspend fun delete(id: String)
+
+  /** Downloads with their own speed limit or the Priority mark (F2). */
+  suspend fun listBandwidth(): List<DownloadBandwidth> = emptyList()
+
+  /** Stores [entry] (no limit and no priority removes the row); priority on clears it from every other download. */
+  suspend fun saveBandwidth(entry: DownloadBandwidth) {}
+
+  suspend fun deleteBandwidth(id: String) {}
 }
 
 /** The real SQLite-backed store. Request context is JSON in `request_json`, stripped of secrets on the way in. */
@@ -168,7 +177,51 @@ internal class SqliteDownloadStore(private val database: MediaDatabase) : Downlo
   }
 
   override suspend fun delete(id: String) {
-    database.transaction { db -> db.delete(TABLE, "id = ?", arrayOf(id)) }
+    database.transaction { db ->
+      db.delete(TABLE, "id = ?", arrayOf(id))
+      db.delete(BANDWIDTH, "download_id = ?", arrayOf(id))
+    }
+  }
+
+  override suspend fun listBandwidth(): List<DownloadBandwidth> = database.read { db ->
+    db.rawQuery("SELECT download_id, limit_bps, priority FROM $BANDWIDTH", null).use { cursor ->
+      buildList(cursor.count) {
+        while (cursor.moveToNext()) {
+          add(
+            DownloadBandwidth(
+              id = cursor.getString(0),
+              speedLimitBytesPerSecond = if (cursor.isNull(1)) null else cursor.getLong(1),
+              priority = cursor.getInt(2) == 1,
+            ),
+          )
+        }
+      }
+    }
+  }
+
+  override suspend fun saveBandwidth(entry: DownloadBandwidth) {
+    database.transaction { db ->
+      if (entry.priority) db.execSQL("UPDATE $BANDWIDTH SET priority = 0 WHERE download_id != ?", arrayOf(entry.id))
+      if (entry.speedLimitBytesPerSecond == null && !entry.priority) {
+        db.delete(BANDWIDTH, "download_id = ?", arrayOf(entry.id))
+      } else {
+        db.insertWithOnConflict(
+          BANDWIDTH,
+          null,
+          ContentValues().apply {
+            put("download_id", entry.id)
+            put("limit_bps", entry.speedLimitBytesPerSecond)
+            put("priority", if (entry.priority) 1 else 0)
+          },
+          SQLiteDatabase.CONFLICT_REPLACE,
+        )
+      }
+      db.delete(BANDWIDTH, "limit_bps IS NULL AND priority = 0", null)
+    }
+  }
+
+  override suspend fun deleteBandwidth(id: String) {
+    database.transaction { db -> db.delete(BANDWIDTH, "download_id = ?", arrayOf(id)) }
   }
 
   private fun DownloadRow.toValues() = ContentValues().apply {
@@ -227,6 +280,7 @@ internal class SqliteDownloadStore(private val database: MediaDatabase) : Downlo
 
   private companion object {
     const val TABLE = "downloads"
+    const val BANDWIDTH = "download_bandwidth"
     const val COMPLETIONS = "completions"
     const val MAX_UNACKNOWLEDGED = 500
     const val COMPLETED_RETENTION_MS = 24L * 60 * 60 * 1000
