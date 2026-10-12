@@ -135,6 +135,8 @@ data class DownloadRecord(
   val waitUntil: Long? = null,
   /** F3 "Start at…" (epoch ms), persisted in `download_schedule`. */
   val startAt: Long? = null,
+  /** F6: the recorded length of a live recording so far (ms), from its checkpoint. */
+  val recordedMs: Long? = null,
 )
 
 /** A download's own speed limit and Priority mark (F2), persisted in `download_bandwidth`. */
@@ -151,6 +153,8 @@ data class DownloadProgress(
   val etaSeconds: Long?,
   /** [ProgressPhase.PROCESSING] only: what the engine is doing with the downloaded tracks. */
   val stage: ProcessingStage? = null,
+  /** F6: a live recording's recorded length so far (ms). */
+  val recordedMs: Long? = null,
 )
 
 data class DownloadSettings(
@@ -176,8 +180,16 @@ data class DownloadSettings(
   val onlyWhileCharging: Boolean = false,
   /** The app's language for the F3 wait texts in notifications ("en" or "ur"). */
   val language: String = "en",
+  /** F6: Settings → "Live recording (beta)"; off = live streams are refused. */
+  val liveRecording: Boolean = false,
+  /** F6: a recording stops by itself after this many minutes. */
+  val liveRecordingMaxMinutes: Int = DEFAULT_LIVE_MAX_MINUTES,
 ) {
   companion object {
+    const val MIN_LIVE_MAX_MINUTES = 15
+    const val MAX_LIVE_MAX_MINUTES = 720
+    /** F6 default: 2 hours. */
+    const val DEFAULT_LIVE_MAX_MINUTES = 120
     const val MIN_CONCURRENT = 1
     const val MAX_CONCURRENT = 4
     const val MIN_CONNECTIONS = 1

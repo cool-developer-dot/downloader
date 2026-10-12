@@ -26,6 +26,12 @@ enum class SourceKind(override val wire: String) : WireEnum {
    * video and an audio SourceBuffer): both are downloaded, verified and merged into one file.
    */
   SPLIT("split"),
+
+  /**
+   * F6: a live, unencrypted HLS media playlist recorded until Stop, `EXT-X-ENDLIST`, the maximum length or low storage,
+   * then finalized like any download. Only while Settings → "Live recording (beta)" is on.
+   */
+  LIVE("live"),
 }
 
 enum class SiteId(override val wire: String, val folderName: String) : WireEnum {
@@ -74,6 +80,8 @@ enum class DownloadState(override val wire: String) : WireEnum {
   WAITING_RETRY("waiting_retry"),
   /** F3: held by a rule (start time, download hours, roaming, charging, low battery) until it clears. */
   WAITING_CONDITIONS("waiting_conditions"),
+  /** F6: a live stream being recorded; not pausable, stopped with `stopRecording`. */
+  RECORDING("recording"),
   PROCESSING("processing"),
   COMPLETED("completed"),
   FAILED("failed"),

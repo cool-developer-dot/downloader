@@ -202,6 +202,10 @@ class VidoraMediaModule : Module() {
       engine.setDownloadStartAt(id, at).toJs()
     }
 
+    AsyncFunction("stopRecording") Coroutine { id: String ->
+      engine.stopRecording(id).toJs()
+    }
+
     AsyncFunction("listDownloadBandwidth") Coroutine { ->
       engine.listDownloadBandwidth().map { it.toJs() }
     }

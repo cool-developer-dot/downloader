@@ -179,6 +179,24 @@ internal class HlsTransfer(private val http: HttpClient) {
     onProgress: (bytesDone: Long, totalBytes: Long?) -> Unit = { _, _ -> },
   ): HlsTransferOutcome = withContext(Dispatchers.IO) { download(spec, onProgress) }
 
+  /**
+   * F6: this transfer's segment I/O for a live recording of [playlistUrl] — the same requests, token propagation,
+   * byte-range handling and speed limit as a download, and segments fetched ahead on their own connections.
+   */
+  fun liveIo(playlistUrl: String, context: RequestContext, throttle: Throttle): LiveSegmentIo {
+    val tokens = TokenPropagation(playlistUrl)
+    return object : LiveSegmentIo {
+      override suspend fun append(raf: RandomAccessFile, writeAt: Long, ref: HlsSegmentRef, onBytes: (Long) -> Unit): Long =
+        this@HlsTransfer.append(raf, writeAt, ref, context, tokens, throttle = throttle, onBytes = onBytes)
+
+      override suspend fun fetch(ref: HlsSegmentRef, file: File): File =
+        fetchToFile(ref, file, context, tokens, throttle) {}
+
+      override suspend fun appendFetched(raf: RandomAccessFile, writeAt: Long, file: File, url: String, onBytes: (Long) -> Unit): Long =
+        appendFile(raf, writeAt, file, url, stripId3 = false, onTimestamp = {}, onBytes = onBytes)
+    }
+  }
+
   private suspend fun download(spec: HlsTransferSpec, reportProgress: (Long, Long?) -> Unit): HlsTransferOutcome = coroutineScope {
     val plan = spec.plan
     // Reported from the assembly loop and from the threads fetching ahead: never backwards within a run (the engine

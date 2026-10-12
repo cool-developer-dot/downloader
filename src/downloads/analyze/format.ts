@@ -400,6 +400,8 @@ export function createVariant(input: {
   representationId?: string | null;
   /** Split tracks: the audio file merged with this video-only file. */
   audioSourceUrl?: string | null;
+  /** F6: a live stream offered for recording. */
+  isLive?: boolean;
 }): MediaAnalysisVariant {
   const width =
     typeof input.width === 'number' && input.width > 0
@@ -450,6 +452,7 @@ export function createVariant(input: {
     unsupportedReason: input.unsupportedReason ?? null,
     ...(input.representationId ? { representationId: input.representationId } : {}),
     ...(input.audioSourceUrl ? { audioSourceUrl: input.audioSourceUrl } : {}),
+    ...(input.isLive ? { isLive: true } : {}),
   };
 }
 

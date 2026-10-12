@@ -29,6 +29,8 @@ export type StreamableOption = {
   isHls: boolean;
   container: string;
   audioSourceUrl?: string | null;
+  /** F6: a live stream offered for recording. */
+  isLive?: boolean;
 };
 
 const ID_PREFIX = 'stream:';
@@ -57,10 +59,17 @@ function isHttpUrl(value: string | null | undefined): boolean {
   return trimmed.startsWith('https://') || trimmed.startsWith('http://');
 }
 
+/** Why an offer has no Play button. */
+export type StreamUnavailableReason = 'split' | 'not_downloadable' | 'no_url' | 'live';
+
 /** Why an offer has no Play button, or null when it can be played. */
-export function streamUnavailableReason(option: StreamableOption | null | undefined): 'split' | 'not_downloadable' | 'no_url' | null {
+export function streamUnavailableReason(option: StreamableOption | null | undefined): StreamUnavailableReason | null {
   if (!option) {
     return 'not_downloadable';
+  }
+  // F6: a live stream is offered for recording only; playing it online is not part of the offer.
+  if (option.isLive) {
+    return 'live';
   }
   // A video file with a separate audio file is two downloads merged on the device — nothing a single source can play.
   if (option.audioSourceUrl) {
@@ -191,7 +200,7 @@ export type BuildRemoteStreamInput = {
 
 export function buildRemoteStream(
   input: BuildRemoteStreamInput,
-): { ok: true; stream: RemoteStream } | { ok: false; reason: 'split' | 'not_downloadable' | 'no_url' } {
+): { ok: true; stream: RemoteStream } | { ok: false; reason: StreamUnavailableReason } {
   const reason = streamUnavailableReason(input.option);
   if (reason) {
     return { ok: false, reason };

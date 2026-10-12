@@ -67,6 +67,8 @@ test('split audio + video, refused and non-http offers have no Play', () => {
   assert.equal(streamUnavailableReason(option({ downloadable: false })), 'not_downloadable');
   assert.equal(streamUnavailableReason(option({ sourceUrl: 'blob:https://www.example.com/abc' })), 'no_url');
   assert.equal(streamUnavailableReason(null), 'not_downloadable');
+  // F6: a live stream is offered for recording, not for online play.
+  assert.equal(streamUnavailableReason(option({ isHls: true, isLive: true })), 'live');
   assert.equal(isPlayableOffer(option()), true);
   assert.equal(isPlayableOffer(option({ isHls: true, sourceUrl: 'https://cdn.example.com/master.m3u8' })), true);
   const split = buildRemoteStream({

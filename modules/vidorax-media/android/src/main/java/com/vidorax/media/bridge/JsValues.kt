@@ -104,6 +104,7 @@ internal fun DownloadRecord.toJs(): Map<String, Any?> = mapOf(
   "waitReason" to waitReason?.wire,
   "waitUntil" to waitUntil,
   "startAt" to startAt,
+  "recordedMs" to recordedMs,
 )
 
 internal fun EnqueueResult.toJs(): Map<String, Any?> = when (this) {
@@ -122,6 +123,7 @@ internal fun DownloadProgress.toJs(): Map<String, Any?> = mapOf(
   "speedBps" to speedBps,
   "etaSeconds" to etaSeconds,
   "stage" to stage?.wire,
+  "recordedMs" to recordedMs,
 )
 
 internal fun ProbeResult.toJs(): Map<String, Any?> = when (this) {

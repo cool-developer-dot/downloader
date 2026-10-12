@@ -22,6 +22,10 @@ export interface SettingsState {
   pauseOnLowBattery: boolean;
   /** F3: download only while charging (default off). */
   onlyWhileCharging: boolean;
+  /** F6: "Live recording (beta)" — a live stream offers Record instead of Download (default off). */
+  liveRecording: boolean;
+  /** F6: a recording stops by itself after this many minutes (15–720, default 120). */
+  liveRecordingMaxMinutes: number;
 }
 
 export type SettingsKey = keyof SettingsState;

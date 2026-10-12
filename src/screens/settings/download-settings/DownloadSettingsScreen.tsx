@@ -32,6 +32,7 @@ import {
   CONCURRENT_SEGMENT_OPTIONS,
   CONNECTION_SEGMENT_OPTIONS,
 } from './constants';
+import { DownloadAdvancedSection } from './DownloadAdvancedSection';
 import { DownloadConditionsSection } from './DownloadConditionsSection';
 import { useDownloadSettingsScreen } from './useDownloadSettingsScreen';
 
@@ -342,6 +343,10 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
               />
             ) : null}
           </SettingsSection>
+        </SettingsStaggerItem>
+
+        <SettingsStaggerItem index={4}>
+          <DownloadAdvancedSection disabled={preferenceDisabled} />
         </SettingsStaggerItem>
       </View>
     </SafeAreaScreen>

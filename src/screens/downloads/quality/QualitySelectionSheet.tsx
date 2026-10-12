@@ -185,13 +185,13 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
               />
             ) : null}
             <Button
-              title={downloadButtonLabel(selectedOption?.label)}
+              title={downloadButtonLabel(selectedOption?.label, selectedOption?.isLive === true)}
               onPress={handleDownload}
               loading={creating}
               disabled={!canDownload}
               fullWidth={!isPlayableOffer(selectedOption)}
-              leftIcon="download"
-              accessibilityLabel={downloadButtonLabel(selectedOption?.label)}
+              leftIcon={selectedOption?.isLive ? 'record-rec' : 'download'}
+              accessibilityLabel={downloadButtonLabel(selectedOption?.label, selectedOption?.isLive === true)}
               accessibilityHint={
                 canDownload
                   ? 'Starts download with the selected format'
@@ -311,7 +311,11 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
                 </Box>
                 <Text variant="bodySmall" color="textSecondary">
                   {isBrowserQualityHandoff
-                    ? t('browser.media.chooseQualityHint')
+                    ? t(
+                        selection?.options.some((option) => option.isLive)
+                          ? 'browser.media.chooseLiveQualityHint'
+                          : 'browser.media.chooseQualityHint',
+                      )
                     : t('downloads.qualitySheetSubtitle')}
                 </Text>
               </Box>

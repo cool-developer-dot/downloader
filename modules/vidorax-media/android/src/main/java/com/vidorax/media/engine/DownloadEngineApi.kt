@@ -87,6 +87,9 @@ interface DownloadEngineApi {
   /** F3: when and under which conditions the waiting downloads may next run (the background wake-up); null: none wait. */
   suspend fun wakePlan(): WakePlan? = null
 
+  /** F6: ends a live recording; what was recorded is finalized. ERR_INVALID_STATE for anything not recording. */
+  suspend fun stopRecording(id: String): DownloadRecord = throw UnsupportedOperationException("stopRecording")
+
   /**
    * Downloads that reached COMPLETED with their verified library item and that JavaScript has not acknowledged yet —
    * including completions that happened while no JavaScript was running. Oldest first.

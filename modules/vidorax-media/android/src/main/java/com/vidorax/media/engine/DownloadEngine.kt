@@ -45,6 +45,10 @@ import com.vidorax.media.process.TrackFile
 import com.vidorax.media.transfer.BandwidthLimiter
 import com.vidorax.media.transfer.HlsCheckpoint
 import com.vidorax.media.transfer.HlsTransferSpec
+import com.vidorax.media.transfer.LiveCheckpoint
+import com.vidorax.media.transfer.LiveRecordOutcome
+import com.vidorax.media.transfer.LiveRecordSpec
+import com.vidorax.media.transfer.LiveStopReason
 import com.vidorax.media.transfer.PartProgress
 import com.vidorax.media.transfer.RangedDownload
 import com.vidorax.media.transfer.Throttle
@@ -57,6 +61,7 @@ import java.io.File
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
@@ -207,6 +212,8 @@ internal class DownloadEngine(
         DownloadState.DOWNLOADING,
         -> requeueFromPart(row, keepBytes = true)
         DownloadState.PROCESSING -> recoverProcessing(row)
+        // F6: a recording the process death interrupted is finalized from its checkpoint; it never records on.
+        DownloadState.RECORDING -> recoverRecording(row)
         DownloadState.COMPLETED, DownloadState.FAILED, DownloadState.CANCELLED -> Unit
       }
     }
@@ -247,8 +254,11 @@ internal class DownloadEngine(
     SourceKind.HLS ->
       (HlsCheckpoint.read(checkpointFileFor(row.id))?.partBytes ?: 0L) + (HlsCheckpoint.read(audioCheckpointFor(row.id))?.partBytes ?: 0L)
     SourceKind.DASH, SourceKind.SPLIT -> physicalPartBytes(row.id) + PartProgress.bytesOnDisk(audioPartFor(row.id))
+    SourceKind.LIVE -> LiveCheckpoint.read(liveCheckpointFor(row.id))?.partBytes ?: 0L
     else -> physicalPartBytes(row.id)
   }
+
+  private fun liveCheckpointFor(id: String): File = File(paths.workDir(id), LIVE_CHECKPOINT_NAME)
 
   /** Paused work stays paused; only its byte counter is corrected to what is on disk so a later resume is truthful. */
   private suspend fun reconcilePausedBytes(row: DownloadRow) {
@@ -339,9 +349,27 @@ internal class DownloadEngine(
   override suspend fun probe(request: ProbeRequest): ProbeResult {
     // A stream verdict is about one variant: classify the one enqueue would pick with the same choice and settings.
     val classified = if (request.kind.isStream()) request.copy(variant = streamChoice(request.variant)) else request
+    if (classified.kind == SourceKind.LIVE) return probeLive(classified)
     val first = prober.probe(classified)
-    if (!needsSession(first, classified.request)) return first
-    return prober.probe(classified.copy(request = classified.request.copy(useCookies = true)))
+    if (!needsSession(first, classified.request)) return liveOffer(classified, first) ?: first
+    val second = prober.probe(classified.copy(request = classified.request.copy(useCookies = true)))
+    return liveOffer(classified.copy(request = classified.request.copy(useCookies = true)), second) ?: second
+  }
+
+  /**
+   * F6: with "Live recording (beta)" on, an HLS stream refused only because it is live is offered for recording
+   * ([SourceKind.LIVE]) — classified as a recording would meet it, so an encrypted or DRM live stream is still
+   * refused as protected. Live DASH stays refused.
+   */
+  private suspend fun liveOffer(request: ProbeRequest, result: ProbeResult): ProbeResult? {
+    if (request.kind != SourceKind.HLS) return null
+    if (result !is ProbeResult.Failure || result.reason != ProbeFailure.LIVE_UNSUPPORTED) return null
+    return if (settings.liveRecording) probeLive(request) else null
+  }
+
+  private suspend fun probeLive(request: ProbeRequest): ProbeResult {
+    if (!settings.liveRecording) return ProbeResult.Failure(ProbeFailure.LIVE_UNSUPPORTED, null, "Live recording is off")
+    return prober.probeLive(request)
   }
 
   /**
@@ -404,8 +432,11 @@ internal class DownloadEngine(
     return result
   }
 
-  /** The identity of the video a request is for, with the variant exactly as the row would store it. */
-  private fun identityOf(request: EnqueueRequest): String? = DownloadIdentity.of(
+  /**
+   * The identity of the video a request is for, with the variant exactly as the row would store it. None for a live
+   * recording (F6): every recording is new content, and an earlier recording of the stream must not block this one.
+   */
+  private fun identityOf(request: EnqueueRequest): String? = if (request.kind == SourceKind.LIVE) null else DownloadIdentity.of(
     url = request.identityUrl ?: request.url,
     variant = if (request.kind.isStream()) streamChoice(request.variant) else null,
     pageUrl = request.pageUrl,
@@ -450,7 +481,7 @@ internal class DownloadEngine(
     return row
   }
 
-  private fun SourceKind?.isStream(): Boolean = this == SourceKind.HLS || this == SourceKind.DASH
+  private fun SourceKind?.isStream(): Boolean = this == SourceKind.HLS || this == SourceKind.DASH || this == SourceKind.LIVE
 
   /**
    * The variant an HLS or DASH download keeps for its whole life: the one the user picked, else the
@@ -666,6 +697,7 @@ internal class DownloadEngine(
       SourceKind.HLS -> return runHls(id, gen, start)
       SourceKind.DASH -> return runDash(id, gen, start)
       SourceKind.SPLIT -> return runSplit(id, gen, start)
+      SourceKind.LIVE -> return runRecording(id, gen, start)
       else -> Unit
     }
     val probe = probeOrFail(id, gen, start) ?: return
@@ -878,6 +910,172 @@ internal class DownloadEngine(
     TrackJob.Segmented(TrackRole.VIDEO, plan, partFileFor(id), checkpointFileFor(id)),
     plan.audio?.let { TrackJob.Segmented(TrackRole.AUDIO, it, audioPartFor(id), audioCheckpointFor(id)) },
   )
+
+  // --- live recording (F6) ---
+
+  /** Stop buttons of the recordings running now. */
+  private val recordingControls = ConcurrentHashMap<String, RecordingControl>()
+
+  private inner class RecordingControl : LiveRecordControl {
+    private val stop = MutableStateFlow(false)
+
+    fun stop() {
+      stop.value = true
+    }
+
+    override fun now(): Long = this@DownloadEngine.now()
+
+    override fun freeBytes(): Long = runCatching { freeSpace.bytes() }.getOrDefault(Long.MAX_VALUE)
+
+    override val stopRequested: Boolean get() = stop.value
+
+    override suspend fun pause(ms: Long): Boolean =
+      withTimeoutOrNull(ms.coerceAtLeast(0)) { stop.first { it } } != null || stop.value
+  }
+
+  /**
+   * F6: records a live stream from now until Stop, its end, the maximum length, low storage or a stall
+   * ([LiveHlsRecorder]), then finalizes what was recorded like any download. A recording that already has segments
+   * on disk (Retry, a restart) is finalized as it is — never continued with a hole in it.
+   */
+  private suspend fun runRecording(id: String, gen: Long, start: DownloadRow) {
+    if (!settings.liveRecording) {
+      fail(id, gen, DownloadErrorCode.LIVE_UNSUPPORTED, "Live recording is off")
+      return
+    }
+    LiveCheckpoint.read(liveCheckpointFor(id))?.takeIf { it.partBytes > 0 }?.let { saved ->
+      finalizeRecording(id, gen, start, saved.partBytes, saved.container ?: Container.TS, saved.hasDiscontinuities)
+      return
+    }
+    val plan = planOrFail(id, gen, start, live = true) ?: return
+    // The Stop button exists before the row says RECORDING: a Stop in between is never mistaken for a dead recording.
+    val control = RecordingControl()
+    recordingControls[id] = control
+    if (setState(id, gen, DownloadState.RECORDING) == null) {
+      recordingControls.remove(id, control)
+      return
+    }
+    paths.workDir(id).mkdirs()
+    val recorded = AtomicLong(0)
+    val spec = LiveRecordSpec(
+      partFile = partFileFor(id),
+      checkpointFile = liveCheckpointFor(id),
+      maxDurationUs = settings.liveRecordingMaxMinutes * 60L * 1_000_000L,
+      connections = settings.connectionsPerFile,
+    )
+    val outcome: LiveRecordOutcome? = try {
+      streamWithProgress(id, gen, recorded) { onProgress ->
+        hls.record(plan, currentRequest(id, start), spec, bandwidth.throttleFor(id), control) { bytes, recordedUs ->
+          recorded.set(recordedUs)
+          onProgress(bytes, null)
+        }
+      }
+    } catch (e: NetworkNoLongerAllowed) {
+      // Wi-Fi only, or a download rule, ended it: what was recorded is kept.
+      null
+    } catch (e: MediaRefusedException) {
+      fail(id, gen, mapProbeFailure(e.reason), e.message)
+      cleanupWork(id)
+      return
+    } finally {
+      recordingControls.remove(id, control)
+    }
+    val saved = LiveCheckpoint.read(liveCheckpointFor(id))
+    finalizeRecording(
+      id,
+      gen,
+      start,
+      bytes = outcome?.bytesWritten ?: saved?.partBytes ?: 0L,
+      container = outcome?.container ?: saved?.container ?: Container.TS,
+      hasDiscontinuities = outcome?.hasDiscontinuities ?: saved?.hasDiscontinuities ?: false,
+      reason = outcome?.reason,
+    )
+  }
+
+  /**
+   * The recorded segments → the library: verified like a downloaded stream, remuxed into an MP4 (an fMP4 or a
+   * transport stream), or kept as the transport stream it is when its timeline restarts (discontinuities), as a VOD
+   * stream with discontinuities is. Nothing recorded is a failure.
+   */
+  private suspend fun finalizeRecording(
+    id: String,
+    gen: Long,
+    start: DownloadRow,
+    bytes: Long,
+    container: Container,
+    hasDiscontinuities: Boolean,
+    reason: LiveStopReason? = null,
+  ) {
+    if (bytes <= 0L) {
+      when (reason) {
+        LiveStopReason.LOW_STORAGE -> fail(id, gen, DownloadErrorCode.NO_SPACE, "Not enough free space to record")
+        LiveStopReason.STOPPED -> fail(id, gen, DownloadErrorCode.NETWORK, "Stopped before anything was recorded")
+        else -> fail(id, gen, DownloadErrorCode.NETWORK, "Nothing was recorded: the stream sent no video")
+      }
+      cleanupWork(id)
+      return
+    }
+    val part = partFileFor(id)
+    // A crash can leave the start of a segment after the last whole one: the checkpoint says what is whole.
+    runCatching { java.io.RandomAccessFile(part, "rw").use { if (it.length() > bytes) it.setLength(bytes) } }
+    persistProgress(id, gen, bytes, bytes)
+    if (setState(id, gen, DownloadState.PROCESSING) == null) return
+    val expectation = VerifyExpectation(container = container.takeIf { it == Container.TS || it == Container.MP4 }, expectedBytes = bytes)
+    if (!verifiedOrFail(id, gen, part, expectation)) return
+    if (failedAsAudioOnly(id, gen, part, "This stream has no video")) return
+    if (hasDiscontinuities && container == Container.TS) {
+      finalizeAndComplete(id, gen, start, part, Container.TS, contentType = null)
+      return
+    }
+    processAndFinalize(
+      id,
+      gen,
+      start,
+      ProcessingInput.Single(TrackFile(part, MediaProcessor.trackContainer(container))),
+      keptContainer = container,
+      contentType = null,
+    )
+  }
+
+  /** F6: after a process death, finalize what an interrupted recording's checkpoint describes (no new segments). */
+  private suspend fun recoverRecording(row: DownloadRow) {
+    stopWorker(row.id)
+    val gen = mutex.withLock { bumpGenerationLocked(row.id) }
+    lateinit var job: Job
+    job = scope.launch(start = CoroutineStart.LAZY) {
+      try {
+        val saved = LiveCheckpoint.read(liveCheckpointFor(row.id))
+        finalizeRecording(row.id, gen, row, saved?.partBytes ?: 0L, saved?.container ?: Container.TS, saved?.hasDiscontinuities ?: false)
+      } catch (c: kotlinx.coroutines.CancellationException) {
+        throw c
+      } catch (e: Throwable) {
+        fail(row.id, gen, mapThrowable(e))
+      } finally {
+        activeJobs.remove(row.id, job)
+      }
+    }
+    activeJobs[row.id] = job
+    job.start()
+  }
+
+  override suspend fun stopRecording(id: String): DownloadRecord {
+    val row = store.find(id) ?: throw NotFoundException("Unknown download $id")
+    if (row.kind != SourceKind.LIVE || row.state.isTerminal || row.state == DownloadState.PROCESSING) {
+      throw InvalidStateException("This download is not recording")
+    }
+    recordingControls[id]?.let { control ->
+      // The recorder notices within one wait and the worker finalizes what was recorded.
+      control.stop()
+      return recordOf(row)
+    }
+    if (row.state == DownloadState.RECORDING) {
+      recoverRecording(row)
+      return recordOf(row)
+    }
+    // Not recording yet (queued, waiting, preparing): there is nothing to keep.
+    cancel(id)
+    return recordOf(store.find(id) ?: row)
+  }
 
   // --- split video + audio files ---
 
@@ -1188,13 +1386,15 @@ internal class DownloadEngine(
   }
 
   /** The HLS counterpart of [probeOrFail]: resolves the persisted variant choice to one classified media playlist. */
-  private suspend fun planOrFail(id: String, gen: Long, row: DownloadRow, expired: Boolean = false): HlsPlan? {
+  private suspend fun planOrFail(id: String, gen: Long, row: DownloadRow, expired: Boolean = false, live: Boolean = false): HlsPlan? {
     var attempt = 0
     while (true) {
       val context = currentRequest(id, row)
-      var result = hls.plan(row.url, context, row.variant)
+      val planner: suspend (RequestContext) -> HlsPlanResult =
+        { ctx -> if (live) hls.planLive(row.url, ctx, row.variant) else hls.plan(row.url, ctx, row.variant) }
+      var result = planner(context)
       if (result is HlsPlanResult.Refused && needsSession(result.failure, context)) {
-        result = hls.plan(row.url, context.copy(useCookies = true), row.variant)
+        result = planner(context.copy(useCookies = true))
         if (result is HlsPlanResult.Ready && adoptSession(id, gen) == null) return null
       }
       when (result) {
@@ -1440,7 +1640,8 @@ internal class DownloadEngine(
   /** The download's own record, with what holds it (F3) and its start time. */
   private fun recordOf(row: DownloadRow): DownloadRecord {
     val hold = holds[row.id]?.takeIf { row.state == DownloadState.WAITING_CONDITIONS }
-    return row.toRecord().copy(waitReason = hold?.reason, waitUntil = hold?.until, startAt = schedules[row.id])
+    val recordedMs = if (row.kind == SourceKind.LIVE) LiveCheckpoint.read(liveCheckpointFor(row.id))?.recordedUs?.div(1000) else null
+    return row.toRecord().copy(waitReason = hold?.reason, waitUntil = hold?.until, startAt = schedules[row.id], recordedMs = recordedMs)
   }
 
   private fun holdFor(id: String): Hold? = DownloadRules.hold(schedules[id], settings, device.current(), now(), zone())
@@ -1620,11 +1821,13 @@ internal class DownloadEngine(
   private suspend fun <T> streamWithProgress(
     id: String,
     gen: Long,
+    /** F6: a live recording's recorded length, reported with every sample. */
+    recordedUs: AtomicLong? = null,
     block: suspend (onProgress: (Long, Long?) -> Unit) -> T,
   ): T =
     coroutineScope {
       val channel = Channel<ProgressSample>(Channel.CONFLATED)
-      val collector = launch { drainProgress(id, gen, channel) }
+      val collector = launch { drainProgress(id, gen, channel, recordedUs) }
       val stoppedByPolicy = AtomicBoolean(false)
       val transfer = async {
         block { bytes, total -> channel.trySend(ProgressSample(bytes, total)) }
@@ -1659,7 +1862,7 @@ internal class DownloadEngine(
    * first sample and a restart from zero go out at once; the newest sample is always emitted before the transfer's
    * next state, so the final numbers are never held back.
    */
-  private suspend fun drainProgress(id: String, gen: Long, channel: ReceiveChannel<ProgressSample>) {
+  private suspend fun drainProgress(id: String, gen: Long, channel: ReceiveChannel<ProgressSample>, recordedUs: AtomicLong? = null) {
     val meter = SpeedMeter()
     var lastBytes = -1L
     var lastPersist = 0L
@@ -1674,7 +1877,9 @@ internal class DownloadEngine(
         persistProgress(id, gen, sample.bytes, sample.total)
         lastPersist = t
       }
-      val progress = buildProgress(id, sample.bytes, sample.total, speed)
+      val progress = buildProgress(id, sample.bytes, sample.total, speed).let { built ->
+        recordedUs?.let { built.copy(recordedMs = it.get() / 1000) } ?: built
+      }
       if (first || restarted || t - lastEmit >= PROGRESS_EMIT_MS) {
         progressFlow.tryEmit(progress)
         lastEmit = t
@@ -1856,6 +2061,8 @@ internal class DownloadEngine(
   internal companion object {
     const val PART_NAME = "download.part"
     const val HLS_CHECKPOINT_NAME = "hls.checkpoint"
+    /** F6: a recording's checkpoint, next to its `.part`. */
+    const val LIVE_CHECKPOINT_NAME = "live.checkpoint"
     /** The separate audio track of a stream or split download, next to the video's `.part`. */
     const val AUDIO_PART_NAME = "audio.part"
     const val AUDIO_CHECKPOINT_NAME = "audio.checkpoint"
@@ -1892,6 +2099,7 @@ internal class DownloadEngine(
       DownloadState.WAITING_NETWORK,
       DownloadState.WAITING_RETRY,
       DownloadState.WAITING_CONDITIONS,
+      DownloadState.RECORDING,
     )
     val SANITIZED_HEADERS = setOf("cookie", "authorization", "proxy-authorization")
 

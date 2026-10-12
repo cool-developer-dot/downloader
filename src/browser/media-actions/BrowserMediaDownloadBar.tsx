@@ -197,7 +197,9 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
             ? t('downloads.alreadyDownloadedToast')
             : result.duplicate === 'ALREADY_DOWNLOADING' || result.deduped
               ? t('downloads.alreadyDownloadingToast')
-              : t('downloads.successToast'),
+              : action.isLive
+                ? t('downloads.recordingStartedToast')
+                : t('downloads.successToast'),
         );
         return;
       }
@@ -271,7 +273,11 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
 
   const isPreparing = presentation.isPreparing;
   const barEnabled = !presentation.buttonDisabled;
-  const noticeLabel = notice ? t(NOTICE_LABEL_KEYS[notice]) : null;
+  // F6: a live stream (with "Live recording (beta)" on) is recorded: the bar says so and shows a record icon.
+  const live = action.isLive;
+  const noticeLabel = notice
+    ? t(action.isRecording && notice === 'DOWNLOADING' ? 'browser.media.recordingVideo' : NOTICE_LABEL_KEYS[notice])
+    : null;
   const noticeIcon =
     notice === 'DOWNLOADED' || notice === 'ALREADY_DOWNLOADED'
       ? 'check-circle'
@@ -339,10 +345,14 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
             accessibilityLabel={
               isPreparing
                 ? t('browser.media.preparingDownload')
-                : t('browser.media.videoAvailableA11y')
+                : live
+                  ? t('browser.media.liveAvailableA11y')
+                  : t('browser.media.videoAvailableA11y')
             }
             accessibilityHint={
-              barEnabled ? t('browser.media.videoAvailableHint') : undefined
+              barEnabled
+                ? t(live ? 'browser.media.liveAvailableHint' : 'browser.media.videoAvailableHint')
+                : undefined
             }
             style={{
               minHeight: BROWSER_TOUCH_TARGET,
@@ -363,7 +373,9 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
                 ? t('browser.media.preparingDownload')
                 : isDownloadProgressNotice(notice) && noticeLabel
                   ? noticeLabel
-                  : t('browser.media.videoAvailable')}
+                  : live
+                    ? t('browser.media.liveAvailable')
+                    : t('browser.media.videoAvailable')}
             </Text>
             <Box row style={{ alignItems: 'center' }} gap={4}>
               {action.canPlay && !isPreparing ? (
@@ -384,9 +396,9 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
               ) : null}
               <Animated.View style={iconStyle}>
                 <Icon
-                  name="download"
+                  name={live ? 'record-rec' : 'download'}
                   size={20}
-                  color={barEnabled ? 'primary' : 'disabled'}
+                  color={barEnabled ? (live ? 'error' : 'primary') : 'disabled'}
                 />
               </Animated.View>
             </Box>

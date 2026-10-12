@@ -39,6 +39,8 @@ internal data class DownloadNotificationContent(
     RESUME("Resume"),
     RETRY("Retry"),
     CANCEL("Cancel"),
+    /** F6: ends a live recording and keeps what was recorded. */
+    STOP("Stop"),
   }
 
   enum class Target { DOWNLOADS, LIBRARY }
@@ -80,6 +82,21 @@ internal object DownloadNotificationText {
   const val WAITING_NETWORK = "Waiting for network"
   const val WAITING_RETRY = "Retrying"
   const val PROCESSING = "Finishing up"
+
+  /** F6: "Recording · 12:34 · 85 MB" — the same words as the Downloads row, in the app's language. */
+  fun recording(recordedMs: Long?, bytes: Long): String {
+    val seconds = (recordedMs ?: 0L) / 1000
+    val time = if (seconds >= 3600) {
+      "%d:%02d:%02d".format(java.util.Locale.US, seconds / 3600, seconds / 60 % 60, seconds % 60)
+    } else {
+      "%d:%02d".format(java.util.Locale.US, seconds / 60, seconds % 60)
+    }
+    val urdu = language == "ur"
+    // Left-to-right marks keep "0:38" and "3.3 MB" in order after the Urdu label (an RTL line reorders "3.3 MB").
+    val ltr = { text: String -> if (urdu) "\u200E$text\u200E" else text }
+    val label = if (urdu) "ریکارڈنگ" else "Recording"
+    return listOfNotNull(label, ltr(time), formatBytes(bytes).takeIf { bytes > 0 }?.let(ltr)).joinToString(" · ")
+  }
 
   fun processing(stage: ProcessingStage?): String = when (stage) {
     ProcessingStage.MERGING -> "Merging audio and video"
@@ -216,6 +233,8 @@ internal fun notificationContentFor(
   speedBps: Long = 0L,
   /** What PROCESSING is doing (merging, converting…), from the engine's progress events. */
   stage: ProcessingStage? = null,
+  /** F6: a recording's recorded length (ms), from the engine's progress events. */
+  recordedMs: Long? = record.recordedMs,
 ): DownloadNotificationContent? {
   val detail = transferDetail(bytesDone, totalBytes)
   val speed = formatSpeed(speedBps).takeIf { record.state == DownloadState.DOWNLOADING }
@@ -258,6 +277,16 @@ internal fun notificationContentFor(
         ongoing = false,
         withDetail = false,
         actions = pauseAndCancel,
+      )
+    // F6: running work with a Stop that keeps what was recorded (no pause: a live stream does not wait).
+    DownloadState.RECORDING ->
+      content(
+        DownloadNotificationText.recording(recordedMs, bytesDone),
+        active,
+        progress = true,
+        ongoing = true,
+        withDetail = false,
+        actions = listOf(DownloadNotificationContent.Action.STOP, DownloadNotificationContent.Action.CANCEL),
       )
     // Finishing up is verify → finalize → library: stopping it there is not something the engine allows.
     DownloadState.PROCESSING ->

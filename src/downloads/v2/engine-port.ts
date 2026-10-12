@@ -57,6 +57,8 @@ export type V2EnginePort = {
   listDownloadBandwidth?(): Promise<DownloadBandwidth[]>;
   /** F3 "Start at…" (epoch ms; null = now). Missing on older native builds: the control is hidden. */
   setDownloadStartAt?(id: string, startAt: number | null): Promise<DownloadRecord>;
+  /** F6: stops a live recording and finalizes what was recorded. Missing on older native builds. */
+  stopRecording?(id: string): Promise<DownloadRecord>;
   /** Download files that belong to nothing (F15). Missing on older native builds: the Storage row is not shown. */
   measureLeftoverFiles?(options?: LeftoverFilesOptions): Promise<LeftoverFiles>;
   cleanLeftoverFiles?(options?: LeftoverFilesOptions): Promise<LeftoverFiles>;

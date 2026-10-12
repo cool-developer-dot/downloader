@@ -87,6 +87,8 @@ export interface DownloadsActions {
     socialSourceIdentity?: import('@/downloads/engine/social-source-refresh.provider').SocialSourceRefreshIdentity | null;
   }) => Promise<DownloadItem | null>;
   pause: (id: string) => Promise<DownloadItem | null>;
+  /** F6: stops a live recording; what was recorded is finalized into the library. */
+  stopRecording: (id: string) => Promise<DownloadItem | null>;
   resume: (id: string) => Promise<DownloadItem | null>;
   cancel: (id: string) => Promise<DownloadItem | null>;
   retry: (id: string) => Promise<DownloadItem | null>;

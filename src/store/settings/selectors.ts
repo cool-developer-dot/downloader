@@ -15,3 +15,5 @@ export const selectDownloadHours = (state: SettingsStore) => state.downloadHours
 export const selectNotOnRoaming = (state: SettingsStore) => state.notOnRoaming;
 export const selectPauseOnLowBattery = (state: SettingsStore) => state.pauseOnLowBattery;
 export const selectOnlyWhileCharging = (state: SettingsStore) => state.onlyWhileCharging;
+export const selectLiveRecording = (state: SettingsStore) => state.liveRecording;
+export const selectLiveRecordingMaxMinutes = (state: SettingsStore) => state.liveRecordingMaxMinutes;

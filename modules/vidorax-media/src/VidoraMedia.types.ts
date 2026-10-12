@@ -28,7 +28,19 @@
  * and merged. Encrypted/DRM → `DRM_PROTECTED`; live → `LIVE_UNSUPPORTED`; multi-period DASH and audio-only streams →
  * `UNSUPPORTED_FORMAT`. Two tracks whose lengths disagree are never merged (`TRACK_MISMATCH`).
  */
-export type SourceKind = 'progressive' | 'hls' | 'dash' | 'split';
+export type SourceKind =
+  | 'progressive'
+  | 'hls'
+  | 'dash'
+  | 'split'
+  /**
+   * F6 (behind Settings → "Live recording (beta)"): a live, unencrypted HLS media playlist recorded from now until
+   * Stop, the end of the stream (`EXT-X-ENDLIST`), the maximum length (`liveRecordingMaxMinutes`) or low storage;
+   * then finalized like any download. Refused (`LIVE_UNSUPPORTED`) while the setting is off. With the setting on, a
+   * `probe` of a live HLS stream (`kind: 'hls'` or `'live'`) answers `ok` with `kind: 'live'` — classified as the
+   * recording would meet it, so an encrypted live stream is still `DRM_PROTECTED`.
+   */
+  | 'live';
 
 export type SiteId =
   | 'instagram'
@@ -275,6 +287,8 @@ export type DownloadState =
    * (`DownloadRecord.waitReason`). Resumes by itself from the bytes on disk; not counted as running work.
    */
   | 'waiting_conditions'
+  /** F6: a live stream being recorded (`kind: 'live'`) until `stopRecording`; not pausable. */
+  | 'recording'
   /** Merging / remuxing / converting the downloaded tracks, verifying the result and adding it to the library. */
   | 'processing'
   | 'completed'
@@ -342,6 +356,8 @@ export interface DownloadRecord {
   waitUntil?: number | null;
   /** F3 "Start at…": the earliest moment this download may run, epoch ms; null = now. */
   startAt?: number | null;
+  /** F6: how much of a live stream is recorded so far (`recording`, and the finished recording), ms. */
+  recordedMs?: number | null;
 }
 
 /**
@@ -376,6 +392,8 @@ export interface DownloadProgressEvent {
   fraction: number | null;
   speedBps: number;
   etaSeconds: number | null;
+  /** F6: a live recording's recorded length so far, ms (null for any other download). */
+  recordedMs?: number | null;
 }
 
 export interface DownloadStateEvent {
@@ -520,6 +538,10 @@ export interface DownloadSettings {
   onlyWhileCharging?: boolean;
   /** The app's language for the engine's own notification texts of F3 waits ('en' | 'ur'). Default 'en'. */
   language?: string;
+  /** F6: Settings → Download Settings → Advanced → "Live recording (beta)". Default false: live streams are refused. */
+  liveRecording?: boolean;
+  /** F6: a recording stops by itself after this many minutes (15..720). Default 120. */
+  liveRecordingMaxMinutes?: number;
 }
 
 /**
@@ -614,6 +636,11 @@ export interface VidoraMediaModuleApi {
    * Rejects with ERR_NOT_FOUND for an unknown id, ERR_INVALID_STATE for a finished one. Missing on older native builds.
    */
   setDownloadStartAt?(id: string, startAt: number | null): Promise<DownloadRecord>;
+  /**
+   * F6: ends a live recording; what was recorded is finalized into the library like any download. Rejects with
+   * ERR_NOT_FOUND for an unknown id, ERR_INVALID_STATE for anything that is not recording. Missing on older builds.
+   */
+  stopRecording?(id: string): Promise<DownloadRecord>;
   /** Every download that has its own limit or the priority mark. Missing on older native builds. */
   listDownloadBandwidth?(): Promise<DownloadBandwidth[]>;
 

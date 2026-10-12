@@ -200,6 +200,18 @@ class ConditionRecordsTest {
     org.junit.Assert.assertEquals("an unknown language is English", "en", DownloadSettingsRecord(language = "fr").toModel().language)
   }
 
+  @Test fun liveRecordingIsOffByDefaultWithATwoHourLimit() {
+    val off = DownloadSettingsRecord().toModel()
+    org.junit.Assert.assertFalse(off.liveRecording)
+    org.junit.Assert.assertEquals(120, off.liveRecordingMaxMinutes)
+    val on = DownloadSettingsRecord(liveRecording = true, liveRecordingMaxMinutes = 30).toModel()
+    org.junit.Assert.assertTrue(on.liveRecording)
+    org.junit.Assert.assertEquals(30, on.liveRecordingMaxMinutes)
+    org.junit.Assert.assertEquals(720, DownloadSettingsRecord(liveRecordingMaxMinutes = 720).toModel().liveRecordingMaxMinutes)
+    org.junit.Assert.assertThrows(Exception::class.java) { DownloadSettingsRecord(liveRecordingMaxMinutes = 14).toModel() }
+    org.junit.Assert.assertThrows(Exception::class.java) { DownloadSettingsRecord(liveRecordingMaxMinutes = 721).toModel() }
+  }
+
   @Test fun anInvalidWindowIsRefused() {
     org.junit.Assert.assertThrows(Exception::class.java) {
       DownloadSettingsRecord(downloadWindow = DownloadWindowRecord(0, 60, emptyList())).toModel()

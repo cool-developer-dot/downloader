@@ -1,7 +1,7 @@
 import { persist } from 'zustand/middleware';
 
 import { isSupportedLanguage, normalizeLanguageCode, storageKeys } from '@/constants';
-import { normalizeConnectionsPerFile } from '@/downloads/v2/settings';
+import { normalizeConnectionsPerFile, normalizeLiveRecordingMaxMinutes } from '@/downloads/v2/settings';
 import { normalizeDownloadHours } from '@/downloads/v2/conditions';
 import { normalizeSpeedLimit } from '@/downloads/v2/speed-limit';
 import { bindLanguageReader } from '@/localization/translate';
@@ -77,6 +77,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
         notOnRoaming: state.notOnRoaming,
         pauseOnLowBattery: state.pauseOnLowBattery,
         onlyWhileCharging: state.onlyWhileCharging,
+        liveRecording: state.liveRecording,
+        liveRecordingMaxMinutes: state.liveRecordingMaxMinutes,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -110,6 +112,11 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.pauseOnLowBattery === 'boolean' ? raw.pauseOnLowBattery : current.pauseOnLowBattery,
           onlyWhileCharging:
             typeof raw.onlyWhileCharging === 'boolean' ? raw.onlyWhileCharging : current.onlyWhileCharging,
+          liveRecording: typeof raw.liveRecording === 'boolean' ? raw.liveRecording : current.liveRecording,
+          liveRecordingMaxMinutes:
+            raw.liveRecordingMaxMinutes === undefined
+              ? current.liveRecordingMaxMinutes
+              : normalizeLiveRecordingMaxMinutes(raw.liveRecordingMaxMinutes),
           autoResume:
             typeof raw.autoResume === 'boolean' ? raw.autoResume : current.autoResume,
           notifications:

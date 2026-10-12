@@ -18,6 +18,7 @@ import {
   streamContentType,
   streamUnavailableReason,
   streamUsesCookies,
+  type StreamUnavailableReason,
 } from '@/player/remote-stream';
 
 import { lookupLiveBrowserSource } from './browser-media-download.service';
@@ -34,7 +35,7 @@ export type PrepareStreamInput = {
 export type PrepareStreamResult = { ok: true; mediaId: string } | { ok: false; message: string; reason: string };
 
 /** Message for an offer that has no Play button (the UI hides it; a stale tap still gets a clear answer). */
-export function streamUnavailableMessage(reason: 'split' | 'not_downloadable' | 'no_url'): string {
+export function streamUnavailableMessage(reason: StreamUnavailableReason): string {
   return translate(reason === 'split' ? 'downloads.playSplitUnavailable' : 'downloads.playUnavailable');
 }
 

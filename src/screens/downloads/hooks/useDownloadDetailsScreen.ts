@@ -203,8 +203,9 @@ export function useDownloadDetailsScreen() {
       workerState: item?.workerState ?? transfer?.workerState ?? null,
       supportsResume: transfer?.supportsResume ?? null,
       errorCode: item?.errorCode ?? null,
+      recording: item?.status === 'DOWNLOADING' && transfer?.recording === true,
     }),
-    [downloadId, item?.workerState, item?.errorCode, transfer],
+    [downloadId, item?.workerState, item?.errorCode, item?.status, transfer],
   );
 
   const primaryAction = useMemo(
@@ -297,6 +298,14 @@ export function useDownloadDetailsScreen() {
       }
 
       let result = null;
+      if (action === 'stop') {
+        result = await useDownloadsStore.getState().stopRecording(downloadId);
+        if (!result) {
+          const storeError = useDownloadsStore.getState().error;
+          setActionError(storeError?.trim() || 'Couldn’t stop this recording.');
+        }
+        return;
+      }
       if (action === 'pause') {
         result = await pause(downloadId);
         if (!result) {

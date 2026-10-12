@@ -99,6 +99,9 @@ object DownloadEngineProvider {
       pauseOnLowBattery = stored.getBoolean(KEY_PAUSE_LOW_BATTERY, false),
       onlyWhileCharging = stored.getBoolean(KEY_ONLY_CHARGING, false),
       language = stored.getString(KEY_LANGUAGE, null) ?: "en",
+      liveRecording = stored.getBoolean(KEY_LIVE_RECORDING, false),
+      liveRecordingMaxMinutes = stored.getInt(KEY_LIVE_MAX_MINUTES, DownloadSettings.DEFAULT_LIVE_MAX_MINUTES)
+        .coerceIn(DownloadSettings.MIN_LIVE_MAX_MINUTES, DownloadSettings.MAX_LIVE_MAX_MINUTES),
     )
   }
 
@@ -126,6 +129,8 @@ object DownloadEngineProvider {
         .putBoolean(KEY_PAUSE_LOW_BATTERY, settings.pauseOnLowBattery)
         .putBoolean(KEY_ONLY_CHARGING, settings.onlyWhileCharging)
         .putString(KEY_LANGUAGE, settings.language)
+        .putBoolean(KEY_LIVE_RECORDING, settings.liveRecording)
+        .putInt(KEY_LIVE_MAX_MINUTES, settings.liveRecordingMaxMinutes)
         .apply()
     }
   }
@@ -142,4 +147,6 @@ object DownloadEngineProvider {
   private const val KEY_PAUSE_LOW_BATTERY = "pauseOnLowBattery"
   private const val KEY_ONLY_CHARGING = "onlyWhileCharging"
   private const val KEY_LANGUAGE = "language"
+  private const val KEY_LIVE_RECORDING = "liveRecording"
+  private const val KEY_LIVE_MAX_MINUTES = "liveRecordingMaxMinutes"
 }

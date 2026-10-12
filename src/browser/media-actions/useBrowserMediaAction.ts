@@ -72,6 +72,7 @@ import {
   type BrowserDownloadPresentation,
 } from './browser-download-presentation';
 import { useDownloadsStore } from '@/store/downloads';
+import { selectLiveRecording, useSettingsStore } from '@/store/settings';
 import {
   fingerprintDiagHash,
   logBrowserCta,
@@ -162,6 +163,10 @@ export type BrowserMediaActionViewModel = BrowserMediaActionState & {
   openLibrary: () => void;
   /** A single verified offer the player can open online (F17); several qualities choose in the sheet instead. */
   canPlay: boolean;
+  /** F6: the offer is a live stream to record ("Live recording (beta)" on): Record, not Download. */
+  isLive: boolean;
+  /** F6: the download the action area follows is a live recording ("Recording…" instead of "Downloading…"). */
+  isRecording: boolean;
   /** Plays the offer online in the VidoraX player (F17) — the offer stays available, nothing is downloaded. */
   play: () => Promise<{ ok: true } | { ok: false; message: string }>;
 };
@@ -1454,12 +1459,24 @@ export function useBrowserMediaAction(
     [actionState.analysis],
   );
 
+  // F6: a live offer is a recording — while "Live recording (beta)" is off it offers nothing. An offer verified before
+  // the setting was turned off is withdrawn; the stream is then looked at again (and refused as live).
+  const liveRecordingOn = useSettingsStore(selectLiveRecording);
+  const verifiedOptions = useMemo(() => selectVerifiedStandaloneQualities(selection?.options), [selection]);
   const downloadableOptions = useMemo(
-    () => selectVerifiedStandaloneQualities(selection?.options),
-    [selection],
+    () => verifiedOptions.filter((option) => liveRecordingOn || !option.isLive),
+    [liveRecordingOn, verifiedOptions],
   );
+  const standingLiveOffer =
+    actionState.status === 'verified' && verifiedOptions.length > 0 && verifiedOptions.every((option) => option.isLive);
+  useEffect(() => {
+    if (!liveRecordingOn && standingLiveOffer) {
+      browserMediaActionService.invalidateProtectedOffer('live_recording_off');
+    }
+  }, [liveRecordingOn, standingLiveOffer]);
 
   const hasMultipleQualities = downloadableOptions.length > 1;
+  const isLive = downloadableOptions.length > 0 && downloadableOptions.every((option) => option.isLive === true);
   const expanded = !actionState.dismissed && !actionState.autoShownOnce
     ? actionState.status === 'verified'
     : !actionState.dismissed;
@@ -1588,6 +1605,10 @@ export function useBrowserMediaAction(
   );
   const offerRowStatus = useDownloadsStore((state) =>
     offerDuplicate?.downloadId ? (state.engineRowsById[offerDuplicate.downloadId]?.status ?? null) : null,
+  );
+  const followedDownloadId = consumedOutcome?.downloadId ?? offerDuplicate?.downloadId ?? null;
+  const isRecording = useDownloadsStore((state) =>
+    followedDownloadId ? state.transferById[followedDownloadId]?.recording === true : false,
   );
   const consumedNotice = resolveConsumedDownloadNotice(consumedOutcome, consumedRowStatus);
   const offerDuplicateNotice = resolveOfferDuplicateNotice(offerDuplicate, offerRowStatus);
@@ -2069,6 +2090,8 @@ export function useBrowserMediaAction(
     openLibrary,
     canPlay,
     play,
+    isLive,
+    isRecording,
   };
 }
 

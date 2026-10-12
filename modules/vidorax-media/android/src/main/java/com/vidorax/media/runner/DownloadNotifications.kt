@@ -121,6 +121,7 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
     DownloadNotificationContent.Action.RESUME -> android.R.drawable.ic_media_play
     DownloadNotificationContent.Action.RETRY -> android.R.drawable.ic_popup_sync
     DownloadNotificationContent.Action.CANCEL -> android.R.drawable.ic_menu_close_clear_cancel
+    DownloadNotificationContent.Action.STOP -> android.R.drawable.ic_media_pause
   }
 
   private fun builder(channelId: String): Notification.Builder =

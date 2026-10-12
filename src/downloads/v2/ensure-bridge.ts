@@ -112,6 +112,8 @@ export function ensureV2DownloadBridge(): void {
       notOnRoaming: settings.notOnRoaming,
       pauseOnLowBattery: settings.pauseOnLowBattery,
       onlyWhileCharging: settings.onlyWhileCharging,
+      liveRecording: settings.liveRecording,
+      liveRecordingMaxMinutes: settings.liveRecordingMaxMinutes,
       language: settings.language,
     });
   };

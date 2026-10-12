@@ -124,6 +124,10 @@ export type TransferProgressSnapshot = {
   waitUntil?: number | null;
   /** F3 "Start at…" (epoch ms). */
   startAt?: number | null;
+  /** F6: a live stream being recorded (Stop instead of Pause, no total). */
+  recording?: boolean;
+  /** F6: how much of the live stream is recorded (ms). */
+  recordedMs?: number | null;
 };
 
 export type LocalDownloadRecord = {

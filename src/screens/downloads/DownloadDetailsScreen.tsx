@@ -52,14 +52,17 @@ import {
   formatSourceHost,
   formatTransferSpeed,
   getExecutionStatusLabel,
+  recordingLabelFor,
   sanitizeErrorMessage,
   waitingLabelFor,
   type DownloadCardAction,
 } from './utils/download-format';
 import { formatDuration } from '@/media-detection/utils';
+import { formatRecordedTime } from '@/downloads/v2/live-recording';
 
 const PRIMARY_LABEL_KEYS: Record<
   DownloadCardAction,
+  | 'downloads.primaryStop'
   | 'downloads.primaryPause'
   | 'downloads.primaryResume'
   | 'downloads.primaryCancel'
@@ -68,6 +71,7 @@ const PRIMARY_LABEL_KEYS: Record<
   | 'downloads.primaryShare'
   | 'downloads.primaryRemove'
 > = {
+  stop: 'downloads.primaryStop',
   pause: 'downloads.primaryPause',
   resume: 'downloads.primaryResume',
   cancel: 'downloads.primaryCancel',
@@ -81,6 +85,7 @@ const PRIMARY_VARIANT: Record<
   DownloadCardAction,
   'primary' | 'destructive' | 'outline'
 > = {
+  stop: 'primary',
   pause: 'primary',
   resume: 'primary',
   cancel: 'destructive',
@@ -168,12 +173,16 @@ const DetailsBody = memo(function DetailsBody({
 
   const title = item.title?.trim() || item.fileName?.trim() || t('downloads.untitled');
   const showInternalPlay = item.status === 'COMPLETED' && canUseLocalFile;
-  const statusLabel = getExecutionStatusLabel({
-    status: item.status,
-    workerState: item.workerState,
-    downloadId: item.id,
-    processingStage: transfer?.processingStage ?? null,
-  });
+  // F6: a live recording shows its length and size so far instead of a percentage.
+  const recordingLine = item.status === 'DOWNLOADING' ? recordingLabelFor(transfer) : null;
+  const statusLabel = recordingLine
+    ? t('downloads.statusRecording')
+    : getExecutionStatusLabel({
+        status: item.status,
+        workerState: item.workerState,
+        downloadId: item.id,
+        processingStage: transfer?.processingStage ?? null,
+      });
   const statusColors = downloadsTokens.status[item.status];
   const mediaType = extractMediaType(item.fileName);
   const platform = formatPlatform(item.platform);
@@ -309,7 +318,24 @@ const DetailsBody = memo(function DetailsBody({
         </Text>
       </Box>
 
-      {showProgress ? (
+      {recordingLine ? (
+        <Box gap={10} testID="download-details-recording">
+          <Text
+            variant="display"
+            color="textPrimary"
+            style={{ fontSize: 40, lineHeight: 48, fontWeight: '700' }}
+            importantForAccessibility="no"
+            accessibilityElementsHidden>
+            {formatRecordedTime(transfer?.recordedMs)}
+          </Text>
+          <Box row rtlRow gap={6} style={{ alignItems: 'center' }}>
+            <Icon name="record-circle" size={16} color="error" />
+            <Text variant="bodySmall" color="textSecondary" style={{ flex: 1 }}>
+              {recordingLine}
+            </Text>
+          </Box>
+        </Box>
+      ) : showProgress ? (
         <Box gap={10}>
           <Text
             variant="display"
@@ -524,7 +550,8 @@ const DetailsBody = memo(function DetailsBody({
         {completed ? <InfoRow label={t('downloads.infoDownloadedDate')} value={completed} /> : null}
       </Box>
 
-      {item.status === 'DOWNLOADING' || item.status === 'PAUSED' || item.status === 'QUEUED' ? (
+      {/* A live recording keeps up with the stream: no start time, no speed limit of its own. */}
+      {(item.status === 'DOWNLOADING' || item.status === 'PAUSED' || item.status === 'QUEUED') && !recordingLine ? (
         <>
           <DownloadStartAtControl downloadId={item.id} startAt={transfer?.startAt ?? null} />
           <DownloadBandwidthControls downloadId={item.id} />

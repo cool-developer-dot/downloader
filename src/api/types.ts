@@ -327,6 +327,8 @@ export interface MediaAnalysisVariant {
   unsupportedReason: AnalysisUnsupportedReason | null;
   /** DASH only: the manifest representation this variant downloads (the engine's `variant.videoId`). */
   representationId?: string | null;
+  /** F6: a live stream offered for recording (Record instead of Download). */
+  isLive?: boolean;
   /**
    * A video-only file whose sound is this separate audio file (a MediaSource player fed from two tracks): the
    * engine downloads both and merges them (`kind: 'split'`).

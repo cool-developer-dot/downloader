@@ -16,6 +16,7 @@ describe('v2 engine state → the existing Downloads row', () => {
       failed: { status: 'FAILED', execution: 'FAILED' },
       cancelled: { status: 'CANCELLED', execution: 'CANCELLED' },
       waiting_conditions: { status: 'QUEUED', execution: 'QUEUED' },
+      recording: { status: 'DOWNLOADING', execution: 'DOWNLOADING' },
     };
     for (const [state, want] of Object.entries(expected)) {
       const record = downloadRecord({ state: state as never });
@@ -51,6 +52,39 @@ describe('v2 engine state → the existing Downloads row', () => {
       applyV2Progress(completed, { id: 'dl-1', phase: 'download', bytesDone: 10, totalBytes: null, fraction: null, speedBps: 0, etaSeconds: null }),
       null,
     );
+  });
+
+  test('F6: a recording is an active row with its length, no total and Stop instead of Pause', () => {
+    const entry = projectV2Download(
+      downloadRecord({ state: 'recording', kind: 'live', bytesDone: 85_000_000, totalBytes: null, recordedMs: 754_000 }),
+    );
+    assert.equal(entry.item.status, 'DOWNLOADING');
+    assert.equal(entry.transfer.executionState, 'DOWNLOADING');
+    assert.equal(entry.transfer.recording, true);
+    assert.equal(entry.transfer.recordedMs, 754_000);
+    assert.equal(entry.transfer.supportsResume, false, 'never paused');
+    assert.equal(entry.transfer.totalBytes, null);
+    assert.equal(entry.item.progress, 0);
+
+    const moved = applyV2Progress(entry, {
+      id: 'dl-1',
+      phase: 'download',
+      bytesDone: 90_000_000,
+      totalBytes: null,
+      fraction: null,
+      speedBps: 750_000,
+      etaSeconds: null,
+      recordedMs: 760_000,
+    });
+    assert.ok(moved);
+    assert.equal(moved.transfer.recordedMs, 760_000);
+    assert.equal(moved.transfer.bytesWritten, 90_000_000);
+
+    // Stopped: the recording is finalized like any download — no recording line any more.
+    const finishing = projectV2Download(downloadRecord({ state: 'processing', kind: 'live', recordedMs: 760_000 }));
+    assert.equal(finishing.transfer.recording, undefined);
+    assert.equal(finishing.transfer.executionState, 'FINALIZING');
+    assert.equal(projectV2Download(downloadRecord({ state: 'downloading' })).transfer.recording, undefined);
   });
 
   test('8: a completed download points at the verified library file', () => {

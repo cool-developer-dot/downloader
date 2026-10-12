@@ -159,6 +159,10 @@ data class DownloadSettingsRecord(
   @Field val onlyWhileCharging: Boolean = false,
   /** The app's language ("en" / "ur") for the F3 notification texts. */
   @Field val language: String? = null,
+  /** F6: "Live recording (beta)". */
+  @Field val liveRecording: Boolean = false,
+  /** F6: minutes after which a recording stops by itself (missing = 120). */
+  @Field val liveRecordingMaxMinutes: Int? = null,
 ) : Record {
   fun toModel(): DownloadSettings {
     if (maxConcurrent !in DownloadSettings.MIN_CONCURRENT..DownloadSettings.MAX_CONCURRENT) {
@@ -171,6 +175,10 @@ data class DownloadSettingsRecord(
     }
     val speedLimit = speedLimitBytesPerSecond
     if (speedLimit != null && (speedLimit.isNaN() || speedLimit < 0)) invalid("speedLimitBytesPerSecond must be 0 or more")
+    val liveMinutes = liveRecordingMaxMinutes ?: DownloadSettings.DEFAULT_LIVE_MAX_MINUTES
+    if (liveMinutes !in DownloadSettings.MIN_LIVE_MAX_MINUTES..DownloadSettings.MAX_LIVE_MAX_MINUTES) {
+      invalid("liveRecordingMaxMinutes must be ${DownloadSettings.MIN_LIVE_MAX_MINUTES}-${DownloadSettings.MAX_LIVE_MAX_MINUTES}")
+    }
     return DownloadSettings(
       maxConcurrent,
       wifiOnly,
@@ -183,6 +191,8 @@ data class DownloadSettingsRecord(
       pauseOnLowBattery = pauseOnLowBattery,
       onlyWhileCharging = onlyWhileCharging,
       language = if (language == "ur") "ur" else "en",
+      liveRecording = liveRecording,
+      liveRecordingMaxMinutes = liveMinutes,
     )
   }
 }

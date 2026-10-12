@@ -1,6 +1,6 @@
 import { DEFAULT_DOWNLOAD_SETTINGS } from '@/downloads/settings/types';
 import { DEFAULT_DOWNLOAD_HOURS } from '@/downloads/v2/conditions';
-import { DEFAULT_CONNECTIONS_PER_FILE } from '@/downloads/v2/settings';
+import { DEFAULT_CONNECTIONS_PER_FILE, DEFAULT_LIVE_RECORDING_MAX_MINUTES } from '@/downloads/v2/settings';
 import { DEFAULT_SPEED_LIMIT } from '@/downloads/v2/speed-limit';
 
 import type { SettingsState } from './types';
@@ -20,4 +20,6 @@ export const initialSettingsState: SettingsState = {
   notOnRoaming: false,
   pauseOnLowBattery: false,
   onlyWhileCharging: false,
+  liveRecording: false,
+  liveRecordingMaxMinutes: DEFAULT_LIVE_RECORDING_MAX_MINUTES,
 };

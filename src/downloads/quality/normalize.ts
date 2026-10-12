@@ -286,6 +286,7 @@ function mapVariantToOption(
       ? { representationId: variant.representationId }
       : {}),
     ...(variant.audioSourceUrl ? { audioSourceUrl: variant.audioSourceUrl } : {}),
+    ...(streamType === 'HLS' && variant.isLive ? { isLive: true } : {}),
   };
 }
 

@@ -6,7 +6,10 @@ import type { DownloadSettings } from '@modules/vidorax-media/src/VidoraMedia.ty
 import type { V2EnginePort } from './engine-port';
 import {
   DEFAULT_CONNECTIONS_PER_FILE,
+  DEFAULT_LIVE_RECORDING_MAX_MINUTES,
+  LIVE_RECORDING_MAX_MINUTES_CHOICES,
   normalizeConnectionsPerFile,
+  normalizeLiveRecordingMaxMinutes,
   pushV2DownloadSettings,
   resetV2SettingsForTests,
   sameV2Settings,
@@ -40,8 +43,40 @@ describe('v2 download settings', () => {
       notOnRoaming: false,
       pauseOnLowBattery: false,
       onlyWhileCharging: false,
+      liveRecording: false,
+      liveRecordingMaxMinutes: 120,
       language: 'en',
     });
+  });
+
+  test('F6 live recording reaches the engine: off by default, the maximum length clamped to 15–720 minutes', async () => {
+    const base = { wifiOnly: false, maxConcurrentDownloads: 2 };
+    assert.equal(DEFAULT_LIVE_RECORDING_MAX_MINUTES, 120);
+    assert.equal(v2DownloadSettings(base).liveRecording, false);
+    assert.equal(v2DownloadSettings({ ...base, liveRecording: true }).liveRecording, true);
+    assert.equal(v2DownloadSettings({ ...base, liveRecordingMaxMinutes: 30 }).liveRecordingMaxMinutes, 30);
+    assert.equal(v2DownloadSettings({ ...base, liveRecordingMaxMinutes: 5 }).liveRecordingMaxMinutes, 15);
+    assert.equal(v2DownloadSettings({ ...base, liveRecordingMaxMinutes: 9_999 }).liveRecordingMaxMinutes, 720);
+    assert.equal(normalizeLiveRecordingMaxMinutes('240'), 240);
+    assert.equal(normalizeLiveRecordingMaxMinutes('x'), 120);
+    assert.equal(normalizeLiveRecordingMaxMinutes(undefined), 120);
+    for (const minutes of LIVE_RECORDING_MAX_MINUTES_CHOICES) {
+      assert.equal(normalizeLiveRecordingMaxMinutes(minutes), minutes, 'every offered choice is accepted as is');
+    }
+
+    const { port, pushed } = engineSpy();
+    await pushV2DownloadSettings(port, base);
+    await pushV2DownloadSettings(port, { ...base, liveRecording: true });
+    await pushV2DownloadSettings(port, { ...base, liveRecording: true, liveRecordingMaxMinutes: 60 });
+    await pushV2DownloadSettings(port, { ...base, liveRecording: true, liveRecordingMaxMinutes: 60 });
+    assert.deepEqual(
+      pushed.map((s) => [s.liveRecording, s.liveRecordingMaxMinutes]),
+      [
+        [false, 120],
+        [true, 120],
+        [true, 60],
+      ],
+    );
   });
 
   test('connections per file reach the engine, default 3, clamped to 1-4', () => {

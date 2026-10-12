@@ -24,9 +24,10 @@ export const QUALITY_SELECTION_COPY = {
   selectedHint: 'Selected for download',
 } as const;
 
-export function downloadButtonLabel(optionLabel: string | null | undefined): string {
+/** The sheet's main button: "Download 720p", or for a live stream (F6) "Record 720p". */
+export function downloadButtonLabel(optionLabel: string | null | undefined, live = false): string {
   if (!optionLabel) {
-    return translate('downloads.downloadAction');
+    return translate(live ? 'downloads.recordAction' : 'downloads.downloadAction');
   }
-  return translate('downloads.downloadNamed', { label: optionLabel });
+  return translate(live ? 'downloads.recordNamed' : 'downloads.downloadNamed', { label: optionLabel });
 }
