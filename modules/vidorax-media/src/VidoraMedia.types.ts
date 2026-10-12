@@ -489,6 +489,17 @@ export interface DownloadSettings {
  * other downloads together get at most a quarter of its bandwidth. Bandwidth only: the queue's start order is not
  * changed (docs/ARCHITECTURE.md §3.6).
  */
+/** F15: leftover download files — how many files and bytes. */
+export interface LeftoverFiles {
+  count: number;
+  bytes: number;
+}
+
+export interface LeftoverFilesOptions {
+  /** v1 downloads still in use (queued, downloading, paused, failed): their temporary parts are kept. */
+  keepLegacyIds?: string[];
+}
+
 export interface DownloadBandwidth {
   id: string;
   /** Bytes per second; null = no limit of its own (the global limit still applies). */
@@ -606,6 +617,14 @@ export interface VidoraMediaModuleApi {
   getStorageStats(): Promise<StorageStats>;
   /** Deletes orphaned temp work folders; resolves with bytes freed. */
   clearTempFiles(): Promise<number>;
+  /**
+   * F15: download files that belong to nothing — work folders of no unfinished download (queued, running, paused,
+   * waiting, processing, recording and failed downloads keep theirs) and the temporary parts (`.hls`, `.mranges`,
+   * `*.part`) of v1 downloads not listed in `keepLegacyIds`. Finished files are never counted. Nothing is deleted.
+   */
+  measureLeftoverFiles(options?: LeftoverFilesOptions): Promise<LeftoverFiles>;
+  /** F15: deletes what `measureLeftoverFiles` lists; resolves with what was freed. */
+  cleanLeftoverFiles(options?: LeftoverFilesOptions): Promise<LeftoverFiles>;
 
   // Completions
   /**

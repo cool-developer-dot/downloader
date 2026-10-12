@@ -115,6 +115,13 @@ export const en = {
     clearCacheMessage:
       'This removes temporary cached files only. Completed downloads and your media library are not deleted.',
     clearCacheConfirm: 'Clear cache',
+    leftoversTitle: 'Leftover download files — {size}',
+    leftoversHint: 'Parts of downloads that finished, were cancelled or are no longer listed. Downloads in progress, paused or failed keep their files.',
+    leftoversClean: 'Clean up',
+    leftoversConfirmTitle: 'Clean up leftover files?',
+    leftoversConfirmMessage: 'This deletes {size} that no download needs. Your videos and unfinished downloads are not touched.',
+    leftoversFreed: 'Freed {size}',
+    leftoversFailed: "Couldn't check leftover download files.",
     locations: {
       downloadedVideos: 'Downloaded Videos',
       downloadedVideosDescription:

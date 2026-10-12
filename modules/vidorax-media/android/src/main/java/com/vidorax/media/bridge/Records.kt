@@ -186,6 +186,14 @@ data class DownloadBandwidthRecord(
   }
 }
 
+/** F15: `measureLeftoverFiles` / `cleanLeftoverFiles` options. */
+data class LeftoverFilesRecord(
+  @Field val keepLegacyIds: List<String>? = null,
+) : Record {
+  /** v1 downloads whose temporary parts stay (an empty list keeps none). */
+  fun keep(): Set<String> = keepLegacyIds.orEmpty().filter { it.isNotBlank() }.toSet()
+}
+
 data class LibraryQueryRecord(
   @Field val search: String? = null,
   @Field val site: String? = null,

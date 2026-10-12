@@ -6,6 +6,7 @@ import android.os.Looper
 import com.vidorax.media.bridge.DownloadBandwidthRecord
 import com.vidorax.media.bridge.DownloadSettingsRecord
 import com.vidorax.media.bridge.EnqueueRequestRecord
+import com.vidorax.media.bridge.LeftoverFilesRecord
 import com.vidorax.media.bridge.LegacyMetadataRecord
 import com.vidorax.media.bridge.LibraryQueryRecord
 import com.vidorax.media.bridge.PageFetchRequestRecord
@@ -183,6 +184,14 @@ class VidoraMediaModule : Module() {
     }
 
     AsyncFunction("clearTempFiles") Coroutine { -> engine.clearTempFiles() }
+
+    AsyncFunction("measureLeftoverFiles") Coroutine { options: LeftoverFilesRecord? ->
+      engine.measureLeftovers((options ?: LeftoverFilesRecord()).keep()).toJs()
+    }
+
+    AsyncFunction("cleanLeftoverFiles") Coroutine { options: LeftoverFilesRecord? ->
+      engine.cleanLeftovers((options ?: LeftoverFilesRecord()).keep()).toJs()
+    }
 
     AsyncFunction("setDownloadBandwidth") Coroutine { id: String, options: DownloadBandwidthRecord ->
       engine.setDownloadBandwidth(id, options.limit(), options.priority == true).map { it.toJs() }

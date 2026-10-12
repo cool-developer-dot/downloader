@@ -69,6 +69,15 @@ interface DownloadEngineApi {
   suspend fun clearTempFiles(): Long
 
   /**
+   * F15: download files that belong to nothing — work folders of no unfinished download, and the temporary parts of
+   * v1 downloads not in [keepLegacyIds] (null: v1 folders are not looked at). Nothing is deleted.
+   */
+  suspend fun measureLeftovers(keepLegacyIds: Set<String>?): LeftoverSummary = LeftoverSummary.NONE
+
+  /** F15: deletes what [measureLeftovers] lists; returns what was freed. */
+  suspend fun cleanLeftovers(keepLegacyIds: Set<String>?): LeftoverSummary = LeftoverSummary.NONE
+
+  /**
    * Downloads that reached COMPLETED with their verified library item and that JavaScript has not acknowledged yet —
    * including completions that happened while no JavaScript was running. Oldest first.
    */

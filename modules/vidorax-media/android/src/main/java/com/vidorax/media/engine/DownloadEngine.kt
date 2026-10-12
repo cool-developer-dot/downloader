@@ -135,6 +135,7 @@ internal class DownloadEngine(
 
   /** Serializes all state/generation reads and writes. */
   private val mutex = Mutex()
+  private val leftovers = LeftoverFiles(paths)
 
   /**
    * One finalization at a time, from the duplicate-content check to the library insert, so two downloads of the same
@@ -556,19 +557,25 @@ internal class DownloadEngine(
 
   override suspend fun acknowledgeCompletions(ids: List<String>) = store.acknowledgeCompletions(ids)
 
-  override suspend fun clearTempFiles(): Long {
-    val keep = store.list(now()).filterNot { it.state.isTerminal }
+  override suspend fun clearTempFiles(): Long = cleanLeftovers(keepLegacyIds = null).bytes
+
+  override suspend fun measureLeftovers(keepLegacyIds: Set<String>?): LeftoverSummary =
+    // Under the engine's lock: no download can be created or finish between deciding what to keep and looking.
+    mutex.withLock { leftovers.measure(leftovers.find(keptWorkNames(), keepLegacyIds)) }
+
+  override suspend fun cleanLeftovers(keepLegacyIds: Set<String>?): LeftoverSummary =
+    mutex.withLock { leftovers.delete(leftovers.find(keptWorkNames(), keepLegacyIds)) }
+
+  /**
+   * The keep rule (F15): the work folder of every download still listed that may yet use it — queued, probing,
+   * downloading, paused, waiting, processing, recording, and failed (Retry resumes from its part). Only completed and
+   * cancelled downloads, and folders of no listed download, are leftovers.
+   */
+  private suspend fun keptWorkNames(): Set<String> =
+    store.list(now())
+      .filter { it.state != DownloadState.COMPLETED && it.state != DownloadState.CANCELLED }
       .map { paths.workDir(it.id).name }
       .toSet()
-    var freed = 0L
-    paths.workRoot.listFiles()?.forEach { dir ->
-      if (dir.isDirectory && dir.name !in keep) {
-        freed += dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
-        dir.deleteRecursively()
-      }
-    }
-    return freed
-  }
 
   // --- worker ---
 

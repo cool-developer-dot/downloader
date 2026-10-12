@@ -7,6 +7,8 @@ import type {
   DownloadSettings,
   EnqueueRequest,
   EnqueueResult,
+  LeftoverFiles,
+  LeftoverFilesOptions,
   LibraryItem,
   LibraryPage,
   LibraryQuery,
@@ -53,6 +55,9 @@ export type V2EnginePort = {
     options: { speedLimitBytesPerSecond?: number | null; priority?: boolean },
   ): Promise<DownloadBandwidth[]>;
   listDownloadBandwidth?(): Promise<DownloadBandwidth[]>;
+  /** Download files that belong to nothing (F15). Missing on older native builds: the Storage row is not shown. */
+  measureLeftoverFiles?(options?: LeftoverFilesOptions): Promise<LeftoverFiles>;
+  cleanLeftoverFiles?(options?: LeftoverFilesOptions): Promise<LeftoverFiles>;
   setFavorite(id: string, favorite: boolean): Promise<void>;
   /** Missing on older native builds; callers check before use. */
   listDeviceVideos?(limit: number, offset: number): Promise<DeviceVideoPage>;

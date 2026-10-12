@@ -117,6 +117,13 @@ export const ur: CatalogStrings<typeof en> = {
     clearCacheMessage:
       'یہ صرف عارضی کیش فائلیں ہٹاتا ہے۔ مکمل ڈاؤن لوڈز اور میڈیا لائبریری محفوظ رہتی ہے۔',
     clearCacheConfirm: 'کیش صاف کریں',
+    leftoversTitle: 'بچی ہوئی ڈاؤن لوڈ فائلیں — {size}',
+    leftoversHint: 'ان ڈاؤن لوڈز کے حصے جو مکمل یا منسوخ ہو چکے ہیں یا اب فہرست میں نہیں۔ جاری، رکے ہوئے یا ناکام ڈاؤن لوڈز کی فائلیں محفوظ رہتی ہیں۔',
+    leftoversClean: 'صاف کریں',
+    leftoversConfirmTitle: 'بچی ہوئی فائلیں صاف کریں؟',
+    leftoversConfirmMessage: 'اس سے {size} ڈیلیٹ ہو جائیں گی جن کی کسی ڈاؤن لوڈ کو ضرورت نہیں۔ آپ کی ویڈیوز اور نامکمل ڈاؤن لوڈز محفوظ رہیں گے۔',
+    leftoversFreed: '{size} جگہ خالی ہو گئی',
+    leftoversFailed: 'بچی ہوئی ڈاؤن لوڈ فائلیں چیک نہیں ہو سکیں۔',
     locations: {
       downloadedVideos: 'ڈاؤن لوڈ شدہ ویڈیوز',
       downloadedVideosDescription:

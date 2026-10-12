@@ -2,6 +2,7 @@ package com.vidorax.media.bridge
 
 import android.net.Uri
 import com.vidorax.media.analyze.PageFetchResult
+import com.vidorax.media.engine.LeftoverSummary
 import com.vidorax.media.incoming.IncomingMedia
 import com.vidorax.media.library.IncomingImport
 import com.vidorax.media.model.AdjacentItems
@@ -61,6 +62,8 @@ internal fun IncomingImport.Outcome.toJs(): Map<String, Any?> = when (this) {
   is IncomingImport.Outcome.Duplicate ->
     mapOf("status" to "duplicate", "libraryItemId" to copy.libraryItemId, "galleryUri" to copy.galleryUri)
 }
+
+internal fun LeftoverSummary.toJs(): Map<String, Any?> = mapOf("count" to files, "bytes" to bytes.toDouble())
 
 internal fun DownloadBandwidth.toJs(): Map<String, Any?> =
   mapOf("id" to id, "speedLimitBytesPerSecond" to speedLimitBytesPerSecond, "priority" to priority)
