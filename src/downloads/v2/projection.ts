@@ -31,7 +31,11 @@ const STATES: Record<DownloadState, StateProjection> = {
   probing: { status: 'QUEUED', workerState: 'STARTING', executionState: 'PREPARING', localState: 'not_started' },
   waiting_network: { status: 'QUEUED', workerState: 'WAITING', executionState: 'QUEUED', localState: 'not_started' },
   waiting_retry: { status: 'QUEUED', workerState: 'RETRY_WAIT', executionState: 'RETRYING', localState: 'not_started' },
+  // F3: held by a rule; the row shows why (transfer.waitReason) instead of "Queued".
+  waiting_conditions: { status: 'QUEUED', workerState: 'WAITING', executionState: 'QUEUED', localState: 'not_started' },
   downloading: { status: 'DOWNLOADING', workerState: 'TRANSFERRING', executionState: 'DOWNLOADING', localState: 'transferring' },
+  // F6: a live recording is an active transfer without a total; the row says "Recording · 12:34 · 85 MB".
+  recording: { status: 'DOWNLOADING', workerState: 'TRANSFERRING', executionState: 'DOWNLOADING', localState: 'transferring' },
   // Verify → finalize → library insert: the existing "Finalizing" presentation.
   processing: { status: 'DOWNLOADING', workerState: 'VERIFYING', executionState: 'FINALIZING', localState: 'finalizing' },
   paused: { status: 'PAUSED', workerState: 'PAUSED', executionState: 'PAUSED', localState: 'paused' },
@@ -108,7 +112,9 @@ export function projectV2Download(
 ): V2DownloadEntry {
   const projection = STATES[record.state] ?? STATES.failed;
   const library = record.state === 'completed' ? (extras.library ?? null) : null;
-  const progress = record.state === 'downloading' && extras.progress?.id === record.id ? extras.progress : null;
+  const recording = record.state === 'recording';
+  const transferring = record.state === 'downloading' || recording;
+  const progress = transferring && extras.progress?.id === record.id ? extras.progress : null;
   const bytes = progress ? Math.max(progress.bytesDone, record.bytesDone) : record.bytesDone;
   const total = library?.sizeBytes ?? progress?.totalBytes ?? record.totalBytes;
   const completed = record.state === 'completed';
@@ -151,6 +157,12 @@ export function projectV2Download(
     etaSeconds: progress ? progress.etaSeconds : null,
     // A completed record without its library item is not playable yet: never claim a file.
     localUri: library?.fileUri ?? null,
+    // F3: why it waits and its own start time.
+    waitReason: record.state === 'waiting_conditions' ? (record.waitReason ?? null) : null,
+    waitUntil: record.state === 'waiting_conditions' ? (record.waitUntil ?? null) : null,
+    startAt: record.startAt ?? null,
+    // F6: a recording is stopped, never paused; its length comes with every progress event.
+    ...(recording ? { recording: true, recordedMs: progress?.recordedMs ?? record.recordedMs ?? 0, supportsResume: false } : {}),
     localState: completed && !library ? 'finalizing' : projection.localState,
     workerState: projection.workerState,
     executionState: projection.executionState,
@@ -225,6 +237,7 @@ export function applyV2Progress(
       progress,
       bytesPerSecond: event.speedBps,
       etaSeconds: event.etaSeconds,
+      ...(entry.transfer.recording ? { recordedMs: event.recordedMs ?? entry.transfer.recordedMs ?? 0 } : {}),
     },
   };
 }

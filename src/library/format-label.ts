@@ -19,6 +19,8 @@ const LABEL_BY_MIME: Record<string, string> = {
   'video/x-matroska': 'MKV',
   'video/matroska': 'MKV',
   'video/3gpp': '3GP',
+  'video/3gpp2': '3G2',
+  'video/mpeg': 'MPG',
   'video/x-flv': 'FLV',
   'audio/mp4': 'M4A',
   'audio/x-m4a': 'M4A',

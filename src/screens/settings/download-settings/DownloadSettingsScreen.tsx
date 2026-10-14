@@ -4,10 +4,22 @@ import { View } from 'react-native';
 import { Box } from '@/components/base/Box';
 import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { SegmentedControl } from '@/components/inputs/SegmentedControl';
+import {
+  normalizeSpeedLimit,
+  SPEED_LIMIT_CHOICES,
+  speedLimitLabel,
+  speedLimitShortLabel,
+} from '@/downloads/v2/speed-limit';
 import { Switch } from '@/components/inputs/Switch';
 
 import { useTranslation } from '@/localization';
-import { selectSaveToGallery, useSettingsStore } from '@/store/settings';
+import { normalizeConnectionsPerFile } from '@/downloads/v2/settings';
+import {
+  selectConnectionsPerFile,
+  selectDownloadSpeedLimit,
+  selectSaveToGallery,
+  useSettingsStore,
+} from '@/store/settings';
 
 import {
   SettingsFeedbackBanner,
@@ -18,7 +30,10 @@ import {
 import { useSettingsTokens } from '../theme/settings-tokens';
 import {
   CONCURRENT_SEGMENT_OPTIONS,
+  CONNECTION_SEGMENT_OPTIONS,
 } from './constants';
+import { DownloadAdvancedSection } from './DownloadAdvancedSection';
+import { DownloadConditionsSection } from './DownloadConditionsSection';
 import { useDownloadSettingsScreen } from './useDownloadSettingsScreen';
 
 export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
@@ -39,9 +54,11 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
 
   const preferenceDisabled = !hydrated;
   const saveToGallery = useSettingsStore(selectSaveToGallery);
+  const connectionsPerFile = normalizeConnectionsPerFile(useSettingsStore(selectConnectionsPerFile));
   const concurrentValue = String(
     settings.maxConcurrentDownloads,
   ) as '1' | '2' | '3' | '4';
+  const connectionsValue = String(connectionsPerFile) as '1' | '2' | '3' | '4';
 
   const showPermissionRequired =
     settings.notificationsEnabled &&
@@ -67,6 +84,54 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
         ),
       })),
     [tp],
+  );
+
+  const onConnectionsChange = useCallback((next: '1' | '2' | '3' | '4') => {
+    useSettingsStore.getState().updateSetting('connectionsPerFile', Number(next));
+  }, []);
+
+  const connectionOptions = useMemo(
+    () =>
+      CONNECTION_SEGMENT_OPTIONS.map((option) => ({
+        ...option,
+        accessibilityLabel: tp(
+          Number(option.value) === 1 ? 'plurals.connectionsOne' : 'plurals.connectionsOther',
+          Number(option.value),
+        ),
+      })),
+    [tp],
+  );
+
+  const speedLimit = normalizeSpeedLimit(useSettingsStore(selectDownloadSpeedLimit));
+  const speedLimitText = useCallback(
+    (value: number) => {
+      const label = speedLimitLabel(value);
+      return label.kind === 'off'
+        ? t('settings.speedLimitOff')
+        : t(label.kind === 'mb' ? 'settings.speedLimitMb' : 'settings.speedLimitKb', { value: label.value });
+    },
+    [t],
+  );
+  const speedLimitOptions = useMemo(
+    () =>
+      SPEED_LIMIT_CHOICES.map((choice) => ({
+        value: String(choice),
+        label: speedLimitShortLabel(choice, t('settings.speedLimitOff')),
+        accessibilityLabel: speedLimitText(choice),
+      })),
+    [speedLimitText, t],
+  );
+  const onSpeedLimitChange = useCallback((next: string) => {
+    useSettingsStore.getState().updateSetting('downloadSpeedLimit', normalizeSpeedLimit(next));
+  }, []);
+
+  const connectionsA11y = useMemo(
+    () =>
+      `${t('settings.connectionsPerFile')}, ${tp(
+        connectionsPerFile === 1 ? 'plurals.connectionsOne' : 'plurals.connectionsOther',
+        connectionsPerFile,
+      )}`,
+    [connectionsPerFile, t, tp],
   );
 
   const concurrentA11y = useMemo(
@@ -193,10 +258,52 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
                 testID="download-settings-max-concurrent-control"
               />
             </Box>
+            <Box gap={12} py={8}>
+              <SettingsRow
+                title={t('settings.connectionsPerFile')}
+                description={t('settings.connectionsPerFileHint')}
+                icon="lan-connect"
+                value={connectionsValue}
+                showDivider={false}
+                accessibilityHint={t('settings.connectionsPerFileHint')}
+                testID="download-settings-connections-per-file"
+              />
+              <SegmentedControl
+                options={connectionOptions}
+                value={connectionsValue}
+                onChange={onConnectionsChange}
+                disabled={!hydrated}
+                accessibilityLabel={connectionsA11y}
+                testID="download-settings-connections-per-file-control"
+              />
+            </Box>
+            <Box gap={12} py={8}>
+              <SettingsRow
+                title={t('settings.speedLimit')}
+                description={t('settings.speedLimitHint')}
+                icon="speedometer"
+                value={speedLimitText(speedLimit)}
+                showDivider={false}
+                accessibilityHint={t('settings.speedLimitHint')}
+                testID="download-settings-speed-limit"
+              />
+              <SegmentedControl
+                options={speedLimitOptions}
+                value={String(speedLimit)}
+                onChange={onSpeedLimitChange}
+                disabled={!hydrated}
+                accessibilityLabel={`${t('settings.speedLimit')}, ${speedLimitText(speedLimit)}`}
+                testID="download-settings-speed-limit-control"
+              />
+            </Box>
           </SettingsSection>
         </SettingsStaggerItem>
 
         <SettingsStaggerItem index={2}>
+          <DownloadConditionsSection disabled={preferenceDisabled} />
+        </SettingsStaggerItem>
+
+        <SettingsStaggerItem index={3}>
           <SettingsSection
             testID="download-settings-notifications"
             title={t('settings.downloadNotificationsSection')}
@@ -236,6 +343,10 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
               />
             ) : null}
           </SettingsSection>
+        </SettingsStaggerItem>
+
+        <SettingsStaggerItem index={4}>
+          <DownloadAdvancedSection disabled={preferenceDisabled} />
         </SettingsStaggerItem>
       </View>
     </SafeAreaScreen>

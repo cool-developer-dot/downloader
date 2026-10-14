@@ -10,4 +10,6 @@ export {
 export {
   buildBrowserChromeBeforeContentScript,
   buildBrowserChromeInjectedScript,
+  buildBrowserExitFullscreenScript,
+  FULLSCREEN_RESTORE_MS,
 } from './browser-chrome.injected';

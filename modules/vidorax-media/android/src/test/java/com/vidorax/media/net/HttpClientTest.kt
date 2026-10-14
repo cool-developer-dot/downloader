@@ -213,4 +213,32 @@ class HttpClientTest {
     assertFalse(message.contains("SECRET"))
     assertTrue(message.contains("403"))
   }
+
+  @Test
+  fun theSeparateConnectionClientSpeaksOnlyHttp11AndKeepsCookiesAndPolicy() {
+    val withSession = HttpClient.create(cookies = { "sid=user" }, urlPolicy = UrlPolicy.ALLOW_ALL)
+    val separate = withSession.separateConnections
+    assertEquals("every request in flight is its own TCP connection", listOf(okhttp3.Protocol.HTTP_1_1), separate.protocols)
+    assertTrue("the main client may still negotiate HTTP/2", okhttp3.Protocol.HTTP_2 in withSession.protocols)
+
+    server.enqueue(MockResponse().setResponseCode(206).setHeader("Content-Range", "bytes 0-1/2").setBody("ok"))
+    val context = RequestContext("UA", null, null, emptyMap(), useCookies = true)
+    separate.execute(MediaRequest(url = server.url("/a").toString(), context = context, rangeStart = 0, rangeEnd = 1)).use { assertEquals(206, it.status) }
+    assertEquals("sid=user", server.takeRequest().getHeader("Cookie"))
+
+    val publicOnly = HttpClient.create(cookies = { null }).separateConnections
+    assertThrows(MediaRefusedException::class.java) {
+      publicOnly.execute(MediaRequest(url = "http://192.168.1.2/a.mp4", context = context))
+    }
+  }
+
+  @Test
+  fun validatorsAreSentAsEntityTagsEvenWhenTheServerLeftOffTheQuotes() {
+    assertEquals("\"abc\"", Validators.of("\"abc\"", null))
+    assertEquals("an unquoted ETag is quoted", "\"19a40f3e\"", Validators.of("19a40f3e", "Sat, 03 Oct 2020 18:00:45 GMT"))
+    assertEquals("a weak ETag falls back to Last-Modified", "Sat, 03 Oct 2020 18:00:45 GMT", Validators.of("W/\"x\"", "Sat, 03 Oct 2020 18:00:45 GMT"))
+    assertNull(Validators.of("W/\"x\"", null))
+    assertEquals("an HTTP date is left as it is", "Sat, 03 Oct 2020 18:00:45 GMT", Validators.normalize("Sat, 03 Oct 2020 18:00:45 GMT"))
+    assertEquals("\"q\"", Validators.normalize("\"q\""))
+  }
 }

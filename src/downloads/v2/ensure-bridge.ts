@@ -98,14 +98,23 @@ export function ensureV2DownloadBridge(): void {
     return;
   }
   attached = true;
-  // The engine keeps its own copy of the settings, so Wi-Fi-only applies to downloads that resume before the
-  // app's JavaScript is running at all.
+  // The engine keeps its own copy of the settings, so Wi-Fi-only, the connections per file and the speed limit apply to downloads that
+  // resume before the app's JavaScript is running at all.
   const pushSettings = () => {
     const settings = useSettingsStore.getState();
     void pushV2DownloadSettings(engine, {
       wifiOnly: settings.wifiOnly,
       maxConcurrentDownloads: settings.maxConcurrentDownloads,
       saveToGallery: settings.saveToGallery,
+      connectionsPerFile: settings.connectionsPerFile,
+      speedLimitBytesPerSecond: settings.downloadSpeedLimit,
+      downloadHours: settings.downloadHours,
+      notOnRoaming: settings.notOnRoaming,
+      pauseOnLowBattery: settings.pauseOnLowBattery,
+      onlyWhileCharging: settings.onlyWhileCharging,
+      liveRecording: settings.liveRecording,
+      liveRecordingMaxMinutes: settings.liveRecordingMaxMinutes,
+      language: settings.language,
     });
   };
   pushSettings();

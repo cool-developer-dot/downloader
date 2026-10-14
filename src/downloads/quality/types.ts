@@ -68,6 +68,8 @@ export type DownloadQualityOption = {
   unavailableReason: AnalysisUnsupportedReason | null;
   /** DASH only: the manifest representation this option downloads (sent to the engine as `variant.videoId`). */
   representationId?: string | null;
+  /** F6: a live HLS stream: recorded (`kind: 'live'`) until Stop, its end or the maximum length. */
+  isLive?: boolean;
   /**
    * Split tracks: this option's `sourceUrl` is a video-only file and this is its audio file; the engine downloads
    * both and merges them (`kind: 'split'`).

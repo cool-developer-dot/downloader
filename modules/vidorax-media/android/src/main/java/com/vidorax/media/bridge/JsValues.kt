@@ -2,7 +2,11 @@ package com.vidorax.media.bridge
 
 import android.net.Uri
 import com.vidorax.media.analyze.PageFetchResult
+import com.vidorax.media.engine.LeftoverSummary
+import com.vidorax.media.incoming.IncomingMedia
+import com.vidorax.media.library.IncomingImport
 import com.vidorax.media.model.AdjacentItems
+import com.vidorax.media.model.DownloadBandwidth
 import com.vidorax.media.model.DownloadProgress
 import com.vidorax.media.model.DownloadRecord
 import com.vidorax.media.model.EnqueueResult
@@ -42,6 +46,28 @@ internal fun LibraryItem.toJs(): Map<String, Any?> = mapOf(
   "completedAt" to completedAt,
 )
 
+internal fun IncomingMedia.toJs(): Map<String, Any?> = mapOf(
+  "token" to token,
+  "displayName" to displayName,
+  "mimeType" to mimeType,
+  "sizeBytes" to sizeBytes,
+  "kind" to kind.wire,
+)
+
+/** Only for `getIncomingMediaSource` (the player): the one place the URI crosses to JavaScript. */
+internal fun IncomingMedia.toSourceJs(): Map<String, Any?> = toJs() + ("uri" to uri.toString())
+
+internal fun IncomingImport.Outcome.toJs(): Map<String, Any?> = when (this) {
+  is IncomingImport.Outcome.Imported -> mapOf("status" to "imported", "item" to item.toJs())
+  is IncomingImport.Outcome.Duplicate ->
+    mapOf("status" to "duplicate", "libraryItemId" to copy.libraryItemId, "galleryUri" to copy.galleryUri)
+}
+
+internal fun LeftoverSummary.toJs(): Map<String, Any?> = mapOf("count" to files, "bytes" to bytes.toDouble())
+
+internal fun DownloadBandwidth.toJs(): Map<String, Any?> =
+  mapOf("id" to id, "speedLimitBytesPerSecond" to speedLimitBytesPerSecond, "priority" to priority)
+
 internal fun LibraryPage.toJs(): Map<String, Any?> = mapOf("items" to items.map { it.toJs() }, "total" to total)
 
 internal fun SiteCount.toJs(): Map<String, Any?> = mapOf("site" to site.wire, "count" to count)
@@ -75,6 +101,10 @@ internal fun DownloadRecord.toJs(): Map<String, Any?> = mapOf(
   "libraryItemId" to libraryItemId,
   "createdAt" to createdAt,
   "updatedAt" to updatedAt,
+  "waitReason" to waitReason?.wire,
+  "waitUntil" to waitUntil,
+  "startAt" to startAt,
+  "recordedMs" to recordedMs,
 )
 
 internal fun EnqueueResult.toJs(): Map<String, Any?> = when (this) {
@@ -93,6 +123,7 @@ internal fun DownloadProgress.toJs(): Map<String, Any?> = mapOf(
   "speedBps" to speedBps,
   "etaSeconds" to etaSeconds,
   "stage" to stage?.wire,
+  "recordedMs" to recordedMs,
 )
 
 internal fun ProbeResult.toJs(): Map<String, Any?> = when (this) {

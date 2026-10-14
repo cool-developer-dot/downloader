@@ -1,7 +1,8 @@
 /**
  * Background / foreground playback policy (pure).
  *
- * playing → background → pause, unless the video moves to a picture-in-picture window
+ * playing → background → pause, unless the video moves to a picture-in-picture window, or "Keep playing in background"
+ * (Settings → Player, off by default) is on
  * foreground → retain position, remain paused, no autoplay
  */
 
@@ -15,6 +16,8 @@ export type AppLifecycleDecision =
    * app) the activity stops, and `decideActivityStopped` pauses it then.
    */
   | { action: 'await_picture_in_picture' }
+  /** "Keep playing in background" is on: the sound goes on (media notification), no pause. */
+  | { action: 'continue_in_background' }
   | { action: 'foreground_no_autoplay' };
 
 export type PictureInPictureState = {
@@ -31,6 +34,8 @@ export function decideAppLifecycleAction(input: {
   nextState: AppLifecycleState;
   isPlaying: boolean;
   pictureInPicture?: PictureInPictureState;
+  /** Settings → Player → "Keep playing in background". The same in landscape fullscreen as anywhere else. */
+  backgroundPlayback?: boolean;
 }): AppLifecycleDecision {
   const next = input.nextState;
   if (next === 'background' || next === 'inactive') {
@@ -40,6 +45,9 @@ export function decideAppLifecycleAction(input: {
     }
     if (input.isPlaying && input.pictureInPicture?.armed) {
       return { action: 'await_picture_in_picture' };
+    }
+    if (input.isPlaying && input.backgroundPlayback) {
+      return { action: 'continue_in_background' };
     }
     if (input.isPlaying) {
       return { action: 'background_pause' };
@@ -74,8 +82,20 @@ export function shouldArmPictureInPicture(input: {
  * video nobody can see must not keep playing. (JavaScript timers are paused in the background, so this native signal
  * — not a timeout — decides.)
  */
-export function decideActivityStopped(input: { isPlaying: boolean }): 'pause' | 'none' {
-  return input.isPlaying ? 'pause' : 'none';
+export function decideActivityStopped(input: {
+  isPlaying: boolean;
+  /** "Keep playing in background" is on: screen off or leaving without PiP keeps the sound going. */
+  backgroundPlayback?: boolean;
+  /** The stop is the PiP window being dismissed — that still pauses (closing the window is closing the video). */
+  pictureInPictureEnded?: boolean;
+}): 'pause' | 'none' {
+  if (!input.isPlaying) {
+    return 'none';
+  }
+  if (input.backgroundPlayback && !input.pictureInPictureEnded) {
+    return 'none';
+  }
+  return 'pause';
 }
 
 export function shouldTreatAsBackground(

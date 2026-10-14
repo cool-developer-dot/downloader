@@ -4,6 +4,7 @@ export { AppearanceSection } from './AppearanceSection';
 export { DownloadsSection } from './DownloadsSection';
 export { GeneralSection } from './GeneralSection';
 export { HowToUseSection } from './HowToUseSection';
+export { PlayerSection } from './PlayerSection';
 export { LegalSection } from './LegalSection';
 export { PrivacySection } from './PrivacySection';
 export type { PrivacySectionProps } from './PrivacySection';

@@ -13,7 +13,7 @@ const HTML_MARKERS = ['<!doctype html', '<html', '<head', '{"', '{"error'];
 
 export type MediaSignatureResult = {
   ok: boolean;
-  kind: 'mp4' | 'mov' | 'avi' | 'wmv' | 'webm' | 'mkv' | 'ts' | 'mp3' | 'unknown' | 'html' | 'json';
+  kind: 'mp4' | 'mov' | 'avi' | 'wmv' | 'webm' | 'mkv' | 'ts' | 'mpg' | 'mp3' | 'unknown' | 'html' | 'json';
   reason: string | null;
   /** Present when ISO BMFF structure was classified. */
   mp4Kind?: Mp4ContainerKind;
@@ -140,6 +140,13 @@ export function sniffMediaSignature(
     return { ok: true, kind: 'webm', reason: null };
   }
 
+  // MPEG program stream (F4): an MPEG-2 ('01') or MPEG-1 ('0010') pack header. CSS-scrambled DVD titles are refused.
+  if (bytes[0] === 0 && bytes[1] === 0 && bytes[2] === 1 && bytes[3] === 0xba && ((bytes[4]! & 0xc0) === 0x40 || (bytes[4]! & 0xf0) === 0x20)) {
+    return programStreamScrambled(bytes)
+      ? { ok: false, kind: 'mpg', reason: 'drm_protected' }
+      : { ok: true, kind: 'mpg', reason: null };
+  }
+
   if (bytes[0] === 0x47) {
     return { ok: true, kind: 'ts', reason: null };
   }
@@ -152,6 +159,47 @@ export function sniffMediaSignature(
   }
 
   return { ok: false, kind: 'unknown', reason: 'unrecognized_signature' };
+}
+
+/**
+ * An audio, video or private-stream-1 packet whose MPEG-2 PES header says it is scrambled (PES_scrambling_control ≠ 00),
+ * as CSS-protected DVD titles are. Mirrors the native `MpegProgramStream.isScrambled`.
+ */
+function programStreamScrambled(bytes: Uint8Array): boolean {
+  let at = 0;
+  while (at + 6 <= bytes.length) {
+    if (bytes[at] !== 0 || bytes[at + 1] !== 0 || bytes[at + 2] !== 1) {
+      at += 1;
+      continue;
+    }
+    const id = bytes[at + 3]!;
+    if (id === 0xba) {
+      const marker = bytes[at + 4];
+      if (marker === undefined) return false;
+      if ((marker & 0xc0) === 0x40) {
+        if (at + 14 > bytes.length) return false;
+        at += 14 + (bytes[at + 13]! & 0x07);
+      } else {
+        at += 12;
+      }
+      continue;
+    }
+    if (id === 0xb9) {
+      at += 4;
+      continue;
+    }
+    if (id < 0xbb) {
+      at += 1;
+      continue;
+    }
+    const length = (bytes[at + 4]! << 8) | bytes[at + 5]!;
+    const flags = bytes[at + 6];
+    if ((id === 0xbd || (id >= 0xc0 && id <= 0xef)) && flags !== undefined && (flags & 0xc0) === 0x80 && ((flags >> 4) & 0x3) !== 0) {
+      return true;
+    }
+    at += 6 + length;
+  }
+  return false;
 }
 
 function inputTotalTooSmall(declaredSize: number, total?: number | null): boolean {

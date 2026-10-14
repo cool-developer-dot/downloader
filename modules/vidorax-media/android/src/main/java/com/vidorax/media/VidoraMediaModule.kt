@@ -3,15 +3,21 @@ package com.vidorax.media
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.vidorax.media.bridge.DownloadBandwidthRecord
 import com.vidorax.media.bridge.DownloadSettingsRecord
 import com.vidorax.media.bridge.EnqueueRequestRecord
+import com.vidorax.media.bridge.LeftoverFilesRecord
 import com.vidorax.media.bridge.LegacyMetadataRecord
 import com.vidorax.media.bridge.LibraryQueryRecord
 import com.vidorax.media.bridge.PageFetchRequestRecord
 import com.vidorax.media.bridge.ProbeRequestRecord
 import com.vidorax.media.bridge.toJs
+import com.vidorax.media.bridge.toSourceJs
 import com.vidorax.media.engine.DownloadEngineApi
 import com.vidorax.media.engine.DownloadEngineProvider
+import com.vidorax.media.incoming.IncomingMedia
+import com.vidorax.media.incoming.IncomingMediaIntents
+import com.vidorax.media.incoming.IncomingMediaReader
 import com.vidorax.media.library.DeviceVideos
 import com.vidorax.media.player.ActivityVisibility
 import com.vidorax.media.player.PictureInPictureAutoEnter
@@ -23,6 +29,7 @@ import expo.modules.kotlin.modules.ModuleDefinition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * The `VidoraMedia` Expo module; its contract is src/VidoraMedia.types.ts. It only converts arguments, delegates to
@@ -44,6 +51,19 @@ class VidoraMediaModule : Module() {
 
   private val mainHandler = Handler(Looper.getMainLooper())
 
+  @Volatile private var hasIncomingMediaListeners = false
+
+  // A file that arrived while JavaScript did not listen, handed out by consumeIncomingMedia.
+  private val unclaimedIncomingMedia = AtomicReference<IncomingMedia?>(null)
+
+  private fun takeIncomingMedia(intent: android.content.Intent?): IncomingMedia? =
+    IncomingMediaReader(context.contentResolver).take(intent)?.also { services.incomingMedia.put(it) }
+
+  private fun incomingMediaFor(token: String): IncomingMedia {
+    if (!IncomingMediaIntents.isToken(token)) throw InvalidRequestException("Not an incoming file token")
+    return services.incomingMedia.get(token) ?: throw NotFoundException("The file is no longer available")
+  }
+
   private val activityVisibility = ActivityVisibility { inPictureInPicture ->
     sendEvent(ON_ACTIVITY_STOP, mapOf("inPictureInPicture" to inPictureInPicture))
   }
@@ -51,7 +71,14 @@ class VidoraMediaModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("VidoraMedia")
 
-    Events(ON_DOWNLOAD_PROGRESS, ON_DOWNLOAD_STATE_CHANGE, ON_LIBRARY_CHANGE, ON_VOLUME_CHANGE, ON_ACTIVITY_STOP)
+    Events(
+      ON_DOWNLOAD_PROGRESS,
+      ON_DOWNLOAD_STATE_CHANGE,
+      ON_LIBRARY_CHANGE,
+      ON_VOLUME_CHANGE,
+      ON_ACTIVITY_STOP,
+      ON_INCOMING_MEDIA,
+    )
 
     OnCreate {
       val media = services
@@ -82,6 +109,20 @@ class VidoraMediaModule : Module() {
 
     OnStopObserving(ON_VOLUME_CHANGE) {
       volume?.stopObserving()
+    }
+
+    OnStartObserving(ON_INCOMING_MEDIA) { hasIncomingMediaListeners = true }
+
+    OnStopObserving(ON_INCOMING_MEDIA) { hasIncomingMediaListeners = false }
+
+    // "Open with VidoraX" while the app runs (singleTask): the file goes to JavaScript as a token.
+    OnNewIntent { intent ->
+      val media = takeIncomingMedia(intent) ?: return@OnNewIntent
+      if (hasIncomingMediaListeners) {
+        sendEvent(ON_INCOMING_MEDIA, media.toJs())
+      } else {
+        unclaimedIncomingMedia.set(media)
+      }
     }
 
     OnDestroy {
@@ -143,6 +184,31 @@ class VidoraMediaModule : Module() {
     }
 
     AsyncFunction("clearTempFiles") Coroutine { -> engine.clearTempFiles() }
+
+    AsyncFunction("measureLeftoverFiles") Coroutine { options: LeftoverFilesRecord? ->
+      engine.measureLeftovers((options ?: LeftoverFilesRecord()).keep()).toJs()
+    }
+
+    AsyncFunction("cleanLeftoverFiles") Coroutine { options: LeftoverFilesRecord? ->
+      engine.cleanLeftovers((options ?: LeftoverFilesRecord()).keep()).toJs()
+    }
+
+    AsyncFunction("setDownloadBandwidth") Coroutine { id: String, options: DownloadBandwidthRecord ->
+      engine.setDownloadBandwidth(id, options.limit(), options.priority == true).map { it.toJs() }
+    }
+
+    AsyncFunction("setDownloadStartAt") Coroutine { id: String, startAt: Double? ->
+      val at = startAt?.takeIf { !it.isNaN() && it > 0 }?.toLong()
+      engine.setDownloadStartAt(id, at).toJs()
+    }
+
+    AsyncFunction("stopRecording") Coroutine { id: String ->
+      engine.stopRecording(id).toJs()
+    }
+
+    AsyncFunction("listDownloadBandwidth") Coroutine { ->
+      engine.listDownloadBandwidth().map { it.toJs() }
+    }
 
     // Completions for JavaScript to count once (the in-app review), including ones that happened while it was not running
 
@@ -241,6 +307,27 @@ class VidoraMediaModule : Module() {
       services.storageUsage.read().toJs()
     }
 
+    // Files opened from other apps
+
+    Function("consumeIncomingMedia") {
+      (unclaimedIncomingMedia.getAndSet(null) ?: takeIncomingMedia(appContext.currentActivity?.intent))?.toJs()
+    }
+
+    Function("getIncomingMediaSource") { token: String ->
+      if (!IncomingMediaIntents.isToken(token)) null else services.incomingMedia.get(token)?.toSourceJs()
+    }
+
+    AsyncFunction("importIncomingMedia") Coroutine { token: String ->
+      services.incomingImport.import(incomingMediaFor(token)).toJs()
+    }
+
+    AsyncFunction("openIncomingWith") Coroutine { token: String ->
+      val media = incomingMediaFor(token)
+      withContext(Dispatchers.Main) {
+        services.fileActions.openIncomingWith(appContext.currentActivity, media.uri, media.mimeType, media.displayName)
+      }
+    }
+
     // Player helpers
 
     Function("getVolume") { volume().get() }
@@ -258,6 +345,7 @@ class VidoraMediaModule : Module() {
     const val ON_LIBRARY_CHANGE = "onLibraryChange"
     const val ON_VOLUME_CHANGE = "onVolumeChange"
     const val ON_ACTIVITY_STOP = "onActivityStop"
+    const val ON_INCOMING_MEDIA = "onIncomingMedia"
     const val MAX_ACKNOWLEDGE_IDS = 1_000
   }
 }

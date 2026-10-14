@@ -73,6 +73,11 @@ export const browserWebViewConfiguration = {
   allowsBackForwardNavigationGestures: true,
   allowsInlineMediaPlayback: true,
   mediaPlaybackRequiresUserAction: true,
+  /**
+   * Lets a page's fullscreen button work (react-native-webview then shows the video view over the app).
+   * Orientation, Back and leaving fullscreen are handled in src/browser/fullscreen.
+   */
+  allowsFullscreenVideo: true,
   /** Required on Android for window.open / target=_blank dispatch to onOpenWindow. */
   setSupportMultipleWindows: true,
   javaScriptCanOpenWindowsAutomatically: true,

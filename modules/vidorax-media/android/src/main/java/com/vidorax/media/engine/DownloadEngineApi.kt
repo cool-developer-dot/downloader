@@ -1,5 +1,6 @@
 package com.vidorax.media.engine
 
+import com.vidorax.media.model.DownloadBandwidth
 import com.vidorax.media.model.DownloadProgress
 import com.vidorax.media.model.DownloadRecord
 import com.vidorax.media.model.DownloadSettings
@@ -55,8 +56,39 @@ interface DownloadEngineApi {
 
   suspend fun setDownloadSettings(settings: DownloadSettings)
 
+  /**
+   * Sets download [id]'s own speed limit and Priority mark (F2); priority on clears it from every other download.
+   * Returns every download's entry. Throws NotFoundException for an unknown id.
+   */
+  suspend fun setDownloadBandwidth(id: String, speedLimitBytesPerSecond: Long?, priority: Boolean): List<DownloadBandwidth> =
+    emptyList()
+
+  suspend fun listDownloadBandwidth(): List<DownloadBandwidth> = emptyList()
+
   /** Deletes work folders no download owns; returns the bytes freed. */
   suspend fun clearTempFiles(): Long
+
+  /**
+   * F15: download files that belong to nothing — work folders of no unfinished download, and the temporary parts of
+   * v1 downloads not in [keepLegacyIds] (null: v1 folders are not looked at). Nothing is deleted.
+   */
+  suspend fun measureLeftovers(keepLegacyIds: Set<String>?): LeftoverSummary = LeftoverSummary.NONE
+
+  /** F15: deletes what [measureLeftovers] lists; returns what was freed. */
+  suspend fun cleanLeftovers(keepLegacyIds: Set<String>?): LeftoverSummary = LeftoverSummary.NONE
+
+  /**
+   * F3 "Start at…": the earliest moment [id] may run (null: as soon as the rules allow). A paused download starts by
+   * itself then; a running one stops and waits. Throws NotFoundException / InvalidStateException (finished).
+   */
+  suspend fun setDownloadStartAt(id: String, startAt: Long?): DownloadRecord =
+    throw UnsupportedOperationException("setDownloadStartAt")
+
+  /** F3: when and under which conditions the waiting downloads may next run (the background wake-up); null: none wait. */
+  suspend fun wakePlan(): WakePlan? = null
+
+  /** F6: ends a live recording; what was recorded is finalized. ERR_INVALID_STATE for anything not recording. */
+  suspend fun stopRecording(id: String): DownloadRecord = throw UnsupportedOperationException("stopRecording")
 
   /**
    * Downloads that reached COMPLETED with their verified library item and that JavaScript has not acknowledged yet —
@@ -67,3 +99,15 @@ interface DownloadEngineApi {
   /** Marks completions as counted, so each is reported once. */
   suspend fun acknowledgeCompletions(ids: List<String>)
 }
+
+/**
+ * F3: the background wake-up for downloads held by a rule — not before [earliestAt] (a start time, the download hours
+ * opening), and only with the device conditions the rules ask for. Android's JobScheduler decides the exact moment.
+ */
+data class WakePlan(
+  val earliestAt: Long,
+  val requiresCharging: Boolean,
+  val requiresBatteryNotLow: Boolean,
+  val notRoaming: Boolean,
+  val unmetered: Boolean,
+)

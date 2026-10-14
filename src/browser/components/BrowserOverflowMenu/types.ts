@@ -10,6 +10,7 @@ export type BrowserMenuActionId =
   | 'bookmarks'
   | 'copy_link'
   | 'share'
+  | 'translate'
   | 'history'
   | 'desktop_site'
   | 'open_external'

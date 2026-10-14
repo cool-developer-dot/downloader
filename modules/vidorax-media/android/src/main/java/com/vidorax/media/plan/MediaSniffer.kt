@@ -71,6 +71,14 @@ internal object MediaSniffer {
       else unsupported("MPEG-TS stream lost packet sync")
     }
     if (matchesAscii(prefix, 0, "FLV")) return unsupported("FLV is not a supported container")
+    if (MpegProgramStream.isProgramStream(prefix)) {
+      // F4: .mpg/.mpeg/.vob. A CSS-protected DVD title marks its packets scrambled; VidoraX never decrypts.
+      return if (MpegProgramStream.isScrambled(prefix)) {
+        SniffResult.Unsupported(ProbeFailure.DRM_PROTECTED, "scrambled (CSS) MPEG program stream")
+      } else {
+        SniffResult.Supported(Container.MPEG_PS)
+      }
+    }
     audioFileVerdict(prefix)?.let { return it }
 
     textVerdict(prefix, contentType)?.let { return it }
@@ -327,6 +335,9 @@ internal object MediaSniffer {
   private fun containerFromFtyp(data: ByteArray, url: String): Container {
     val majorBrand = ascii(data, 8, 4)?.trim()
     if (majorBrand == "qt") return Container.MOV
+    // 3GPP2 keeps its own type (players and the gallery expect `.3g2` / `video/3gpp2`). F4V (`f4v `) and 3GPP are
+    // plain ISO-BMFF and stay MP4.
+    if (majorBrand != null && majorBrand.startsWith("3g2")) return Container.THREE_G2
     if (url.substringBefore('?').endsWith(".mov", ignoreCase = true)) return Container.MOV
     return Container.MP4
   }

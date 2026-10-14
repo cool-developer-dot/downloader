@@ -425,6 +425,40 @@ describe('Phase 12A — HLS goes to the engine only when the native classifier s
     assert.equal(h.enqueued.length, 0);
   });
 
+  test('F6: a live offer is classified as a recording and enqueued as `live` with the quality chosen', async () => {
+    const h = harness({
+      probe: async (request) => ({ ...DOWNLOADABLE_HLS, kind: request.kind === 'live' ? 'live' : 'hls', durationMs: null, resumable: false }),
+    });
+    const option = hls({ isLive: true, representationId: 'https://cdn.example/v/720/index.m3u8' });
+    const result = await handOffVerifiedVariant({ ...variant, option, variantKey: 'live-rec' }, h.deps);
+
+    assert.equal(result.ok, true);
+    assert.equal(h.probed.length, 1);
+    assert.equal(h.probed[0]!.kind, 'live', 'classified as the recording it will be');
+    const request = h.enqueued[0]!;
+    assert.equal(request.kind, 'live');
+    assert.equal(request.url, option.sourceUrl);
+    assert.deepEqual(request.variant, { videoId: 'https://cdn.example/v/720/index.m3u8', maxHeight: 720 });
+  });
+
+  test('F6: a live offer the engine no longer records (setting turned off) is refused as live, never downloaded', async () => {
+    const h = harness({ probe: async () => refusal('LIVE_UNSUPPORTED') });
+    const result = await handOffVerifiedVariant({ ...variant, option: hls({ isLive: true }), variantKey: 'live-off' }, h.deps);
+    assert.equal(!result.ok && result.reason, 'LIVE_UNSUPPORTED');
+    assert.equal(h.enqueued.length, 0);
+
+    const encrypted = harness({ probe: async () => refusal('DRM_PROTECTED') });
+    const refused = await handOffVerifiedVariant({ ...variant, option: hls({ isLive: true }), variantKey: 'live-aes' }, encrypted.deps);
+    assert.equal(!refused.ok && refused.reason, 'PROTECTED');
+    assert.equal(encrypted.enqueued.length, 0);
+  });
+
+  test('F6: only an HLS option can be a recording', async () => {
+    const h = harness();
+    await handOffVerifiedVariant({ ...variant, option: qualityOption({ isLive: true }), variantKey: 'live-file' }, h.deps);
+    assert.equal(h.enqueued[0]?.kind, 'progressive');
+  });
+
   test('a media playlist URL without a known height is enqueued without a variant ceiling', async () => {
     const h = harness();
     await handOffVerifiedVariant(

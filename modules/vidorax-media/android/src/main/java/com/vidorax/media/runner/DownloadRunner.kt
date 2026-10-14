@@ -49,6 +49,8 @@ internal class DownloadRunner(
     var speedBps: Long = 0L,
     /** From the engine's progress events; only meaningful while PROCESSING. */
     var stage: ProcessingStage? = null,
+    /** F6: from the engine's progress events; only meaningful while RECORDING. */
+    var recordedMs: Long? = null,
   )
 
   private val lock = Any()
@@ -76,7 +78,10 @@ internal class DownloadRunner(
       if (record.state in TERMINAL) continue
       onState(record)
     }
-    apply(Plan(host = synchronized(lock) { hostActionLocked() }))
+    // A previous process may have left a download's own notification up — one held by an F3 rule, which the engine
+    // requeues before this runs — that the runner's notification shows now. This process never posted it, so it
+    // would never take it away; cancelling an id that is not posted is a no-op.
+    apply(synchronized(lock) { Plan(clear = (tracked.keys - ownNotification).toList(), host = hostActionLocked()) })
   }
 
   fun onState(record: DownloadRecord) {
@@ -133,6 +138,7 @@ internal class DownloadRunner(
       entry.bytesDone = progress.bytesDone
       entry.totalBytes = progress.totalBytes ?: entry.totalBytes
       entry.speedBps = progress.speedBps
+      progress.recordedMs?.let { entry.recordedMs = it }
       val stageBefore = entry.stage
       entry.stage = if (progress.phase == ProgressPhase.PROCESSING) progress.stage else null
       val next = contentOf(entry) ?: return
@@ -190,7 +196,7 @@ internal class DownloadRunner(
   }
 
   private fun contentOf(entry: Tracked): DownloadNotificationContent? =
-    notificationContentFor(entry.record, entry.bytesDone, entry.totalBytes, entry.speedBps, entry.stage)
+    notificationContentFor(entry.record, entry.bytesDone, entry.totalBytes, entry.speedBps, entry.stage, entry.recordedMs ?: entry.record.recordedMs)
 
   /** Decided under the lock, run outside it: the host talks to the platform and may call back in. */
   private fun interface HostAction {
@@ -246,6 +252,8 @@ internal class DownloadRunner(
       DownloadState.WAITING_NETWORK,
       DownloadState.WAITING_RETRY,
       DownloadState.PROCESSING,
+      // F6: a recording is running work until it is stopped.
+      DownloadState.RECORDING,
     )
   }
 }

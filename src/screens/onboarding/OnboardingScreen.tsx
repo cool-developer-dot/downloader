@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { logOnboardingPersistSnapshot } from '@/bootstrap/onboarding-persist-debug';
+import { markLaunchHandedOver } from '@/navigation/launch-handover';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { replace, routePaths, useAuthBackHandler } from '@/navigation';
@@ -45,6 +46,7 @@ export function OnboardingScreen() {
     await logOnboardingPersistSnapshot('onboarding-complete');
     // Phase 1: land on unified Browser (Home tab removed).
     replace(routePaths.browser);
+    markLaunchHandedOver();
   }, [completeOnboarding]);
 
   const finish = useCallback(() => {

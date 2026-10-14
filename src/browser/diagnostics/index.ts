@@ -2,6 +2,7 @@ export {
   browserRuntimeDiagnosticsContract,
   classifyBrowserLoadError,
   logBrowserError,
+  logBrowserFullscreen,
   logBrowserHistory,
   logBrowserLoad,
   logBrowserMedia,

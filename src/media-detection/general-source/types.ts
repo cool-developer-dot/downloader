@@ -73,6 +73,8 @@ export type VerifiedGeneralMediaVariant = {
   sourceGeneration: number;
   /** DASH only: the representation the native classifier found downloadable (its `ProbeVariant.id`). */
   representationId?: string | null;
+  /** F6: a live HLS stream offered for recording ("Live recording (beta)" on): Record, not Download. */
+  isLive?: boolean;
 };
 
 export type VerifiedGeneralMediaOffer = {

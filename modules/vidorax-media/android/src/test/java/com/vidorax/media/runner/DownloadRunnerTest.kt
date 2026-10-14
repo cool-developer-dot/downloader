@@ -282,6 +282,17 @@ class DownloadRunnerTest {
   }
 
   @Test
+  fun `F3 a download held in the last process loses its waiting notification once it runs again`() {
+    // The old process posted "Waiting for charging" as this download's own notification; on the wake-up the engine
+    // requeues the row before the runner restores, so the runner only ever sees it live.
+    runner.restore(listOf(record(state = DownloadState.QUEUED, bytesDone = 400)))
+
+    assertEquals("the leftover notification is taken away", listOf("dl-1"), notifier.cleared)
+    assertEquals("the runner's notification shows it", 1, host.summary.activeCount)
+    assertNull("and it is not posted twice", notifier.latest("dl-1"))
+  }
+
+  @Test
   fun `9 a restored download reconnects to its notification`() {
     runner.restore(listOf(record(state = DownloadState.DOWNLOADING, bytesDone = 400)))
 
@@ -359,6 +370,35 @@ class DownloadRunnerTest {
     val done = notifier.latest("dl-1")!!
     assertEquals(DownloadNotificationContent.Target.LIBRARY, done.target)
     assertTrue(done.actions.isEmpty())
+  }
+
+  @Test
+  fun `F6 a recording shows its length and size with Stop and Cancel, in the app's language`() {
+    val recording = record(state = DownloadState.RECORDING, bytesDone = 0, totalBytes = null).copy(kind = SourceKind.LIVE)
+    runner.onState(recording)
+    tick()
+    runner.onProgress(progress(bytesDone = 2_500_000, totalBytes = null).copy(recordedMs = 754_000))
+    assertTrue(host.summary.text, host.summary.text.startsWith("Recording · 12:34 · 2.5 MB"))
+    assertEquals("the host keeps running while it records", 0, host.stops)
+
+    val content = notificationContentFor(recording.copy(bytesDone = 85_000_000), recordedMs = 4_503_000)!!
+    assertEquals("Recording · 1:15:03 · 85 MB", content.text)
+    assertTrue(content.ongoing)
+    assertEquals(
+      listOf(DownloadNotificationContent.Action.STOP, DownloadNotificationContent.Action.CANCEL),
+      content.actions,
+    )
+    try {
+      DownloadNotificationText.language = "ur"
+      assertEquals("ریکارڈنگ · \u200E0:07\u200E", notificationContentFor(recording, recordedMs = 7_900)!!.text)
+      assertEquals(
+        "the size stays \"3.3 MB\" in an RTL line",
+        "ریکارڈنگ · \u200E0:38\u200E · \u200E3.3 MB\u200E",
+        notificationContentFor(recording.copy(bytesDone = 3_300_000), recordedMs = 38_000)!!.text,
+      )
+    } finally {
+      DownloadNotificationText.language = "en"
+    }
   }
 
   @Test

@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 import { usePathname } from 'expo-router';
 
 import { logBrowserNav } from '@/browser/diagnostics';
+import { webFullscreen } from '@/browser/fullscreen/web-fullscreen.runtime';
 import { goBackForTab } from '@/browser/services';
 import { selectIsHome, useBrowserStore } from '@/browser/stores';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
@@ -18,6 +19,10 @@ export function useBrowserHardwareBack(enabled = true): void {
   const isBrowserTab = pathname === routePaths.browser;
 
   const handleBackPress = useCallback(() => {
+    // A website's fullscreen video first (Chromium's video view usually consumes Back itself; this is the fallback).
+    if (webFullscreen.leave('back')) {
+      return true;
+    }
     if (selectIsHome(useBrowserStore.getState())) {
       // Already Home — defer to tab-exit / system.
       return false;

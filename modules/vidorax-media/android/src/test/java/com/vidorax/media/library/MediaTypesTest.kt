@@ -18,6 +18,41 @@ class MediaTypesTest {
   }
 
   @Test
+  fun flashMp4ThreeGpp2AndDivx() {
+    // F4V is ISO-BMFF: named and labelled MP4. DivX/XviD files are AVI. 3GPP2 keeps its own type.
+    assertEquals(Container.MP4, MediaTypes.forFileName("show.F4V")?.container)
+    assertEquals(Container.MP4, MediaTypes.forMimeType("video/x-f4v")?.container)
+    assertEquals(Container.AVI, MediaTypes.forFileName("movie.divx")?.container)
+    assertEquals(Container.AVI, MediaTypes.forMimeType("video/divx")?.container)
+    assertEquals(Container.AVI, MediaTypes.forMimeType("video/x-divx")?.container)
+    assertEquals(Container.THREE_G2, MediaTypes.forFileName("clip.3g2")?.container)
+    assertEquals(Container.THREE_G2, MediaTypes.forMimeType("video/3gpp2")?.container)
+
+    // The name and type a finished file gets.
+    assertEquals("mp4", MediaTypes.forContainer(Container.MP4)?.extension)
+    assertEquals("avi", MediaTypes.forContainer(Container.AVI)?.extension)
+    assertEquals("3g2", MediaTypes.forContainer(Container.THREE_G2)?.extension)
+    assertEquals("video/3gpp2", MediaTypes.forContainer(Container.THREE_G2)?.mimeType)
+    assertEquals("video/3gpp2", MediaTypes.libraryMimeType(Container.THREE_G2, "video/mp4"))
+    assertTrue(MediaTypes.isSupportedVideo(null, "clip.3g2"))
+  }
+
+  @Test
+  fun mpegProgramStreams() {
+    // F4: .mpg, .mpeg and a DVD's .vob are MPEG program streams; kept (when kept) as .mpg / video/mpeg.
+    for (name in listOf("film.mpg", "film.MPEG", "VTS_01_1.VOB")) assertEquals(name, Container.MPEG_PS, MediaTypes.forFileName(name)?.container)
+    for (type in listOf("video/mpeg", "video/dvd", "video/mpg", "video/x-mpeg", "video/mp2p")) {
+      assertEquals(type, Container.MPEG_PS, MediaTypes.forMimeType(type)?.container)
+    }
+    assertEquals("mpg", MediaTypes.forContainer(Container.MPEG_PS)?.extension)
+    assertEquals("video/mpeg", MediaTypes.libraryMimeType(Container.MPEG_PS, null))
+    assertTrue(MediaTypes.isSupportedVideo("video/mpeg", "film.mpg"))
+    assertTrue(MediaTypes.isSupportedVideo(null, "VTS_01_1.vob"))
+    // MP3 is still music, not an MPEG video.
+    assertFalse(MediaTypes.isSupportedVideo("audio/mpeg", "song.mp3"))
+  }
+
+  @Test
   fun byMimeTypeIgnoresParametersAndCase() {
     assertEquals("webm", MediaTypes.forMimeType("Video/WebM; codecs=\"vp9, opus\"")?.extension)
     assertEquals("ts", MediaTypes.forMimeType("video/mp2ts")?.extension)

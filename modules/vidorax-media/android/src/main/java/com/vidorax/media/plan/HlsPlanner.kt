@@ -21,6 +21,7 @@ import com.vidorax.media.model.RequestContext
 import com.vidorax.media.model.SourceKind
 import com.vidorax.media.model.VariantChoice
 import com.vidorax.media.net.HttpClient
+import com.vidorax.media.net.MediaHttpException
 import com.vidorax.media.net.MediaNetworkException
 import com.vidorax.media.net.MediaRefusedException
 import com.vidorax.media.net.MediaRequest
@@ -75,7 +76,25 @@ internal data class HlsPlan(
   val audio: HlsPlan? = null,
   /** What [audio] is, for the quality sheet. */
   val audioInfo: ProbeAudioTrack? = null,
+  /** F6: a live playlist planned for recording (`planLive`); null for every VOD plan. */
+  val live: HlsLiveInfo? = null,
 )
+
+/** F6: what a live media playlist says about its pace. */
+internal data class HlsLiveInfo(val targetDurationUs: Long, val ended: Boolean)
+
+/** F6: one segment of a live playlist's window, numbered by its media sequence. */
+internal data class LiveSegment(
+  val sequence: Long,
+  val media: HlsSegmentRef,
+  val durationUs: Long,
+  /** Absolute discontinuity sequence (`EXT-X-DISCONTINUITY-SEQUENCE` + the tags before it in the window). */
+  val discontinuity: Long,
+  val init: HlsSegmentRef?,
+)
+
+/** F6: a live media playlist as read now. [ended]: `EXT-X-ENDLIST` — no segment will follow these. */
+internal data class LiveWindow(val segments: List<LiveSegment>, val targetDurationUs: Long, val ended: Boolean)
 
 internal sealed interface HlsPlanResult {
   data class Ready(val plan: HlsPlan) : HlsPlanResult
@@ -180,6 +199,54 @@ internal class HlsPlanner(
     withContext(Dispatchers.IO) { planBlocking(url, context, choice) }
 
   /**
+   * F6: a live stream to record — the same variant choice and refusals as [plan] (encrypted, DRM, unusable), but a
+   * playlist without `EXT-X-ENDLIST` is what is wanted. A variant whose sound is a separate rendition is refused:
+   * two live tracks are not recorded and merged.
+   */
+  suspend fun planLive(url: String, context: RequestContext, choice: VariantChoice?): HlsPlanResult =
+    withContext(Dispatchers.IO) { planBlocking(url, context, choice, live = true) }
+
+  /**
+   * F6: the live media playlist now — its segments numbered by media sequence, with absolute discontinuity numbers.
+   * Throws like a transfer: [MediaNetworkException] (no answer), [MediaHttpException] (an HTTP status) or
+   * [MediaRefusedException] (now encrypted, or not a media playlist).
+   */
+  suspend fun liveWindow(mediaPlaylistUrl: String, context: RequestContext): LiveWindow =
+    withContext(Dispatchers.IO) {
+      val fetched = when (val result = fetchPlaylist(mediaPlaylistUrl, parentUrl = null, context)) {
+        is Fetched.Ok -> result
+        is Fetched.Failed -> {
+          val failure = result.failure
+          throw when (failure.reason) {
+            ProbeFailure.NETWORK -> MediaNetworkException(failure.message ?: "Could not reach the server")
+            ProbeFailure.HTTP_403, ProbeFailure.HTTP_404, ProbeFailure.HTTP_ERROR ->
+              MediaHttpException.of(failure.httpStatus ?: 500, mediaPlaylistUrl)
+            else -> MediaRefusedException(failure.reason, failure.message ?: "live playlist refused")
+          }
+        }
+      }
+      val playlist = fetched.playlist as? HlsMediaPlaylist
+        ?: throw MediaRefusedException(ProbeFailure.UNSUPPORTED_FORMAT, "the live playlist is not a media playlist")
+      if (playlist.protectionSchemes != null) throw MediaRefusedException(ProbeFailure.DRM_PROTECTED, "DRM-protected HLS")
+      val segments = playlist.segments.mapIndexedNotNull { index, segment ->
+        if (isEncrypted(segment) || segment.initializationSegment?.let { isEncrypted(it) } == true) {
+          throw MediaRefusedException(ProbeFailure.DRM_PROTECTED, "encrypted HLS (EXT-X-KEY)")
+        }
+        // A gap is a segment the server does not have: it is missed, like one that left the window.
+        if (segment.hasGapTag) return@mapIndexedNotNull null
+        val media = ref(fetched.finalUrl, segment)?.takeIf { http.allows(it.url) } ?: return@mapIndexedNotNull null
+        LiveSegment(
+          sequence = playlist.mediaSequence + index,
+          media = media,
+          durationUs = segment.durationUs.coerceAtLeast(0),
+          discontinuity = playlist.discontinuitySequence.toLong() + segment.relativeDiscontinuitySequence,
+          init = segment.initializationSegment?.let { ref(fetched.finalUrl, it) }?.takeIf { http.allows(it.url) },
+        )
+      }
+      LiveWindow(segments, playlist.targetDurationUs.coerceAtLeast(MIN_TARGET_DURATION_US), playlist.hasEndTag)
+    }
+
+  /**
    * A playlist can say "VOD, unencrypted"; only the bytes say *what* it carries. A media playlist found on its own
    * may be the subtitle or audio rendition of a stream (players load those next to the video). Reads the init
    * section, or the first bytes of the first segment, with the plan's session and token handling, and refuses what
@@ -272,15 +339,15 @@ internal class HlsPlanner(
     }
   }
 
-  private fun planBlocking(url: String, context: RequestContext, choice: VariantChoice?): HlsPlanResult {
+  private fun planBlocking(url: String, context: RequestContext, choice: VariantChoice?, live: Boolean = false): HlsPlanResult {
     if (Probe.isPolicyBlockedHost(url)) return refuse(ProbeFailure.POLICY_BLOCKED, "This source is not supported")
     val source = when (val fetched = fetchPlaylist(url, parentUrl = null, context)) {
       is Fetched.Failed -> return HlsPlanResult.Refused(fetched.failure)
       is Fetched.Ok -> fetched
     }
     return when (val playlist = source.playlist) {
-      is HlsMediaPlaylist -> classify(source.finalUrl, source.finalUrl, playlist, selected = null, variants = emptyList())
-      is HlsMultivariantPlaylist -> planMultivariant(source.finalUrl, playlist, context, choice)
+      is HlsMediaPlaylist -> classify(source.finalUrl, source.finalUrl, playlist, selected = null, variants = emptyList(), live = live)
+      is HlsMultivariantPlaylist -> planMultivariant(source.finalUrl, playlist, context, choice, live)
       else -> refuse(ProbeFailure.UNSUPPORTED_FORMAT, "unrecognized HLS playlist")
     }
   }
@@ -290,6 +357,7 @@ internal class HlsPlanner(
     master: HlsMultivariantPlaylist,
     context: RequestContext,
     choice: VariantChoice?,
+    live: Boolean = false,
   ): HlsPlanResult {
     if (master.sessionKeyDrmInitData.isNotEmpty()) {
       return refuse(ProbeFailure.DRM_PROTECTED, "stream declares a session key (DRM)")
@@ -307,9 +375,17 @@ internal class HlsPlanner(
       val match = candidates.firstOrNull { it.url == wanted }
         ?: candidates.firstOrNull { Redact.url(it.url) == Redact.url(wanted) }
       if (match != null && !match.eligible) return refuse(ProbeFailure.UNSUPPORTED_FORMAT, whyNothingEligible(listOf(match)))
+      if (match != null && live && match.needsAudioMux) {
+        return refuse(ProbeFailure.UNSUPPORTED_FORMAT, "a live stream with its sound in a separate rendition cannot be recorded")
+      }
     }
-    val selected = select(candidates, choice)
-      ?: return refuse(ProbeFailure.UNSUPPORTED_FORMAT, whyNothingEligible(candidates))
+    // F6: a live recording takes one track, so only variants that carry their own sound are offered to it.
+    val pool = if (live) candidates.filter { !it.needsAudioMux } else candidates
+    if (pool.isEmpty()) {
+      return refuse(ProbeFailure.UNSUPPORTED_FORMAT, "a live stream with its sound in a separate rendition cannot be recorded")
+    }
+    val selected = select(pool, choice)
+      ?: return refuse(ProbeFailure.UNSUPPORTED_FORMAT, whyNothingEligible(pool))
     if (Probe.isPolicyBlockedHost(selected.url)) return refuse(ProbeFailure.POLICY_BLOCKED, "This source is not supported")
 
     val media = when (val fetched = fetchPlaylist(selected.url, parentUrl = sourceUrl, context, master)) {
@@ -318,9 +394,10 @@ internal class HlsPlanner(
     }
     val playlist = media.playlist as? HlsMediaPlaylist
       ?: return refuse(ProbeFailure.UNSUPPORTED_FORMAT, "variant is not a media playlist")
-    val variants = candidates.sortedWith(BEST_FIRST).map { it.toProbeVariant(playlist.durationUs) }
-    val video = classify(sourceUrl, media.finalUrl, playlist, selected.toProbeVariant(playlist.durationUs), variants)
+    val variants = pool.sortedWith(BEST_FIRST).map { it.toProbeVariant(playlist.durationUs) }
+    val video = classify(sourceUrl, media.finalUrl, playlist, selected.toProbeVariant(playlist.durationUs), variants, live)
     if (video !is HlsPlanResult.Ready || !selected.needsAudioMux) return video
+    if (live) return refuse(ProbeFailure.UNSUPPORTED_FORMAT, "a live stream with its sound in a separate rendition cannot be recorded")
     return withSeparateAudio(video.plan, sourceUrl, master, selected, context, choice)
   }
 
@@ -383,8 +460,9 @@ internal class HlsPlanner(
     playlist: HlsMediaPlaylist,
     selected: ProbeVariant?,
     variants: List<ProbeVariant>,
+    live: Boolean = false,
   ): HlsPlanResult {
-    if (!playlist.hasEndTag) return refuse(ProbeFailure.LIVE_UNSUPPORTED, "live HLS playlist (no EXT-X-ENDLIST)")
+    if (!playlist.hasEndTag && !live) return refuse(ProbeFailure.LIVE_UNSUPPORTED, "live HLS playlist (no EXT-X-ENDLIST)")
     if (playlist.protectionSchemes != null) return refuse(ProbeFailure.DRM_PROTECTED, "DRM-protected HLS")
     if (playlist.segments.isEmpty()) return refuse(ProbeFailure.UNSUPPORTED_FORMAT, "HLS playlist has no segments")
     if (playlist.segments.size > MAX_SEGMENTS) return refuse(ProbeFailure.UNSUPPORTED_FORMAT, "HLS playlist is too long")
@@ -398,7 +476,7 @@ internal class HlsPlanner(
       if (isEncrypted(segment) || segment.initializationSegment?.let { isEncrypted(it) } == true) {
         return refuse(ProbeFailure.DRM_PROTECTED, "encrypted HLS (EXT-X-KEY)")
       }
-      if (segment.hasGapTag) return refuse(ProbeFailure.UNSUPPORTED_FORMAT, "HLS playlist has missing segments")
+      if (segment.hasGapTag && !live) return refuse(ProbeFailure.UNSUPPORTED_FORMAT, "HLS playlist has missing segments")
       if (segment.relativeDiscontinuitySequence != firstDiscontinuity) discontinuities = true
       val media = ref(playlistUrl, segment)
         ?: return refuse(ProbeFailure.UNSUPPORTED_FORMAT, "unusable segment URL")
@@ -434,7 +512,8 @@ internal class HlsPlanner(
         hasDiscontinuities = discontinuities,
         fingerprint = fingerprint(playlist, selected, segments, inits),
         // Average bitrate × duration (the variant's own estimate): peak BANDWIDTH would overstate the size.
-        estimatedBytes = selected?.estimatedBytes,
+        estimatedBytes = if (live) null else selected?.estimatedBytes,
+        live = if (live) HlsLiveInfo(playlist.targetDurationUs.coerceAtLeast(MIN_TARGET_DURATION_US), playlist.hasEndTag) else null,
       ),
     )
   }
@@ -650,6 +729,9 @@ internal class HlsPlanner(
     const val MAX_PLAYLIST_BYTES = 8 * 1024 * 1024
     const val MAX_SEGMENTS = 20_000
 
+    /** F6: a live playlist that states no usable target duration is reloaded as if it said 2 s. */
+    const val MIN_TARGET_DURATION_US = 2_000_000L
+
     /** An init section is a few hundred bytes to a few KB; a larger one is not read in full (no verdict). */
     private const val INIT_PEEK_BYTES = 64 * 1024
 
@@ -678,17 +760,18 @@ internal class HlsPlanner(
       return childUrl.newBuilder().encodedQuery(query).build().toString()
     }
 
+    /** A live plan ([planLive]) is a [SourceKind.LIVE] source: recorded, not downloaded, with no length yet. */
     fun toProbeResult(plan: HlsPlan): ProbeResult.Success = ProbeResult.Success(
-      kind = SourceKind.HLS,
+      kind = if (plan.live != null) SourceKind.LIVE else SourceKind.HLS,
       finalUrl = plan.sourceUrl,
       contentType = "application/vnd.apple.mpegurl",
       // Separate tracks are merged into an MP4.
       container = if (plan.audio != null) Container.MP4 else plan.containerHint,
       sizeBytes = null,
-      resumable = true,
+      resumable = plan.live == null,
       variants = plan.variants,
       audioTracks = listOfNotNull(plan.audioInfo),
-      durationMs = plan.durationUs / 1000,
+      durationMs = if (plan.live != null) null else plan.durationUs / 1000,
       mergesAudio = plan.audio != null,
     )
   }

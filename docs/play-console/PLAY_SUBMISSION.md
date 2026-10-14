@@ -181,11 +181,32 @@ The user's download would stop part-way as soon as they leave the app, and the f
 
 - **Video (required):** screen-record: open a page with a video, then tap Download, press Home, pull down the notification shade to show the progress notification, tap Pause/Resume, then open Downloads to show the finished file. Upload it (unlisted YouTube or Drive link) and paste the link.
 
-**`mediaPlayback` is not declared.** The manifest used to declare expo-video's `mediaPlayback` service, but no
-code starts it: the player pauses when the app is backgrounded, PiP needs no foreground service, and no player sets
-`staysActiveInBackground`/`showNowPlayingNotification`. It was removed on 2026-10-01 so Play does not ask for a
-declaration of an unused service. If Play Console still lists a Media playback question, answer that the app
-does not use it.
+### B2. Foreground service (`FOREGROUND_SERVICE_MEDIA_PLAYBACK`, type `mediaPlayback`) — added with F16/F18, 2026-10
+
+Where the code uses it: expo-video's `ExpoVideoPlaybackService` (a Media3 `MediaSessionService`, declared in the app
+manifest). It runs **only** when the user has turned on Settings → Player → **"Keep playing in background"** (off by
+default) and a video is playing in VidoraX's own player: leaving the app or locking the screen then keeps the sound
+going with a media notification (title, artwork, play/pause, seek; the same controls on the lock screen). It stops
+when the user pauses and dismisses it, closes the player, or the video reaches its end. With the setting off (the
+default) it never starts — the player pauses in the background as before, and picture-in-picture needs no service.
+
+- **Task type:** Media playback → *Media playback (audio or video)*.
+- **Description:**
+
+```
+VidoraX has an optional setting, "Keep playing in background" (off by default). When the user turns it on and plays a video in the app's player, the mediaPlayback foreground service keeps the audio playing after the user leaves the app or locks the screen, with a media notification and lock-screen controls (play/pause, seek). It runs only while that user-started playback is active and stops when the user pauses and dismisses it, closes the player, or the video ends.
+```
+
+- **Impact if deferred or interrupted:**
+
+```
+Playback the user started and asked to continue in the background would stop as soon as they leave the app or the screen turns off. Media playback is immediate and continuous, so it cannot be deferred.
+```
+
+- **Video (required):** screen-record: Settings → Player → turn on "Keep playing in background"; open the Player tab
+  and play a video; press Home — the media notification appears and the sound continues; pull down the shade and use
+  play/pause and seek; lock the screen and show the lock-screen controls; unlock, open VidoraX and close the player —
+  the notification disappears. Upload it (unlisted YouTube or Drive link) and paste the link.
 
 ### C. Other declarations: none required
 
@@ -202,9 +223,12 @@ Checked against every permission in the final merged manifest:
 | Launcher badge permissions (ShortcutBadger in expo-notifications) | No |
 | `http`/`https` VIEW intent filters (can be default browser) | No |
 
+| `content`/`file` VIEW intent filters for `video/*` and `audio/*` ("Open with VidoraX", F16) | No |
+
 Not present (the ones that *would* need forms): `QUERY_ALL_PACKAGES`, `MANAGE_EXTERNAL_STORAGE`,
 `REQUEST_INSTALL_PACKAGES`, `ACCESS_*LOCATION`, `SCHEDULE_EXACT_ALARM`/`USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT`,
-`BIND_ACCESSIBILITY_SERVICE`, `BIND_VPN_SERVICE`, SMS/Call Log, `AD_ID`, other foreground-service types.
+`BIND_ACCESSIBILITY_SERVICE`, `BIND_VPN_SERVICE`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `SYSTEM_ALERT_WINDOW`, SMS/Call
+Log, `AD_ID`, foreground-service types other than `dataSync` and `mediaPlayback`.
 
 ## Intellectual-property note (not a form)
 
