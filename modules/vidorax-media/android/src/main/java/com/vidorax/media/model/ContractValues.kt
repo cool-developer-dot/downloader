@@ -53,6 +53,8 @@ enum class Container(override val wire: String) : WireEnum {
   TS("ts"),
   FLV("flv"),
   THREE_GP("3gp"),
+  /** 3GPP2 (`ftyp 3g2*`): ISO-BMFF, kept as `.3g2` / `video/3gpp2`. */
+  THREE_G2("3g2"),
   UNKNOWN("unknown"),
 }
 

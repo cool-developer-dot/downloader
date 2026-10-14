@@ -9,6 +9,8 @@ import {
   useBrowserStore,
 } from '@/browser/stores';
 import { navigationService } from '@/browser/services';
+import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
+import { buildTranslatePageUrl } from '@/browser/services/translate-page';
 import { extractPageHostname, isValidBrowserPageUrl } from '@/browser/utils';
 import {
   navigation,
@@ -38,7 +40,7 @@ export function useBrowserMenuActions({
   onClose,
   onFeedback,
 }: UseBrowserMenuActionsOptions): UseBrowserMenuActionsResult {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
 
   const currentUrl = useBrowserStore(selectCurrentUrl);
   const pageTitle = useBrowserStore(selectPageTitle);
@@ -153,6 +155,23 @@ export function useBrowserMenuActions({
     }
   }, [currentUrl, hasValidPage, onClose, pageTitle, t]);
 
+  // Google Translate's copy of this page, in the app's language; null where there is nothing to translate.
+  const translateUrl = useMemo(
+    () => buildTranslatePageUrl(currentUrl, language),
+    [currentUrl, language],
+  );
+
+  const handleTranslate = useCallback(() => {
+    if (!translateUrl) {
+      return;
+    }
+    onClose();
+    const result = useBrowserStore.getState().createTab({ url: translateUrl });
+    if (result.status === 'LIMIT_REACHED') {
+      announceTabsLimitReached();
+    }
+  }, [onClose, translateUrl]);
+
   const handleHistory = useCallback(() => {
     onClose();
     navigation.push(routePaths.history);
@@ -259,6 +278,9 @@ export function useBrowserMenuActions({
         case 'share':
           void handleShare();
           break;
+        case 'translate':
+          handleTranslate();
+          break;
         case 'history':
           handleHistory();
           break;
@@ -289,6 +311,7 @@ export function useBrowserMenuActions({
       handleRecentlyWatched,
       handleSettings,
       handleShare,
+      handleTranslate,
     ],
   );
 
@@ -385,6 +408,14 @@ export function useBrowserMenuActions({
         enabled: hasValidPage,
       },
       {
+        id: 'translate',
+        icon: 'translate',
+        label: t('browser.translatePage'),
+        accessibilityLabel: t('browser.translatePageA11y'),
+        kind: 'action',
+        enabled: translateUrl != null,
+      },
+      {
         id: 'desktop_site',
         icon: 'monitor',
         label: t('browser.desktopSite'),
@@ -417,6 +448,7 @@ export function useBrowserMenuActions({
     desktopMode,
     hasValidPage,
     t,
+    translateUrl,
   ]);
 
   return {

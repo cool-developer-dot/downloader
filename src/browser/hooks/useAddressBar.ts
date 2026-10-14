@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Keyboard, type TextInput } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 
 import { useOmniboxSuggestions } from '@/browser/hooks/useOmniboxSuggestions';
 import { loadUrlActiveTab, navigationService } from '@/browser/services';
+import {
+  subscribeAddressBarFocusRequest,
+  takeAddressBarFocusRequest,
+} from '@/browser/services/address-bar-focus';
 import { isYouTubeLink, openPastedLink } from '@/browser/services/pasted-link.service';
 import { announceYouTubeNotSupported } from '@/browser/services/youtube-refusal';
 import type { OmniboxSuggestion } from '@/browser/suggestions';
@@ -112,6 +117,32 @@ export function useAddressBar() {
     setIsFocused(true);
     submitLockRef.current = false;
   }, [currentUrl]);
+
+  // "Paste link" elsewhere with nothing to paste: open the editor (the overlay focuses its field, keyboard up) once the
+  // Browser is on screen.
+  useFocusEffect(
+    useCallback(() => {
+      const timers: ReturnType<typeof setTimeout>[] = [];
+      const focusIfRequested = () => {
+        if (!takeAddressBarFocusRequest()) {
+          return;
+        }
+        // After the tab transition, so the keyboard opens over the Browser, not the screen it came from.
+        timers.push(setTimeout(onFocus, 300));
+        // The overlay focuses its field as it appears, before Android serves that field to the keyboard, so that
+        // first request for the keyboard is dropped (a tap does not hit this). Focusing it again once it is served
+        // opens the keyboard; React Native ignores focus() on the field that already has focus, hence the blur.
+        timers.push(setTimeout(() => inputRef.current?.blur(), 800));
+        timers.push(setTimeout(() => inputRef.current?.focus(), 900));
+      };
+      focusIfRequested();
+      const unsubscribe = subscribeAddressBarFocusRequest(focusIfRequested);
+      return () => {
+        unsubscribe();
+        timers.forEach(clearTimeout);
+      };
+    }, [onFocus]),
+  );
 
   const onBlur = useCallback(() => {
     // Keep focus state until explicit dismiss / submit so the overlay can receive taps.

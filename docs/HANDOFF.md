@@ -1975,6 +1975,37 @@ in `docs/ROADMAP.md`. No code changed.
   "Not planned" with a reason (torrent/P2P, accounts/cloud vs the local-only rule, Play-restricted permissions,
   device-wide file manager, password manager, music-player and online-service features).
 
+### 4.32 Phase 16 quick fixes — Faran · Sonnet (branch `faran/sonnet-fixes`, 2026-10-10)
+
+One task per commit group (`F12:` …), full log with test evidence in `docs/work-log/faran-sonnet.md`.
+
+- **F12 Help answers.** 16 Help & Support answers rewritten to match the app (en + ur): theme options System / Red /
+  Dark; HLS and DASH downloads pause and resume (segment checkpoints; checked on the AVD); the saved-videos tab is
+  "Player"; favorites, folders, rename, delete, share and storage name the real screens. New
+  `src/localization/catalog-parity.test.ts` (same keys, no empty Urdu, same placeholders).
+- **F9 Clear recent searches.** History has a "Clear recent searches" row + dialog; it clears only the address-bar
+  searches and invalidates the omnibox suggestion index (`clearRecentSearches`); "Clear all" history keeps searches.
+  `SuggestionService` now takes its sources in the constructor (storage sources in `suggestions/index.ts`).
+- **F8 Open in new tab.** The link long-press sheet's "Open in new tab" works (`openLinkInNewTab` →
+  `createTab({ url })`, http(s) only; at 10 tabs a toast "Maximum 10 tabs open" — `tabs-limit-notice.ts`); sheet title
+  and labels are translated (`browser.linkActions.*`, actions use `labelKey`).
+- **F7 Paste a copied link.** "Paste link" (Downloads; Home's identical action) reads the clipboard
+  (`linkFromClipboardText`: first http(s) link starting a word, punctuation trimmed) and opens it with `openPastedLink`
+  (direct analyzer); YouTube → refusal toast; no link → Browser with the address-bar editor focused
+  (`address-bar-focus.ts`; Android drops the overlay's first keyboard request, so the hook blurs/refocuses once).
+- **F11 Translate page.** Browser menu → "Translate page" (after Share) opens
+  `translate.google.com/translate?sl=auto&tl=<en|ur>&u=<page>` in a new tab (`services/translate-page.ts`); disabled on
+  home / non-web / Google Translate pages; Privacy Policy §5 says the page address goes to Google when tapped.
+- **F10 Player.** Tap the total time → time left `−mm:ss` (MMKV `vidorax.mmkv.player.durationLabelMode.v1`);
+  double tap by thirds — −10 s / play-pause / +10 s — after the unchanged zoom-reset rule (`resolveDoubleTapAction`, a
+  worklet). ARCHITECTURE §7 updated.
+- **F5 F4V / 3G2 / DivX.** The sniffer names a `3g2*` ftyp brand `THREE_G2` (kept `.3g2`, `video/3gpp2`, details
+  "3G2"); F4V is ISO-BMFF → `.mp4` (a DRM-branded F4V is refused like any protected MP4); `.divx` / `video/divx` is
+  AVI → remuxed to MP4 when Android decodes it, else kept `.avi` when the AVI header declares a video stream
+  (`process/AviHeader`; MediaProcessor keep rule + DownloadEngine skips its audio-only refusal). Detection (vidorax-web
+  classifier, JS extension/MIME/observer, enqueue) knows `.f4v/.3g2/.divx`. "Open with" `ERR_NO_APP` now maps to "No
+  compatible video app" (was "couldn't open"). ARCHITECTURE §1/§3 updated.
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

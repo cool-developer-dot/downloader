@@ -953,7 +953,7 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
     if (
       (!tabId || tabId === activeId) &&
       !isBrowserHomeUrl(pageUrl) &&
-      /\.(mp4|webm|mov|m4v|mkv|avi|mpeg|mpg|mp3|m4a|aac|ogg|m3u8|mpd|3gp|3g2|flv|wmv)(?:[?#]|$)/i.test(url)
+      /\.(mp4|webm|mov|m4v|f4v|mkv|avi|divx|mpeg|mpg|mp3|m4a|aac|ogg|m3u8|mpd|3gp|3g2|flv|wmv)(?:[?#]|$)/i.test(url)
     ) {
       mediaDetectionEngine.observeUrl(url, pageUrl);
     }

@@ -23,8 +23,8 @@ import {
 } from '@/media-detection/services/page-flow-diagnostics.service';
 import { resolvePastePlatformKind } from '@/media-detection/services/platform-page-url';
 import { pendingNavigationService } from '@/browser/services';
+import { openLinkFromClipboard } from '@/browser/services/paste-clipboard-link';
 import { useBrowserStore } from '@/browser/stores';
-import { navigation, routePaths } from '@/navigation';
 import { notifyQualitySelectionClosed, type QualitySelectionDownloadCreated } from './download-created-bus';
 import { qualityConfirmRoute } from './confirm-route';
 import { runPreDownloadGate } from '@/media-detection/services/pre-download-gate.service';
@@ -293,8 +293,9 @@ export function useQualitySelection(
   }, []);
 
   const open = useCallback(() => {
-    // Phase 2: paste/open uses normal Browser navigation — no Analyze Link sheet.
-    navigation.navigate(routePaths.browser);
+    // "Paste link" (Downloads, Home): the copied link opens in the Browser like a link pasted into the address bar;
+    // with no link on the clipboard the Browser opens with the address bar focused.
+    void openLinkFromClipboard();
   }, []);
 
   const close = useCallback((options?: { consumed?: boolean }) => {

@@ -4,9 +4,17 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 
 import { Box } from '@/components/base/Box';
+import { Pressable } from '@/components/base/Pressable';
 import { Text } from '@/components/base/Text';
 import { useTheme } from '@/hooks/use-theme';
-import { formatPlaybackTime } from '@/player';
+import {
+  formatDurationLabel,
+  formatPlaybackTime,
+  readPersistedDurationLabelMode,
+  toggleDurationLabelMode,
+  writePersistedDurationLabelMode,
+  type DurationLabelMode,
+} from '@/player';
 import { useTranslation } from '@/localization';
 
 export type PlayerTimelineProps = {
@@ -45,6 +53,15 @@ export const PlayerTimeline = memo(function PlayerTimeline({
   const theme = useTheme();
   const { t } = useTranslation();
   const [trackWidth, setTrackWidth] = useState(0);
+  // Total length or time left; tapping the label switches it, and the choice is remembered across launches.
+  const [durationMode, setDurationMode] = useState<DurationLabelMode>(readPersistedDurationLabelMode);
+  const toggleDurationMode = useCallback(() => {
+    setDurationMode((mode) => {
+      const next = toggleDurationLabelMode(mode);
+      writePersistedDurationLabelMode(next);
+      return next;
+    });
+  }, []);
   const scrubbingRef = useRef(false);
   // Timeline sits on a fixed dark dock over video. LIGHT primary is ink and
   // vanishes; keep progress readable in light / logo / dark.
@@ -59,6 +76,7 @@ export const PlayerTimeline = memo(function PlayerTimeline({
     duration != null && duration > 0
       ? Math.max(0, Math.min(1, displaySeconds / duration))
       : 0;
+  const durationLabel = formatDurationLabel(displaySeconds, duration, durationMode);
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     setTrackWidth(event.nativeEvent.layout.width);
@@ -194,9 +212,22 @@ export const PlayerTimeline = memo(function PlayerTimeline({
         <Text variant="caption" color="white">
           {formatPlaybackTime(displaySeconds)}
         </Text>
-        <Text variant="caption" color="white">
-          {formatPlaybackTime(duration)}
-        </Text>
+        <Pressable
+          onPress={toggleDurationMode}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={t(
+            durationMode === 'remaining' ? 'player.durationRemainingA11y' : 'player.durationTotalA11y',
+            { time: durationLabel },
+          )}
+          accessibilityHint={t(
+            durationMode === 'remaining' ? 'player.durationShowTotalHint' : 'player.durationShowRemainingHint',
+          )}
+          testID="player-duration-label">
+          <Text variant="caption" color="white">
+            {durationLabel}
+          </Text>
+        </Pressable>
       </Box>
     </Box>
   );

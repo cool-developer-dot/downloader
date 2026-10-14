@@ -456,6 +456,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
     [bumpControls, controller, session.error, session.isReady],
   );
 
+  // Double tap in the middle third: same as the play/pause button (which also keeps the controls' timer fresh).
+  const onDoubleTapTogglePlay = onPlayPause;
+
   useEffect(() => {
     if (!doubleTapSide) {
       return;
@@ -530,6 +533,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           brightnessGesturesEnabled={sideGestures.brightnessAvailable}
           onSingleTap={onSingleTap}
           onDoubleTapSeek={onDoubleTapSeek}
+          onDoubleTapTogglePlay={onDoubleTapTogglePlay}
           onFirstFrameRender={markFirstFrameRendered}
           onSurfaceLayout={({ height }) => {
             if (height > 0) {
