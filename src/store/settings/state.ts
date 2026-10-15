@@ -6,6 +6,7 @@ export const initialSettingsState: SettingsState = {
   downloadDirectory: null,
   wifiOnly: DEFAULT_DOWNLOAD_SETTINGS.wifiOnly,
   autoResume: true,
+  debugLogs: false,
   notifications: true,
   language: 'en',
   maxConcurrentDownloads: 2,

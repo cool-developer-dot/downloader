@@ -2,6 +2,8 @@ export interface SettingsState {
   downloadDirectory: string | null;
   wifiOnly: boolean;
   autoResume: boolean;
+  /** Debug Logs: keep an in-memory, redacted log of VidoraX's own events (default off). */
+  debugLogs: boolean;
   notifications: boolean;
   language: string;
   /** Local-only field — not synced to a VidoraX cloud account. */
