@@ -189,4 +189,35 @@ brings no installs.
 
 ## Screenshots and feature graphic (T5)
 
-_Filled in by T5._
+Built by `scripts/store/build_play_assets.py` (captions in `scripts/store/captions.json`) from real captures of the
+**test2 release build** on the clean AVD `VidoraX_Play_Shots` (Pixel 8 profile, API 35, demo-mode status bar 9:30).
+Output (not in the repo): `~/Downloads/VidoraX-Play-Assets/v2/{en,ur}/` — eight 1080×1920 (9:16) phone screenshots and
+`feature-graphic-1024x500.png` per language, 24-bit RGB PNG, each under 1 MB. Raw 1080×2400 captures are kept in
+`~/Downloads/VidoraX-Play-Assets/v2/raw/{en,ur}/`.
+
+Rebuild: `python3 scripts/store/build_play_assets.py --raw ~/Downloads/VidoraX-Play-Assets/v2/raw --out ~/Downloads/VidoraX-Play-Assets/v2`
+(needs Google Chrome, Python 3 + Pillow and `npm ci`; headless Chrome renders each design so Urdu is shaped correctly).
+
+Style: brand red (`#DC3C2C` → `#C43426`, `src/theme/colors.ts`) background, caption at the top in Poppins SemiBold
+(Urdu in Geeza Pro, the macOS Naskh face, since Poppins has no Urdu glyphs), the full screen in a simple black phone
+frame. Feature graphic: app icon, "VidoraX" in Poppins Bold, a 3–4-word tagline and the "Video available" screen.
+
+| # | File | English caption | Urdu caption | What the screen shows |
+| --- | --- | --- | --- | --- |
+| 1 | `01-browser.png` | Browse and paste video links | براؤز کریں اور ویڈیو لنک پیسٹ کریں | Address bar with a pasted public-domain video link and the "Go" suggestion |
+| 2 | `02-video-available.png` | Tap to save the video | ٹیپ کریں، ویڈیو محفوظ کریں | *Big Buck Bunny* clip playing in the browser with the "Video available" bar |
+| 3 | `03-quality.png` | Choose the quality you want | اپنی پسند کی کوالٹی چنیں | Quality sheet: 1080p / 720p / 480p (/ 288p) of a test HLS stream |
+| 4 | `04-downloads.png` | Pause and resume any download | ڈاؤن لوڈ روکیں اور جاری رکھیں | Downloads: one paused at 43–46 % with Resume, completed *Sintel* items below |
+| 5 | `05-library.png` | Your videos, ready offline | آپ کی ویڈیوز، آف لائن تیار | Player tab grid: *Sintel* and *Big Buck Bunny* downloads (Urdu also shows "Continue watching") |
+| 6 | `06-player.png` | Smooth player with gestures | اشاروں والا آسان پلیئر | Player with controls: lock, rotate, fullscreen, ±10 s, previous/next, speed |
+| 7 | `07-private.png` | Private, with optional App Lock | پرائیویٹ، اختیاری ایپ لاک کے ساتھ | Settings → Privacy with App Lock on, Change PIN, recovery code and the PIN warning |
+| 8 | `08-languages.png` | Use it in English or Urdu | اردو یا انگریزی میں استعمال کریں | Language picker — the English set shows it in Urdu, the Urdu set in English |
+
+Content rules kept: only Blender Foundation open movies (*Big Buck Bunny*, *Sintel*, CC BY) from `test-videos.co.uk`,
+Wikimedia's media host and the Mux test stream; no third-party logos, no people, no platform videos. The start page
+was **not** used for screen 1 because its Quick Access tiles name Instagram, TikTok, Facebook and others — brand names
+in downloader screenshots are a common Play rejection reason — so screen 1 shows the paste-a-link flow instead. A
+Wikimedia download whose thumbnail was the Wikimedia logo and a watermarked test clip were removed before capturing.
+Generic download titles were renamed in the app (Download Details → Rename) so the library reads "Sintel", "Big Buck
+Bunny" etc.; the in-progress item keeps the app's own default title "Download" (renaming is only offered once a download
+has finished).
