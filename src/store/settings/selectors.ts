@@ -2,6 +2,7 @@ import type { SettingsStore } from './types';
 
 export const selectDownloadDirectory = (state: SettingsStore) => state.downloadDirectory;
 export const selectWifiOnly = (state: SettingsStore) => state.wifiOnly;
+export const selectFilenameTemplate = (state: SettingsStore) => state.filenameTemplate;
 export const selectSaveToGallery = (state: SettingsStore) => state.saveToGallery;
 export const selectTapToToggle = (state: SettingsStore) => state.tapToToggle;
 export const selectAutoResume = (state: SettingsStore) => state.autoResume;

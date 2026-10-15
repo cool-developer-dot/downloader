@@ -1324,6 +1324,16 @@ export const en = {
     itemA11y: '{title}. {url}. Visited {relative}',
     removeItemA11y: 'Remove {title} from history',
   },
+  downloadNaming: {
+    section: 'File naming',
+    sectionDescription: 'How new downloads are named',
+    template: 'Filename template',
+    templateHint: 'Tap a token to add it. {title} alone keeps the usual names.',
+    preview: 'Preview',
+    newDownloadsOnly: 'Applies to new downloads only.',
+    reset: 'Use default naming',
+    sampleTitle: 'My video',
+  },
   bookmarks: {
     title: 'Bookmarks',
     searchPlaceholder: 'Search bookmarks',

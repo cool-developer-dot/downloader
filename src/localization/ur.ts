@@ -1327,6 +1327,16 @@ export const ur: CatalogStrings<typeof en> = {
     itemA11y: '{title}۔ {url}۔ دیکھا گیا {relative}',
     removeItemA11y: '{title} ہسٹری سے ہٹائیں',
   },
+  downloadNaming: {
+    section: 'فائل کا نام',
+    sectionDescription: 'نئے ڈاؤن لوڈز کے نام کیسے رکھے جائیں',
+    template: 'فائل نام کا سانچہ',
+    templateHint: 'شامل کرنے کے لیے کسی ٹوکن کو ٹیپ کریں۔ صرف {title} معمول کے نام رکھتا ہے۔',
+    preview: 'پیش نظارہ',
+    newDownloadsOnly: 'صرف نئے ڈاؤن لوڈز پر لاگو ہوتا ہے۔',
+    reset: 'ڈیفالٹ نام استعمال کریں',
+    sampleTitle: 'میری ویڈیو',
+  },
   bookmarks: {
     title: 'بک مارکس',
     searchPlaceholder: 'بک مارکس تلاش کریں',

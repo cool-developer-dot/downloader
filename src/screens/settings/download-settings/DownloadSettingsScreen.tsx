@@ -5,6 +5,7 @@ import { Box } from '@/components/base/Box';
 import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { SegmentedControl } from '@/components/inputs/SegmentedControl';
 import { Switch } from '@/components/inputs/Switch';
+import { FilenameSettingsSection } from '@/screens/settings/download-settings/FilenameSettingsSection';
 
 import { useTranslation } from '@/localization';
 import { selectSaveToGallery, useSettingsStore } from '@/store/settings';
@@ -199,6 +200,8 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
             </Box>
           </SettingsSection>
         </SettingsStaggerItem>
+
+        <FilenameSettingsSection index={2} disabled={preferenceDisabled} />
 
         <SettingsStaggerItem index={2}>
           <SettingsSection
