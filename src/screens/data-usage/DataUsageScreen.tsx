@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 
 import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
@@ -8,7 +8,7 @@ import { TextField } from '@/components/inputs/TextField';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
 import { useTheme } from '@/hooks/use-theme';
 import { normalizeLimitMb } from '@/downloads/v2/data-usage';
-import { resetDataUsageCounters, useDataUsageStore } from '@/downloads/v2/data-usage-store';
+import { refreshDataUsageSummary, resetDataUsageCounters, useDataUsageStore } from '@/downloads/v2/data-usage-store';
 import { useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
 import { SettingsRow, SettingsSection } from '@/screens/settings/components';
@@ -77,6 +77,11 @@ export const DataUsageScreen = memo(function DataUsageScreen() {
   const [confirmReset, setConfirmReset] = useState(false);
   const goBack = useCallback(() => navigation.back(), []);
 
+  // "Today" and "this month" are re-read on opening, so they are right after midnight or a month change.
+  useEffect(() => {
+    refreshDataUsageSummary();
+  }, []);
+
   return (
     <SafeAreaScreen
       testID="data-usage-screen"
@@ -114,13 +119,16 @@ export const DataUsageScreen = memo(function DataUsageScreen() {
         description={t('dataUsage.limitsDescription')}
         icon="bell-alert-outline">
         <Box gap={12} py={8}>
+          {/* Keyed on the stored value: a change made elsewhere (Reset, an import) shows here; edits commit on blur. */}
           <LimitField
+            key={`daily-${dailyMb}`}
             label={t('dataUsage.dailyLimit')}
             value={dailyMb}
             onCommit={(mb) => useSettingsStore.getState().updateSetting('dataLimitDailyMb', mb)}
             testID="data-usage-daily-limit"
           />
           <LimitField
+            key={`monthly-${monthlyMb}`}
             label={t('dataUsage.monthlyLimit')}
             value={monthlyMb}
             onCommit={(mb) => useSettingsStore.getState().updateSetting('dataLimitMonthlyMb', mb)}

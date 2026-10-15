@@ -11,6 +11,7 @@ import * as ReactNative from 'react-native';
 import { getMmkvInstance } from '@/storage/mmkv';
 import { createStore } from '@/store/shared/create-store';
 import { translate } from '@/localization/translate';
+import { formatDownloadFileSize } from '@/screens/downloads/utils/download-format';
 
 import {
   applyProgressEvent,
@@ -85,7 +86,7 @@ function publishSoon(): void {
 }
 
 function formatMb(bytes: number): string {
-  return `${Math.round(bytes / (1024 * 1024))} MB`;
+  return formatDownloadFileSize(String(Math.max(0, Math.round(bytes)))) ?? '0 B';
 }
 
 function showAlerts(alerts: DataLimitAlert[]): void {
@@ -131,6 +132,11 @@ export function getDataUsageSummary(): DataUsageSummary {
   return summarizeDataUsage(load(), Date.now());
 }
 
+/** Re-reads the figures now (the screen calls it when it opens, so "today" is right after midnight). */
+export function refreshDataUsageSummary(): void {
+  publish();
+}
+
 export function resetDataUsageCounters(): void {
   state = resetCounters(load());
   saveNow();
@@ -149,7 +155,7 @@ export function ensureDataUsage(): void {
   attached = true;
   load();
   publish();
-  engine.addListener('onDownloadProgress', (event) => {
+  const progress = engine.addListener('onDownloadProgress', (event) => {
     try {
       const next = applyProgressEvent(load(), event, Date.now());
       if (next !== state) {
@@ -162,7 +168,7 @@ export function ensureDataUsage(): void {
       // Counting must never disturb downloads.
     }
   });
-  engine.addListener('onDownloadStateChange', ({ record }) => {
+  const states = engine.addListener('onDownloadStateChange', ({ record }) => {
     try {
       const next = applyStateEvent(load(), record);
       if (next !== state) {
@@ -174,8 +180,8 @@ export function ensureDataUsage(): void {
       // Counting must never disturb downloads.
     }
   });
-  ReactNative.AppState.addEventListener('change', (appState) => {
-    if (appState === 'active') {
+  const appState = ReactNative.AppState.addEventListener('change', (nextAppState) => {
+    if (nextAppState === 'active') {
       publish();
       if (pendingAlerts.length > 0) {
         const alerts = pendingAlerts;
@@ -186,4 +192,24 @@ export function ensureDataUsage(): void {
       saveNow();
     }
   });
+  replaceListeners([progress, states, appState]);
+}
+
+const LISTENERS_KEY = '__vidoraxDataUsageListeners';
+type Subscription = { remove(): void };
+
+/**
+ * Keeps the listeners on `globalThis`: a Fast Refresh re-runs this module (and its `attached` flag), so an earlier
+ * copy's listeners are removed before new ones are added — bytes are never counted twice.
+ */
+function replaceListeners(next: Subscription[]): void {
+  const store = globalThis as unknown as Record<string, Subscription[] | undefined>;
+  for (const subscription of store[LISTENERS_KEY] ?? []) {
+    try {
+      subscription.remove();
+    } catch {
+      // already gone
+    }
+  }
+  store[LISTENERS_KEY] = next;
 }
