@@ -423,9 +423,10 @@ const ExampleVideoBar = memo(function ExampleVideoBar({ rect }: { rect: Rect }) 
       </View>
       <View
         style={{
+          // At the bar's start, clear of the card's pointer (which aims at the bar's centre).
           position: 'absolute',
           top: -11,
-          alignSelf: 'center',
+          left: theme.spacing[16],
           paddingHorizontal: 10,
           paddingVertical: 2,
           borderRadius: theme.radius.full,
