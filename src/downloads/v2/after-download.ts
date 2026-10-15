@@ -17,6 +17,11 @@ export const AFTER_DOWNLOAD_ACTIONS: readonly AfterDownloadAction[] = ['none', '
 export const DEFAULT_AFTER_DOWNLOAD_ACTION: AfterDownloadAction = 'none';
 /** Completions this close together count as "finished at once". */
 export const SETTLE_MS = 1_500;
+/**
+ * Open/Play are dropped when the batch is acted on later than this after its newest completion arrived — e.g. the
+ * app went to the background during the settle wait and JavaScript timers only ran when it came back.
+ */
+export const STALE_MS = 5_000;
 /** Ids remembered so a repeated `completed` event never acts twice. */
 const HANDLED_LIMIT = 200;
 
@@ -73,6 +78,8 @@ export type AfterDownloadDeps = {
   saveToGallery: (id: string) => Promise<void> | void;
   schedule: (run: () => void, ms: number) => unknown;
   cancel: (handle: unknown) => void;
+  /** Clock (default `Date.now`). */
+  now?: () => number;
 };
 
 export type AfterDownloadController = {
@@ -83,8 +90,10 @@ export type AfterDownloadController = {
 
 export function createAfterDownloadController(deps: AfterDownloadDeps): AfterDownloadController {
   const handled = new Set<string>();
+  const now = deps.now ?? Date.now;
   let pending: Completion[] = [];
   let timer: unknown = null;
+  let newestReceivedAt = 0;
 
   const remember = (id: string) => {
     handled.add(id);
@@ -105,7 +114,8 @@ export function createAfterDownloadController(deps: AfterDownloadDeps): AfterDow
       plans = planAfterDownload({
         action: normalizeAfterDownloadAction(deps.getAction()),
         completions: batch,
-        foreground: deps.isForeground(),
+        // A late batch never opens a screen out of the blue.
+        foreground: deps.isForeground() && now() - newestReceivedAt <= STALE_MS,
         autoSaveToGallery: deps.autoSaveToGallery(),
       });
     } catch {
@@ -139,6 +149,7 @@ export function createAfterDownloadController(deps: AfterDownloadDeps): AfterDow
         return;
       }
       pending.push(completion);
+      newestReceivedAt = now();
       if (timer != null) {
         deps.cancel(timer);
       }

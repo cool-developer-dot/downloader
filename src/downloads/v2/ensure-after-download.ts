@@ -49,14 +49,38 @@ export function ensureAfterDownloadAction(): void {
     schedule: (run, ms) => setTimeout(run, ms),
     cancel: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
   });
-  engine.addListener('onDownloadStateChange', ({ record }) => {
-    if (record.state !== 'completed') {
-      return;
-    }
+  replaceListener(
+    engine.addListener('onDownloadStateChange', ({ record }) => {
+      if (record.state !== 'completed') {
+        return;
+      }
+      try {
+        controller.onCompleted({ id: record.libraryItemId ?? record.id, completedAt: record.updatedAt });
+      } catch {
+        // The action must never disturb downloads.
+      }
+    }),
+    controller,
+  );
+}
+
+const LISTENER_KEY = '__vidoraxAfterDownloadListener';
+type Attached = { subscription: { remove(): void }; controller: { dispose(): void } };
+
+/**
+ * Keeps the listener on `globalThis`: a Fast Refresh re-runs this module (and its `attached` flag), so the listener
+ * and controller an earlier copy made are removed first — the action can never run twice for one completion.
+ */
+function replaceListener(subscription: { remove(): void }, controller: { dispose(): void }): void {
+  const store = globalThis as unknown as Record<string, Attached | undefined>;
+  const previous = store[LISTENER_KEY];
+  if (previous) {
     try {
-      controller.onCompleted({ id: record.libraryItemId ?? record.id, completedAt: record.updatedAt });
+      previous.subscription.remove();
+      previous.controller.dispose();
     } catch {
-      // The action must never disturb downloads.
+      // already gone
     }
-  });
+  }
+  store[LISTENER_KEY] = { subscription, controller };
 }
