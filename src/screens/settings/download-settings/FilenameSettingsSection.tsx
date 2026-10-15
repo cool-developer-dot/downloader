@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
@@ -37,6 +37,12 @@ export const FilenameSettingsSection = memo(function FilenameSettingsSection({
   const { t } = useTranslation();
   const saved = useSettingsStore(selectFilenameTemplate);
   const [draft, setDraft] = useState(saved);
+
+  // The template can change elsewhere (Reset Settings, a settings import): follow it, but never fight the typing —
+  // a draft that saves to the same value (e.g. with a trailing space) is kept.
+  useEffect(() => {
+    setDraft((current) => (normalizeFilenameTemplate(current) === saved ? current : saved));
+  }, [saved]);
 
   const save = useCallback((value: string) => {
     useSettingsStore.getState().updateSetting('filenameTemplate', normalizeFilenameTemplate(value));
