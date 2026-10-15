@@ -10,6 +10,7 @@ import { useTranslation } from '@/localization';
 import { useDownloadsStore } from '@/store/downloads';
 
 import { useDownloadsTokens } from '../theme/downloads-tokens';
+import { DownloadCardProgressStats } from './DownloadCardProgressStats';
 import {
   buildMetaLine,
   buildProgressMeta,
@@ -330,6 +331,11 @@ export const DownloadCard = memo(function DownloadCard({
                 </Box>
               </Box>
             ) : null}
+
+            <DownloadCardProgressStats
+              id={id}
+              testID={testID ? `${testID}-progress-stats` : undefined}
+            />
 
             {showCompletedBadge && progressMeta ? (
               <Text variant="caption" color="textSecondary" numberOfLines={1}>

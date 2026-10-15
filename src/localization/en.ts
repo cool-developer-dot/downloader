@@ -937,6 +937,17 @@ export const en = {
     alreadySavedToDevice: 'Already saved to device',
     unableToSave: 'Unable to save this file',
   },
+  downloadProgress: {
+    remaining: 'Remaining',
+    averageSpeed: 'Average speed',
+    elapsed: 'Time downloading',
+    speedGraph: 'Speed, last minute',
+    speedGraphA11y: 'Download speed over the last minute',
+    remainingShort: '{size} left',
+    averageShort: 'avg {speed}',
+    elapsedShort: '{time} active',
+    totalSpeed: 'Total speed {speed}',
+  },
   player: {
     mini: {
       openA11y: 'Now playing: {title}. Open player',
