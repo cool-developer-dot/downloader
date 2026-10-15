@@ -12,6 +12,7 @@ import { useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
 import { SettingsRow, SettingsSection } from '@/screens/settings/components';
 import { useSettingsTokens } from '@/screens/settings/theme/settings-tokens';
+import { formatDownloadDate } from '@/screens/downloads/utils/download-format';
 
 import { useDownloadHistoryScreen } from './useDownloadHistoryScreen';
 
@@ -19,13 +20,17 @@ const MAX_ERROR_ROWS = 50;
 const MAX_DEBUG_ROWS = 200;
 
 function formatWhen(iso: string | null): string {
-  if (!iso) {
+  return formatDownloadDate(iso) ?? '—';
+}
+
+/** Local `HH:MM:SS` for a debug entry. */
+function clockTime(at: number): string {
+  const date = new Date(at);
+  if (Number.isNaN(date.getTime())) {
     return '—';
   }
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime())
-    ? '—'
-    : new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).format(date);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 /**
@@ -193,7 +198,7 @@ export const DownloadHistoryScreen = memo(function DownloadHistoryScreen() {
                       variant="caption"
                       color="textSecondary"
                       style={{ fontFamily: 'monospace' }}>
-                      {`${new Date(entry.at).toISOString().slice(11, 19)} [${entry.source}] ${entry.message}`}
+                      {`${clockTime(entry.at)} [${entry.source}] ${entry.message}`}
                     </Text>
                   ))}
                 </Box>

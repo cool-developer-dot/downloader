@@ -12,9 +12,15 @@ export function ensureDebugLogs(): void {
   attached = true;
   const apply = (enabled: boolean) => (enabled ? startDebugLog() : stopDebugLog());
   apply(useSettingsStore.getState().debugLogs);
-  useSettingsStore.subscribe((state, previous) => {
+  const unsubscribe = useSettingsStore.subscribe((state, previous) => {
     if (state.debugLogs !== previous.debugLogs) {
       apply(state.debugLogs);
     }
   });
+  // A Fast Refresh re-runs this module: drop the subscription an earlier copy made.
+  const handles = globalThis as unknown as Record<string, (() => void) | undefined>;
+  handles[SETTINGS_KEY]?.();
+  handles[SETTINGS_KEY] = unsubscribe;
 }
+
+const SETTINGS_KEY = '__vidoraxDebugLogSettings';
