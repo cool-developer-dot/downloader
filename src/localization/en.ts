@@ -848,6 +848,17 @@ export const en = {
     resetFiltersHint: 'Clears search, filter, and sort',
     analyzeLinkHint: 'Checks the link for downloadable formats',
   },
+  downloadLinks: {
+    redownload: 'Re-download',
+    redownloadHint: 'Opens the source page in the browser',
+    copyLink: 'Copy link',
+    copyLinkHint: 'Copies the source page link',
+    linkCopied: 'Link copied',
+    copyFailed: 'Couldn’t copy the link',
+    moreActions: 'More actions',
+    moreActionsHint: 'Re-download or copy the source link',
+    menuTitle: 'Source page',
+  },
   deviceVideos: {
     title: 'On this device',
     subtitle: 'Videos already saved on your phone',
