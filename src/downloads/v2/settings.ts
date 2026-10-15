@@ -12,7 +12,22 @@ export type V2SettingsInput = {
   maxConcurrentDownloads: number;
   /** Copy every completed download to the device gallery. Default true. */
   saveToGallery?: boolean;
+  /** Finished/failed notification alerts; each is sent only when given (see `DownloadSettings`). */
+  notificationSound?: boolean;
+  notificationVibrate?: boolean;
+  notificationSilent?: boolean;
 };
+
+/** The notification alert fields the input carries, and nothing else: a caller that gives none sends none. */
+function notificationAlertFields(
+  input: V2SettingsInput,
+): Pick<DownloadSettings, 'notificationSound' | 'notificationVibrate' | 'notificationSilent'> {
+  return {
+    ...(typeof input.notificationSound === 'boolean' ? { notificationSound: input.notificationSound } : {}),
+    ...(typeof input.notificationVibrate === 'boolean' ? { notificationVibrate: input.notificationVibrate } : {}),
+    ...(typeof input.notificationSilent === 'boolean' ? { notificationSilent: input.notificationSilent } : {}),
+  };
+}
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -28,6 +43,7 @@ export function v2DownloadSettings(input: V2SettingsInput): DownloadSettings {
     // A finished video also appears in the device gallery, unless the user turned that off.
     autoSaveToGallery: input.saveToGallery !== false,
     preferredMaxHeight: null,
+    ...notificationAlertFields(input),
   };
 }
 
@@ -36,7 +52,10 @@ export function sameV2Settings(a: DownloadSettings, b: DownloadSettings): boolea
     a.maxConcurrent === b.maxConcurrent &&
     a.wifiOnly === b.wifiOnly &&
     a.autoSaveToGallery === b.autoSaveToGallery &&
-    a.preferredMaxHeight === b.preferredMaxHeight
+    a.preferredMaxHeight === b.preferredMaxHeight &&
+    a.notificationSound === b.notificationSound &&
+    a.notificationVibrate === b.notificationVibrate &&
+    a.notificationSilent === b.notificationSilent
   );
 }
 

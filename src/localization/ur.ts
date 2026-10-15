@@ -1183,6 +1183,14 @@ export const ur: CatalogStrings<typeof en> = {
     openSystemSettings: 'Android سیٹنگز کھولیں',
     downloadSettingsSuccessMessage: 'آپ کی ڈاؤن لوڈ سیٹنگز اپ ڈیٹ ہو گئیں۔',
   },
+  downloadNotifyOptions: {
+    sound: 'اطلاع کی آواز',
+    soundHint: 'ڈاؤن لوڈ مکمل یا ناکام ہونے پر آواز بجاتا ہے',
+    vibrate: 'وائبریٹ',
+    vibrateHint: 'ڈاؤن لوڈ مکمل یا ناکام ہونے پر وائبریٹ کرتا ہے',
+    silent: 'خاموش موڈ',
+    silentHint: 'مکمل یا ناکام ڈاؤن لوڈز کے لیے نہ آواز نہ وائبریشن',
+  },
   profile: {
     welcomePrefix: 'خوش آمدید،',
     accountSection: 'اکاؤنٹ کی معلومات',

@@ -435,6 +435,14 @@ export interface DownloadSettings {
   autoSaveToGallery: boolean;
   /** e.g. 1080; null = best available. */
   preferredMaxHeight: number | null;
+  /**
+   * Finished/failed download notifications: play a sound (default true), vibrate (default false), or neither
+   * (silent, default false — overrides the other two). Omitted = the native side keeps what it has saved.
+   * Progress notifications are never affected. Ignored by older native builds.
+   */
+  notificationSound?: boolean;
+  notificationVibrate?: boolean;
+  notificationSilent?: boolean;
 }
 
 export interface StorageStats {

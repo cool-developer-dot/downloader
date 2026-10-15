@@ -19,6 +19,7 @@ import { useSettingsTokens } from '../theme/settings-tokens';
 import {
   CONCURRENT_SEGMENT_OPTIONS,
 } from './constants';
+import { NotificationAlertOptions } from './NotificationAlertOptions';
 import { useDownloadSettingsScreen } from './useDownloadSettingsScreen';
 
 export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
@@ -235,6 +236,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
                 testID="download-settings-notifications-permission"
               />
             ) : null}
+            <NotificationAlertOptions disabled={preferenceDisabled} />
           </SettingsSection>
         </SettingsStaggerItem>
       </View>
