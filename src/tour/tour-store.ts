@@ -9,6 +9,7 @@ import {
   reduceTour,
   TOUR_SEEN_KEY,
   type LinkDeferralEvent,
+  type LinkDeferralState,
   type TourAction,
   type TourState,
 } from './tour-policy';
@@ -18,7 +19,7 @@ type TourStore = TourState & {
   seen: boolean;
   /** Sheets, menus and dialogs currently open (each is a native window the tour must never sit under). */
   openOverlays: number;
-  linkDeferred: boolean;
+  linkDeferral: LinkDeferralState;
   /** The tour is drawn right now (TalkBack hides the app underneath while it is). */
   presented: boolean;
   dispatch: (action: TourAction) => void;
@@ -32,7 +33,7 @@ export const useTourStore = create<TourStore>((set, get) => ({
   ...INITIAL_TOUR_STATE,
   seen: getBooleanFlag(TOUR_SEEN_KEY, false),
   openOverlays: 0,
-  linkDeferred: false,
+  linkDeferral: 'none',
   presented: false,
   dispatch: (action) => {
     const { state, ended } = reduceTour(pickTourState(get()), action);
@@ -42,9 +43,9 @@ export const useTourStore = create<TourStore>((set, get) => ({
     set({ ...state, ...(ended ? { seen: true } : null) });
   },
   noteLink: (event) => {
-    const next = linkDeferral(get().linkDeferred, event);
-    if (next !== get().linkDeferred) {
-      set({ linkDeferred: next });
+    const next = linkDeferral(get().linkDeferral, event);
+    if (next !== get().linkDeferral) {
+      set({ linkDeferral: next });
     }
   },
   setPresented: (presented) => {
@@ -70,9 +71,11 @@ export function requestTourReplay(): void {
   useTourStore.getState().dispatch({ type: 'request_replay' });
 }
 
-/** A link was shared to / opened with VidoraX: the tour waits for a calmer moment. */
+/** A link was shared to / opened with VidoraX: the tour waits (or, if showing, steps aside) for a calmer moment. */
 export function noteTourLinkOpened(): void {
-  useTourStore.getState().noteLink('link_opened');
+  const store = useTourStore.getState();
+  store.noteLink('link_opened');
+  store.dispatch({ type: 'suspend' });
 }
 
 /** Keeps the tour from starting while a sheet, menu or dialog is open. */

@@ -4,6 +4,7 @@ import { test } from 'node:test';
 import {
   INITIAL_TOUR_STATE,
   isIdleBrowserMoment,
+  isLinkDeferred,
   isTourPresentable,
   linkDeferral,
   reduceTour,
@@ -99,11 +100,20 @@ test('never over App Lock, a dialog, the keyboard, another screen, or in the bac
 });
 
 test('a link the app was opened with defers the tour until the start page or the next return', () => {
-  let deferred = linkDeferral(false, 'link_opened');
-  assert.equal(deferred, true);
-  assert.equal(linkDeferral(deferred, 'start_page_shown'), false);
-  deferred = linkDeferral(false, 'link_opened');
-  assert.equal(linkDeferral(deferred, 'app_returned_to_foreground'), false);
+  let state = linkDeferral('none', 'link_opened');
+  assert.equal(isLinkDeferred(state), true);
+  assert.equal(linkDeferral(state, 'start_page_shown'), 'none');
+  // Shared from another app: the link arrives, then VidoraX becomes active — still deferred.
+  state = linkDeferral('none', 'link_opened');
+  state = linkDeferral(state, 'app_returned_to_foreground');
+  assert.equal(isLinkDeferred(state), true);
+  // Leaving the app and coming back later is a calm moment again.
+  state = linkDeferral(state, 'app_went_to_background');
+  assert.equal(isLinkDeferred(state), true);
+  assert.equal(linkDeferral(state, 'app_returned_to_foreground'), 'none');
+  // Without a link, background / foreground change nothing.
+  assert.equal(linkDeferral('none', 'app_went_to_background'), 'none');
+  assert.equal(linkDeferral('none', 'app_returned_to_foreground'), 'none');
 });
 
 test('a running tour hides (but keeps its step) while locked, backgrounded or off the Browser', () => {
@@ -178,6 +188,23 @@ test('replay: starts at the next idle moment even when the tour was seen', () =>
   assert.equal(started.replayRequested, false);
   // A replay request during a running tour changes nothing.
   assert.deepEqual(reduceTour(started, { type: 'request_replay' }).state, started);
+});
+
+test('a link arriving during the tour puts it away, unseen, to start again from step 1 later', () => {
+  const atFour = run([{ type: 'next' }, { type: 'next' }, { type: 'next' }], running).state;
+  const suspended = reduceTour(atFour, { type: 'suspend' });
+  assert.equal(suspended.ended, false);
+  assert.equal(suspended.state.status, 'idle');
+  assert.equal(suspended.state.stepIndex, 0);
+  assert.equal(suspended.state.replayRequested, true);
+  // Deferred while the link's page is up; starts again on the start page / next return.
+  const deferred = linkDeferral('none', 'link_opened');
+  const blocked = { ...IDLE, linkDeferred: isLinkDeferred(deferred) };
+  assert.equal(shouldStartTourNow({ state: suspended.state, autoStart: { onboardingComplete: true, seen: true }, moment: blocked, idleForMs: 60_000 }), false);
+  const calm = { ...IDLE, linkDeferred: isLinkDeferred(linkDeferral(deferred, 'start_page_shown')) };
+  assert.equal(shouldStartTourNow({ state: suspended.state, autoStart: { onboardingComplete: true, seen: true }, moment: calm, idleForMs: TOUR_SETTLE_MS }), true);
+  // Nothing to suspend while idle.
+  assert.deepEqual(reduceTour(INITIAL_TOUR_STATE, { type: 'suspend' }), { state: INITIAL_TOUR_STATE, ended: false });
 });
 
 test('start is idempotent and actions while idle are no-ops', () => {
