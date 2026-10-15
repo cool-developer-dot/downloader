@@ -8,6 +8,8 @@ export interface SettingsState {
   /** Filename Template for new downloads; the default `{title}` keeps today's naming exactly. */
   filenameTemplate: string;
   autoResume: boolean;
+  /** Debug Logs: keep an in-memory, redacted log of VidoraX's own events (default off). */
+  debugLogs: boolean;
   notifications: boolean;
   /** Finished/failed download notifications play a sound (default on — today's behaviour). */
   notificationSound: boolean;

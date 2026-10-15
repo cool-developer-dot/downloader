@@ -67,6 +67,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         wifiOnly: state.wifiOnly,
         filenameTemplate: state.filenameTemplate,
         autoResume: state.autoResume,
+        debugLogs: state.debugLogs,
         notifications: state.notifications,
         notificationSound: state.notificationSound,
         notificationVibrate: state.notificationVibrate,
@@ -101,6 +102,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.tapToToggle === 'boolean' ? raw.tapToToggle : current.tapToToggle,
           autoResume:
             typeof raw.autoResume === 'boolean' ? raw.autoResume : current.autoResume,
+          debugLogs: typeof raw.debugLogs === 'boolean' ? raw.debugLogs : current.debugLogs,
           notifications:
             typeof raw.notifications === 'boolean'
               ? raw.notifications
