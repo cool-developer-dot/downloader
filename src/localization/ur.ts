@@ -1243,6 +1243,13 @@ export const ur: CatalogStrings<typeof en> = {
     discardChangesA11y: 'پروفائل تبدیلیاں منسوخ کریں',
     nameLengthHint: 'درکار ہے۔ 2 سے 100 حروف کے درمیان۔',
   },
+  dangerousFile: {
+    title: 'یہ فائل آپ کے آلے کو نقصان پہنچا سکتی ہے',
+    message:
+      '“{fileName}” کوئی ایپ انسٹال یا پروگرام چلا سکتی ہے۔ اسے صرف تب ڈاؤن لوڈ کریں جب آپ کو اس سائٹ پر بھروسہ ہو۔',
+    unnamed: 'یہ فائل',
+    downloadAnyway: 'پھر بھی ڈاؤن لوڈ کریں',
+  },
   history: {
     title: 'ہسٹری',
     searchPlaceholder: 'ہسٹری تلاش کریں',
