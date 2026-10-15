@@ -5,6 +5,8 @@
 
 import { getVidoraWeb, isVidoraWebAvailable } from '@modules/vidorax-web';
 
+import { noteTourLinkOpened } from '@/tour/tour-store';
+
 import { urlFromSharedText } from './incoming-link';
 import { isYouTubeLink, openPastedLink } from './pasted-link.service';
 import { announceYouTubeNotSupported } from './youtube-refusal';
@@ -28,6 +30,8 @@ function open(text: string | null): void {
     return;
   }
   if (url) {
+    // What the user came for: the first-launch tour waits for a calmer moment.
+    noteTourLinkOpened();
     // A shared link is a pasted link: the direct analyzer reads its page, then the active tab loads it.
     openPastedLink(url, { source: 'share' });
   }
