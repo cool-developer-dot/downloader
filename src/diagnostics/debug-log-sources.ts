@@ -9,14 +9,19 @@ import { subscribePipelineOutcomes } from '@/media-detection/pipeline/pipeline-o
 
 import { debugLog } from './debug-log';
 
-let detach: (() => void) | null = null;
+/**
+ * The running subscriptions live on `globalThis`: a Fast Refresh re-runs this module, and its subscriptions must
+ * still be found (and removed) instead of leaking a second set that logs every event twice.
+ */
+const DETACH_KEY = '__vidoraxDebugLogDetach';
+const handles = globalThis as unknown as Record<string, (() => void) | null | undefined>;
 
 export function isDebugLogRunning(): boolean {
-  return detach != null;
+  return handles[DETACH_KEY] != null;
 }
 
 export function startDebugLog(): void {
-  if (detach) {
+  if (handles[DETACH_KEY]) {
     return;
   }
   const subscriptions: (() => void)[] = [];
@@ -42,7 +47,7 @@ export function startDebugLog(): void {
     subscriptions.push(() => stateSub.remove());
   }
   debugLog.add('debug-log', 'started');
-  detach = () => {
+  handles[DETACH_KEY] = () => {
     for (const unsubscribe of subscriptions) {
       try {
         unsubscribe();
@@ -54,10 +59,11 @@ export function startDebugLog(): void {
 }
 
 export function stopDebugLog(): void {
+  const detach = handles[DETACH_KEY];
   if (!detach) {
     return;
   }
   detach();
-  detach = null;
+  handles[DETACH_KEY] = null;
   debugLog.clear();
 }

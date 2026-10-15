@@ -63,5 +63,7 @@ export function debugLogToText(entries: readonly DebugLogEntry[], header: string
   return lines.join('\n');
 }
 
-/** The app's one buffer. */
-export const debugLog = createDebugLogBuffer();
+/** The app's one buffer — on `globalThis`, so a Fast Refresh keeps the buffer the running listeners write to. */
+const BUFFER_KEY = '__vidoraxDebugLogBuffer';
+const buffers = globalThis as unknown as Record<string, DebugLogBuffer | undefined>;
+export const debugLog: DebugLogBuffer = buffers[BUFFER_KEY] ?? (buffers[BUFFER_KEY] = createDebugLogBuffer());
