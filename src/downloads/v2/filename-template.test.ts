@@ -5,6 +5,7 @@ import {
   applyFilenameTemplate,
   DEFAULT_FILENAME_TEMPLATE,
   FALLBACK_NAME,
+  FILENAME_TOKENS,
   formatTemplateDate,
   formatTemplateTime,
   isDefaultFilenameTemplate,
@@ -66,11 +67,12 @@ describe('tokens', () => {
     assert.equal(apply('{title} - {quality}', 'Clip', { qualityLabel: null }), 'Clip');
     assert.equal(apply('{quality} - {title}', 'Clip', { qualityLabel: '' }), 'Clip');
     assert.equal(apply('{title} - {quality} - {date}', 'Clip', { qualityLabel: null }), 'Clip - 2026-10-15');
-    assert.equal(apply('{title}_{id}', 'Clip'), 'Clip');
   });
 
-  test('{id} is filled when known', () => {
-    assert.equal(apply('{title} {id}', 'Clip', { id: 'ab12' }), 'Clip ab12');
+  test('{id} is not a token: it is not offered and stays as typed', () => {
+    assert.equal((FILENAME_TOKENS as readonly string[]).includes('id'), false);
+    assert.deepEqual([...FILENAME_TOKENS], ['title', 'site', 'date', 'time', 'quality']);
+    assert.equal(apply('{title} {id}', 'Clip'), 'Clip {id}');
   });
 
   test('a template that produces nothing falls back to the title, then to "Video"', () => {

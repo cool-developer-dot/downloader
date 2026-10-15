@@ -4,13 +4,12 @@
  * is applied to that title before the download is created. The default template, `{title}`, returns the title
  * exactly as before — nothing is cleaned or cut — so a user who never changes it sees no difference.
  *
- * Tokens: {title} {site} {date} {time} {quality} {id}. `{id}` is the download's id, which the engine only assigns
- * when it creates the download; before that it is empty (the engine already ends every file name with a short id).
- * Pure: no React Native, no settings access.
+ * Tokens: {title} {site} {date} {time} {quality}. There is no id token: the engine already ends every library file
+ * name with a short id. Pure: no React Native, no settings access.
  */
 
 export const DEFAULT_FILENAME_TEMPLATE = '{title}';
-export const FILENAME_TOKENS = ['title', 'site', 'date', 'time', 'quality', 'id'] as const;
+export const FILENAME_TOKENS = ['title', 'site', 'date', 'time', 'quality'] as const;
 export type FilenameToken = (typeof FILENAME_TOKENS)[number];
 
 /** Longest template the settings keep. */
@@ -121,7 +120,6 @@ export type FilenameTemplateInput = {
   pageUrl?: string | null;
   site?: string | null;
   qualityLabel?: string | null;
-  id?: string | null;
   now: Date;
 };
 
@@ -140,6 +138,5 @@ export function applyFilenameTemplate(input: FilenameTemplateInput): string {
     date: validDate ? formatTemplateDate(input.now) : '',
     time: validDate ? formatTemplateTime(input.now) : '',
     quality: input.qualityLabel?.trim() ?? '',
-    id: input.id ?? '',
   });
 }
