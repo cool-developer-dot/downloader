@@ -26,15 +26,16 @@ export const BackupResetSection = memo(function BackupResetSection({
   const { t } = useTranslation();
   const screen = useSettingsBackupReset();
 
+  const { defaultTab, setDefaultTab } = screen;
   const tabActions = useMemo<ActionSheetItem[]>(
     () =>
       DEFAULT_TABS.map((tab) => ({
         id: tab,
         label: t(TAB_LABELS[tab]),
-        selected: screen.defaultTab === tab,
-        onPress: () => screen.setDefaultTab(tab),
+        selected: defaultTab === tab,
+        onPress: () => setDefaultTab(tab),
       })),
-    [screen, t],
+    [defaultTab, setDefaultTab, t],
   );
 
   return (
