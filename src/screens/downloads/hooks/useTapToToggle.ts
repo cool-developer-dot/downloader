@@ -41,6 +41,10 @@ export function useTapToToggle(handlers: { pause: (id: string) => void; resume: 
         status: item.status,
         cardActions,
       });
+      // A second tap while the first pause/resume is still being applied does nothing (not a toggle back).
+      if (action && state.mutatingIds[id]) {
+        return true;
+      }
       if (action === 'pause') {
         pause(id);
         return true;

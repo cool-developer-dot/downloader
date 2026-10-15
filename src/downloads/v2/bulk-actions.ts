@@ -126,3 +126,24 @@ export async function cancelAllEngineDownloads(
   }
   return eachSequentially(ids, (id) => engine.cancel(id));
 }
+
+const FIELD = '\u001f';
+const ROW = '\u001e';
+
+/** Pure: the rows as one string (stable while nothing the bulk bar shows has changed). */
+export function bulkSignature(rows: readonly BulkRow[]): string {
+  return rows
+    .map((row) => [row.id, row.status, row.workerState ?? '', row.pauseRestarts ? '1' : ''].join(FIELD))
+    .join(ROW);
+}
+
+/** Pure: the rows back from `bulkSignature`. */
+export function rowsFromBulkSignature(signature: string): BulkRow[] {
+  if (!signature) {
+    return [];
+  }
+  return signature.split(ROW).map((part) => {
+    const [id = '', status = '', workerState = '', restarts = ''] = part.split(FIELD);
+    return { id, status: status as BulkRow['status'], workerState: workerState || null, pauseRestarts: restarts === '1' };
+  });
+}

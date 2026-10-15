@@ -5,6 +5,8 @@ import {
   cancelAllEngineDownloads,
   pauseAllEngineDownloads,
   resumeAllEngineDownloads,
+  bulkSignature,
+  rowsFromBulkSignature,
   summarizeBulkActions,
   type BulkRow,
 } from '@/downloads/v2/bulk-actions';
@@ -19,39 +21,43 @@ export type BulkError = 'pauseFailed' | 'resumeFailed' | 'cancelFailed';
  * Pause All / Resume All / Cancel All for the Downloads tab. Reads only the v2 rows the native engine owns (never
  * v1 rows, never library-only rows); the engine's state events update the list afterwards.
  */
+/**
+ * Only what the bar depends on, as one string: the selector runs on every store change (progress ticks included),
+ * but the bar re-renders only when a row's status, worker state or "would restart" note actually changes.
+ */
+function selectBulkSignature(state: ReturnType<typeof useDownloadsStore.getState>): string {
+  const rows: BulkRow[] = [];
+  for (const [id, item] of Object.entries(state.engineRowsById)) {
+    if (state.libraryOnlyIds[id]) {
+      continue;
+    }
+    const transfer = state.transferById[id] ?? null;
+    // Same inputs as the card's "pausing would restart it" note (DownloadCard).
+    const runtime = resolveTransferRuntime(item.status, {
+      localUri: transfer?.localUri ?? null,
+      localState: transfer?.localState ?? null,
+      executionState: transfer?.executionState ?? null,
+      workerState: item.workerState ?? transfer?.workerState ?? null,
+      supportsResume: transfer?.supportsResume ?? null,
+      errorCode: item.errorCode ?? null,
+    });
+    rows.push({
+      id,
+      status: item.status,
+      workerState: item.workerState ?? transfer?.workerState ?? null,
+      pauseRestarts: runtime.pauseBlockedReason === 'SOURCE_NOT_RESUMABLE',
+    });
+  }
+  return bulkSignature(rows);
+}
+
 export function useDownloadsBulkActions() {
-  const engineRowsById = useDownloadsStore((state) => state.engineRowsById);
-  const libraryOnlyIds = useDownloadsStore((state) => state.libraryOnlyIds);
-  const transferById = useDownloadsStore((state) => state.transferById);
+  const signature = useDownloadsStore(selectBulkSignature);
   const [busy, setBusy] = useState<BulkAction | null>(null);
   const [error, setError] = useState<BulkError | null>(null);
   const busyRef = useRef(false);
 
-  const summary = useMemo(() => {
-    const rows: BulkRow[] = [];
-    for (const [id, item] of Object.entries(engineRowsById)) {
-      if (libraryOnlyIds[id]) {
-        continue;
-      }
-      const transfer = transferById[id] ?? null;
-      // Same inputs as the card's "pausing would restart it" note (DownloadCard).
-      const runtime = resolveTransferRuntime(item.status, {
-        localUri: transfer?.localUri ?? null,
-        localState: transfer?.localState ?? null,
-        executionState: transfer?.executionState ?? null,
-        workerState: item.workerState ?? transfer?.workerState ?? null,
-        supportsResume: transfer?.supportsResume ?? null,
-        errorCode: item.errorCode ?? null,
-      });
-      rows.push({
-        id,
-        status: item.status,
-        workerState: item.workerState ?? transfer?.workerState ?? null,
-        pauseRestarts: runtime.pauseBlockedReason === 'SOURCE_NOT_RESUMABLE',
-      });
-    }
-    return summarizeBulkActions(rows);
-  }, [engineRowsById, libraryOnlyIds, transferById]);
+  const summary = useMemo(() => summarizeBulkActions(rowsFromBulkSignature(signature)), [signature]);
 
   const run = useCallback(async (action: BulkAction, ids: readonly string[]) => {
     if (busyRef.current || ids.length === 0) {
