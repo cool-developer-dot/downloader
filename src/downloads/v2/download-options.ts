@@ -63,6 +63,21 @@ export function requestOverrides(
   return overrides;
 }
 
+/** Pure: the draft after `patch` — a new one for a first change, the same values carried otherwise. */
+export function nextDraft(
+  current: DownloadOptionsDraft | null,
+  patch: Partial<DownloadOptionsDraft> & { identity: string },
+): DownloadOptionsDraft {
+  const base: DownloadOptionsDraft = current ?? {
+    identity: patch.identity,
+    title: '',
+    titleEdited: false,
+    folderId: null,
+    saveToGallery: 'default',
+  };
+  return { ...base, ...patch };
+}
+
 /** Pure: whether the options differ from their defaults (the collapsed row says so). */
 export function hasChangedOptions(draft: DownloadOptionsDraft | null): boolean {
   return Boolean(draft && (editedTitle(draft) || draft.folderId != null || draft.saveToGallery !== 'default'));

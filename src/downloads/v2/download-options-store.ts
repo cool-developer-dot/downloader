@@ -14,6 +14,7 @@ import {
 
 import {
   folderOnStateChange,
+  nextDraft,
   rememberFolder,
   setDownloadOptionsSource,
   type DownloadOptionsDraft,
@@ -26,20 +27,36 @@ const PENDING_KEY = 'vidorax.pendingFolders.v1';
 export const useDownloadOptionsDraft = createStore<{ draft: DownloadOptionsDraft | null }>(() => ({ draft: null }));
 
 export function updateDownloadOptionsDraft(patch: Partial<DownloadOptionsDraft> & { identity: string }): void {
-  useDownloadOptionsDraft.setState((state) => {
-    const base: DownloadOptionsDraft =
-      state.draft && state.draft.identity === patch.identity
-        ? state.draft
-        : { identity: patch.identity, title: '', titleEdited: false, folderId: null, saveToGallery: 'default' };
-    return { draft: { ...base, ...patch } };
-  });
+  useDownloadOptionsDraft.setState((state) => ({ draft: nextDraft(state.draft, patch) }));
+}
+
+/**
+ * The sheet's selected quality changed: the options follow it (same sheet session — the draft is dropped when the
+ * sheet closes), so what the user set is applied to the quality actually confirmed.
+ */
+export function followSelectedQuality(identity: string): void {
+  const { draft } = useDownloadOptionsDraft.getState();
+  if (draft && draft.identity !== identity) {
+    useDownloadOptionsDraft.setState({ draft: { ...draft, identity } });
+  }
 }
 
 export function clearDownloadOptionsDraft(): void {
   useDownloadOptionsDraft.setState({ draft: null });
 }
 
+/** Read from MMKV once, then kept in memory (state events must not each parse the stored map). */
+let pendingCache: PendingFolders | null = null;
+
 function readPending(): PendingFolders {
+  if (pendingCache) {
+    return pendingCache;
+  }
+  pendingCache = readStoredPending();
+  return pendingCache;
+}
+
+function readStoredPending(): PendingFolders {
   try {
     const raw = getMmkvInstance()?.getString(PENDING_KEY);
     const parsed = raw ? (JSON.parse(raw) as unknown) : {};
@@ -59,6 +76,7 @@ function readPending(): PendingFolders {
 }
 
 function writePending(pending: PendingFolders): void {
+  pendingCache = pending;
   try {
     getMmkvInstance()?.set(PENDING_KEY, JSON.stringify(pending));
   } catch {
@@ -76,7 +94,7 @@ export function ensureDownloadOptions(): void {
   attached = true;
   setDownloadOptionsSource(() => useDownloadOptionsDraft.getState().draft);
 
-  registerQualitySelectionDownloadListener((created) => {
+  const offCreated = registerQualitySelectionDownloadListener((created) => {
     const draft = useDownloadOptionsDraft.getState().draft;
     // A video already saved has no download to wait for; an existing download still gets the folder.
     if (!draft || draft.folderId == null || !created?.downloadId || created.duplicate === 'ALREADY_DOWNLOADED') {
@@ -84,10 +102,10 @@ export function ensureDownloadOptions(): void {
     }
     writePending(rememberFolder(readPending(), created.downloadId, draft.folderId));
   });
-  registerQualitySelectionClosedListener(() => clearDownloadOptionsDraft());
+  const offClosed = registerQualitySelectionClosedListener(() => clearDownloadOptionsDraft());
 
   const engine = getV2Engine();
-  engine?.addListener('onDownloadStateChange', ({ record }) => {
+  const states = engine?.addListener('onDownloadStateChange', ({ record }) => {
     try {
       const pending = readPending();
       if (!(record.id in pending)) {
@@ -105,4 +123,20 @@ export function ensureDownloadOptions(): void {
       // A folder choice must never disturb downloads.
     }
   });
+  replaceListeners([offCreated, offClosed, () => states?.remove()]);
+}
+
+const LISTENERS_KEY = '__vidoraxDownloadOptionsListeners';
+
+/** A Fast Refresh re-runs this module (and its `attached` flag): an earlier copy's listeners are removed first. */
+function replaceListeners(next: (() => void)[]): void {
+  const store = globalThis as unknown as Record<string, (() => void)[] | undefined>;
+  for (const off of store[LISTENERS_KEY] ?? []) {
+    try {
+      off();
+    } catch {
+      // already gone
+    }
+  }
+  store[LISTENERS_KEY] = next;
 }

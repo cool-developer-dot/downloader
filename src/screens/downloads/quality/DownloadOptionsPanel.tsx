@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useEffect, useMemo, useState } from 'react';
 
 import { Box } from '@/components/base/Box';
 import { Icon } from '@/components/base/Icon';
@@ -9,7 +9,11 @@ import { TextField } from '@/components/inputs/TextField';
 import { browserMediaActionService } from '@/browser/media-actions/browser-media-action.service';
 import { resolveDisplayTitle, type AnalyzedMediaSelection, type DownloadQualityOption } from '@/downloads/quality';
 import { hasChangedOptions, type GalleryChoice } from '@/downloads/v2/download-options';
-import { updateDownloadOptionsDraft, useDownloadOptionsDraft } from '@/downloads/v2/download-options-store';
+import {
+  followSelectedQuality,
+  updateDownloadOptionsDraft,
+  useDownloadOptionsDraft,
+} from '@/downloads/v2/download-options-store';
 import { applyFilenameTemplate, MAX_NAME_LENGTH, sanitizeFileName } from '@/downloads/v2/filename-template';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
@@ -59,6 +63,13 @@ export const DownloadOptionsPanel = memo(function DownloadOptionsPanel({
       ),
     [selection, selectedOption?.label, template],
   );
+
+  // Another quality picked after setting options: they follow it.
+  useEffect(() => {
+    if (identity) {
+      followSelectedQuality(identity);
+    }
+  }, [identity]);
 
   if (!identity || !browserOffer) {
     return null;
