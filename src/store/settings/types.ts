@@ -1,5 +1,9 @@
+import type { AfterDownloadAction } from '@/downloads/v2/after-download';
+
 export interface SettingsState {
   downloadDirectory: string | null;
+  /** What happens when a download completes: 'none' (default), 'details', 'play' or 'gallery'. */
+  afterDownloadAction: AfterDownloadAction;
   wifiOnly: boolean;
   autoResume: boolean;
   notifications: boolean;
