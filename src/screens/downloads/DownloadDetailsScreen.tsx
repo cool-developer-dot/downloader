@@ -39,6 +39,7 @@ import { DownloadDetailsLinkActions } from './components/DownloadDetailsLinkActi
 import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
 import { useDownloadDetailsScreen } from './hooks/useDownloadDetailsScreen';
 import { useDownloadsTokens } from './theme/downloads-tokens';
+import { DownloadProgressDetailsRows } from './components/DownloadProgressDetailsRows';
 import {
   extractMediaType,
   formatDownloadDate,
@@ -510,6 +511,7 @@ const DetailsBody = memo(function DetailsBody({
           item.status === 'QUEUED') ? (
           <InfoRow label={t('downloads.infoDownloaded')} value={downloadedSize} />
         ) : null}
+        <DownloadProgressDetailsRows id={item.id} />
         {created ? <InfoRow label={t('downloads.infoCreatedDate')} value={created} /> : null}
         {completed ? <InfoRow label={t('downloads.infoDownloadedDate')} value={completed} /> : null}
       </Box>
