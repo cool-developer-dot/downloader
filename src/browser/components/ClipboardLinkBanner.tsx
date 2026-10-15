@@ -31,8 +31,8 @@ export const ClipboardLinkBanner = memo(function ClipboardLinkBanner() {
       gap={8}
       style={{
         position: 'absolute',
-        left: 12,
-        right: 12,
+        start: 12,
+        end: 12,
         top: insets.top + 8,
         zIndex: 60,
         padding: 12,
