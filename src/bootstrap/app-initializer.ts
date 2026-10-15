@@ -181,6 +181,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureFilenameNaming } = await import('@/downloads/v2/ensure-filename-naming');
       // Download Settings → File naming applies to new downloads (the default keeps titles unchanged).
       ensureFilenameNaming();
+      const { ensureDownloadOptions } = await import('@/downloads/v2/download-options-store');
+      // Quality sheet → Options: name, folder, per-download Save to Gallery (nothing changes unless used).
+      ensureDownloadOptions();
       downloadAppLifecycle.ensureAttached();
       bindDownloadEngineToStore();
       ensureDownloadRecoveryListener();

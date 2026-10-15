@@ -3,6 +3,8 @@ export interface SettingsState {
   wifiOnly: boolean;
   /** Filename Template for new downloads; the default `{title}` keeps today's naming exactly. */
   filenameTemplate: string;
+  /** Confirm Before Start: "Video available" always opens the quality sheet first (default off). */
+  confirmBeforeStart: boolean;
   autoResume: boolean;
   notifications: boolean;
   language: string;
