@@ -13,6 +13,8 @@ export const routePaths = {
   player: '/player',
   library: '/library',
   settings: '/settings',
+  /** The "Paste link" app shortcut (`vidorax://paste-link`). */
+  pasteLink: '/paste-link',
   downloadSettings: '/download-settings',
   appLockSetup: '/app-lock-setup',
   appLockDisable: '/app-lock-disable',

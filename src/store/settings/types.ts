@@ -1,6 +1,8 @@
 import type { AfterDownloadAction } from '@/downloads/v2/after-download';
 
 export interface SettingsState {
+  /** Clipboard Monitor: offer a copied link when VidoraX returns to the foreground (default off). */
+  clipboardMonitor: boolean;
   downloadDirectory: string | null;
   /** What happens when a download completes: 'none' (default), 'details', 'play' or 'gallery'. */
   afterDownloadAction: AfterDownloadAction;

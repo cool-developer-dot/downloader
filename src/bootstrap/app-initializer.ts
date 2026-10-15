@@ -197,6 +197,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       // Settings → Storage → Data usage: counts v2 download bytes (limits off by default; never pauses downloads).
       ensureDataUsageCounting();
       ensureDownloadNotificationBridge();
+      const { ensureClipboardLinkMonitor } = await import('@/browser/services/clipboard-link-monitor');
+      // Download Settings → Copied links: only when on (default off), only on returning to the foreground.
+      ensureClipboardLinkMonitor();
       if (typeof ensureLibraryCompletionBridge === 'function') {
         ensureLibraryCompletionBridge();
       }

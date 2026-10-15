@@ -5,6 +5,7 @@ import type { SettingsState } from './types';
 import { DEFAULT_AFTER_DOWNLOAD_ACTION } from '@/downloads/v2/after-download';
 
 export const initialSettingsState: SettingsState = {
+  clipboardMonitor: false,
   downloadDirectory: null,
   afterDownloadAction: DEFAULT_AFTER_DOWNLOAD_ACTION,
   wifiOnly: DEFAULT_DOWNLOAD_SETTINGS.wifiOnly,
