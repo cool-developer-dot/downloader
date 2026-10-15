@@ -7,6 +7,7 @@ import { SegmentedControl } from '@/components/inputs/SegmentedControl';
 import { AfterDownloadSettingsSection } from '@/screens/settings/download-settings/AfterDownloadSettingsSection';
 import { Switch } from '@/components/inputs/Switch';
 import { FilenameSettingsSection } from '@/screens/settings/download-settings/FilenameSettingsSection';
+import { BeforeDownloadSettingsSection } from '@/screens/settings/download-settings/BeforeDownloadSettingsSection';
 
 import { useTranslation } from '@/localization';
 import { LinkIntakeSettingsSection } from '@/screens/settings/download-settings/LinkIntakeSettingsSection';
@@ -206,6 +207,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
         </SettingsStaggerItem>
 
         <FilenameSettingsSection index={2} disabled={preferenceDisabled} />
+        <BeforeDownloadSettingsSection index={2} disabled={preferenceDisabled} />
 
         <SettingsStaggerItem index={2}>
           <SettingsSection

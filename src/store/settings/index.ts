@@ -69,6 +69,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         afterDownloadAction: state.afterDownloadAction,
         wifiOnly: state.wifiOnly,
         filenameTemplate: state.filenameTemplate,
+        confirmBeforeStart: state.confirmBeforeStart,
         autoResume: state.autoResume,
         debugLogs: state.debugLogs,
         notifications: state.notifications,
@@ -106,6 +107,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.filenameTemplate === 'string'
               ? normalizeFilenameTemplate(raw.filenameTemplate)
               : current.filenameTemplate,
+          confirmBeforeStart:
+            typeof raw.confirmBeforeStart === 'boolean' ? raw.confirmBeforeStart : current.confirmBeforeStart,
           saveToGallery:
             typeof raw.saveToGallery === 'boolean' ? raw.saveToGallery : current.saveToGallery,
           tapToToggle:

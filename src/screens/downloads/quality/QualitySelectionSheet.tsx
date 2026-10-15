@@ -27,6 +27,7 @@ import { primaryAlphas } from '@/theme';
 import { AnalysisLoadingState } from './AnalysisLoadingState';
 import { AnalyzeFallbackState } from './AnalyzeFallbackState';
 import { downloadButtonLabel } from './constants';
+import { DownloadOptionsPanel } from './DownloadOptionsPanel';
 import { MediaResultCard } from './MediaResultCard';
 import { QualityOptionRow } from './QualityOptionRow';
 import type { UseQualitySelectionResult } from './useQualitySelection';
@@ -434,6 +435,7 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
               {phase === 'ready' && selection ? (
                 <Box gap={16}>
                   <MediaResultCard selection={selection} selectedOption={selectedOption} />
+                  <DownloadOptionsPanel selection={selection} selectedOption={selectedOption} />
 
                   {selection.options.length > 1 ? (
                     <Box gap={10}>

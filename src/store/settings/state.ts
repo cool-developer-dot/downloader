@@ -10,6 +10,7 @@ export const initialSettingsState: SettingsState = {
   afterDownloadAction: DEFAULT_AFTER_DOWNLOAD_ACTION,
   wifiOnly: DEFAULT_DOWNLOAD_SETTINGS.wifiOnly,
   filenameTemplate: DEFAULT_FILENAME_TEMPLATE,
+  confirmBeforeStart: false,
   autoResume: true,
   debugLogs: false,
   notifications: true,
