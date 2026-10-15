@@ -5,6 +5,7 @@ import type { DefaultTab } from '@/navigation/helpers/default-tab';
 import { useTranslation } from '@/localization';
 import { selectDefaultTab, useSettingsStore, type SettingsKey, type SettingsState } from '@/store/settings';
 import { parseSettingsBackup, settingsBackupJson } from '@/store/settings/backup';
+import { settingsResetEntries } from '@/store/settings/reset';
 import { initialSettingsState } from '@/store/settings/state';
 import { exportFileName, exportTextFile, importTextFile } from '@/utils/text-file-export';
 
@@ -112,8 +113,12 @@ export function useSettingsBackupReset() {
   const cancelReset = useCallback(() => setResetConfirmVisible(false), []);
   const confirmReset = useCallback(() => {
     setResetConfirmVisible(false);
-    // The store's own reset: SettingsState and its preference mirrors only.
-    useSettingsStore.getState().reset();
+    // Every setting back to its default except the language (and so the RTL layout). Through updateSetting, so the
+    // preference mirrors and the download engine follow; nothing outside SettingsState is touched.
+    const store = useSettingsStore.getState();
+    for (const [key, value] of settingsResetEntries(initialSettingsState as unknown as Record<string, unknown>)) {
+      store.updateSetting(key as SettingsKey, value as never);
+    }
     announce(t('settingsBackup.resetDone'));
   }, [t]);
 

@@ -1440,10 +1440,10 @@ export const en = {
     newerVersion: 'This backup was made by a newer version of VidoraX.',
     failed: 'Couldn’t complete that. Try again.',
     reset: 'Reset settings',
-    resetHint: 'Put every setting back to its default',
+    resetHint: 'Put every setting except language back to its default',
     resetConfirmTitle: 'Reset all settings?',
     resetConfirmMessage:
-      'Every setting goes back to its default, including language. Your downloads, videos, history, bookmarks, favorites and App Lock are not affected.',
+      'Every setting goes back to its default. Your language stays as it is. Your downloads, videos, history, bookmarks, favorites and App Lock are not affected.',
     resetDone: 'Settings reset',
   },
   support: {
