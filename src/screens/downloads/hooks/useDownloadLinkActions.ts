@@ -36,6 +36,9 @@ export function useDownloadLinkActions() {
   const { t } = useTranslation();
 
   const redownload = useCallback((target: DownloadLinkTarget) => {
+    if (!target.pageUrl) {
+      return;
+    }
     pendingNavigationService.set(target.pageUrl, {
       targetTabId: useBrowserStore.getState().activeTabId,
     });

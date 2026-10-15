@@ -33,20 +33,22 @@ export const DownloadLinkMenu = memo(function DownloadLinkMenu({ id, disabled, t
     if (!target) {
       return [];
     }
-    return [
-      {
+    const items: ActionSheetItem[] = [];
+    if (target.pageUrl) {
+      items.push({
         id: 'redownload',
         label: t('downloadLinks.redownload'),
         icon: 'download-outline',
         onPress: () => redownload(target),
-      },
-      {
-        id: 'copy-link',
-        label: t('downloadLinks.copyLink'),
-        icon: 'content-copy',
-        onPress: () => void copyLink(target),
-      },
-    ];
+      });
+    }
+    items.push({
+      id: 'copy-link',
+      label: t('downloadLinks.copyLink'),
+      icon: 'content-copy',
+      onPress: () => void copyLink(target),
+    });
+    return items;
   }, [copyLink, redownload, t, target]);
 
   if (!target) {

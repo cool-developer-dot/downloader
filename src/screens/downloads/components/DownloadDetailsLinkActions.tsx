@@ -41,17 +41,19 @@ export const DownloadDetailsLinkActions = memo(function DownloadDetailsLinkActio
 
   return (
     <Box row gap={10} style={{ flexWrap: 'wrap' }}>
-      <Box flex={1} style={{ minWidth: 120 }}>
-        <Button
-          title={t('downloadLinks.redownload')}
-          variant="outline"
-          onPress={handleRedownload}
-          disabled={disabled}
-          fullWidth
-          accessibilityHint={t('downloadLinks.redownloadHint')}
-          testID="download-details-redownload"
-        />
-      </Box>
+      {target.pageUrl ? (
+        <Box flex={1} style={{ minWidth: 120 }}>
+          <Button
+            title={t('downloadLinks.redownload')}
+            variant="outline"
+            onPress={handleRedownload}
+            disabled={disabled}
+            fullWidth
+            accessibilityHint={t('downloadLinks.redownloadHint')}
+            testID="download-details-redownload"
+          />
+        </Box>
+      ) : null}
       <Box flex={1} style={{ minWidth: 120 }}>
         <Button
           title={t('downloadLinks.copyLink')}

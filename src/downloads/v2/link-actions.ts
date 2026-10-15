@@ -6,6 +6,8 @@
  */
 
 import type { DownloadStatus } from '@/api/types';
+import { isYouTubeLink } from '@/browser/services/pasted-link';
+import { isPrivateOrLocalHostname } from '@/media-detection/utils/url';
 
 /** Statuses whose card and details show the link actions. Running, queued and paused downloads do not. */
 export const LINK_ACTION_STATUSES: readonly DownloadStatus[] = ['COMPLETED', 'FAILED', 'CANCELLED'];
@@ -19,8 +21,11 @@ export type DownloadLinkInput = {
 };
 
 export type DownloadLinkTarget = {
-  /** The page to open in the browser for Re-download. */
-  pageUrl: string;
+  /**
+   * The page to open in the browser for Re-download; null when the app's rules refuse to open it (YouTube, a
+   * private or local address) — Copy link still works then.
+   */
+  pageUrl: string | null;
   /** What Copy link copies (the page URL). */
   copyUrl: string;
 };
@@ -51,5 +56,17 @@ export function resolveDownloadLinkTarget(input: DownloadLinkInput): DownloadLin
   if (!pageUrl) {
     return null;
   }
-  return { pageUrl, copyUrl: pageUrl };
+  return { pageUrl: isOpenableInBrowser(pageUrl) ? pageUrl : null, copyUrl: pageUrl };
+}
+
+/** The app's refusals for a page Re-download would open: never YouTube, never a private or local address. */
+export function isOpenableInBrowser(pageUrl: string): boolean {
+  if (isYouTubeLink(pageUrl)) {
+    return false;
+  }
+  try {
+    return !isPrivateOrLocalHostname(new URL(pageUrl).hostname);
+  } catch {
+    return false;
+  }
 }
