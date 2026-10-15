@@ -49,6 +49,8 @@ export type V2EnginePort = {
   openWith(id: string): Promise<void>;
   share(ids: string[]): Promise<void>;
   saveToGallery(ids: string[]): Promise<void>;
+  /** The item's thumbnail as a JPEG in Pictures/VidoraX. Missing on older native builds: the action is hidden. */
+  saveThumbnailToGallery?(id: string): Promise<string>;
   setDownloadSettings(settings: DownloadSettings): Promise<void>;
   setFavorite(id: string, favorite: boolean): Promise<void>;
   /** Missing on older native builds; callers check before use. */

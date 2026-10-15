@@ -13,6 +13,7 @@ import com.vidorax.media.bridge.toJs
 import com.vidorax.media.engine.DownloadEngineApi
 import com.vidorax.media.engine.DownloadEngineProvider
 import com.vidorax.media.library.DeviceVideos
+import com.vidorax.media.library.ThumbnailExport
 import com.vidorax.media.player.ActivityVisibility
 import com.vidorax.media.player.PictureInPictureAutoEnter
 import com.vidorax.media.player.Volume
@@ -232,6 +233,11 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("saveToGallery") Coroutine { ids: List<String> ->
       services.galleryExport.save(ids)
+    }
+
+    // Save cover image (#371): the item's thumbnail as a JPEG in Pictures/VidoraX.
+    AsyncFunction("saveThumbnailToGallery") Coroutine { id: String ->
+      ThumbnailExport(context, services.library).save(id)
     }
 
     AsyncFunction("openWith") Coroutine { id: String ->
