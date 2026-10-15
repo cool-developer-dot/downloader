@@ -5,6 +5,7 @@ import { debugLog, debugLogToText, type DebugLogEntry } from '@/diagnostics/debu
 import {
   clearableHistoryIds,
   errorLogToText,
+  stillClearableIds,
   historyToCsv,
   historyToJson,
   toErrorLog,
@@ -66,6 +67,11 @@ export function useDownloadHistoryScreen() {
     void run('clear', async () => {
       let removed = 0;
       for (const id of ids) {
+        // Re-checked per row: one retried or resumed since the dialog opened is left alone (never cancelled).
+        const store = useDownloadsStore.getState();
+        if (stillClearableIds([id], (rowId) => store.engineRowsById[rowId]?.status).length === 0) {
+          continue;
+        }
         // The existing "Remove from Downloads": the record goes, a finished video stays in Player.
         if (await useDownloadsStore.getState().remove(id)) {
           removed += 1;

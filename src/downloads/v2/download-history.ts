@@ -194,3 +194,17 @@ export function clearableHistoryIds(items: readonly Pick<DownloadItem, 'id' | 's
     .filter((item) => item.status === 'COMPLETED' || item.status === 'FAILED' || item.status === 'CANCELLED')
     .map((item) => item.id);
 }
+
+/**
+ * Pure: the ids still clearable right now. The list was taken when the dialog opened; a row retried or resumed
+ * since must not be removed (removing an unfinished download cancels it).
+ */
+export function stillClearableIds(
+  ids: readonly string[],
+  statusOf: (id: string) => DownloadItem['status'] | null | undefined,
+): string[] {
+  return ids.filter((id) => {
+    const status = statusOf(id);
+    return status === 'COMPLETED' || status === 'FAILED' || status === 'CANCELLED';
+  });
+}
