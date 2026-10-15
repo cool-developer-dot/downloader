@@ -181,6 +181,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       downloadAppLifecycle.ensureAttached();
       bindDownloadEngineToStore();
       ensureDownloadRecoveryListener();
+      const { ensureDataUsageCounting } = await import('@/downloads/v2/ensure-data-usage');
+      // Settings → Storage → Data usage: counts v2 download bytes (limits off by default; never pauses downloads).
+      ensureDataUsageCounting();
       ensureDownloadNotificationBridge();
       if (typeof ensureLibraryCompletionBridge === 'function') {
         ensureLibraryCompletionBridge();

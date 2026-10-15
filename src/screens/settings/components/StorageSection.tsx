@@ -2,6 +2,7 @@ import { memo, useCallback } from 'react';
 
 import { push, routePaths } from '@/navigation';
 import { useTranslation } from '@/localization';
+import { DataUsageLinkRow } from '@/screens/data-usage/DataUsageLinkRow';
 
 import { SettingsRow } from './SettingsRow';
 import { SettingsSection } from './SettingsSection';
@@ -37,6 +38,7 @@ export const StorageSection = memo(function StorageSection({
         accessibilityHint={t('settings.manageStorageA11y')}
         testID={`${testID}-manage`}
       />
+      <DataUsageLinkRow testID={`${testID}-data-usage`} />
     </SettingsSection>
   );
 });

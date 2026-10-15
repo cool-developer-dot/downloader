@@ -8,3 +8,5 @@ export const selectNotifications = (state: SettingsStore) => state.notifications
 export const selectLanguage = (state: SettingsStore) => state.language;
 export const selectMaxConcurrentDownloads = (state: SettingsStore) =>
   state.maxConcurrentDownloads;
+export const selectDataLimitDailyMb = (state: SettingsStore) => state.dataLimitDailyMb;
+export const selectDataLimitMonthlyMb = (state: SettingsStore) => state.dataLimitMonthlyMb;
