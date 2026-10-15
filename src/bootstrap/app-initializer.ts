@@ -182,6 +182,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       bindDownloadEngineToStore();
       ensureDownloadRecoveryListener();
       ensureDownloadNotificationBridge();
+      const { ensureClipboardLinkMonitor } = await import('@/browser/services/clipboard-link-monitor');
+      // Download Settings → Copied links: only when on (default off), only on returning to the foreground.
+      ensureClipboardLinkMonitor();
       if (typeof ensureLibraryCompletionBridge === 'function') {
         ensureLibraryCompletionBridge();
       }
