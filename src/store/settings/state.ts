@@ -1,7 +1,7 @@
 import { DEFAULT_DOWNLOAD_SETTINGS } from '@/downloads/settings/types';
-import { DEFAULT_AFTER_DOWNLOAD_ACTION } from '@/downloads/v2/after-download';
 
 import type { SettingsState } from './types';
+import { DEFAULT_AFTER_DOWNLOAD_ACTION } from '@/downloads/v2/after-download';
 
 export const initialSettingsState: SettingsState = {
   downloadDirectory: null,
