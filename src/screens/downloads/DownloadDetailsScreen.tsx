@@ -35,6 +35,7 @@ import { renameMediaFileOnDevice } from '@/downloads/engine';
 import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads/v2';
 
 import { DownloadDeleteDialog } from './components/DownloadDeleteDialog';
+import { DownloadDetailsLinkActions } from './components/DownloadDetailsLinkActions';
 import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
 import { useDownloadDetailsScreen } from './hooks/useDownloadDetailsScreen';
 import { useDownloadsTokens } from './theme/downloads-tokens';
@@ -464,6 +465,8 @@ const DetailsBody = memo(function DetailsBody({
           ))}
         </Box>
       ) : null}
+
+      <DownloadDetailsLinkActions id={item.id} disabled={mutating} />
 
       <Box mt={8} gap={4}>
         <Text variant="label" color="textSecondary" style={{ letterSpacing: 0.5 }}>
