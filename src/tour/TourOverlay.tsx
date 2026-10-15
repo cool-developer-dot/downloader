@@ -187,17 +187,21 @@ export const TourOverlay = memo(function TourOverlay({
     height: sh.value,
   }));
 
-  // TalkBack: read the step, then put focus on its title.
+  // TalkBack: read the step, then put focus on its title — once per step. The text is read through a ref: a new
+  // translation function or re-render must never pull focus back to the title while the user moves through the card.
   const text = STEP_TEXT[step];
   const title = t(text.title);
   const body = t(text.body, { email: SUPPORT_EMAIL_ADDRESS });
+  const announcement = t('tour.a11yStep', { current: stepIndex + 1, total: TOUR_STEP_COUNT, title, body });
+  const announcementRef = useRef(announcement);
+  useEffect(() => {
+    announcementRef.current = announcement;
+  }, [announcement]);
   useEffect(() => {
     if (!ready) {
       return undefined;
     }
-    AccessibilityInfo.announceForAccessibility(
-      t('tour.a11yStep', { current: stepIndex + 1, total: TOUR_STEP_COUNT, title, body }),
-    );
+    AccessibilityInfo.announceForAccessibility(announcementRef.current);
     const timer = setTimeout(() => {
       const node = titleRef.current ? findNodeHandle(titleRef.current) : null;
       if (node) {
@@ -205,7 +209,7 @@ export const TourOverlay = memo(function TourOverlay({
       }
     }, 450);
     return () => clearTimeout(timer);
-  }, [body, ready, stepIndex, t, title]);
+  }, [ready, stepIndex]);
 
   const swallow = useCallback(() => true, []);
 
@@ -282,10 +286,8 @@ export const TourOverlay = memo(function TourOverlay({
               elevation: 12,
               overflow: 'hidden',
             }}>
-            <ScrollView
-              bounces={false}
-              contentContainerStyle={{ padding: 18, gap: 10 }}
-              showsVerticalScrollIndicator={false}>
+            {/* Header and buttons stay put; only the text scrolls, so Next is never below the fold. */}
+            <View style={{ paddingHorizontal: 18, paddingTop: 16, paddingBottom: 6 }}>
               <Box row rtlRow center style={{ justifyContent: 'space-between', gap: 8 }}>
                 <View
                   style={{
@@ -311,7 +313,12 @@ export const TourOverlay = memo(function TourOverlay({
                   />
                 ) : null}
               </Box>
-
+            </View>
+            <ScrollView
+              bounces={false}
+              style={{ flexGrow: 0, flexShrink: 1 }}
+              contentContainerStyle={{ paddingHorizontal: 18, paddingVertical: 4, gap: 10 }}
+              persistentScrollbar>
               <Text ref={titleRef} variant="subtitle" accessibilityRole="header" testID="tour-title">
                 {title}
               </Text>
@@ -361,7 +368,8 @@ export const TourOverlay = memo(function TourOverlay({
                   />
                 ))}
               </Box>
-
+            </ScrollView>
+            <View style={{ paddingHorizontal: 18, paddingTop: 10, paddingBottom: 16 }}>
               <View style={{ flexDirection: rtl.rowDirection, gap: 10 }}>
                 {!isFirst ? (
                   <Button
@@ -379,7 +387,7 @@ export const TourOverlay = memo(function TourOverlay({
                   testID="tour-next"
                 />
               </View>
-            </ScrollView>
+            </View>
           </View>
         </Animated.View>
       ) : null}
