@@ -1,6 +1,6 @@
 import { usePathname } from 'expo-router';
 import { memo, useCallback, useEffect, useRef, useState, type PropsWithChildren } from 'react';
-import { AppState, Keyboard, TextInput, View } from 'react-native';
+import { AppState, Keyboard, View } from 'react-native';
 
 import { selectIsHome, useBrowserStore } from '@/browser/stores';
 import { routePaths } from '@/navigation/constants/route-paths';
@@ -52,11 +52,6 @@ function useKeyboardVisible(): boolean {
   return visible;
 }
 
-/** Typing in progress: the soft keyboard is up, or a text field has focus (a hardware keyboard shows no soft one). */
-function isTyping(keyboardVisible: boolean): boolean {
-  return keyboardVisible || TextInput.State.currentlyFocusedInput() != null;
-}
-
 /**
  * Runs the first-launch Browser tour: decides when it may start (`tour-policy.ts`) and draws it over the whole app
  * window. Mounted inside the App Lock gate, after every screen, so it is never shown on a cold-locked app and is
@@ -82,7 +77,8 @@ export const TourHost = memo(function TourHost() {
     browserVisible,
     appActive,
     appLocked: lockStatus === 'LOCKED',
-    keyboardVisible: isTyping(keyboardVisible),
+    // The address bar's editor (also with a hardware keyboard, which shows no soft one) counts as an open overlay.
+    keyboardVisible,
     openOverlays,
     linkDeferred,
   };
@@ -110,7 +106,7 @@ export const TourHost = memo(function TourHost() {
       const start = shouldStartTourNow({
         state: store,
         autoStart: { onboardingComplete: useAppStore.getState().onboardingComplete, seen: store.seen },
-        moment: { ...momentRef.current, keyboardVisible: isTyping(Keyboard.isVisible()) },
+        moment: { ...momentRef.current, keyboardVisible: Keyboard.isVisible() },
         idleForMs: TOUR_SETTLE_MS,
       });
       if (start) {

@@ -13,7 +13,7 @@ export const CARD_SCREEN_MARGIN = 16;
 export const CARD_GAP = 14;
 export const CARD_MAX_WIDTH = 440;
 /** Below this, neither side of the target has room for a readable card: it overlaps the target instead. */
-export const MIN_CARD_SPACE = 170;
+export const MIN_CARD_SPACE = 200;
 const CARET_EDGE_INSET = 28;
 
 /** A measurement the tour can point at: real size, finite numbers, and at least partly on screen. */
