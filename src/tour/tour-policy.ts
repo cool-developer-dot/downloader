@@ -61,22 +61,37 @@ export function isIdleBrowserMoment(input: TourMomentInput): boolean {
   );
 }
 
-export type LinkDeferralEvent = 'link_opened' | 'start_page_shown' | 'app_returned_to_foreground';
+export type LinkDeferralEvent =
+  | 'link_opened'
+  | 'start_page_shown'
+  | 'app_went_to_background'
+  | 'app_returned_to_foreground';
 
 /**
  * A link shared to or opened with VidoraX is what the user came for: the tour waits. It may run again once the
- * Browser is back on its start page, or the next time the user returns to the app.
+ * Browser is back on its start page, or after the user has left the app and come back. A share from another app
+ * delivers the link just before VidoraX becomes active again — that return does not count, only one after leaving
+ * the app since the link arrived ('left').
  */
-export function linkDeferral(deferred: boolean, event: LinkDeferralEvent): boolean {
+export type LinkDeferralState = 'none' | 'deferred' | 'left';
+
+export function linkDeferral(state: LinkDeferralState, event: LinkDeferralEvent): LinkDeferralState {
   switch (event) {
     case 'link_opened':
-      return true;
+      return 'deferred';
     case 'start_page_shown':
+      return 'none';
+    case 'app_went_to_background':
+      return state === 'deferred' ? 'left' : state;
     case 'app_returned_to_foreground':
-      return false;
+      return state === 'left' ? 'none' : state;
     default:
-      return deferred;
+      return state;
   }
+}
+
+export function isLinkDeferred(state: LinkDeferralState): boolean {
+  return state !== 'none';
 }
 
 export type TourStatus = 'idle' | 'running';
@@ -104,7 +119,12 @@ export type TourAction =
   | { type: 'back' }
   | { type: 'skip' }
   /** The current step's target is not on screen: move on in the same direction, or end if nothing is left. */
-  | { type: 'target_missing' };
+  | { type: 'target_missing' }
+  /**
+   * A link was shared to / opened with VidoraX while the tour showed: put it away (not seen) and start again from
+   * step 1 at the next calm moment, so it never sits over the page the user came for.
+   */
+  | { type: 'suspend' };
 
 export type TourTransition = {
   state: TourState;
@@ -161,6 +181,11 @@ export function reduceTour(state: TourState, action: TourAction): TourTransition
       }
       return { state: { ...state, stepIndex: next }, ended: false };
     }
+    case 'suspend':
+      if (state.status !== 'running') {
+        return { state, ended: false };
+      }
+      return { state: { status: 'idle', stepIndex: 0, direction: 1, replayRequested: true }, ended: false };
     default:
       return { state, ended: false };
   }

@@ -11,6 +11,7 @@ import { useAppStore } from '@/store/app';
 import { TourOverlay } from './TourOverlay';
 import {
   isIdleBrowserMoment,
+  isLinkDeferred,
   isTourPresentable,
   shouldStartTourNow,
   TOUR_SETTLE_MS,
@@ -25,14 +26,13 @@ const TOUR_BACK_PRIORITY = 40;
 function useAppActive(): boolean {
   const [active, setActive] = useState(AppState.currentState === 'active');
   useEffect(() => {
-    let wasBackground = AppState.currentState !== 'active';
     const subscription = AppState.addEventListener('change', (state) => {
-      const isActive = state === 'active';
-      setActive(isActive);
-      if (isActive && wasBackground) {
+      setActive(state === 'active');
+      if (state === 'background') {
+        useTourStore.getState().noteLink('app_went_to_background');
+      } else if (state === 'active') {
         useTourStore.getState().noteLink('app_returned_to_foreground');
       }
-      wasBackground = state === 'background';
     });
     return () => subscription.remove();
   }, []);
@@ -68,7 +68,7 @@ export const TourHost = memo(function TourHost() {
   const replayRequested = useTourStore((s) => s.replayRequested);
   const seen = useTourStore((s) => s.seen);
   const openOverlays = useTourStore((s) => s.openOverlays);
-  const linkDeferred = useTourStore((s) => s.linkDeferred);
+  const linkDeferred = useTourStore((s) => isLinkDeferred(s.linkDeferral));
   const dispatch = useTourStore((s) => s.dispatch);
   const setPresented = useTourStore((s) => s.setPresented);
 
