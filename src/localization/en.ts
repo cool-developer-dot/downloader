@@ -1417,7 +1417,7 @@ export const en = {
     emailContactA11y: 'Opens your email app to contact support',
     supportActionsHeading: 'Get help',
     contactSupport: 'Contact Support',
-    contactSupportHint: 'Email the VidoraX team: {email}',
+    contactSupportHint: 'Email the VidoraX team\n{email}',
     contactSupportA11y: 'Opens support contact options',
     reportProblem: 'Report a Problem',
     reportProblemHint: 'Describe a technical issue to the VidoraX team',
