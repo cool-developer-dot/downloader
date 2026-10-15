@@ -16,6 +16,7 @@ export const initialSettingsState: SettingsState = {
   notificationVibrate: false,
   notificationSilent: false,
   language: 'en',
+  defaultTab: 'browser',
   maxConcurrentDownloads: 2,
   saveToGallery: true,
   tapToToggle: false,

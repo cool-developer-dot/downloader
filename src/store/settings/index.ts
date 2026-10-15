@@ -6,6 +6,7 @@ import { bindLanguageReader } from '@/localization/translate';
 import { createStore } from '@/store/shared/create-store';
 import { normalizeAfterDownloadAction } from '@/downloads/v2/after-download';
 import { createPersistStorage } from '@/store/shared/persist-storage';
+import { normalizeDefaultTab } from '@/navigation/helpers/default-tab';
 
 import { createSettingsActions } from './actions';
 import { initialSettingsState } from './state';
@@ -73,6 +74,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         notificationVibrate: state.notificationVibrate,
         notificationSilent: state.notificationSilent,
         language: state.language,
+        defaultTab: state.defaultTab,
         maxConcurrentDownloads: state.maxConcurrentDownloads,
         saveToGallery: state.saveToGallery,
         tapToToggle: state.tapToToggle,
@@ -118,6 +120,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
             isSupportedLanguage(normalizeLanguageCode(raw.language))
               ? normalizeLanguageCode(raw.language)
               : current.language,
+          defaultTab:
+            raw.defaultTab === undefined ? current.defaultTab : normalizeDefaultTab(raw.defaultTab),
           downloadDirectory:
             raw.downloadDirectory === null || typeof raw.downloadDirectory === 'string'
               ? raw.downloadDirectory

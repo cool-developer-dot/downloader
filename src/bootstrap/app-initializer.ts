@@ -188,6 +188,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       // Download Settings → File naming applies to new downloads (the default keeps titles unchanged).
       ensureFilenameNaming();
       downloadAppLifecycle.ensureAttached();
+      const { ensureDefaultTab } = await import('@/navigation/helpers/ensure-default-tab');
+      // Settings → Default tab: where the splash lands a returning user (Browser unless changed).
+      ensureDefaultTab();
       bindDownloadEngineToStore();
       ensureDownloadRecoveryListener();
       ensureDownloadNotificationBridge();

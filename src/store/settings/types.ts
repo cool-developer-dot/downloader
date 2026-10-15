@@ -18,6 +18,8 @@ export interface SettingsState {
   /** Finished/failed download notifications make no sound or vibration; overrides both (default off). */
   notificationSilent: boolean;
   language: string;
+  /** The tab a returning user lands on after the splash: 'browser' (default), 'downloads' or 'player'. */
+  defaultTab: DefaultTab;
   /** Local-only field — not synced to a VidoraX cloud account. */
   maxConcurrentDownloads: number;
   /** Copy every completed download to the device gallery (default on). */
@@ -25,6 +27,8 @@ export interface SettingsState {
   /** Tapping a running/paused download row pauses/resumes it instead of opening details (default off). */
   tapToToggle: boolean;
 }
+
+type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;
 
 export type SettingsKey = keyof SettingsState;
 

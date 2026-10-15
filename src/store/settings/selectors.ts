@@ -13,5 +13,6 @@ export const selectNotificationSound = (state: SettingsStore) => state.notificat
 export const selectNotificationVibrate = (state: SettingsStore) => state.notificationVibrate;
 export const selectNotificationSilent = (state: SettingsStore) => state.notificationSilent;
 export const selectLanguage = (state: SettingsStore) => state.language;
+export const selectDefaultTab = (state: SettingsStore) => state.defaultTab;
 export const selectMaxConcurrentDownloads = (state: SettingsStore) =>
   state.maxConcurrentDownloads;

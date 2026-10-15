@@ -1,4 +1,5 @@
 import { routePaths, type RoutePath } from '../constants/route-paths';
+import { defaultTabRoute } from './default-tab';
 
 /**
  * The in-app screens a link may open the app on: what the download notifications point at (`vidorax://downloads`
@@ -49,5 +50,5 @@ export function resolvePostSplashRoute(
   if (!params?.onboardingComplete) {
     return routePaths.onboarding;
   }
-  return launchDestinationFromUrl(params.launchUrl) ?? routePaths.browser;
+  return launchDestinationFromUrl(params.launchUrl) ?? defaultTabRoute();
 }
