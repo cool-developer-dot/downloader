@@ -42,11 +42,9 @@ export const PasteLinkScreen = memo(function PasteLinkScreen() {
       if (cancelled) {
         return;
       }
-      const url = urlFromSharedText(text);
-      const outcome = openLinkLikePaste(url);
-      if (outcome !== 'opened') {
-        navigation.replace(routePaths.browser);
-      }
+      // Replace (not push) this blank route with the browser, so Back never returns to it.
+      openLinkLikePaste(urlFromSharedText(text), { navigate: false });
+      navigation.replace(routePaths.browser);
     });
     return () => {
       cancelled = true;

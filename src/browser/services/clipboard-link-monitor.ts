@@ -89,7 +89,7 @@ export function ensureClipboardLinkMonitor(): void {
     return;
   }
   attached = true;
-  AppState.addEventListener('change', (state) => {
+  const subscription = AppState.addEventListener('change', (state) => {
     if (readTimer) {
       clearTimeout(readTimer);
       readTimer = null;
@@ -107,4 +107,10 @@ export function ensureClipboardLinkMonitor(): void {
       void checkClipboard();
     }, READ_DELAY_MS);
   });
+  // A Fast Refresh re-runs this module (and its `attached` flag): remove the listener an earlier copy added.
+  const handles = globalThis as unknown as Record<string, { remove(): void } | undefined>;
+  handles[LISTENER_KEY]?.remove();
+  handles[LISTENER_KEY] = subscription;
 }
+
+const LISTENER_KEY = '__vidoraxClipboardMonitorListener';

@@ -1,5 +1,5 @@
 import { File } from 'expo-file-system';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { addLinkFromBatch, type BatchLinkResult } from '@/browser/media-actions/batch-add.service';
 import { pendingNavigationService } from '@/browser/services';
@@ -21,19 +21,22 @@ export function useBatchAdd() {
   const [running, setRunning] = useState(false);
   const [fileError, setFileError] = useState<'too-large' | 'unreadable' | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  // Set synchronously: a second tap before the next render must not start a second run.
+  const runningRef = useRef(false);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const links = extractLinks(text);
+  const links = useMemo(() => extractLinks(text), [text]);
 
   const start = useCallback(async () => {
-    if (running) {
+    if (runningRef.current) {
       return;
     }
-    const queue = extractLinks(text);
+    const queue = links;
     if (queue.length === 0) {
       return;
     }
+    runningRef.current = true;
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
@@ -51,8 +54,9 @@ export function useBatchAdd() {
       }
       setRows((current) => current.map((row, i) => (i === index ? { ...row, status: 'done', result } : row)));
     }
+    runningRef.current = false;
     setRunning(false);
-  }, [running, text]);
+  }, [links]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 

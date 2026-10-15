@@ -11,9 +11,17 @@ export type OpenLinkOutcome = 'opened' | 'youtube' | 'refused' | 'no-link';
  * the page, then the active tab loads it) and shows the browser. YouTube is refused with the usual notice; private
  * and local addresses are never opened.
  */
-export function openLinkLikePaste(url: string | null | undefined): OpenLinkOutcome {
+export function openLinkLikePaste(
+  url: string | null | undefined,
+  options: { navigate?: boolean } = {},
+): OpenLinkOutcome {
+  const showBrowser = () => {
+    if (options.navigate !== false) {
+      navigation.navigate(routePaths.browser);
+    }
+  };
   if (!url) {
-    navigation.navigate(routePaths.browser);
+    showBrowser();
     return 'no-link';
   }
   const verdict = classifyIntakeLink(url);
@@ -25,6 +33,6 @@ export function openLinkLikePaste(url: string | null | undefined): OpenLinkOutco
     return 'refused';
   }
   openPastedLink(url, { source: 'share' });
-  navigation.navigate(routePaths.browser);
+  showBrowser();
   return 'opened';
 }
