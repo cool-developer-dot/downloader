@@ -529,6 +529,12 @@ export interface VidoraMediaModuleApi {
    */
   reconcileLibrary(ids?: string[] | null): Promise<string[]>;
   saveToGallery(ids: string[]): Promise<void>;
+  /**
+   * Saves the item's thumbnail as a JPEG in `Pictures/VidoraX` and resolves with its URI. ERR_NOT_FOUND without a
+   * thumbnail; ERR_STORAGE_PERMISSION on Android 9 and older without the storage permission. Missing on older
+   * native builds.
+   */
+  saveThumbnailToGallery?(id: string): Promise<string>;
   /** System chooser to play the file in another app. */
   openWith(id: string): Promise<void>;
   share(ids: string[]): Promise<void>;
