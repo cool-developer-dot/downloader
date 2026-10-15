@@ -22,6 +22,9 @@ export interface SettingsState {
   defaultTab: DefaultTab;
   /** Local-only field — not synced to a VidoraX cloud account. */
   maxConcurrentDownloads: number;
+  /** Data Limit Alert: daily / monthly limits in MB; 0 = off (default). An alert never pauses downloads. */
+  dataLimitDailyMb: number;
+  dataLimitMonthlyMb: number;
   /** Copy every completed download to the device gallery (default on). */
   saveToGallery: boolean;
   /** Tapping a running/paused download row pauses/resumes it instead of opening details (default off). */

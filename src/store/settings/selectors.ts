@@ -16,3 +16,5 @@ export const selectLanguage = (state: SettingsStore) => state.language;
 export const selectDefaultTab = (state: SettingsStore) => state.defaultTab;
 export const selectMaxConcurrentDownloads = (state: SettingsStore) =>
   state.maxConcurrentDownloads;
+export const selectDataLimitDailyMb = (state: SettingsStore) => state.dataLimitDailyMb;
+export const selectDataLimitMonthlyMb = (state: SettingsStore) => state.dataLimitMonthlyMb;

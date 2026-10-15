@@ -11,6 +11,7 @@ import { normalizeDefaultTab } from '@/navigation/helpers/default-tab';
 import { createSettingsActions } from './actions';
 import { initialSettingsState } from './state';
 import type { SettingsState, SettingsStore } from './types';
+import { normalizeLimitMb } from '@/downloads/v2/data-usage';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -76,6 +77,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
         language: state.language,
         defaultTab: state.defaultTab,
         maxConcurrentDownloads: state.maxConcurrentDownloads,
+        dataLimitDailyMb: state.dataLimitDailyMb,
+        dataLimitMonthlyMb: state.dataLimitMonthlyMb,
         saveToGallery: state.saveToGallery,
         tapToToggle: state.tapToToggle,
       }),
@@ -85,6 +88,10 @@ export const useSettingsStore = createStore<SettingsStore>()(
         return {
           ...current,
           ...raw,
+          dataLimitDailyMb:
+            raw.dataLimitDailyMb === undefined ? current.dataLimitDailyMb : normalizeLimitMb(raw.dataLimitDailyMb),
+          dataLimitMonthlyMb:
+            raw.dataLimitMonthlyMb === undefined ? current.dataLimitMonthlyMb : normalizeLimitMb(raw.dataLimitMonthlyMb),
           maxConcurrentDownloads: parseMaxConcurrentDownloads(
             raw.maxConcurrentDownloads,
             current.maxConcurrentDownloads,

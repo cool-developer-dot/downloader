@@ -18,6 +18,8 @@ export const initialSettingsState: SettingsState = {
   language: 'en',
   defaultTab: 'browser',
   maxConcurrentDownloads: 2,
+  dataLimitDailyMb: 0,
+  dataLimitMonthlyMb: 0,
   saveToGallery: true,
   tapToToggle: false,
 };
