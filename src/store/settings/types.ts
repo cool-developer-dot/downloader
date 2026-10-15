@@ -1,6 +1,8 @@
 export interface SettingsState {
   downloadDirectory: string | null;
   wifiOnly: boolean;
+  /** Filename Template for new downloads; the default `{title}` keeps today's naming exactly. */
+  filenameTemplate: string;
   autoResume: boolean;
   notifications: boolean;
   language: string;

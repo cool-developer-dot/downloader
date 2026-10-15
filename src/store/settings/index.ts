@@ -1,6 +1,7 @@
 import { persist } from 'zustand/middleware';
 
 import { isSupportedLanguage, normalizeLanguageCode, storageKeys } from '@/constants';
+import { normalizeFilenameTemplate } from '@/downloads/v2/filename-template';
 import { bindLanguageReader } from '@/localization/translate';
 import { createStore } from '@/store/shared/create-store';
 import { createPersistStorage } from '@/store/shared/persist-storage';
@@ -62,6 +63,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
       partialize: (state): SettingsState => ({
         downloadDirectory: state.downloadDirectory,
         wifiOnly: state.wifiOnly,
+        filenameTemplate: state.filenameTemplate,
         autoResume: state.autoResume,
         notifications: state.notifications,
         language: state.language,
@@ -79,6 +81,10 @@ export const useSettingsStore = createStore<SettingsStore>()(
             current.maxConcurrentDownloads,
           ),
           wifiOnly: typeof raw.wifiOnly === 'boolean' ? raw.wifiOnly : current.wifiOnly,
+          filenameTemplate:
+            typeof raw.filenameTemplate === 'string'
+              ? normalizeFilenameTemplate(raw.filenameTemplate)
+              : current.filenameTemplate,
           saveToGallery:
             typeof raw.saveToGallery === 'boolean' ? raw.saveToGallery : current.saveToGallery,
           autoResume:
