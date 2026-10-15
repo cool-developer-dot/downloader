@@ -16,10 +16,10 @@ import {
   SettingsStaggerItem,
 } from '../components';
 import { useSettingsTokens } from '../theme/settings-tokens';
+import { NotificationAlertOptions } from './NotificationAlertOptions';
 import {
   CONCURRENT_SEGMENT_OPTIONS,
 } from './constants';
-import { NotificationAlertOptions } from './NotificationAlertOptions';
 import { useDownloadSettingsScreen } from './useDownloadSettingsScreen';
 
 export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
