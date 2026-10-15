@@ -3,6 +3,7 @@ import { AccessibilityInfo, Platform, ToastAndroid } from 'react-native';
 
 import { pendingNavigationService } from '@/browser/services';
 import { useBrowserStore } from '@/browser/stores';
+import { ensureV2LibraryHydrated } from '@/downloads/v2';
 import { useImportedQueueStore, type ImportedQueueEntry } from '@/downloads/v2/imported-queue-store';
 import {
   parseQueueBackup,
@@ -99,6 +100,9 @@ export function useQueueBackup() {
         setSummary({ added: [], duplicates: 0, refused: 0, invalid: 0, fileError: reason });
         return;
       }
+      // Library items reach the downloads store only once loaded (a few seconds after launch, or the Player tab):
+      // load them first, so a video already saved is counted as a duplicate here, not added.
+      await ensureV2LibraryHydrated().catch(() => undefined);
       // Every page the user already has — downloads of any state and library items — plus pages already restored.
       const existing = [
         ...Object.values(useDownloadsStore.getState().engineRowsById).map((item) => item.sourceUrl),
