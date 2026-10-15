@@ -1,8 +1,8 @@
 /**
  * Backup Queue (#462), Export Queue (#502), Import Queue (#503). Pure.
  *
- * Export: queued, paused and failed v2 downloads as a versioned JSON file — each one's source page, title and the
- * quality that was chosen. No media URL, cookie or token is ever written (rows carry no media URL; the page URL is
+ * Export: queued, running, paused and failed v2 downloads as a versioned JSON file — each one's source page, title
+ * and the quality that was chosen. A running download is written as a pending (`queued`) item with the same fields. No media URL, cookie or token is ever written (rows carry no media URL; the page URL is
  * exported without credential/signature parameters).
  *
  * Import: the file is validated (format, version, size); each item is then refused (YouTube, private/local hosts —
@@ -33,6 +33,8 @@ export type QueueBackupItem = {
 
 const EXPORTED_STATUS: Partial<Record<string, QueueBackupItem['status']>> = {
   QUEUED: 'queued',
+  // A running download is saved as pending: on import it is a page to reopen, like any other item.
+  DOWNLOADING: 'queued',
   PAUSED: 'paused',
   FAILED: 'failed',
 };

@@ -24,7 +24,7 @@ function row(partial: Partial<DownloadItem> & Pick<DownloadItem, 'id' | 'status'
 }
 
 describe('export', () => {
-  test('queued, paused and failed rows with a page; nothing else', () => {
+  test('queued, running, paused and failed rows with a page; nothing else', () => {
     const { items, withoutPage } = queueBackupItems([
       row({ id: 'q', status: 'QUEUED', sourceUrl: 'https://a.com/1?token=secret&v=2' }),
       row({ id: 'p', status: 'PAUSED', sourceUrl: 'https://a.com/2' }),
@@ -38,6 +38,7 @@ describe('export', () => {
       { pageUrl: 'https://a.com/1?v=2', title: 'Clip', quality: '720p', status: 'queued' },
       { pageUrl: 'https://a.com/2', title: 'Clip', quality: '720p', status: 'paused' },
       { pageUrl: 'https://a.com/3', title: 'Clip', quality: null, status: 'failed' },
+      { pageUrl: 'https://www.example.com/v/1', title: 'Clip', quality: '720p', status: 'queued' },
     ]);
     assert.equal(withoutPage, 1);
   });
@@ -48,6 +49,35 @@ describe('export', () => {
     assert.equal(parsed.format, QUEUE_FORMAT);
     assert.equal(parsed.version, QUEUE_VERSION);
     assert.ok(!json.includes('sig='));
+  });
+
+  test('a running download is written as a pending item with the same fields and no media URL', () => {
+    const running = row({
+      id: 'd',
+      status: 'DOWNLOADING',
+      sourceUrl: 'https://a.com/live?v=9&signature=abc',
+      progress: 42,
+      fileName: 'Clip_ab12.mp4',
+      thumbnailUrl: 'https://cdn.a.com/t.jpg?token=t',
+    });
+    const { items } = queueBackupItems([running]);
+    assert.deepEqual(items, [{ pageUrl: 'https://a.com/live?v=9', title: 'Clip', quality: '720p', status: 'queued' }]);
+    const json = queueToJson(items, new Date(0));
+    for (const leaked of ['cdn.a.com', 'signature', 'token', 'Clip_ab12', '42']) {
+      assert.ok(!json.includes(leaked), leaked);
+    }
+  });
+
+  test('a running download is imported like any other item', () => {
+    const json = queueToJson(queueBackupItems([row({ id: 'd', status: 'DOWNLOADING', sourceUrl: 'https://a.com/live' })]).items, new Date(0));
+    const parsed = parseQueueBackup(json);
+    assert.equal(parsed.ok, true);
+    if (parsed.ok) {
+      assert.deepEqual(planQueueImport(parsed.items, []).added, [
+        { key: 'a.com/live', pageUrl: 'https://a.com/live', title: 'Clip', quality: '720p' },
+      ]);
+      assert.equal(planQueueImport(parsed.items, ['https://a.com/live']).duplicates, 1);
+    }
   });
 
   test('round trip: what export writes, import reads', () => {
