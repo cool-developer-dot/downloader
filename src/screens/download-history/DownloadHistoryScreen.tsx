@@ -14,6 +14,7 @@ import { SettingsRow, SettingsSection } from '@/screens/settings/components';
 import { useSettingsTokens } from '@/screens/settings/theme/settings-tokens';
 import { formatDownloadDate } from '@/screens/downloads/utils/download-format';
 
+import { QueueBackupSection } from './QueueBackupSection';
 import { useDownloadHistoryScreen } from './useDownloadHistoryScreen';
 
 const MAX_ERROR_ROWS = 50;
@@ -92,6 +93,8 @@ export const DownloadHistoryScreen = memo(function DownloadHistoryScreen() {
           testID="download-history-clear"
         />
       </SettingsSection>
+
+      <QueueBackupSection />
 
       <SettingsSection
         testID="download-history-errors"
