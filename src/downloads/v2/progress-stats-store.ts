@@ -14,6 +14,8 @@ import { getV2Engine } from './engine-port';
 import { applyProgressSample, EMPTY_PROGRESS_STATS, markInactive, type ProgressStats } from './progress-stats';
 
 const PUBLISH_INTERVAL_MS = 1_000;
+/** Downloads whose stats are kept at most (the oldest go first). */
+export const MAX_TRACKED = 64;
 const TERMINAL: readonly DownloadState[] = ['completed', 'failed', 'cancelled'];
 
 const statsById = new Map<string, ProgressStats>();
@@ -57,6 +59,14 @@ export function recordProgressEvent(event: {
   const next = applyProgressSample(current, { at, phase: event.phase, bytesDone: event.bytesDone, speedBps: event.speedBps });
   if (next !== current) {
     statsById.set(event.id, next);
+    // Bounded: a download whose terminal event never arrived (process death, removal) cannot pile up.
+    while (statsById.size > MAX_TRACKED) {
+      const oldest = statsById.keys().next().value;
+      if (oldest === undefined) {
+        break;
+      }
+      statsById.delete(oldest);
+    }
     publishSoon();
   }
 }
@@ -90,6 +100,25 @@ export function resetProgressStatsForTests(): void {
   }
 }
 
+const LISTENERS_KEY = '__vidoraxProgressStatsListeners';
+type Subscription = { remove(): void };
+
+/**
+ * Keeps this module's engine listeners on `globalThis`: a Fast Refresh re-runs the module (and its `attached` flag),
+ * so the listeners an earlier copy added are removed before new ones are added — never two of each.
+ */
+function replaceListeners(next: Subscription[]): void {
+  const store = globalThis as unknown as Record<string, Subscription[] | undefined>;
+  for (const subscription of store[LISTENERS_KEY] ?? []) {
+    try {
+      subscription.remove();
+    } catch {
+      // already gone
+    }
+  }
+  store[LISTENERS_KEY] = next;
+}
+
 /** Subscribes once to the engine's progress and state events. A build without the native module has no stats. */
 export function ensureV2ProgressStats(): void {
   if (attached) {
@@ -100,18 +129,25 @@ export function ensureV2ProgressStats(): void {
     return;
   }
   attached = true;
-  engine.addListener('onDownloadProgress', (event) => {
-    try {
-      recordProgressEvent(event);
-    } catch {
-      // Statistics must never disturb downloads.
-    }
-  });
-  engine.addListener('onDownloadStateChange', ({ record }) => {
-    try {
-      recordStateEvent(record.id, record.state);
-    } catch {
-      // Statistics must never disturb downloads.
-    }
-  });
+  replaceListeners([
+    engine.addListener('onDownloadProgress', (event) => {
+      try {
+        recordProgressEvent(event);
+      } catch {
+        // Statistics must never disturb downloads.
+      }
+    }),
+    engine.addListener('onDownloadStateChange', ({ record }) => {
+      try {
+        recordStateEvent(record.id, record.state);
+      } catch {
+        // Statistics must never disturb downloads.
+      }
+    }),
+  ]);
+}
+
+/** Tests: forget that the listeners were attached (as a Fast Refresh does). */
+export function detachProgressStatsForTests(): void {
+  attached = false;
 }

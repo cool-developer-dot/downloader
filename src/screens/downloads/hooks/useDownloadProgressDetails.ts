@@ -30,14 +30,16 @@ const NONE: DownloadProgressDetails = { remaining: null, averageSpeed: null, ela
  * queued, running or paused. Every value is null when it is unknown; v1 rows and finished rows get nothing.
  */
 export function useDownloadProgressDetails(id: string | null | undefined): DownloadProgressDetails {
-  const revision = useProgressStatsRevision((state) => state.revision);
   const status = useDownloadsStore((state) => (id ? state.itemsById[id]?.status : undefined));
   const engineOwned = useDownloadsStore((state) => (id ? isEngineOwned(state, id) : false));
+  const live = Boolean(id && engineOwned && status && LIVE_STATUSES.has(status));
+  // Finished and v1 rows never follow the stats clock: they would only re-render once a second for nothing.
+  const revision = useProgressStatsRevision((state) => (live ? state.revision : 0));
   const bytesWritten = useDownloadsStore((state) => (id ? state.transferById[id]?.bytesWritten : undefined));
   const totalBytes = useDownloadsStore((state) => (id ? state.transferById[id]?.totalBytes : undefined));
 
   return useMemo(() => {
-    if (!id || !engineOwned || !status || !LIVE_STATUSES.has(status)) {
+    if (!live || !id || !status) {
       return NONE;
     }
     const stats = getProgressStats(id);
@@ -52,19 +54,19 @@ export function useDownloadProgressDetails(id: string | null | undefined): Downl
     };
     // `revision` re-reads the stats map when it changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, engineOwned, status, bytesWritten, totalBytes, revision]);
+  }, [id, live, status, bytesWritten, totalBytes, revision]);
 }
 
 /** The sum of the running v2 downloads' current speeds, formatted; null when none is known. */
-export function useTotalDownloadSpeed(): string | null {
-  const engineRowsById = useDownloadsStore((state) => state.engineRowsById);
-  const transferById = useDownloadsStore((state) => state.transferById);
+function selectTotalSpeedLabel(state: ReturnType<typeof useDownloadsStore.getState>): string | null {
+  const rows = Object.entries(state.engineRowsById).map(([id, item]) => ({
+    status: item.status,
+    bytesPerSecond: state.transferById[id]?.bytesPerSecond ?? null,
+  }));
+  return formatTransferSpeed(totalSpeedBps(rows));
+}
 
-  return useMemo(() => {
-    const rows = Object.entries(engineRowsById).map(([id, item]) => ({
-      status: item.status,
-      bytesPerSecond: transferById[id]?.bytesPerSecond ?? null,
-    }));
-    return formatTransferSpeed(totalSpeedBps(rows));
-  }, [engineRowsById, transferById]);
+/** The formatted label is selected directly, so the line re-renders only when the text it shows changes. */
+export function useTotalDownloadSpeed(): string | null {
+  return useDownloadsStore(selectTotalSpeedLabel);
 }
