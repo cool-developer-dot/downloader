@@ -1,13 +1,10 @@
 import { memo, useCallback } from 'react';
 
-import {
-  appStoreConfig,
-  isPlayStoreListingConfigured,
-} from '@/constants/app-identity';
+import { isPlayStoreListingConfigured } from '@/constants/app-identity';
 import { useTranslation } from '@/localization';
 import { SUPPORT_EMAIL_ADDRESS } from '@/support/support-email';
 import { openSupportEmail } from '@/support/support-email-open';
-import { openExternalUrl } from '@/utils/open-external-url';
+import { openPlayStoreListing } from '@/utils/open-play-store-listing';
 
 import { SettingsRow } from './SettingsRow';
 import { SettingsSection } from './SettingsSection';
@@ -17,8 +14,8 @@ export type SupportSectionProps = {
 };
 
 /**
- * Settings → Help & Support: Contact Support and Report an Issue (both a pre-filled email to the support mailbox),
- * Rate VidoraX (gated).
+ * Settings → Help & Support: Rate VidoraX first (the VidoraX Play listing — Play Store app, else the web page), then
+ * Contact Support and Report an Issue (both a pre-filled email to the support mailbox).
  * File historically named AboutSection; Phase 5A keeps this path for Phase 3
  * static verifiers while exporting SupportSection as the product name.
  */
@@ -33,11 +30,10 @@ export const SupportSection = memo(function SupportSection({
   }, []);
 
   const rateApp = useCallback(() => {
-    const url = appStoreConfig.playStoreListingUrl;
-    if (!url || !isPlayStoreListingConfigured()) {
+    if (!isPlayStoreListingConfigured()) {
       return;
     }
-    void openExternalUrl(url);
+    void openPlayStoreListing();
   }, []);
 
   return (
@@ -46,6 +42,16 @@ export const SupportSection = memo(function SupportSection({
       title={t('settings.helpSupportSection')}
       description={t('settings.helpSupportDescription')}
       icon="lifebuoy">
+      {rateEnabled ? (
+        <SettingsRow
+          title={t('settings.rateVidoraX')}
+          description={t('settings.rateVidoraXHint')}
+          icon="star-outline"
+          onPress={rateApp}
+          accessibilityHint={t('settings.rateVidoraXA11y')}
+          testID={`${testID}-rate`}
+        />
+      ) : null}
       <SettingsRow
         title={t('settings.contactSupport')}
         description={SUPPORT_EMAIL_ADDRESS}
@@ -60,20 +66,9 @@ export const SupportSection = memo(function SupportSection({
         icon="bug-outline"
         onPress={contactSupport}
         accessibilityHint={t('settings.reportIssueA11y')}
-        showDivider={rateEnabled}
+        showDivider={false}
         testID={`${testID}-report`}
       />
-      {rateEnabled ? (
-        <SettingsRow
-          title={t('settings.rateVidoraX')}
-          description={t('settings.rateVidoraXHint')}
-          icon="star-outline"
-          onPress={rateApp}
-          showDivider={false}
-          accessibilityHint={t('settings.rateVidoraXA11y')}
-          testID={`${testID}-rate`}
-        />
-      ) : null}
     </SettingsSection>
   );
 });
