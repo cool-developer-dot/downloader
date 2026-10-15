@@ -10,6 +10,7 @@ import { EXTENSION_TO_MIME } from '../constants';
 import { logGeneralNetworkTrace } from '../general-media/general-media-diagnostics';
 import { recordPipelineOutcome } from '../pipeline/pipeline-outcome';
 import { buildMediaRequestContextSync } from '../services/request-context.service';
+import { confirmSystemDownload } from './dangerous-download-dialog';
 import { resolveNativeObservationScope } from './native-observation-scope';
 import {
   nativeCandidateEventFromObservation,
@@ -182,11 +183,17 @@ export async function handleWebDownload(event: WebDownloadEvent): Promise<void> 
   const observedAt = Date.now();
   const mimeType = event.hint === 'unknown' ? await identifyUnnamedDownload(event) : mimeOfWebDownload(event);
   if (event.hint === 'unknown' && !mimeType) {
+    if (!(await confirmSystemDownload(event))) {
+      return;
+    }
     await handOffToSystemDownloader(event, 'download_not_video');
     return;
   }
   const candidate = nativeCandidateFromWebDownload({ viewTag: event.viewTag, url: event.url, mimeType, observedAt });
   if (!candidate || !candidateHandler) {
+    if (!(await confirmSystemDownload(event))) {
+      return;
+    }
     await handOffToSystemDownloader(event, 'download_without_owner');
     return;
   }

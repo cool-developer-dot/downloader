@@ -1291,6 +1291,13 @@ export const en = {
     discardChangesA11y: 'Discard profile changes',
     nameLengthHint: 'Required. Between 2 and 100 characters.',
   },
+  dangerousFile: {
+    title: 'This file could harm your device',
+    message:
+      '“{fileName}” can install an app or run a program. Download it only if you trust the site it came from.',
+    unnamed: 'This file',
+    downloadAnyway: 'Download anyway',
+  },
   history: {
     title: 'History',
     searchPlaceholder: 'Search history',
