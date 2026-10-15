@@ -161,3 +161,44 @@ export async function allowSystemDownload(
     return false;
   }
 }
+
+/**
+ * Pure: one warning per file at a time. The WebView can report the same download twice in a row; while a warning
+ * for that URL is open, a repeat is dropped (false) and the first answer decides.
+ */
+export function createSystemDownloadGate(
+  confirm: (fileName: string) => Promise<boolean>,
+): (input: DownloadDangerInput) => Promise<boolean> {
+  const open = new Set<string>();
+  return async (input) => {
+    if (!assessDownloadDanger(input).dangerous) {
+      return true;
+    }
+    if (open.has(input.url)) {
+      return false;
+    }
+    open.add(input.url);
+    try {
+      return await allowSystemDownload(input, confirm);
+    } finally {
+      open.delete(input.url);
+    }
+  };
+}
+
+const MAX_DISPLAY_NAME = 80;
+
+/**
+ * Pure: the file name as the warning shows it. Control characters and Unicode direction overrides are removed, so a
+ * name like `photo‮gpj.exe` cannot display as `photoexe.jpg`; long names are shortened in the middle, keeping
+ * the extension visible.
+ */
+export function displayFileName(name: string): string {
+  const clean = name.replace(/[\u0000-\u001f\u007f‎‏‪-‮⁦-⁩]/g, '').trim();
+  const points = Array.from(clean);
+  if (points.length <= MAX_DISPLAY_NAME) {
+    return clean;
+  }
+  const tail = points.slice(-20).join('');
+  return `${points.slice(0, MAX_DISPLAY_NAME - 21).join('')}…${tail}`;
+}

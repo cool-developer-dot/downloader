@@ -4,7 +4,7 @@ import * as ReactNative from 'react-native';
 
 import { translate } from '@/localization/translate';
 
-import { allowSystemDownload, type DownloadDangerInput } from './dangerous-download';
+import { createSystemDownloadGate, displayFileName, type DownloadDangerInput } from './dangerous-download';
 
 /** "Download anyway" / "Cancel", naming the file. Dismissing the dialog is Cancel. */
 function confirmDangerousFile(fileName: string): Promise<boolean> {
@@ -18,7 +18,7 @@ function confirmDangerousFile(fileName: string): Promise<boolean> {
     };
     ReactNative.Alert.alert(
       translate('dangerousFile.title'),
-      translate('dangerousFile.message', { fileName: fileName || translate('dangerousFile.unnamed') }),
+      translate('dangerousFile.message', { fileName: displayFileName(fileName) || translate('dangerousFile.unnamed') }),
       [
         { text: translate('common.cancel'), style: 'cancel', onPress: () => settle(false) },
         { text: translate('dangerousFile.downloadAnyway'), style: 'destructive', onPress: () => settle(true) },
@@ -32,6 +32,8 @@ function confirmDangerousFile(fileName: string): Promise<boolean> {
  * Dangerous File Warning (#157): true when this non-video WebView download may go to Android's DownloadManager.
  * No install or open action is ever offered for the file.
  */
+const gate = createSystemDownloadGate(confirmDangerousFile);
+
 export function confirmSystemDownload(input: DownloadDangerInput): Promise<boolean> {
-  return allowSystemDownload(input, confirmDangerousFile);
+  return gate(input);
 }
