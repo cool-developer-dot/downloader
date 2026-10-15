@@ -9,6 +9,7 @@ export const initialSettingsState: SettingsState = {
   debugLogs: false,
   notifications: true,
   language: 'en',
+  defaultTab: 'browser',
   maxConcurrentDownloads: 2,
   saveToGallery: true,
 };

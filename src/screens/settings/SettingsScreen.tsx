@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { View } from 'react-native';
 
 import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
+import { BackupResetSection } from '@/screens/settings/backup-reset/BackupResetSection';
 import { languageNameKey, useTranslation } from '@/localization';
 
 import {
@@ -85,6 +86,9 @@ export const SettingsScreen = memo(function SettingsScreen() {
 
           <SettingsStaggerItem index={3}>
             <DownloadsSection />
+          </SettingsStaggerItem>
+          <SettingsStaggerItem index={3}>
+            <BackupResetSection />
           </SettingsStaggerItem>
 
           <SettingsStaggerItem index={4}>
