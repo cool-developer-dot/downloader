@@ -28,8 +28,9 @@ import {
   type SupportCategoryId,
   type SupportContext,
 } from '@/support';
+import { SUPPORT_EMAIL_ADDRESS } from '@/support/support-email';
+import { openSupportEmail } from '@/support/support-email-open';
 import { showTourAgain } from '@/tour';
-import { openExternalUrl } from '@/utils/open-external-url';
 
 import { SupportCategoryCard } from './components/SupportCategoryCard';
 import { SupportFaqAccordionItem } from './components/SupportFaqAccordionItem';
@@ -128,16 +129,18 @@ export const SupportScreen = memo(function SupportScreen({
     push(routePaths.privacy);
   }, []);
 
+  // Both open the same pre-filled support email as Settings → Help & Support; without an email app the user gets the
+  // address with a Copy button instead of a silent no-op.
   const openMail = useCallback(() => {
     if (!contactEmail) {
       return;
     }
-    void openExternalUrl(`mailto:${contactEmail}`);
+    void openSupportEmail();
   }, [contactEmail]);
 
   const handleContactSupport = useCallback(() => {
     if (submissionMode === 'email' && supportEmail) {
-      void openExternalUrl(`mailto:${supportEmail}`);
+      void openSupportEmail();
     }
     // 'unavailable': button is shown as disabled/informational — no navigation.
   }, [submissionMode, supportEmail]);
@@ -380,7 +383,7 @@ export const SupportScreen = memo(function SupportScreen({
                       textAlign: rtl.textAlign,
                       writingDirection: rtl.writingDirection,
                     }}>
-                    {t('support.contactSupportHint')}
+                    {t('support.contactSupportHint', { email: supportEmail ?? SUPPORT_EMAIL_ADDRESS })}
                   </Text>
                 </Box>
                 <Icon name={rtl.chevronForward} size="sm" color="secondary" />

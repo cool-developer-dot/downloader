@@ -1420,7 +1420,7 @@ export const ur: CatalogStrings<typeof en> = {
     emailContactA11y: 'سپورٹ سے رابطے کے لیے ای میل ایپ کھولتا ہے',
     supportActionsHeading: 'مدد حاصل کریں',
     contactSupport: 'سپورٹ سے رابطہ کریں',
-    contactSupportHint: 'VidoraX ٹیم سے مدد حاصل کریں',
+    contactSupportHint: 'VidoraX\u200E ٹیم کو ای میل کریں: \u2066{email}\u2069',
     contactSupportA11y: 'سپورٹ رابطے کے اختیارات کھولتا ہے',
     reportProblem: 'مسئلہ رپورٹ کریں',
     reportProblemHint: 'VidoraX ٹیم کو تکنیکی مسئلہ بتائیں',
@@ -1450,7 +1450,8 @@ export const ur: CatalogStrings<typeof en> = {
       successDescription:
         'آپ کی ای میل ایپ کھل گئی ہے۔ براہ کرم وہاں سے رپورٹ کا جائزہ لیں اور بھیجیں۔',
       failureTitle: 'رپورٹ نہیں بھیجی جا سکی',
-      failureDescription: 'دوبارہ کوشش کریں۔',
+      failureDescription: 'کوئی ای میل ایپ نہیں کھل سکی۔ کسی بھی ڈیوائس سے \u2066{email}\u2069 پر لکھیں۔',
+      addressCopied: 'پتہ کاپی ہو گیا',
       retry: 'دوبارہ کوشش کریں',
       unavailableTitle: 'سپورٹ رابطہ ترتیب نہیں دیا گیا',
       unavailableDescription:

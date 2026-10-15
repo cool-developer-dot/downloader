@@ -1417,7 +1417,7 @@ export const en = {
     emailContactA11y: 'Opens your email app to contact support',
     supportActionsHeading: 'Get help',
     contactSupport: 'Contact Support',
-    contactSupportHint: 'Get help from the VidoraX team',
+    contactSupportHint: 'Email the VidoraX team: {email}',
     contactSupportA11y: 'Opens support contact options',
     reportProblem: 'Report a Problem',
     reportProblemHint: 'Describe a technical issue to the VidoraX team',
@@ -1447,7 +1447,8 @@ export const en = {
       successDescription:
         'Your email app has been opened. Please review and send the report from there.',
       failureTitle: 'Could not send report',
-      failureDescription: 'Please try again.',
+      failureDescription: 'No email app could be opened. Write to {email} from any device.',
+      addressCopied: 'Address copied',
       retry: 'Try again',
       unavailableTitle: 'Support contact not configured',
       unavailableDescription:
