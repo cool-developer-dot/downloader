@@ -10,4 +10,5 @@ export const initialSettingsState: SettingsState = {
   language: 'en',
   maxConcurrentDownloads: 2,
   saveToGallery: true,
+  tapToToggle: false,
 };
