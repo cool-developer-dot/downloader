@@ -1420,7 +1420,7 @@ export const ur: CatalogStrings<typeof en> = {
     emailContactA11y: 'سپورٹ سے رابطے کے لیے ای میل ایپ کھولتا ہے',
     supportActionsHeading: 'مدد حاصل کریں',
     contactSupport: 'سپورٹ سے رابطہ کریں',
-    contactSupportHint: 'VidoraX\u200E ٹیم کو ای میل کریں: \u2066{email}\u2069',
+    contactSupportHint: 'VidoraX\u200E ٹیم کو ای میل کریں\n\u2066{email}\u2069',
     contactSupportA11y: 'سپورٹ رابطے کے اختیارات کھولتا ہے',
     reportProblem: 'مسئلہ رپورٹ کریں',
     reportProblemHint: 'VidoraX ٹیم کو تکنیکی مسئلہ بتائیں',
