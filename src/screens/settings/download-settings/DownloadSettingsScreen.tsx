@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { Box } from '@/components/base/Box';
 import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { SegmentedControl } from '@/components/inputs/SegmentedControl';
+import { AfterDownloadSettingsSection } from '@/screens/settings/download-settings/AfterDownloadSettingsSection';
 import { Switch } from '@/components/inputs/Switch';
 import { FilenameSettingsSection } from '@/screens/settings/download-settings/FilenameSettingsSection';
 
@@ -245,6 +246,8 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
             <NotificationAlertOptions disabled={preferenceDisabled} />
           </SettingsSection>
         </SettingsStaggerItem>
+
+        <AfterDownloadSettingsSection index={3} disabled={preferenceDisabled} />
       </View>
     </SafeAreaScreen>
   );

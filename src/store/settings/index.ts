@@ -4,6 +4,7 @@ import { isSupportedLanguage, normalizeLanguageCode, storageKeys } from '@/const
 import { normalizeFilenameTemplate } from '@/downloads/v2/filename-template';
 import { bindLanguageReader } from '@/localization/translate';
 import { createStore } from '@/store/shared/create-store';
+import { normalizeAfterDownloadAction } from '@/downloads/v2/after-download';
 import { createPersistStorage } from '@/store/shared/persist-storage';
 
 import { createSettingsActions } from './actions';
@@ -62,6 +63,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
       storage: createPersistStorage<SettingsState>(),
       partialize: (state): SettingsState => ({
         downloadDirectory: state.downloadDirectory,
+        afterDownloadAction: state.afterDownloadAction,
         wifiOnly: state.wifiOnly,
         filenameTemplate: state.filenameTemplate,
         autoResume: state.autoResume,
@@ -84,6 +86,10 @@ export const useSettingsStore = createStore<SettingsStore>()(
             raw.maxConcurrentDownloads,
             current.maxConcurrentDownloads,
           ),
+          afterDownloadAction:
+            raw.afterDownloadAction === undefined
+              ? current.afterDownloadAction
+              : normalizeAfterDownloadAction(raw.afterDownloadAction),
           wifiOnly: typeof raw.wifiOnly === 'boolean' ? raw.wifiOnly : current.wifiOnly,
           filenameTemplate:
             typeof raw.filenameTemplate === 'string'
