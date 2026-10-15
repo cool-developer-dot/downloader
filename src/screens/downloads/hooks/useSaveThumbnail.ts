@@ -3,7 +3,7 @@ import { AccessibilityInfo, Platform, ToastAndroid } from 'react-native';
 
 import { getV2Engine, isEngineOwned } from '@/downloads/v2';
 import { ensureGalleryPermission } from '@/downloads/v2/gallery-permission';
-import { canSaveThumbnail, thumbnailSaveFailure } from '@/downloads/v2/thumbnail-save';
+import { canSaveThumbnail, createInFlightGuard, thumbnailSaveFailure } from '@/downloads/v2/thumbnail-save';
 import { useTranslation } from '@/localization';
 import { useDownloadsStore } from '@/store/downloads';
 
@@ -37,31 +37,35 @@ export function useCanSaveThumbnail(id: string | null | undefined): boolean {
   });
 }
 
+/** One save per item at a time, across the Details button and the Player tab's sheet. */
+const inFlight = createInFlightGuard();
+
 /** Saves the thumbnail to the Gallery (Pictures/VidoraX) and says how it went. */
 export function useSaveThumbnail() {
   const { t } = useTranslation();
   return useCallback(
-    async (id: string) => {
-      const engine = getV2Engine();
-      if (!engine?.saveThumbnailToGallery) {
-        announce(t('thumbnailSave.failed'));
-        return;
-      }
-      try {
-        await ensureGalleryPermission();
-        await engine.saveThumbnailToGallery(id);
-        announce(t('thumbnailSave.saved'));
-      } catch (error) {
-        const outcome = thumbnailSaveFailure(error);
-        announce(
-          outcome === 'permission'
-            ? t('thumbnailSave.needsPermission')
-            : outcome === 'missing'
-              ? t('thumbnailSave.missing')
-              : t('thumbnailSave.failed'),
-        );
-      }
-    },
+    (id: string) =>
+      inFlight(id, async () => {
+        const engine = getV2Engine();
+        if (!engine?.saveThumbnailToGallery) {
+          announce(t('thumbnailSave.failed'));
+          return;
+        }
+        try {
+          await ensureGalleryPermission();
+          await engine.saveThumbnailToGallery(id);
+          announce(t('thumbnailSave.saved'));
+        } catch (error) {
+          const outcome = thumbnailSaveFailure(error);
+          announce(
+            outcome === 'permission'
+              ? t('thumbnailSave.needsPermission')
+              : outcome === 'missing'
+                ? t('thumbnailSave.missing')
+                : t('thumbnailSave.failed'),
+          );
+        }
+      }).then(() => undefined),
     [t],
   );
 }

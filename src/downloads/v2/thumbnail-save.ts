@@ -66,3 +66,20 @@ export function thumbnailSaveFailure(error: unknown): ThumbnailSaveOutcome {
   }
   return 'failed';
 }
+
+/** Pure: runs `task` for an id unless one is already running for it (a quick second tap saves nothing twice). */
+export function createInFlightGuard() {
+  const running = new Set<string>();
+  return async (id: string, task: () => Promise<void>): Promise<boolean> => {
+    if (running.has(id)) {
+      return false;
+    }
+    running.add(id);
+    try {
+      await task();
+      return true;
+    } finally {
+      running.delete(id);
+    }
+  };
+}
