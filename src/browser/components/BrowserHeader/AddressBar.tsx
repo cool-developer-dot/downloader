@@ -16,6 +16,7 @@ import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import { useTourTargetRef } from '@/tour/tour-targets';
 
 import {
   BROWSER_ADDRESS_BAR_HEIGHT,
@@ -45,6 +46,7 @@ export const AddressBar = memo(function AddressBar({
   trailingSlot,
   testID = 'browser-address-bar',
 }: AddressBarProps) {
+  const tourTargetRef = useTourTargetRef('addressBar');
   const theme = useTheme();
   const { t } = useTranslation();
   const {
@@ -105,6 +107,8 @@ export const AddressBar = memo(function AddressBar({
   return (
     <Box flex={1} gap={4}>
       <Animated.View
+        ref={tourTargetRef}
+        collapsable={false}
         testID={testID}
         accessibilityRole="search"
         style={[

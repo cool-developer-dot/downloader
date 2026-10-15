@@ -28,6 +28,7 @@ import {
   type SupportCategoryId,
   type SupportContext,
 } from '@/support';
+import { showTourAgain } from '@/tour';
 import { openExternalUrl } from '@/utils/open-external-url';
 
 import { SupportCategoryCard } from './components/SupportCategoryCard';
@@ -419,6 +420,67 @@ export const SupportScreen = memo(function SupportScreen({
             </Box>
           )}
         </Box>
+
+        {/* The guided tour of the Browser, Downloads, Player and Settings, again. */}
+        <Pressable
+          onPress={showTourAgain}
+          accessibilityRole="button"
+          accessibilityLabel={t('tour.showAgain')}
+          accessibilityHint={t('tour.showAgainA11y')}
+          testID="support-show-tour"
+          style={{ minHeight: 48 }}>
+          <Box
+            row
+            rtlRow
+            center
+            gap={12}
+            px={14}
+            py={14}
+            style={{
+              minHeight: 48,
+              borderRadius: theme.radius.md,
+              backgroundColor: theme.colors.surface,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+            }}>
+            <Box
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: `${theme.colors.primary}14`,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              accessibilityElementsHidden
+              importantForAccessibility="no">
+              <Icon name="compass-outline" size="md" color="primary" />
+            </Box>
+            <Box flex={1} gap={2} style={{ minWidth: 0 }}>
+              <Text
+                variant="body"
+                style={{
+                  color: theme.colors.textPrimary,
+                  lineHeight: 22,
+                  textAlign: rtl.textAlign,
+                  writingDirection: rtl.writingDirection,
+                }}>
+                {t('tour.showAgain')}
+              </Text>
+              <Text
+                variant="caption"
+                style={{
+                  color: theme.colors.textSecondary,
+                  lineHeight: 16,
+                  textAlign: rtl.textAlign,
+                  writingDirection: rtl.writingDirection,
+                }}>
+                {t('tour.showAgainHint')}
+              </Text>
+            </Box>
+            <Icon name={rtl.chevronForward} size="sm" color="secondary" />
+          </Box>
+        </Pressable>
 
         <SupportPrivacySection
           contactEmail={contactEmail}

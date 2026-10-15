@@ -4,6 +4,7 @@ import { isPlayStoreListingConfigured } from '@/constants/app-identity';
 import { useTranslation } from '@/localization';
 import { SUPPORT_EMAIL_ADDRESS } from '@/support/support-email';
 import { openSupportEmail } from '@/support/support-email-open';
+import { showTourAgain } from '@/tour';
 import { openPlayStoreListing } from '@/utils/open-play-store-listing';
 
 import { SettingsRow } from './SettingsRow';
@@ -15,7 +16,7 @@ export type SupportSectionProps = {
 
 /**
  * Settings → Help & Support: Rate VidoraX first (the VidoraX Play listing — Play Store app, else the web page), then
- * Contact Support and Report an Issue (both a pre-filled email to the support mailbox).
+ * Contact Support and Report an Issue (both a pre-filled email to the support mailbox), and the guided tour again.
  * File historically named AboutSection; Phase 5A keeps this path for Phase 3
  * static verifiers while exporting SupportSection as the product name.
  */
@@ -66,8 +67,16 @@ export const SupportSection = memo(function SupportSection({
         icon="bug-outline"
         onPress={contactSupport}
         accessibilityHint={t('settings.reportIssueA11y')}
-        showDivider={false}
         testID={`${testID}-report`}
+      />
+      <SettingsRow
+        title={t('tour.showAgain')}
+        description={t('tour.showAgainHint')}
+        icon="compass-outline"
+        onPress={showTourAgain}
+        showDivider={false}
+        accessibilityHint={t('tour.showAgainA11y')}
+        testID={`${testID}-tour`}
       />
     </SettingsSection>
   );
