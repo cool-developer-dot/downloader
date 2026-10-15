@@ -25,6 +25,9 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
   @Volatile
   private var channelsReady = false
 
+  /** Finished-download channels other than CHANNEL_STATUS created by this instance (see NotificationOptions). */
+  private val createdStatusChannels: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
   override fun show(content: DownloadNotificationContent) {
     val manager = manager ?: return
     if (!canPost()) return
@@ -67,7 +70,11 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
       DownloadNotificationContent.Kind.ACTIVE, DownloadNotificationContent.Kind.PAUSED -> CHANNEL_PROGRESS
       DownloadNotificationContent.Kind.COMPLETED, DownloadNotificationContent.Kind.FAILED -> CHANNEL_STATUS
     }
-    val builder = builder(channel)
+    // Finished/failed notifications follow the user's alert options (NotificationOptions); with the defaults they
+    // stay on CHANNEL_STATUS exactly as before. Progress notifications are never affected.
+    val alertOptions = if (channel == CHANNEL_STATUS) NotificationOptions.load(context) else null
+    val postChannel = alertOptions?.let { statusChannelId(it) } ?: channel
+    val builder = builder(postChannel)
       .setContentTitle(content.title)
       .setContentText(content.text)
       .setSmallIcon(iconFor(content.kind))
@@ -83,7 +90,43 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
         builder.setAutoCancel(true)
     }
     addActions(builder, content.downloadId, content.actions)
+    alertOptions?.let { applyLegacyAlerts(builder, it) }
     return builder.build()
+  }
+
+  /** The channel a finished/failed notification goes to; CHANNEL_STATUS if its own channel cannot be created. */
+  private fun statusChannelId(options: NotificationOptions): String {
+    val spec = NotificationOptions.statusChannelFor(options)
+    return if (ensureStatusChannel(spec)) spec.id else CHANNEL_STATUS
+  }
+
+  private fun ensureStatusChannel(spec: StatusChannel): Boolean {
+    if (spec == StatusChannel.EXISTING || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+    if (spec.id in createdStatusChannels) return true
+    val manager = manager ?: return false
+    return runCatching {
+      manager.createNotificationChannel(
+        NotificationChannel(spec.id, spec.channelName, NotificationManager.IMPORTANCE_DEFAULT).apply {
+          description = "Tells you when a download finishes or fails."
+          if (!spec.playsSound) setSound(null, null)
+          enableVibration(spec.vibrates)
+        },
+      )
+    }.isSuccess.also { created -> if (created) createdStatusChannels.add(spec.id) }
+  }
+
+  /**
+   * Android 7.x has no channels: the builder carries the alert. The defaults leave it exactly as it was (low
+   * priority, no sound, no vibration); Silent, or sound and vibration both off, is that same quiet notification.
+   */
+  private fun applyLegacyAlerts(builder: Notification.Builder, options: NotificationOptions) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O || options.isDefault) return
+    var defaults = 0
+    if (options.playsSound) defaults = defaults or Notification.DEFAULT_SOUND
+    if (options.vibrates) defaults = defaults or Notification.DEFAULT_VIBRATE
+    if (defaults == 0) return
+    @Suppress("DEPRECATION")
+    builder.setDefaults(defaults).setPriority(Notification.PRIORITY_DEFAULT)
   }
 
   fun buildSummary(summary: RunnerSummaryContent): Notification {
