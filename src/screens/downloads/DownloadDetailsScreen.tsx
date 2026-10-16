@@ -29,6 +29,7 @@ import { openSupportWithContext } from '@/support/support-navigation';
 import type { DownloadItem } from '@/store/downloads';
 import { useDownloadsStore } from '@/store/downloads';
 import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
+import { DownloadTagsAndNote } from '@/screens/downloads/components/DownloadTagsAndNote';
 import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 import { renameMediaFileOnDevice } from '@/downloads/engine';
@@ -509,6 +510,7 @@ const DetailsBody = memo(function DetailsBody({
         ) : null}
         {created ? <InfoRow label={t('downloads.infoCreatedDate')} value={created} /> : null}
         {completed ? <InfoRow label={t('downloads.infoDownloadedDate')} value={completed} /> : null}
+        <DownloadTagsAndNote id={item.id} />
       </Box>
 
       {(sourceHost || item.sourceUrl) && (
