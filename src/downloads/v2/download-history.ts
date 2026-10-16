@@ -159,7 +159,7 @@ export function historyToCsv(records: readonly HistoryRecord[]): string {
   for (const record of records) {
     lines.push(CSV_COLUMNS.map((column) => csvCell(record[column])).join(','));
   }
-  return `﻿${lines.join('\r\n')}\r\n`;
+  return `\uFEFF${lines.join('\r\n')}\r\n`;
 }
 
 export type ErrorLogEntry = { id: string; at: string | null; site: string | null; title: string; reason: string };
