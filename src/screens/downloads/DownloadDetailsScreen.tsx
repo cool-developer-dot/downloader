@@ -33,6 +33,7 @@ import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 import { renameMediaFileOnDevice } from '@/downloads/engine';
 import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads/v2';
+import { DownloadMoveToPrivateAction } from '@/screens/downloads/components/DownloadMoveToPrivateAction';
 
 import { DownloadDeleteDialog } from './components/DownloadDeleteDialog';
 import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
@@ -537,6 +538,7 @@ const DetailsBody = memo(function DetailsBody({
           </Text>
         </Box>
       )}
+      <DownloadMoveToPrivateAction id={item.id} />
     </ScrollView>
   );
 });

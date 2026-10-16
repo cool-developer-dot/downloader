@@ -185,6 +185,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       if (typeof ensureLibraryCompletionBridge === 'function') {
         ensureLibraryCompletionBridge();
       }
+      const { cleanUpPrivateVault } = await import('@/private-vault/vault-port');
+      // Private: playback files and half-written vault files an earlier run left behind are deleted.
+      cleanUpPrivateVault();
       void downloadEngine.recover();
 
       try {
