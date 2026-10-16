@@ -11,7 +11,13 @@ import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import { isExternalUiOpen } from '@/private-vault/external-ui';
-import { locksOnAppState, LOCKED_SESSION, reduceVaultSession } from '@/private-vault/vault-gate';
+import {
+  appLockEvent,
+  backgroundPolicy,
+  locksOnAppState,
+  LOCKED_SESSION,
+  reduceVaultSession,
+} from '@/private-vault/vault-gate';
 import { clearVaultPlayback } from '@/private-vault/vault-port';
 import { selectAppLockEnabled, useAppLockStore } from '@/security/app-lock';
 
@@ -35,7 +41,7 @@ export const PrivateScreen = memo(function PrivateScreen() {
       if (locksOnAppState(state)) {
         const externalUi = isExternalUiOpen();
         dispatch({ type: 'app-background', externalUi });
-        if (!externalUi) {
+        if (backgroundPolicy(externalUi).clearPlayback) {
           clearVaultPlayback();
         }
       }
@@ -45,9 +51,11 @@ export const PrivateScreen = memo(function PrivateScreen() {
 
   useEffect(
     () =>
-      useAppLockStore.subscribe((state) => {
-        if (!state.isEnabled || state.status === 'LOCKED') {
-          dispatch({ type: 'app-lock-changed', enabled: state.isEnabled, appLocked: state.status === 'LOCKED' });
+      useAppLockStore.subscribe((state, previous) => {
+        // Only a change into locked or disabled counts, and not one caused by a picker Private itself opened.
+        const event = appLockEvent(previous, state, isExternalUiOpen());
+        if (event) {
+          dispatch(event);
         }
       }),
     [],
