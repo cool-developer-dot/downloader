@@ -493,6 +493,16 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
 - Sharing a link to VidoraX (`ACTION_SEND text/plain`) opens it in a browser tab. Web links opened with VidoraX
   (`VIEW` `http(s)`) belong to the browser too: `src/app/+native-intent.ts` keeps them away from the router (§5.3).
 - Diagnostics: a single `src/lib/log.ts`, silent in production.
+- First-launch tour (`src/tour`, test build 2): six coach marks over the real Browser UI (address bar, Quick Access,
+  where "Video available" appears — an example bar marked as such —, Downloads / Player / Settings tabs). Starts once
+  (MMKV `vidorax.tour.browser.v1`) at the first idle Browser moment after onboarding — never over App Lock, a sheet or
+  dialog (each `Modal` sheet registers `useTourBlocker`), the keyboard or a link the app was opened with — and hides,
+  keeping its step, while locked, backgrounded or off the Browser. Targets register with `useTourTargetRef` and are
+  measured in window coordinates; the overlay is drawn in the app window over everything (`TourHost` in the `(app)`
+  layout, after the screens) and hides the app from TalkBack while shown. Pure rules in `tour-policy.ts` /
+  `tour-layout.ts`. Replay: "Show the tour again" (How to use VidoraX, Help & Support, Help Center).
+- Rate / Check for Updates open `market://details?id=com.vidorax.fast.videodownloader`, falling back to the web listing
+  (`src/constants/play-store-listing.ts`).
 - In-app review (`src/review`): the official Google Play In-App Review flow (expo-store-review → Play `ReviewManager`),
   requested after the third genuine successful download, then at most once a week and only after a new successful
   download, and only at a calm moment — the Downloads or Player list has been showing for 2.5 s, nothing is downloading,

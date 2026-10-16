@@ -7,6 +7,7 @@ import { IconButton } from '@/components/buttons/IconButton';
 import { Text } from '@/components/base/Text';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import { useTourBlocker } from '@/tour/tour-store';
 
 export type AppModalProps = PropsWithChildren<{
   visible: boolean;
@@ -32,6 +33,8 @@ export const AppModal = memo(function AppModal({
 }: AppModalProps) {
   const theme = useTheme();
   const { t } = useTranslation();
+
+  useTourBlocker(visible);
 
   // Unmount when dismissed — Android transparent Modal can keep a touch
   // interceptor after visible=false.

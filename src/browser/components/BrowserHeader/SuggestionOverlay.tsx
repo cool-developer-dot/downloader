@@ -25,6 +25,7 @@ import { Text } from '@/components/base/Text';
 import { Loader } from '@/components/common/Loader';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import { useTourBlocker } from '@/tour/tour-store';
 import type { OmniboxSuggestion } from '@/browser/suggestions';
 import {
   BROWSER_ADDRESS_BAR_HEIGHT,
@@ -130,6 +131,8 @@ export const SuggestionOverlay = memo(function SuggestionOverlay({
     },
     [onSubmit],
   );
+
+  useTourBlocker(visible);
 
   if (!visible) {
     return null;

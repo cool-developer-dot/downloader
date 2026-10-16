@@ -14,6 +14,7 @@
  */
 
 import { memo, useCallback, useMemo, useState } from 'react';
+import * as Clipboard from 'expo-clipboard';
 import { AccessibilityInfo } from 'react-native';
 
 import { Box } from '@/components/base/Box';
@@ -26,6 +27,7 @@ import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { push, routePaths } from '@/navigation';
+import { SUPPORT_EMAIL_ADDRESS } from '@/support/support-email';
 import {
   EMPTY_REPORT_DRAFT,
   REPORT_CATEGORY_IDS,
@@ -188,6 +190,13 @@ export const ReportProblemScreen = memo(function ReportProblemScreen({
     setStatus('idle');
   }, []);
 
+  // No email app: the address can still be copied and used from any device.
+  const handleCopyAddress = useCallback(() => {
+    void Clipboard.setStringAsync(SUPPORT_EMAIL_ADDRESS)
+      .then(() => AccessibilityInfo.announceForAccessibility(t('support.report.addressCopied')))
+      .catch(() => undefined);
+  }, [t]);
+
   const categoryError = validationErrors.category
     ? t(getValidationMessageKey(validationErrors.category) as Parameters<typeof t>[0])
     : undefined;
@@ -319,16 +328,26 @@ export const ReportProblemScreen = memo(function ReportProblemScreen({
                 textAlign: rtl.textAlign,
                 writingDirection: rtl.writingDirection,
               }}>
-              {t('support.report.failureDescription')}
+              {t('support.report.failureDescription', { email: SUPPORT_EMAIL_ADDRESS })}
             </Text>
-            <Button
-              title={t('support.report.retry')}
-              variant="secondary"
-              size="small"
-              onPress={handleRetry}
-              testID="report-retry-button"
-              accessibilityLabel={t('support.report.retry')}
-            />
+            <Box row rtlRow gap={10} style={{ flexWrap: 'wrap' }}>
+              <Button
+                title={t('settings.copyEmailAddress')}
+                variant="secondary"
+                size="small"
+                leftIcon="content-copy"
+                onPress={handleCopyAddress}
+                testID="report-copy-address-button"
+              />
+              <Button
+                title={t('support.report.retry')}
+                variant="secondary"
+                size="small"
+                onPress={handleRetry}
+                testID="report-retry-button"
+                accessibilityLabel={t('support.report.retry')}
+              />
+            </Box>
           </Box>
         ) : null}
 

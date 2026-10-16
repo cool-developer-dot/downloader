@@ -1,6 +1,8 @@
 import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 
+import { isPlayStoreListingUrl, PLAY_STORE_LISTING_URLS } from './play-store-listing';
+
 /**
  * Centralized VidoraX product identity, store URLs, and runtime metadata.
  * Version/build resolve from Expo/native config — never hardcode release numbers in UI.
@@ -18,11 +20,11 @@ const VERSION_FALLBACK = '—';
 const BUILD_FALLBACK = '—';
 
 /**
- * Official Play Store listing URL.
- * Keep null until the listing is published — Rate / store-based update actions
- * stay disabled while unset. Do not point at unrelated listings.
+ * Official Play Store listing URL (web form; actions open it through the Play Store app first —
+ * `src/utils/open-play-store-listing.ts`). Rate / store-based update actions stay disabled while null.
+ * Do not point at unrelated listings.
  */
-const PLAY_STORE_LISTING_URL: string | null = null;
+const PLAY_STORE_LISTING_URL: string | null = PLAY_STORE_LISTING_URLS.web;
 
 const WEBSITE_ORIGIN = 'https://vidorax.app';
 
@@ -149,8 +151,7 @@ export const appStoreConfig: AppStoreConfig = {
  * True when a real Play Store listing URL is configured for Rate / store update flows.
  */
 export function isPlayStoreListingConfigured(): boolean {
-  const url = appStoreConfig.playStoreListingUrl;
-  return typeof url === 'string' && url.trim().length > 0;
+  return isPlayStoreListingUrl(appStoreConfig.playStoreListingUrl);
 }
 
 /**
