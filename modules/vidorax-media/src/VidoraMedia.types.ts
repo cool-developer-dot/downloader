@@ -432,8 +432,9 @@ export interface DownloadSettings {
    * Download Settings → Advanced network: replaces the User-Agent of every download request (visible ASCII, at most
    * 256 characters). This and the three fields below are each sent only when the user changed them; omitted is
    * today's behaviour (the browser's own User-Agent, no extra headers, 20 s to connect and 30 s without data). They
-   * never weaken TLS, the public-address check or the redirect checks; the native side holds them in memory only.
-   * Ignored by older native builds.
+   * never weaken TLS, the public-address check or the redirect checks. The native side saves the User-Agent and
+   * timeouts so a download resumed before JavaScript runs uses them; headers are held in memory only. Ignored by older
+   * native builds.
    */
   userAgent?: string;
   /**
