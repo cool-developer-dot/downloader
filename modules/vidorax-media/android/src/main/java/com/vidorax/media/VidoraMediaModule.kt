@@ -10,6 +10,7 @@ import com.vidorax.media.bridge.LibraryQueryRecord
 import com.vidorax.media.bridge.PageFetchRequestRecord
 import com.vidorax.media.bridge.ProbeRequestRecord
 import com.vidorax.media.bridge.toJs
+import com.vidorax.media.net.NetworkOptions
 import com.vidorax.media.engine.DownloadEngineApi
 import com.vidorax.media.engine.DownloadEngineProvider
 import com.vidorax.media.library.DeviceVideos
@@ -140,6 +141,13 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("setDownloadSettings") Coroutine { settings: DownloadSettingsRecord ->
       engine.setDownloadSettings(settings.toModel())
+      // Advanced network options belong to the HTTP client (net/NetworkOptions), in memory only; unsent = today's.
+      NetworkOptions.applyFromJs(
+        settings.userAgent,
+        settings.customHeaders,
+        settings.connectTimeoutSeconds,
+        settings.readTimeoutSeconds,
+      )
     }
 
     AsyncFunction("clearTempFiles") Coroutine { -> engine.clearTempFiles() }

@@ -429,6 +429,23 @@ export interface DownloadSettings {
   /** Default false. */
   wifiOnly: boolean;
   /**
+   * Download Settings → Advanced network: replaces the User-Agent of every download request (visible ASCII, at most
+   * 256 characters). This and the three fields below are each sent only when the user changed them; omitted is
+   * today's behaviour (the browser's own User-Agent, no extra headers, 20 s to connect and 30 s without data). They
+   * never weaken TLS, the public-address check or the redirect checks; the native side holds them in memory only.
+   * Ignored by older native builds.
+   */
+  userAgent?: string;
+  /**
+   * Added to every download request that does not already carry the header (the page's own headers win). Names such
+   * as Cookie, Authorization, Host, Range or Proxy-* / Sec-* are refused; values are visible ASCII without line
+   * breaks. At most 10.
+   */
+  customHeaders?: Record<string, string>;
+  /** Seconds to connect / to wait for data before the attempt counts as failed (5..300). */
+  connectTimeoutSeconds?: number;
+  readTimeoutSeconds?: number;
+  /**
    * Default true: every completed download is also copied to the device gallery (`Movies/VidoraX/<Site>`), after it
    * is COMPLETED and only as the final verified file. A failed copy never affects the download or its library item.
    */

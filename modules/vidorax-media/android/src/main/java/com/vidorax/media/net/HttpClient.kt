@@ -190,6 +190,8 @@ internal class HttpClient(client: OkHttpClient, private val policy: UrlPolicy = 
         // Cookies a server sets during the download itself (a signed-cookie CDN, a token cookie on the playlist
         // response) are replayed to that server like a browser would — held in memory only, never persisted.
         .cookieJar(ResponseCookieJar())
+        // Download Settings → Advanced network (NetworkOptions): passes every request through untouched by default.
+        .addInterceptor(NetworkOptionsInterceptor())
         // Network-level: every hop gets the WebView session cookies for its own host.
         .addNetworkInterceptor(SessionCookieInterceptor(cookies))
         .build(),
