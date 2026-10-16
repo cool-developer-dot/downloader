@@ -177,14 +177,14 @@ describe('sanitizing folder names', () => {
   });
 
   test('invisible direction marks are removed', () => {
-    assert.equal(sanitizeFolderName('abc‮gpj.exe'), 'abcgpj.exe');
-    assert.equal(sanitizeFolderName('‏ویڈیو‎'), 'ویڈیو');
+    assert.equal(sanitizeFolderName('abc\u202Egpj.exe'), 'abcgpj.exe');
+    assert.equal(sanitizeFolderName('\u200Fویڈیو\u200E'), 'ویڈیو');
   });
 
   test('long names are capped by code points without splitting a character', () => {
     const urdu = sanitizeFolderName('ویڈیو'.repeat(40));
     assert.equal(Array.from(urdu).length <= MAX_FOLDER_NAME_LENGTH, true);
-    assert.equal(urdu.includes('�'), false);
+    assert.equal(urdu.includes('\uFFFD'), false);
     const emoji = sanitizeFolderName('🎬'.repeat(100));
     assert.equal(Array.from(emoji).length, MAX_FOLDER_NAME_LENGTH);
   });

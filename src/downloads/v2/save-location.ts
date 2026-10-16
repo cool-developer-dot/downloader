@@ -128,7 +128,7 @@ export const MAX_FOLDER_NAME_LENGTH = 60;
 /** Characters no file system (Android, an SD card's FAT/exFAT, a PC) accepts in a name, and control characters. */
 const ILLEGAL = /[\\/:*?"<>|\u0000-\u001f\u007f]/g;
 /** Direction overrides and invisible formatting that could disguise a name. */
-const INVISIBLE = /[​-‏‪-‮⁦-⁩﻿]/g;
+const INVISIBLE = /[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff]/g;
 
 /**
  * A safe folder name: illegal characters become spaces, invisible direction marks go, whitespace collapses, and
