@@ -7,6 +7,7 @@ import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { ScreenHeader } from '@/components/headers/ScreenHeader';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import { useShowInFolderSheetActions } from '@/screens/library/hooks/useShowInFolderSheetAction';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
 
 import {
@@ -81,6 +82,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
     openDownloads,
     openWatchHistory,
   } = useLibraryScreen();
+  const showInFolderActionsFor = useShowInFolderSheetActions();
 
   const foldersById = useFoldersStore((s) => s.itemsById);
   const folderOrderedIds = useFoldersStore((s) => s.orderedIds);
@@ -107,6 +109,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
           void shareItem(id);
         },
       },
+      ...showInFolderActionsFor(id, closeItemActions),
       {
         id: 'save',
         label: t('library.saveToDevice'),
@@ -127,6 +130,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
   }, [
     actionItemId,
     closeItemActions,
+    showInFolderActionsFor,
     openItemExternal,
     requestDeleteItem,
     saveItemToDevice,
