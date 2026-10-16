@@ -141,8 +141,10 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("setDownloadSettings") Coroutine { settings: DownloadSettingsRecord ->
       engine.setDownloadSettings(settings.toModel())
-      // Advanced network options belong to the HTTP client (net/NetworkOptions), in memory only; unsent = today's.
+      // Advanced network options belong to the HTTP client (net/NetworkOptions); unsent = today's. The User-Agent and
+      // timeouts are also saved for downloads resumed before JavaScript runs; headers stay in memory only.
       NetworkOptions.applyFromJs(
+        context,
         settings.userAgent,
         settings.customHeaders,
         settings.connectTimeoutSeconds,

@@ -1,5 +1,7 @@
 package com.vidorax.media.net
 
+import android.content.Context
+import android.content.SharedPreferences
 import java.util.concurrent.TimeUnit
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -14,9 +16,11 @@ import okhttp3.Response
  * every hop), and a header name that would change what the request is (Cookie, Authorization, Host, Range, …) is
  * refused before it gets here and again below.
  *
- * Held in memory only, as JavaScript last sent it with the download settings: custom header values may be secrets,
- * so they are never written to disk here (JavaScript keeps them in the secure store). A download resumed by the
- * system before the app's JavaScript runs uses today's behaviour until the settings are pushed again.
+ * The User-Agent and the timeouts are also saved (SharedPreferences `vidorax_network_options`) and restored when the
+ * process starts ([restore], from MediaServices), so a download the system resumes after a reboot — before any
+ * JavaScript runs — uses the same values. Custom headers are held in memory only: their values may be secrets, so
+ * they are never written to disk here (JavaScript keeps them in the secure store); a download resumed before the app
+ * opens goes without them until JavaScript pushes the settings again.
  */
 internal data class NetworkOptions(
   val userAgent: String? = null,
@@ -51,6 +55,60 @@ internal data class NetworkOptions(
 
     fun apply(options: NetworkOptions) {
       current = options
+    }
+
+    private const val PREFS = "vidorax_network_options"
+    private const val KEY_USER_AGENT = "userAgent"
+    private const val KEY_CONNECT_TIMEOUT = "connectTimeoutSeconds"
+    private const val KEY_READ_TIMEOUT = "readTimeoutSeconds"
+
+    /** Set once JavaScript pushed options in this process: they always win over what was saved. */
+    @Volatile
+    private var pushedFromJs = false
+
+    /** The part of [options] that is saved: the User-Agent and the timeouts — never the headers. */
+    fun persistedPart(options: NetworkOptions): NetworkOptions = NetworkOptions(
+      userAgent = options.userAgent,
+      connectTimeoutSeconds = options.connectTimeoutSeconds,
+      readTimeoutSeconds = options.readTimeoutSeconds,
+    )
+
+    /** What was saved, validated again like anything JavaScript sends. Nothing saved is today's behaviour. */
+    fun load(prefs: SharedPreferences): NetworkOptions = fromJs(
+      userAgent = prefs.getString(KEY_USER_AGENT, null),
+      headers = null,
+      connectTimeoutSeconds = prefs.getInt(KEY_CONNECT_TIMEOUT, 0).takeIf { it > 0 },
+      readTimeoutSeconds = prefs.getInt(KEY_READ_TIMEOUT, 0).takeIf { it > 0 },
+    )
+
+    /** Saves the User-Agent and timeouts of [options]; a value not set removes its key. Headers are not written. */
+    fun save(prefs: SharedPreferences, options: NetworkOptions) {
+      val editor = prefs.edit()
+      val agent = options.userAgent
+      if (agent != null) editor.putString(KEY_USER_AGENT, agent) else editor.remove(KEY_USER_AGENT)
+      val connect = options.connectTimeoutSeconds
+      if (connect != null) editor.putInt(KEY_CONNECT_TIMEOUT, connect) else editor.remove(KEY_CONNECT_TIMEOUT)
+      val read = options.readTimeoutSeconds
+      if (read != null) editor.putInt(KEY_READ_TIMEOUT, read) else editor.remove(KEY_READ_TIMEOUT)
+      editor.apply()
+    }
+
+    fun prefs(context: Context): SharedPreferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+
+    /**
+     * At process start: the saved User-Agent and timeouts become current, so downloads resumed before JavaScript runs
+     * use them. Does nothing once JavaScript pushed options in this process. Never throws.
+     */
+    @Synchronized
+    fun restore(context: Context) {
+      if (pushedFromJs) return
+      current = runCatching { load(prefs(context)) }.getOrDefault(DEFAULT)
+    }
+
+    @Synchronized
+    internal fun resetForTests() {
+      current = DEFAULT
+      pushedFromJs = false
     }
 
     /** True for a header name the user may set. */
@@ -91,9 +149,26 @@ internal data class NetworkOptions(
       )
     }
 
-    /** What JavaScript sent with `setDownloadSettings`, made current. */
-    fun applyFromJs(userAgent: String?, headers: Map<String, String>?, connectTimeoutSeconds: Int?, readTimeoutSeconds: Int?) {
-      apply(fromJs(userAgent, headers, connectTimeoutSeconds, readTimeoutSeconds))
+    /**
+     * What JavaScript sent with `setDownloadSettings`, made current. The User-Agent and timeouts are saved too — only
+     * when they changed, so a push that changes nothing writes nothing; the headers never are.
+     */
+    @Synchronized
+    fun applyFromJs(
+      context: Context,
+      userAgent: String?,
+      headers: Map<String, String>?,
+      connectTimeoutSeconds: Int?,
+      readTimeoutSeconds: Int?,
+    ) {
+      val options = fromJs(userAgent, headers, connectTimeoutSeconds, readTimeoutSeconds)
+      pushedFromJs = true
+      apply(options)
+      runCatching {
+        val prefs = prefs(context)
+        val next = persistedPart(options)
+        if (load(prefs) != next) save(prefs, next)
+      }
     }
   }
 }
