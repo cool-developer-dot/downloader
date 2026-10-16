@@ -103,7 +103,7 @@ describe('history export', () => {
 
   test('CSV has a header, quotes where needed and keeps Urdu', () => {
     const csv = historyToCsv(toHistoryRecords(rows));
-    assert.ok(csv.startsWith('﻿id,title,site,status'));
+    assert.ok(csv.startsWith('\uFEFFid,title,site,status'));
     assert.ok(csv.includes('میری ویڈیو'));
     assert.equal(csv.split('\r\n').length, 6); // header + 4 rows + trailing empty
   });
