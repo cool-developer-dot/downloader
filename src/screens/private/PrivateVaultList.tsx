@@ -12,7 +12,7 @@ import { ensureGalleryPermission } from '@/downloads/v2/gallery-permission';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { closePlayerSession } from '@/player/session-host/player-session-store';
-import { withExternalUi } from '@/private-vault/external-ui';
+import { exportVaultItem } from '@/private-vault/vault-export';
 import {
   findVaultItem,
   vaultIndexFrom,
@@ -194,20 +194,25 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
           });
         }
         announce(t('privateVault.deleted'));
-      } else if (pending.kind === 'export-gallery') {
-        if ((await withExternalUi(ensureGalleryPermission)) === 'denied') {
-          announce(t('privateVault.galleryPermissionNeeded'));
-          return;
-        }
-        await port.exportVaultItemToGallery(pending.id);
-        announce(t('privateVault.exportedGallery'));
       } else {
-        const folder = await withExternalUi(pickExportFolder);
-        if (!folder) {
-          return;
+        // Runs to the end even if the section locks meanwhile; its picker or permission prompt never relocks it.
+        const result = await exportVaultItem(pending.kind === 'export-gallery' ? 'gallery' : 'folder', pending.id, {
+          requestGalleryPermission: ensureGalleryPermission,
+          pickFolder: pickExportFolder,
+          exportToGallery: (vaultId) => port.exportVaultItemToGallery(vaultId),
+          exportToFolder: (vaultId, treeUri) => port.exportVaultItemToFolder(vaultId, treeUri),
+        });
+        if (result.ok) {
+          announce(pending.kind === 'export-gallery' ? t('privateVault.exportedGallery') : t('privateVault.exportedFolder'));
+        } else if (result.reason !== 'cancelled') {
+          announce(
+            result.reason === 'corrupt'
+              ? t('privateVault.corrupt')
+              : result.reason === 'permission'
+                ? t('privateVault.galleryPermissionNeeded')
+                : t('privateVault.exportFailed'),
+          );
         }
-        await port.exportVaultItemToFolder(pending.id, folder);
-        announce(t('privateVault.exportedFolder'));
       }
     } catch (error) {
       const code = errorCode(error);
