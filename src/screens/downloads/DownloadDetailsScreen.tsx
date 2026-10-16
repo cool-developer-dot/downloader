@@ -32,6 +32,7 @@ import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
 import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 import { renameMediaFileOnDevice } from '@/downloads/engine';
+import { DownloadEditActions } from '@/screens/downloads/components/DownloadEditActions';
 import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads/v2';
 
 import { DownloadDeleteDialog } from './components/DownloadDeleteDialog';
@@ -464,6 +465,7 @@ const DetailsBody = memo(function DetailsBody({
           ))}
         </Box>
       ) : null}
+      <DownloadEditActions id={item.id} />
 
       <Box mt={8} gap={4}>
         <Text variant="label" color="textSecondary" style={{ letterSpacing: 0.5 }}>
