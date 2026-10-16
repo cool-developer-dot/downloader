@@ -145,6 +145,11 @@ data class EnqueueRequestRecord(
 data class DownloadSettingsRecord(
   @Field val maxConcurrent: Int = DownloadSettings.DEFAULT.maxConcurrent,
   @Field val wifiOnly: Boolean = DownloadSettings.DEFAULT.wifiOnly,
+  /** Advanced network (net/NetworkOptions): each is sent only when the user changed it; null = today's behaviour. */
+  @Field val userAgent: String? = null,
+  @Field val customHeaders: Map<String, String>? = null,
+  @Field val connectTimeoutSeconds: Int? = null,
+  @Field val readTimeoutSeconds: Int? = null,
   @Field val autoSaveToGallery: Boolean = DownloadSettings.DEFAULT.autoSaveToGallery,
   @Field val preferredMaxHeight: Int? = null,
   /** Finished/failed notification alerts (runner/NotificationOptions); null = not sent, keep the saved value. */

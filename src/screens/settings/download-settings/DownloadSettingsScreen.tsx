@@ -12,6 +12,7 @@ import { BeforeDownloadSettingsSection } from '@/screens/settings/download-setti
 import { useTranslation } from '@/localization';
 import { LinkIntakeSettingsSection } from '@/screens/settings/download-settings/LinkIntakeSettingsSection';
 import { selectSaveToGallery, useSettingsStore } from '@/store/settings';
+import { AdvancedNetworkSettingsSection } from '@/screens/settings/download-settings/AdvancedNetworkSettingsSection';
 
 import {
   SettingsFeedbackBanner,
@@ -207,6 +208,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
             </Box>
           </SettingsSection>
         </SettingsStaggerItem>
+        <AdvancedNetworkSettingsSection index={1} disabled={preferenceDisabled} />
 
         <FilenameSettingsSection index={2} disabled={preferenceDisabled} />
         <BeforeDownloadSettingsSection index={2} disabled={preferenceDisabled} />
