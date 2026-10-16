@@ -28,7 +28,9 @@ import {
   type SupportCategoryId,
   type SupportContext,
 } from '@/support';
-import { openExternalUrl } from '@/utils/open-external-url';
+import { SUPPORT_EMAIL_ADDRESS } from '@/support/support-email';
+import { openSupportEmail } from '@/support/support-email-open';
+import { showTourAgain } from '@/tour';
 
 import { SupportCategoryCard } from './components/SupportCategoryCard';
 import { SupportFaqAccordionItem } from './components/SupportFaqAccordionItem';
@@ -127,16 +129,18 @@ export const SupportScreen = memo(function SupportScreen({
     push(routePaths.privacy);
   }, []);
 
+  // Both open the same pre-filled support email as Settings → Help & Support; without an email app the user gets the
+  // address with a Copy button instead of a silent no-op.
   const openMail = useCallback(() => {
     if (!contactEmail) {
       return;
     }
-    void openExternalUrl(`mailto:${contactEmail}`);
+    void openSupportEmail();
   }, [contactEmail]);
 
   const handleContactSupport = useCallback(() => {
     if (submissionMode === 'email' && supportEmail) {
-      void openExternalUrl(`mailto:${supportEmail}`);
+      void openSupportEmail();
     }
     // 'unavailable': button is shown as disabled/informational — no navigation.
   }, [submissionMode, supportEmail]);
@@ -379,7 +383,7 @@ export const SupportScreen = memo(function SupportScreen({
                       textAlign: rtl.textAlign,
                       writingDirection: rtl.writingDirection,
                     }}>
-                    {t('support.contactSupportHint')}
+                    {t('support.contactSupportHint', { email: supportEmail ?? SUPPORT_EMAIL_ADDRESS })}
                   </Text>
                 </Box>
                 <Icon name={rtl.chevronForward} size="sm" color="secondary" />
@@ -419,6 +423,67 @@ export const SupportScreen = memo(function SupportScreen({
             </Box>
           )}
         </Box>
+
+        {/* The guided tour of the Browser, Downloads, Player and Settings, again. */}
+        <Pressable
+          onPress={showTourAgain}
+          accessibilityRole="button"
+          accessibilityLabel={t('tour.showAgain')}
+          accessibilityHint={t('tour.showAgainA11y')}
+          testID="support-show-tour"
+          style={{ minHeight: 48 }}>
+          <Box
+            row
+            rtlRow
+            center
+            gap={12}
+            px={14}
+            py={14}
+            style={{
+              minHeight: 48,
+              borderRadius: theme.radius.md,
+              backgroundColor: theme.colors.surface,
+              borderWidth: 1,
+              borderColor: theme.colors.border,
+            }}>
+            <Box
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                backgroundColor: `${theme.colors.primary}14`,
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              accessibilityElementsHidden
+              importantForAccessibility="no">
+              <Icon name="compass-outline" size="md" color="primary" />
+            </Box>
+            <Box flex={1} gap={2} style={{ minWidth: 0 }}>
+              <Text
+                variant="body"
+                style={{
+                  color: theme.colors.textPrimary,
+                  lineHeight: 22,
+                  textAlign: rtl.textAlign,
+                  writingDirection: rtl.writingDirection,
+                }}>
+                {t('tour.showAgain')}
+              </Text>
+              <Text
+                variant="caption"
+                style={{
+                  color: theme.colors.textSecondary,
+                  lineHeight: 16,
+                  textAlign: rtl.textAlign,
+                  writingDirection: rtl.writingDirection,
+                }}>
+                {t('tour.showAgainHint')}
+              </Text>
+            </Box>
+            <Icon name={rtl.chevronForward} size="sm" color="secondary" />
+          </Box>
+        </Pressable>
 
         <SupportPrivacySection
           contactEmail={contactEmail}
