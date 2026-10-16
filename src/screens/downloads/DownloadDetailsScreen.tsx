@@ -33,6 +33,7 @@ import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 import { DownloadSaveLocationAction } from '@/screens/downloads/components/DownloadSaveLocationAction';
 import { renameMediaFileOnDevice } from '@/downloads/engine';
+import { DownloadEditActions } from '@/screens/downloads/components/DownloadEditActions';
 import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads/v2';
 import { DownloadMoveToPrivateAction } from '@/screens/downloads/components/DownloadMoveToPrivateAction';
 
@@ -469,6 +470,7 @@ const DetailsBody = memo(function DetailsBody({
           ))}
         </Box>
       ) : null}
+      <DownloadEditActions id={item.id} />
 
       <DownloadDetailsLinkActions id={item.id} disabled={mutating} />
 

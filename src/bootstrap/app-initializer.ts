@@ -232,6 +232,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
           );
         }
       }
+      const { ensureMediaTagCleanup } = await import('@/media-edit/ensure-media-tags');
+      // Edit after download: an item's artist tag goes with it when it is deleted.
+      ensureMediaTagCleanup();
 
       try {
         const { reconcilePendingExports } = await import(
