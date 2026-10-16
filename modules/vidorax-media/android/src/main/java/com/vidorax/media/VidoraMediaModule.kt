@@ -12,6 +12,7 @@ import com.vidorax.media.bridge.ProbeRequestRecord
 import com.vidorax.media.bridge.toJs
 import com.vidorax.media.engine.DownloadEngineApi
 import com.vidorax.media.engine.DownloadEngineProvider
+import com.vidorax.media.library.TreeExport
 import com.vidorax.media.library.DeviceVideos
 import com.vidorax.media.library.ThumbnailExport
 import com.vidorax.media.player.ActivityVisibility
@@ -253,6 +254,43 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("getStorageStats") Coroutine { ->
       services.storageUsage.read().toJs()
+    }
+
+    // Save location (#297): an extra copy of a finished item in a folder the user picked (library/TreeExport). The
+    // library file is only read. ERR_FOLDER_ACCESS when the folder can no longer be written.
+
+    AsyncFunction("copyToFolder") Coroutine { id: String, treeUri: String, subfolders: List<String> ->
+      val copy = TreeExport(context, services.library).copy(id, treeUri, subfolders)
+      mapOf(
+        "documentUri" to copy.documentUri,
+        "folderUri" to copy.folderUri,
+        "name" to copy.name,
+        "bytes" to copy.bytes.toDouble(),
+      )
+    }
+
+    Function("getFolderCopyProgress") { id: String ->
+      TreeExport(context, services.library).progress(id)?.let { (done, total) ->
+        mapOf("bytesDone" to done.toDouble(), "totalBytes" to total.toDouble())
+      }
+    }
+
+    AsyncFunction("hasFolderAccess") { treeUri: String ->
+      TreeExport(context, services.library).hasAccess(treeUri)
+    }
+
+    AsyncFunction("releaseFolderAccess") { treeUri: String ->
+      TreeExport(context, services.library).release(treeUri)
+    }
+
+    AsyncFunction("getFolderName") Coroutine { treeUri: String ->
+      TreeExport(context, services.library).folderName(treeUri)
+    }
+
+    AsyncFunction("openFolder") Coroutine { folderUri: String ->
+      withContext(Dispatchers.Main) {
+        TreeExport(context, services.library).openFolder(appContext.currentActivity, folderUri)
+      }
     }
 
     // Player helpers

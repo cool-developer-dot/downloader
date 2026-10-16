@@ -195,6 +195,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       // Settings → Default tab: where the splash lands a returning user (Browser unless changed).
       ensureDefaultTab();
       bindDownloadEngineToStore();
+      const { ensureSaveLocationCopies } = await import('@/downloads/v2/ensure-save-location');
+      // Download Settings → Save location: an extra copy of new downloads in a picked folder (off by default).
+      ensureSaveLocationCopies();
       ensureDownloadRecoveryListener();
       const { ensureDataUsageCounting } = await import('@/downloads/v2/ensure-data-usage');
       // Settings → Storage → Data usage: counts v2 download bytes (limits off by default; never pauses downloads).

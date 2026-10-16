@@ -26,6 +26,7 @@ import {
 } from './constants';
 import { DownloadListSettingsSection } from './DownloadListSettingsSection';
 import { useDownloadSettingsScreen } from './useDownloadSettingsScreen';
+import { SaveLocationSettingsSection } from './SaveLocationSettingsSection';
 
 export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
   const settingsTokens = useSettingsTokens();
@@ -175,6 +176,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
             />
           </SettingsSection>
         </SettingsStaggerItem>
+        <SaveLocationSettingsSection index={0} disabled={preferenceDisabled} />
 
         <DownloadListSettingsSection index={1} disabled={preferenceDisabled} />
 
