@@ -234,15 +234,35 @@ class PrivateVault internal constructor(
     }
   }
 
-  /** Every vault item, newest first. An item whose metadata cannot be opened is left out. */
+  /**
+   * Every vault item, newest first. An item that cannot be read — the device key that sealed it was lost, or its file
+   * is gone — is never hidden: it is listed as `unreadable` (its id, size on disk and date) so it can still be deleted.
+   */
   suspend fun list(): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
     val files = root.listFiles { file -> file.isFile && file.name.endsWith(".$META") }.orEmpty()
     files.mapNotNull { file ->
       val id = file.name.removeSuffix(".$META")
-      if (!isVaultId(id) || !file(id, CONTENT).isFile) return@mapNotNull null
-      runCatching { readMeta(id) }.getOrNull()?.takeIf { it.id == id }
-    }.sortedByDescending { it.addedAt }.map { it.toJs() }
+      if (!isVaultId(id)) return@mapNotNull null
+      val content = file(id, CONTENT)
+      val meta = if (content.isFile) runCatching { readMeta(id) }.getOrNull()?.takeIf { it.id == id } else null
+      if (meta != null) meta.addedAt to meta.toJs() else file.lastModified() to unreadableJs(id, content, file)
+    }.sortedByDescending { it.first }.map { it.second }
   }
+
+  /** What is known about an item that cannot be opened: nothing of its sealed content, only what the disk says. */
+  private fun unreadableJs(id: String, content: File, meta: File): Map<String, Any?> = mapOf(
+    "id" to id,
+    "unreadable" to true,
+    "title" to "",
+    "mimeType" to "application/octet-stream",
+    "durationMs" to null,
+    "sizeBytes" to (if (content.isFile) content.length() else 0L).toDouble(),
+    "width" to null,
+    "height" to null,
+    "createdAt" to 0.0,
+    "addedAt" to meta.lastModified().toDouble(),
+    "hasThumbnail" to false,
+  )
 
   /** The item's thumbnail as a `data:` URI (held in memory by JavaScript only), or null when it has none. */
   suspend fun thumbnail(vaultId: String): String? = withContext(Dispatchers.IO) {

@@ -27,22 +27,25 @@ const THUMB_HEIGHT = 54;
 export const VaultItemRow = memo(function VaultItemRow({ item, thumbnail, onPlay, onMore }: VaultItemRowProps) {
   const theme = useTheme();
   const { t } = useTranslation();
-  const title = item.title || t('privateVault.untitled');
-  const details = [
-    formatDuration(item.durationMs != null ? item.durationMs / 1000 : null),
-    formatFileSize(item.sizeBytes),
-    formatDownloadDate(new Date(item.addedAt).toISOString()),
-  ]
-    .filter(Boolean)
-    .join(' · ');
+  // An item that cannot be opened says why in one line, and a tap offers only Delete.
+  const title = item.unreadable ? t('privateVault.unreadableTitle') : item.title || t('privateVault.untitled');
+  const details = item.unreadable
+    ? t('privateVault.unreadableNote')
+    : [
+        formatDuration(item.durationMs != null ? item.durationMs / 1000 : null),
+        formatFileSize(item.sizeBytes),
+        formatDownloadDate(new Date(item.addedAt).toISOString()),
+      ]
+        .filter(Boolean)
+        .join(' · ');
 
   return (
     <Box row rtlRow center gap={12} py={10} px={16}>
       <Pressable
-        onPress={() => onPlay(item.id)}
+        onPress={() => (item.unreadable ? onMore(item.id) : onPlay(item.id))}
         accessibilityRole="button"
         accessibilityLabel={t('privateVault.itemA11y', { title, details })}
-        accessibilityHint={t('privateVault.playHint')}
+        accessibilityHint={item.unreadable ? t('privateVault.unreadableHint') : t('privateVault.playHint')}
         style={{ flex: 1 }}
         testID={`private-item-${item.id}`}>
         <Box row rtlRow center gap={12}>
@@ -65,7 +68,7 @@ export const VaultItemRow = memo(function VaultItemRow({ item, thumbnail, onPlay
                 contentFit="cover"
               />
             ) : (
-              <Icon name="lock-outline" size="md" color="secondary" />
+              <Icon name={item.unreadable ? 'lock-alert-outline' : 'lock-outline'} size="md" color={item.unreadable ? 'warning' : 'secondary'} />
             )}
           </View>
           <Box flex={1} gap={4}>
@@ -73,7 +76,7 @@ export const VaultItemRow = memo(function VaultItemRow({ item, thumbnail, onPlay
               {title}
             </Text>
             {details ? (
-              <Text variant="caption" color="textSecondary" numberOfLines={1}>
+              <Text variant="caption" color="textSecondary" numberOfLines={item.unreadable ? 2 : 1}>
                 {details}
               </Text>
             ) : null}

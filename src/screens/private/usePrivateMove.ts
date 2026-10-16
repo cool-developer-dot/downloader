@@ -8,6 +8,7 @@ import { canMoveToPrivate, moveLibraryItemToPrivate, privateMoveSource } from '@
 import { isMovingToPrivate } from '@/private-vault/move-to-private';
 import { vaultSealedLength } from '@/private-vault/vault-format';
 import { getVaultPort } from '@/private-vault/vault-port';
+import { usePrivateVaultPrefs } from '@/private-vault/vault-prefs-store';
 import { useAppLockStore } from '@/security/app-lock';
 import { formatUsagePercent } from '@/storage-manager/utils/format-bytes';
 
@@ -86,9 +87,17 @@ export function usePrivateMove(onMoved?: (id: string) => void) {
     [t],
   );
 
-  const confirm = useCallback(async () => {
+  /** `understood`: the "I understand" box, required before the very first move (re-checked here, not trusted). */
+  const confirm = useCallback(async (understood = false) => {
     if (dialog.kind !== 'confirm') {
       return;
+    }
+    const prefs = usePrivateVaultPrefs.getState();
+    if (!prefs.dataLossAcknowledged) {
+      if (!understood) {
+        return;
+      }
+      prefs.acknowledgeDataLoss();
     }
     const { id, title } = dialog;
     setDialog({ kind: 'moving', id, title, percent: null });

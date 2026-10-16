@@ -3,7 +3,10 @@ import { memo, useEffect, useState } from 'react';
 import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
 import { useTranslation } from '@/localization';
+import { usePrivateVaultPrefs } from '@/private-vault/vault-prefs-store';
 import { AppLockPinInput, useAppLockStore } from '@/security/app-lock';
+
+import { PrivateDataLossNotice } from './PrivateDataLossNotice';
 
 export type PrivatePinGateProps = {
   onVerified: () => void;
@@ -21,6 +24,7 @@ export const PrivatePinGate = memo(function PrivatePinGate({ onVerified }: Priva
   const setupError = useAppLockStore((s) => s.setupError);
   const clearSetupError = useAppLockStore((s) => s.clearSetupError);
   const [pin, setPin] = useState('');
+  const dataLossAcknowledged = usePrivateVaultPrefs((s) => s.dataLossAcknowledged);
 
   useEffect(() => {
     clearSetupError();
@@ -42,6 +46,12 @@ export const PrivatePinGate = memo(function PrivatePinGate({ onVerified }: Priva
       <Text variant="body" color="textSecondary" style={{ marginBottom: 20 }}>
         {t('privateVault.pinHint')}
       </Text>
+      {/* The first time Private is opened, before any move, it says where private videos live and what loses them. */}
+      {!dataLossAcknowledged ? (
+        <Box mb={20}>
+          <PrivateDataLossNotice testID="private-pin-gate-data-loss" />
+        </Box>
+      ) : null}
       <AppLockPinInput
         value={pin}
         onChange={(next) => {

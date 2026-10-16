@@ -478,6 +478,11 @@ export interface VaultItem {
   /** When it was moved to Private (epoch ms). */
   addedAt: number;
   hasThumbnail: boolean;
+  /**
+   * True when the item cannot be opened (the device key that sealed it was lost, or its file is gone): only its id,
+   * size and date are known, and the only action is deleting it.
+   */
+  unreadable?: boolean;
 }
 
 export interface VidoraMediaModuleApi {
@@ -558,7 +563,7 @@ export interface VidoraMediaModuleApi {
    * ERR_NOT_FOUND for an unknown item or a missing file, ERR_STORAGE when it cannot be written or does not verify.
    */
   moveToVault?(id: string): Promise<VaultItem>;
-  /** Every vault item, newest first. */
+  /** Every vault item, newest first; items that cannot be opened are listed with `unreadable: true`, never hidden. */
   listVault?(): Promise<VaultItem[]>;
   /** The item's thumbnail as a `data:image/webp;base64,…` URI (keep it in memory only), or null. */
   getVaultThumbnail?(vaultId: string): Promise<string | null>;
