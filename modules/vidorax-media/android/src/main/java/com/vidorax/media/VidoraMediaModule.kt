@@ -17,6 +17,7 @@ import com.vidorax.media.library.TreeExport
 import com.vidorax.media.library.DeviceVideos
 import com.vidorax.media.library.ThumbnailExport
 import com.vidorax.media.player.ActivityVisibility
+import com.vidorax.media.library.PrivateVault
 import com.vidorax.media.player.PictureInPictureAutoEnter
 import com.vidorax.media.player.Volume
 import com.vidorax.media.runner.NotificationOptions
@@ -258,6 +259,51 @@ class VidoraMediaModule : Module() {
       if (ids.isEmpty()) throw InvalidRequestException("Nothing to share")
       val items = services.library.requireFiles(ids)
       withContext(Dispatchers.Main) { services.fileActions.share(appContext.currentActivity, items) }
+    }
+
+    // Private downloads (#459, #463): an encrypted vault in no-backup storage (library/PrivateVault). The library is
+    // only read here; JavaScript removes the original through its usual delete path once moveToVault resolves.
+
+    AsyncFunction("moveToVault") Coroutine { id: String ->
+      PrivateVault(context, services.library).moveIn(id)
+    }
+
+    AsyncFunction("listVault") Coroutine { ->
+      PrivateVault(context, services.library).list()
+    }
+
+    AsyncFunction("getVaultThumbnail") Coroutine { vaultId: String ->
+      PrivateVault(context, services.library).thumbnail(vaultId)
+    }
+
+    AsyncFunction("openVaultItem") Coroutine { vaultId: String ->
+      PrivateVault(context, services.library).openForPlayback(vaultId)
+    }
+
+    AsyncFunction("clearVaultPlayback") Coroutine { ->
+      PrivateVault(context, services.library).clearPlayback()
+    }
+
+    AsyncFunction("cleanUpVault") Coroutine { ->
+      PrivateVault(context, services.library).cleanUp()
+    }
+
+    AsyncFunction("deleteVaultItem") Coroutine { vaultId: String ->
+      PrivateVault(context, services.library).delete(vaultId)
+    }
+
+    AsyncFunction("exportVaultItemToGallery") Coroutine { vaultId: String ->
+      PrivateVault(context, services.library).exportToGallery(vaultId)
+    }
+
+    AsyncFunction("exportVaultItemToFolder") Coroutine { vaultId: String, treeUri: String ->
+      PrivateVault(context, services.library).exportToFolder(vaultId, treeUri)
+    }
+
+    Function("getVaultProgress") { key: String ->
+      PrivateVault.progress(key)?.let { (done, total) ->
+        mapOf("bytesDone" to done.toDouble(), "totalBytes" to total.toDouble())
+      }
     }
 
     AsyncFunction("getStorageStats") Coroutine { ->

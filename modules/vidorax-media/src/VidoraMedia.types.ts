@@ -497,6 +497,22 @@ export type CompletedDownload = {
   completedAt: number;
 };
 
+/** An item of the private vault: its own random id, never the library or download id it had. */
+export interface VaultItem {
+  id: string;
+  title: string;
+  mimeType: string;
+  durationMs: number | null;
+  sizeBytes: number;
+  width: number | null;
+  height: number | null;
+  /** When it was downloaded (epoch ms). */
+  createdAt: number;
+  /** When it was moved to Private (epoch ms). */
+  addedAt: number;
+  hasThumbnail: boolean;
+}
+
 export interface VidoraMediaModuleApi {
   // Probing
   probe(request: ProbeRequest): Promise<ProbeResult>;
@@ -592,6 +608,33 @@ export interface VidoraMediaModuleApi {
   getStorageStats(): Promise<StorageStats>;
   /** Deletes orphaned temp work folders; resolves with bytes freed. */
   clearTempFiles(): Promise<number>;
+  // Private downloads (#459, #463): an encrypted vault, separate from the library. Missing on older native builds.
+  /**
+   * Encrypts the library item's file (and its thumbnail) into the vault and verifies the encrypted copy; resolves with
+   * the new vault item. The library item is never touched: JavaScript deletes it through its usual path afterwards.
+   * ERR_NOT_FOUND for an unknown item or a missing file, ERR_STORAGE when it cannot be written or does not verify.
+   */
+  moveToVault?(id: string): Promise<VaultItem>;
+  /** Every vault item, newest first. */
+  listVault?(): Promise<VaultItem[]>;
+  /** The item's thumbnail as a `data:image/webp;base64,…` URI (keep it in memory only), or null. */
+  getVaultThumbnail?(vaultId: string): Promise<string | null>;
+  /**
+   * Decrypts the item to one temporary file in the private cache and resolves with its `file://` URI (an earlier
+   * playback file is removed first). ERR_VAULT_CORRUPT when the file does not authenticate.
+   */
+  openVaultItem?(vaultId: string): Promise<string>;
+  /** Deletes the temporary playback file. */
+  clearVaultPlayback?(): Promise<void>;
+  /** At start: removes playback leftovers and half-written vault files. */
+  cleanUpVault?(): Promise<void>;
+  deleteVaultItem?(vaultId: string): Promise<void>;
+  /** Decrypts into `Movies/VidoraX` (audio: `Music/VidoraX`); resolves with the new item's URI. */
+  exportVaultItemToGallery?(vaultId: string): Promise<string>;
+  /** Decrypts into a folder the user picked (a persisted tree URI). ERR_FOLDER_ACCESS when it cannot be written. */
+  exportVaultItemToFolder?(vaultId: string, treeUri: string): Promise<string>;
+  /** Bytes done while a move (key: library id) or a decryption (key: vault id) runs; null otherwise. */
+  getVaultProgress?(key: string): { bytesDone: number; totalBytes: number } | null;
 
   // Completions
   /**
