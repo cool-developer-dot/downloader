@@ -189,13 +189,35 @@ brings no installs.
 
 ## Screenshots and feature graphic (T5)
 
+**Upload this set: `~/Downloads/VidoraX-Play-Assets/v3-pro/{en,ur}/`** (2026-10-16, "pro" style, the generator's
+default). Same real captures as v2, redesigned: brand-red gradient with a soft glow and dot texture, a "VidoraX" chip,
+a two-line headline in Poppins Bold with one keyword marked, a one-line benefit subtitle, a realistic phone frame with
+shadow, and a floating feature badge per screen (icons from the app's own Material Community Icons font). The feature
+graphic shows the logo, name, tagline, three feature pills and two tilted phones. Copy is in
+`scripts/store/captions_pro.json` (en + ur); it follows the same brand-name and claim rules as the listing. No image is
+AI-generated: every screen is a real capture of the app, as Play requires. The v2 "classic" set below stays
+reproducible with `--style classic`.
+
+| # | Headline (en) | Badge (en) | Headline (ur) |
+| --- | --- | --- | --- |
+| 1 | Browse & paste video links | Paste & go | براؤز کریں، لنک پیسٹ کریں |
+| 2 | Tap to save the video | Video available | ٹیپ کریں، ویڈیو محفوظ کریں |
+| 3 | Choose your quality | HD quality | اپنی پسند کی کوالٹی |
+| 4 | Pause & resume anytime | Background downloads | کسی بھی وقت روکیں، جاری رکھیں |
+| 5 | Your videos, offline | Works offline | آپ کی ویڈیوز، آف لائن |
+| 6 | A smooth video player | Picture-in-Picture | آسان ویڈیو پلیئر |
+| 7 | Private by design | App Lock | پرائیویسی پہلے |
+| 8 | English or Urdu | English · اردو | اردو یا انگریزی |
+
+The v2 ("classic") set:
+
 Built by `scripts/store/build_play_assets.py` (captions in `scripts/store/captions.json`) from real captures of the
 **test2 release build** on the clean AVD `VidoraX_Play_Shots` (Pixel 8 profile, API 35, demo-mode status bar 9:30).
 Output (not in the repo): `~/Downloads/VidoraX-Play-Assets/v2/{en,ur}/` — eight 1080×1920 (9:16) phone screenshots and
 `feature-graphic-1024x500.png` per language, 24-bit RGB PNG, each under 1 MB. Raw 1080×2400 captures are kept in
 `~/Downloads/VidoraX-Play-Assets/v2/raw/{en,ur}/`.
 
-Rebuild: `python3 scripts/store/build_play_assets.py --raw ~/Downloads/VidoraX-Play-Assets/v2/raw --out ~/Downloads/VidoraX-Play-Assets/v2`
+Rebuild: `python3 scripts/store/build_play_assets.py --raw ~/Downloads/VidoraX-Play-Assets/v2/raw --out ~/Downloads/VidoraX-Play-Assets/v3-pro` (pro), or add `--style classic --out ~/Downloads/VidoraX-Play-Assets/v2`
 (needs Google Chrome, Python 3 + Pillow and `npm ci`; headless Chrome renders each design so Urdu is shaped correctly).
 
 Style: brand red (`#DC3C2C` → `#C43426`, `src/theme/colors.ts`) background, caption at the top in Poppins SemiBold
