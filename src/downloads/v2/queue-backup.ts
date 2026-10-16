@@ -75,7 +75,7 @@ export type QueueParseResult =
 export function parseQueueBackup(text: string): QueueParseResult {
   let data: unknown;
   try {
-    data = JSON.parse(text.replace(/^﻿/, ''));
+    data = JSON.parse(text.replace(/^\uFEFF/, ''));
   } catch {
     return { ok: false, reason: 'not-json' };
   }
