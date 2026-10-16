@@ -9,20 +9,26 @@ import { Button } from '@/components/buttons/Button';
 import { EmptyState } from '@/components/common/EmptyState';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
 import { ensureGalleryPermission } from '@/downloads/v2/gallery-permission';
+import { formatFileSize } from '@/media-detection/utils/format';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { closePlayerSession } from '@/player/session-host/player-session-store';
 import { exportVaultItem } from '@/private-vault/vault-export';
+import { dataLossNotice } from '@/private-vault/data-loss';
 import {
   findVaultItem,
   vaultIndexFrom,
+  vaultItemActions,
   withoutVaultItem,
   type VaultItem,
+  type VaultItemAction,
 } from '@/private-vault/vault-index';
 import { IDLE_PLAYBACK, reduceVaultPlayback, type VaultPlayback, type VaultPlaybackEvent } from '@/private-vault/vault-playback';
 import { clearVaultPlayback, getVaultPort, pickExportFolder } from '@/private-vault/vault-port';
+import { usePrivateVaultPrefs } from '@/private-vault/vault-prefs-store';
 import { formatUsagePercent } from '@/storage-manager/utils/format-bytes';
 
+import { PrivateDataLossNotice } from './PrivateDataLossNotice';
 import { VaultItemRow } from './VaultItemRow';
 import { VaultPlayerModal } from './VaultPlayerModal';
 
@@ -146,8 +152,9 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
       if (!port || busyRef.current || playbackRef.current.phase !== 'idle') {
         return;
       }
-      // Read right before acting: it may have been deleted meanwhile.
-      if (!findVaultItem(itemsRef.current, id)) {
+      // Read right before acting: it may have been deleted meanwhile, and an unreadable item never plays.
+      const target = findVaultItem(itemsRef.current, id);
+      if (!target || target.unreadable) {
         return;
       }
       // The app's own player (and its mini player) stops, so two videos never play at once.
@@ -174,8 +181,9 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
     if (!pending || !port || busyRef.current) {
       return;
     }
-    // Read right before acting.
-    if (!findVaultItem(itemsRef.current, pending.id)) {
+    // Read right before acting; an item that cannot be opened can only be deleted.
+    const target = findVaultItem(itemsRef.current, pending.id);
+    if (!target || (target.unreadable && pending.kind !== 'delete')) {
       return;
     }
     busyRef.current = true;
@@ -235,12 +243,13 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
 
   const sheetItem = sheetId ? findVaultItem(items, sheetId) : null;
   const sheetActions = useMemo<ActionSheetItem[]>(() => {
-    if (!sheetId) {
+    const item = sheetId ? findVaultItem(items, sheetId) : null;
+    if (!item) {
       return [];
     }
-    const id = sheetId;
-    return [
-      {
+    const id = item.id;
+    const all: Record<VaultItemAction, ActionSheetItem> = {
+      play: {
         id: 'play',
         label: t('common.play'),
         onPress: () => {
@@ -248,7 +257,7 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
           void play(id);
         },
       },
-      {
+      'export-gallery': {
         id: 'export-gallery',
         label: t('privateVault.exportGallery'),
         onPress: () => {
@@ -256,7 +265,7 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
           setConfirm({ kind: 'export-gallery', id });
         },
       },
-      {
+      'export-folder': {
         id: 'export-folder',
         label: t('privateVault.exportFolder'),
         onPress: () => {
@@ -264,7 +273,7 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
           setConfirm({ kind: 'export-folder', id });
         },
       },
-      {
+      delete: {
         id: 'delete',
         label: t('common.delete'),
         onPress: () => {
@@ -272,11 +281,14 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
           setConfirm({ kind: 'delete', id });
         },
       },
-    ];
-  }, [play, sheetId, t]);
+    };
+    // An item that cannot be opened offers only Delete.
+    return vaultItemActions(item).map((action) => all[action]);
+  }, [items, play, sheetId, t]);
 
   const confirmItem = confirm ? findVaultItem(items, confirm.id) : null;
   const confirmTitle = confirmItem?.title || t('privateVault.untitled');
+  const confirmUnreadable = confirmItem?.unreadable === true;
 
   const renderItem = useCallback(
     ({ item }: { item: VaultItem }) => (
@@ -284,6 +296,8 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
     ),
     [play, thumbnails],
   );
+
+  const dataLossAcknowledged = usePrivateVaultPrefs((s) => s.dataLossAcknowledged);
 
   if (status === 'loading') {
     return (
@@ -330,6 +344,12 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
         contentContainerStyle={items.length === 0 ? { flexGrow: 1 } : { paddingBottom: 24 }}
+        ListHeaderComponent={
+          // Until the first move was acknowledged the whole warning, then a one-line reminder.
+          <Box px={16} pt={12} pb={4}>
+            <PrivateDataLossNotice compact={dataLossNotice(dataLossAcknowledged) === 'compact'} />
+          </Box>
+        }
         ListEmptyComponent={
           <EmptyState
             icon="lock-outline"
@@ -343,7 +363,7 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
       <ActionSheetModal
         visible={sheetItem !== null}
         onClose={() => setSheetId(null)}
-        title={sheetItem?.title || t('privateVault.untitled')}
+        title={sheetItem?.unreadable ? t('privateVault.unreadableTitle') : sheetItem?.title || t('privateVault.untitled')}
         subtitle={t('privateVault.actionsSubtitle')}
         actions={sheetActions}
         testID="private-actions"
@@ -353,15 +373,19 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
         visible={confirm !== null}
         variant={confirm?.kind === 'delete' ? 'delete' : 'warning'}
         title={
-          confirm?.kind === 'delete'
-            ? t('privateVault.deleteTitle')
+          confirm?.kind === 'delete' && confirmUnreadable
+            ? t('privateVault.deleteUnreadableTitle')
+            : confirm?.kind === 'delete'
+              ? t('privateVault.deleteTitle')
             : confirm?.kind === 'export-folder'
               ? t('privateVault.exportFolderTitle')
               : t('privateVault.exportGalleryTitle')
         }
         message={
-          confirm?.kind === 'delete'
-            ? t('privateVault.deleteMessage', { title: confirmTitle })
+          confirm?.kind === 'delete' && confirmUnreadable
+            ? t('privateVault.deleteUnreadableMessage', { size: formatFileSize(confirmItem?.sizeBytes ?? 0) ?? '' })
+            : confirm?.kind === 'delete'
+              ? t('privateVault.deleteMessage', { title: confirmTitle })
             : confirm?.kind === 'export-folder'
               ? t('privateVault.exportFolderMessage', { title: confirmTitle })
               : t('privateVault.exportGalleryMessage', { title: confirmTitle })

@@ -18,6 +18,11 @@ export type VaultItem = {
   /** When it was moved to Private (epoch ms). */
   addedAt: number;
   hasThumbnail: boolean;
+  /**
+   * The item cannot be opened: the device key that sealed it was lost (or its file is gone). Only its id, size and
+   * date are known, and it can only be deleted. Never hidden, so its space can be freed.
+   */
+  unreadable: boolean;
 };
 
 const VAULT_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -40,6 +45,21 @@ export function normalizeVaultItem(raw: unknown): VaultItem | null {
   if (!isVaultId(value.id)) {
     return null;
   }
+  if (value.unreadable === true) {
+    return {
+      id: value.id,
+      title: '',
+      mimeType: 'application/octet-stream',
+      durationMs: null,
+      sizeBytes: finiteOrNull(value.sizeBytes) ?? 0,
+      width: null,
+      height: null,
+      createdAt: 0,
+      addedAt: finiteOrNull(value.addedAt) ?? 0,
+      hasThumbnail: false,
+      unreadable: true,
+    };
+  }
   const sizeBytes = finiteOrNull(value.sizeBytes);
   const createdAt = finiteOrNull(value.createdAt);
   const addedAt = finiteOrNull(value.addedAt);
@@ -58,6 +78,7 @@ export function normalizeVaultItem(raw: unknown): VaultItem | null {
     createdAt,
     addedAt,
     hasThumbnail: value.hasThumbnail === true,
+    unreadable: false,
   };
 }
 
@@ -100,4 +121,11 @@ export function vaultTotalBytes(items: readonly VaultItem[]): number {
 /** The item a tap refers to, read right before acting (it may have been deleted meanwhile). */
 export function findVaultItem(items: readonly VaultItem[], id: string): VaultItem | null {
   return items.find((item) => item.id === id) ?? null;
+}
+
+export type VaultItemAction = 'play' | 'export-gallery' | 'export-folder' | 'delete';
+
+/** What can be done with an item: everything, or — when it cannot be opened — only deleting it. */
+export function vaultItemActions(item: Pick<VaultItem, 'unreadable'>): VaultItemAction[] {
+  return item.unreadable ? ['delete'] : ['play', 'export-gallery', 'export-folder', 'delete'];
 }
