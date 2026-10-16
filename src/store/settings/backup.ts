@@ -60,7 +60,7 @@ export type SettingsBackupParse =
 export function parseSettingsBackup(text: string, defaults: Readonly<Record<string, unknown>>): SettingsBackupParse {
   let data: unknown;
   try {
-    data = JSON.parse(text.replace(/^﻿/, ''));
+    data = JSON.parse(text.replace(/^\uFEFF/, ''));
   } catch {
     return { ok: false, reason: 'not-json' };
   }
