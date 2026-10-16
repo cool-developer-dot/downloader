@@ -134,6 +134,22 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("resumeAll") Coroutine { -> engine.resumeAll() }
 
+    // H4: queues and start order (Priority, Move Priority, Multiple Queues); every call returns the new state
+
+    AsyncFunction("getDownloadQueues") Coroutine { -> engine.downloadQueues().toJs() }
+
+    AsyncFunction("setDownloadOrder") Coroutine { ids: List<String> ->
+      engine.setDownloadOrder(ids.take(com.vidorax.media.engine.QueueOrder.MAX_ORDERED)).toJs()
+    }
+
+    AsyncFunction("moveDownloadsToQueue") Coroutine { ids: List<String>, queueId: String ->
+      engine.moveDownloadsToQueue(ids.take(com.vidorax.media.engine.QueueOrder.MAX_ORDERED), queueId).toJs()
+    }
+
+    AsyncFunction("setDownloadQueues") Coroutine { queues: List<com.vidorax.media.bridge.DownloadQueueRecord> ->
+      engine.setDownloadQueues(queues.take(com.vidorax.media.engine.QueueOrder.MAX_QUEUES + 1).map { it.toModel() }).toJs()
+    }
+
     AsyncFunction("listDownloads") Coroutine { ->
       engine.listDownloads().map { it.toJs() }
     }

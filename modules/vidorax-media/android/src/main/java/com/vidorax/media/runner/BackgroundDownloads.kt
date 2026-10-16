@@ -43,6 +43,7 @@ internal object BackgroundDownloads {
     val notifier = DownloadNotifications(appContext)
     val runnerHost = AndroidRunnerHost(appContext, notifier)
     val downloadRunner = DownloadRunner(runnerHost, notifier)
+    downloadRunner.isHeld = engine::isQueueHeld
     notifications = notifier
     host = runnerHost
     runner = downloadRunner

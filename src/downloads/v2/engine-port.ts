@@ -32,6 +32,16 @@ export type V2EnginePort = {
   findDuplicate?(request: EnqueueRequest): Promise<EnqueueResult | null>;
   pause(id: string): Promise<void>;
   resume(id: string): Promise<void>;
+  /** H4 queues and start order (see `VidoraMediaModuleApi`). Missing on older native builds: no Reorder mode then. */
+  getDownloadQueues?(): Promise<import('@modules/vidorax-media/src/VidoraMedia.types').DownloadQueueState>;
+  setDownloadOrder?(ids: string[]): Promise<import('@modules/vidorax-media/src/VidoraMedia.types').DownloadQueueState>;
+  moveDownloadsToQueue?(
+    ids: string[],
+    queueId: string,
+  ): Promise<import('@modules/vidorax-media/src/VidoraMedia.types').DownloadQueueState>;
+  setDownloadQueues?(
+    queues: import('@modules/vidorax-media/src/VidoraMedia.types').DownloadQueue[],
+  ): Promise<import('@modules/vidorax-media/src/VidoraMedia.types').DownloadQueueState>;
   retry(id: string): Promise<void>;
   cancel(id: string): Promise<void>;
   removeDownload(id: string): Promise<void>;
