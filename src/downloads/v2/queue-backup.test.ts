@@ -110,7 +110,7 @@ describe('parseQueueBackup', () => {
   });
 
   test('accepts a BOM', () => {
-    assert.equal(parseQueueBackup(`﻿${JSON.stringify({ format: QUEUE_FORMAT, version: 1, items: [] })}`).ok, true);
+    assert.equal(parseQueueBackup(`\uFEFF${JSON.stringify({ format: QUEUE_FORMAT, version: 1, items: [] })}`).ok, true);
   });
 });
 
