@@ -1,8 +1,9 @@
 /**
- * Download Settings → Advanced network: Custom User-Agent (#443), Custom Headers (#444) and the timeout (#349). Pure.
+ * Download Settings → Advanced network: Custom User-Agent (#443), Custom Headers (#444), the timeout (#349) and the
+ * retry limit (#332). Pure.
  *
  * Every default is today's behaviour, and today's behaviour sends nothing new to the native side: the browser's own
- * User-Agent, no extra headers, 20 s to connect and 30 s without data. Nothing here can weaken a download: TLS is
+ * User-Agent, no extra headers, 20 s to connect and 30 s without data, 5 retries in a row. Nothing here can weaken a download: TLS is
  * never touched, URLs are never touched (the public-address and redirect checks still decide every request), and a
  * header that would change what the request is — Cookie, Authorization, Host, Range, … — is refused.
  */
@@ -13,6 +14,8 @@ export type HeaderPair = { name: string; value: string };
 
 export type UserAgentMode = 'automatic' | 'custom';
 export type TimeoutChoice = 'automatic' | '15' | '30' | '60' | '120';
+/** #332: how many failures in a row a download waits out before it fails. "Automatic" is today's 5. */
+export type RetryLimitChoice = 'automatic' | '1' | '3' | '5' | '10';
 
 export type NetworkOptionsInput = {
   userAgentMode: UserAgentMode;
@@ -20,6 +23,8 @@ export type NetworkOptionsInput = {
   customUserAgent: string;
   headers: HeaderPair[];
   timeout: TimeoutChoice;
+  /** #332 Retry limit. Missing (an older caller) is "Automatic". */
+  retryLimit?: RetryLimitChoice;
 };
 
 export const DEFAULT_NETWORK_OPTIONS: NetworkOptionsInput = {
@@ -27,6 +32,7 @@ export const DEFAULT_NETWORK_OPTIONS: NetworkOptionsInput = {
   customUserAgent: '',
   headers: [],
   timeout: 'automatic',
+  retryLimit: 'automatic',
 };
 
 export const MAX_USER_AGENT_LENGTH = 256;
@@ -41,6 +47,13 @@ export const TODAY_READ_TIMEOUT_SECONDS = 30;
 export const MIN_TIMEOUT_SECONDS = 10;
 export const MAX_TIMEOUT_SECONDS = 120;
 export const TIMEOUT_CHOICES: readonly TimeoutChoice[] = ['automatic', '15', '30', '60', '120'];
+
+/** Today's retry budget (engine `MAX_NETWORK_ATTEMPTS`): what "Automatic" keeps. */
+export const AUTOMATIC_RETRY_LIMIT = 5;
+/** The range the native side clamps a retry limit to. */
+export const MIN_RETRY_LIMIT = 1;
+export const MAX_RETRY_LIMIT = 10;
+export const RETRY_LIMIT_CHOICES: readonly RetryLimitChoice[] = ['automatic', '1', '3', '5', '10'];
 
 /** Names that would change what the request is, who it is from, or how its bytes are counted. */
 export const REFUSED_HEADER_NAMES: readonly string[] = [
@@ -189,6 +202,25 @@ export function clampTimeoutSeconds(value: unknown): number | null {
   return Math.min(MAX_TIMEOUT_SECONDS, Math.max(MIN_TIMEOUT_SECONDS, Math.round(seconds)));
 }
 
+function isRetryLimitChoice(value: unknown): value is RetryLimitChoice {
+  return typeof value === 'string' && (RETRY_LIMIT_CHOICES as readonly string[]).includes(value);
+}
+
+/** A retry limit as the native side takes it (1..10); null ("Automatic", today's 5) for anything that is not a number. */
+export function clampRetryLimit(value: unknown): number | null {
+  const limit = typeof value === 'string' ? Number(value) : value;
+  if (typeof limit !== 'number' || !Number.isFinite(limit)) {
+    return null;
+  }
+  return Math.min(MAX_RETRY_LIMIT, Math.max(MIN_RETRY_LIMIT, Math.round(limit)));
+}
+
+/** The stored retry-limit choice (#332); anything unknown is "Automatic". */
+export function normalizeRetryLimit(raw: unknown): RetryLimitChoice {
+  const value = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  return isRetryLimitChoice(value.retryLimit) ? value.retryLimit : 'automatic';
+}
+
 /** Whatever was stored, as options; anything unknown is today's behaviour. Headers are kept elsewhere. */
 export function normalizeNetworkOptions(raw: unknown): Omit<NetworkOptionsInput, 'headers'> {
   const value = raw && typeof raw === 'object' && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
@@ -209,7 +241,7 @@ export function isDefaultNetworkOptions(options: NetworkOptionsInput | null | un
 
 export type NetworkSettingsFields = Pick<
   DownloadSettings,
-  'userAgent' | 'customHeaders' | 'connectTimeoutSeconds' | 'readTimeoutSeconds'
+  'userAgent' | 'customHeaders' | 'connectTimeoutSeconds' | 'readTimeoutSeconds' | 'retryLimit'
 >;
 
 /**
@@ -238,6 +270,12 @@ export function networkSettingsFields(options: NetworkOptionsInput | null | unde
       fields.readTimeoutSeconds = seconds;
     }
   }
+  if (options.retryLimit !== undefined && options.retryLimit !== 'automatic') {
+    const limit = clampRetryLimit(options.retryLimit);
+    if (limit !== null) {
+      fields.retryLimit = limit;
+    }
+  }
   return fields;
 }
 
@@ -253,6 +291,7 @@ export function sameNetworkFields(a: NetworkSettingsFields, b: NetworkSettingsFi
     a.userAgent === b.userAgent &&
     a.connectTimeoutSeconds === b.connectTimeoutSeconds &&
     a.readTimeoutSeconds === b.readTimeoutSeconds &&
+    a.retryLimit === b.retryLimit &&
     sameHeaders(a.customHeaders, b.customHeaders)
   );
 }

@@ -14,10 +14,13 @@ import {
   MAX_HEADERS,
   MAX_HEADER_NAME_LENGTH,
   MAX_USER_AGENT_LENGTH,
+  AUTOMATIC_RETRY_LIMIT,
+  RETRY_LIMIT_CHOICES,
   TIMEOUT_CHOICES,
   validateUserAgent,
   type HeaderPair,
   type HeaderProblem,
+  type RetryLimitChoice,
   type TimeoutChoice,
   type UserAgentMode,
 } from '@/downloads/v2/network-options';
@@ -58,8 +61,8 @@ function announce(message: string): void {
 }
 
 /**
- * Download Settings → Advanced network (collapsed until opened): Custom User-Agent (#443), Custom Headers (#444) and
- * Timeout (#349). Every default is today's behaviour, and with the defaults nothing extra reaches the native side.
+ * Download Settings → Advanced network (collapsed until opened): Custom User-Agent (#443), Custom Headers (#444),
+ * Timeout (#349) and Retry limit (#332). Every default is today's behaviour, and with the defaults nothing extra reaches the native side.
  */
 export const AdvancedNetworkSettingsSection = memo(function AdvancedNetworkSettingsSection({
   index,
@@ -72,6 +75,7 @@ export const AdvancedNetworkSettingsSection = memo(function AdvancedNetworkSetti
   const headers = useNetworkOptionsStore((s) => s.headers);
   const headersHydrated = useNetworkOptionsStore((s) => s.headersHydrated);
   const timeout = useNetworkOptionsStore((s) => s.timeout);
+  const retryLimit = useNetworkOptionsStore((s) => s.retryLimit) ?? 'automatic';
 
   const [agentDraft, setAgentDraft] = useState(savedUserAgent);
   const [headerName, setHeaderName] = useState('');
@@ -176,6 +180,16 @@ export const AdvancedNetworkSettingsSection = memo(function AdvancedNetworkSetti
       TIMEOUT_CHOICES.map((choice) => ({
         value: choice,
         label: choice === 'automatic' ? t('networkOptions.automatic') : t('networkOptions.seconds', { seconds: choice }),
+      })),
+    [t],
+  );
+
+  const retryLimitOptions = useMemo(
+    () =>
+      RETRY_LIMIT_CHOICES.map((choice) => ({
+        value: choice,
+        label:
+          choice === 'automatic' ? t('networkOptions.retryLimitAutomatic', { count: String(AUTOMATIC_RETRY_LIMIT) }) : choice,
       })),
     [t],
   );
@@ -342,6 +356,21 @@ export const AdvancedNetworkSettingsSection = memo(function AdvancedNetworkSetti
               />
               <Text variant="caption" color="textSecondary">
                 {t('networkOptions.timeoutHint')}
+              </Text>
+            </Box>
+
+            <Box gap={8}>
+              <Text variant="label">{t('networkOptions.retryLimit')}</Text>
+              <SegmentedControl<RetryLimitChoice>
+                options={retryLimitOptions}
+                value={retryLimit}
+                onChange={(choice) => useNetworkOptionsStore.getState().setRetryLimit(choice)}
+                disabled={controlsDisabled}
+                accessibilityLabel={t('networkOptions.retryLimit')}
+                testID="download-settings-retry-limit"
+              />
+              <Text variant="caption" color="textSecondary">
+                {t('networkOptions.retryLimitHint')}
               </Text>
             </Box>
 

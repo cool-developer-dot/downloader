@@ -7,14 +7,16 @@ import {
   DEFAULT_NETWORK_OPTIONS,
   normalizeHeaders,
   normalizeNetworkOptions,
+  normalizeRetryLimit,
   type HeaderPair,
   type NetworkOptionsInput,
+  type RetryLimitChoice,
   type TimeoutChoice,
   type UserAgentMode,
 } from './network-options';
 
 /**
- * Advanced network options on this device. The User-Agent and timeout choices live in MMKV
+ * Advanced network options on this device. The User-Agent, timeout and retry-limit choices live in MMKV
  * (`vidorax.networkOptions.v1`). Custom headers may hold secrets, so they never go there or into the app settings:
  * they live in the secure store (`vidorax.networkHeaders.v1`), which settings backup and export never read, and are
  * written only when the user adds, removes or clears one.
@@ -25,6 +27,7 @@ type NetworkOptionsState = NetworkOptionsInput & {
   setUserAgentMode: (mode: UserAgentMode) => void;
   setCustomUserAgent: (value: string) => void;
   setTimeoutChoice: (choice: TimeoutChoice) => void;
+  setRetryLimit: (choice: RetryLimitChoice) => void;
   setHeaders: (headers: HeaderPair[]) => void;
   reset: () => void;
 };
@@ -39,6 +42,7 @@ export const useNetworkOptionsStore = createStore<NetworkOptionsState>()(
       setUserAgentMode: (mode) => set((state) => (state.userAgentMode === mode ? state : { userAgentMode: mode })),
       setCustomUserAgent: (value) => set((state) => (state.customUserAgent === value ? state : { customUserAgent: value })),
       setTimeoutChoice: (choice) => set((state) => (state.timeout === choice ? state : { timeout: choice })),
+      setRetryLimit: (choice) => set((state) => (state.retryLimit === choice ? state : { retryLimit: choice })),
       setHeaders: (headers) => {
         const next = normalizeHeaders(headers);
         // The user's change wins over a secure-store read still in flight.
@@ -57,8 +61,13 @@ export const useNetworkOptionsStore = createStore<NetworkOptionsState>()(
         userAgentMode: state.userAgentMode,
         customUserAgent: state.customUserAgent,
         timeout: state.timeout,
+        retryLimit: state.retryLimit,
       }),
-      merge: (persisted, current) => ({ ...current, ...normalizeNetworkOptions(persisted) }),
+      merge: (persisted, current) => ({
+        ...current,
+        ...normalizeNetworkOptions(persisted),
+        retryLimit: normalizeRetryLimit(persisted),
+      }),
     },
   ),
 );
@@ -71,6 +80,7 @@ export function getNetworkOptionsInput(): NetworkOptionsInput {
     customUserAgent: state.customUserAgent,
     headers: state.headers,
     timeout: state.timeout,
+    retryLimit: state.retryLimit,
   };
 }
 
@@ -153,6 +163,7 @@ export function subscribeNetworkOptions(listener: () => void): () => void {
       state.userAgentMode !== previous.userAgentMode ||
       state.customUserAgent !== previous.customUserAgent ||
       state.timeout !== previous.timeout ||
+      state.retryLimit !== previous.retryLimit ||
       state.headers !== previous.headers
     ) {
       listener();

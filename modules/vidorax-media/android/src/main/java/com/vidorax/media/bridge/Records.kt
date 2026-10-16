@@ -150,6 +150,8 @@ data class DownloadSettingsRecord(
   @Field val customHeaders: Map<String, String>? = null,
   @Field val connectTimeoutSeconds: Int? = null,
   @Field val readTimeoutSeconds: Int? = null,
+  /** #332 Retry limit (engine/RetryLimit): sent only when the user changed it; null = Automatic (5). Clamped to 1..10. */
+  @Field val retryLimit: Int? = null,
   @Field val autoSaveToGallery: Boolean = DownloadSettings.DEFAULT.autoSaveToGallery,
   @Field val preferredMaxHeight: Int? = null,
 ) : Record {

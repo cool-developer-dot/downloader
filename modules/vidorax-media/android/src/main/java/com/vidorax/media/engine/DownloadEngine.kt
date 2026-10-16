@@ -111,6 +111,8 @@ internal class DownloadEngine(
   private val gallery: GalleryPublisher = GalleryPublisher.NONE,
   /** Backoff sleeps; injectable so tests do not wait in real time. */
   private val retryDelay: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
+  /** #332 Retry limit ([RetryLimit]): null is Automatic, today's [MAX_NETWORK_ATTEMPTS]. Read at each failure. */
+  private val retryLimit: () -> Int? = { null },
   private val now: () -> Long = System::currentTimeMillis,
   private val idFactory: () -> String = { UUID.randomUUID().toString() },
 ) : DownloadEngineApi {
@@ -1182,7 +1184,7 @@ internal class DownloadEngine(
         failures = 0
       }
       failures += 1
-      if (failures > MAX_NETWORK_ATTEMPTS) {
+      if (failures > RetryLimit.attempts(retryLimit())) {
         fail(id, gen, transientCode, transientMessage)
         return null
       }

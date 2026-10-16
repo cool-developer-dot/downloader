@@ -150,6 +150,8 @@ class VidoraMediaModule : Module() {
         settings.connectTimeoutSeconds,
         settings.readTimeoutSeconds,
       )
+      // #332: the retry limit (null = Automatic, today's 5), saved for downloads resumed before JavaScript runs.
+      com.vidorax.media.engine.RetryLimit.applyFromJs(context, settings.retryLimit)
     }
 
     AsyncFunction("clearTempFiles") Coroutine { -> engine.clearTempFiles() }
