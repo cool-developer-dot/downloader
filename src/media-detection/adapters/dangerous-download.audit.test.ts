@@ -49,10 +49,10 @@ describe('createSystemDownloadGate', () => {
 describe('displayFileName', () => {
   test('direction overrides and control characters cannot disguise the extension', async () => {
     const { displayFileName, assessDownloadDanger } = await import('./dangerous-download');
-    const spoof = 'photo‮gpj.exe';
+    const spoof = 'photo\u202egpj.exe';
     assert.equal(displayFileName(spoof), 'photogpj.exe');
     assert.equal(assessDownloadDanger({ url: `https://x.com/${encodeURIComponent(spoof)}`, contentDisposition: null, mimeType: null }).dangerous, true);
-    assert.equal(displayFileName('a\u0000b⁦c'), 'abc');
+    assert.equal(displayFileName('a\u0000b\u2066c'), 'abc');
   });
 
   test('long names keep their extension visible; Urdu stays whole', async () => {

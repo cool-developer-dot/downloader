@@ -190,11 +190,11 @@ const MAX_DISPLAY_NAME = 80;
 
 /**
  * Pure: the file name as the warning shows it. Control characters and Unicode direction overrides are removed, so a
- * name like `photo‮gpj.exe` cannot display as `photoexe.jpg`; long names are shortened in the middle, keeping
+ * name like `photo\u202egpj.exe` cannot display as `photoexe.jpg`; long names are shortened in the middle, keeping
  * the extension visible.
  */
 export function displayFileName(name: string): string {
-  const clean = name.replace(/[\u0000-\u001f\u007f‎‏‪-‮⁦-⁩]/g, '').trim();
+  const clean = name.replace(/[\u0000-\u001f\u007f\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '').trim();
   const points = Array.from(clean);
   if (points.length <= MAX_DISPLAY_NAME) {
     return clean;
