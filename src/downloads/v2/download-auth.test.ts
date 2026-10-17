@@ -203,6 +203,26 @@ describe('a pasted link to a password-protected file (#299)', () => {
     assert.deepEqual(h.notified, []);
   });
 
+  test('the same video already downloading or saved says which', async () => {
+    const downloading = deps(unauthorized(), ALICE, async () => {
+      throw new Error('not used');
+    });
+    const engine = downloading.deps.engine as unknown as Record<string, unknown>;
+    engine.enqueueUnique = async () => ({ outcome: 'ALREADY_DOWNLOADING', record: downloadRecord({ id: 'dl-0' }) });
+    assert.equal(await offerSignInDownload(URL_, downloading.deps), 'already_downloading');
+    assert.deepEqual(downloading.h.notified, ['already_downloading']);
+    assert.equal(downloading.h.applied.length, 1, 'the existing download is shown in Downloads');
+
+    const saved = deps(unauthorized(), ALICE);
+    (saved.deps.engine as unknown as Record<string, unknown>).enqueueUnique = async () => ({
+      outcome: 'ALREADY_DOWNLOADED',
+      libraryItemId: 'v1',
+      galleryUri: null,
+    });
+    assert.equal(await offerSignInDownload(URL_, saved.deps), 'already_downloaded');
+    assert.deepEqual(saved.h.notified, ['already_downloaded']);
+  });
+
   test('a refused enqueue says so', async () => {
     const { deps: d, h } = deps(unauthorized(), ALICE, async () => {
       throw Object.assign(new Error('nope'), { code: 'ERR_INVALID_REQUEST' });

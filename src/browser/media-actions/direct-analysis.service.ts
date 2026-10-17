@@ -596,9 +596,11 @@ function announceSignInDownload(outcome: SignInDownloadOutcome): void {
         ? 'downloadSignIn.notSecure'
         : outcome === 'failed'
           ? 'downloadSignIn.failed'
-          : outcome === 'duplicate'
-            ? 'downloads.alreadyDownloadedToast'
-            : null;
+          : outcome === 'already_downloading'
+            ? 'downloads.alreadyDownloadingToast'
+            : outcome === 'already_downloaded'
+              ? 'downloads.alreadyDownloadedToast'
+              : null;
   if (!key) return;
   const message = translate(key);
   if (ReactNative.Platform.OS === 'android') {

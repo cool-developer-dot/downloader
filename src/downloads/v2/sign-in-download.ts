@@ -19,13 +19,20 @@ import type { V2EnginePort } from './engine-port';
 import { siteIdForPage } from './enqueue-request';
 import { projectV2Download, type V2DownloadEntry } from './projection';
 
-export type SignInDownloadOutcome = 'started' | 'duplicate' | 'cancelled' | 'not_needed' | 'insecure' | 'failed';
+export type SignInDownloadOutcome =
+  | 'started'
+  | 'already_downloading'
+  | 'already_downloaded'
+  | 'cancelled'
+  | 'not_needed'
+  | 'insecure'
+  | 'failed';
 
 export type SignInDownloadDeps = {
   engine: V2EnginePort | null;
   ask: (request: SignInRequest) => Promise<DownloadCredentials | null>;
   applyEntries: (entries: V2DownloadEntry[]) => void;
-  /** A short toast for the outcome ('started', 'insecure', 'failed'). */
+  /** A short toast for the outcome (not for a cancel or when nothing was needed). */
   notify: (outcome: SignInDownloadOutcome) => void;
   userAgent?: string | null;
 };
@@ -106,7 +113,12 @@ export async function offerSignInDownload(url: string, deps: SignInDownloadDeps)
     if (result.outcome === 'ENQUEUED' || result.outcome === 'ALREADY_DOWNLOADING') {
       deps.applyEntries([projectV2Download(result.record)]);
     }
-    const outcome: SignInDownloadOutcome = result.outcome === 'ENQUEUED' ? 'started' : 'duplicate';
+    const outcome: SignInDownloadOutcome =
+      result.outcome === 'ENQUEUED'
+        ? 'started'
+        : result.outcome === 'ALREADY_DOWNLOADING'
+          ? 'already_downloading'
+          : 'already_downloaded';
     deps.notify(outcome);
     return outcome;
   } catch {
