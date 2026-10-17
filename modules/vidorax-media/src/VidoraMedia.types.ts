@@ -609,6 +609,16 @@ export interface VidoraMediaModuleApi {
   // Library
   listLibrary(query: LibraryQuery): Promise<LibraryPage>;
   getLibraryItem(id: string): Promise<LibraryItem | null>;
+  /**
+   * H19 Subtitles (see subtitles.types.ts). Missing on older native builds: no subtitles then. `probeSubtitles` lists
+   * an HLS/DASH stream's tracks (no URLs); `setDownloadSubtitles` keeps a download's choice, fetched beside the video
+   * once it completed; `readSubtitle` returns a saved file's WebVTT text; `shareSubtitleText` offers a .vtt or .srt.
+   */
+  probeSubtitles?(request: ProbeRequest): Promise<import('./subtitles.types').SubtitleTrackInfo[]>;
+  setDownloadSubtitles?(id: string, trackIds: string[]): Promise<void>;
+  getDownloadSubtitles?(id: string): Promise<import('./subtitles.types').DownloadSubtitles | null>;
+  readSubtitle?(id: string, index: number): Promise<string>;
+  shareSubtitleText?(fileName: string, text: string): Promise<void>;
   /** Items for the given ids that exist, in the same order (missing ids are skipped). */
   getLibraryItems(ids: string[]): Promise<LibraryItem[]>;
   /**

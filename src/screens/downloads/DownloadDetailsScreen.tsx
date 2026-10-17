@@ -43,6 +43,7 @@ import { DownloadDetailsLinkActions } from './components/DownloadDetailsLinkActi
 import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
 import { DownloadSaveThumbnailAction } from './components/DownloadSaveThumbnailAction';
 import { useDownloadDetailsScreen } from './hooks/useDownloadDetailsScreen';
+import { DownloadSubtitlesSection } from './components/DownloadSubtitlesSection';
 import { useDownloadsTokens } from './theme/downloads-tokens';
 import { DownloadProgressDetailsRows } from './components/DownloadProgressDetailsRows';
 import {
@@ -450,6 +451,8 @@ const DetailsBody = memo(function DetailsBody({
           testID={`download-details-primary-${primaryAction}`}
         />
       ) : null}
+
+      <DownloadSubtitlesSection id={item.id} />
 
       {!showInternalPlay && secondaryActions.length > 0 ? (
         <Box row gap={10} style={{ flexWrap: 'wrap' }}>

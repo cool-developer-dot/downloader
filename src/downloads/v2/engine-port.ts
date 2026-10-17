@@ -52,6 +52,12 @@ export type V2EnginePort = {
   listDownloads(): Promise<DownloadRecord[]>;
   listLibrary(query: LibraryQuery): Promise<LibraryPage>;
   getLibraryItem(id: string): Promise<LibraryItem | null>;
+  /** H19 Subtitles (see subtitles.types.ts). Missing on older native builds: no subtitles then. */
+  probeSubtitles?(request: ProbeRequest): Promise<import('@modules/vidorax-media/src/subtitles.types').SubtitleTrackInfo[]>;
+  setDownloadSubtitles?(id: string, trackIds: string[]): Promise<void>;
+  getDownloadSubtitles?(id: string): Promise<import('@modules/vidorax-media/src/subtitles.types').DownloadSubtitles | null>;
+  readSubtitle?(id: string, index: number): Promise<string>;
+  shareSubtitleText?(fileName: string, text: string): Promise<void>;
   getLibraryItems(ids: string[]): Promise<LibraryItem[]>;
   deleteLibraryItems(ids: string[]): Promise<void>;
   /** Changes a library item's title (the file keeps its name). Missing on older native builds. */

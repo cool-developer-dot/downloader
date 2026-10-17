@@ -26,6 +26,9 @@ import com.vidorax.media.runner.NotificationOptions
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
+import com.vidorax.media.subtitles.SubtitleDownloads
+import com.vidorax.media.subtitles.SubtitleExport
+import com.vidorax.media.subtitles.toSubtitleJs
 import expo.modules.kotlin.modules.ModuleDefinition
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -218,6 +221,29 @@ class VidoraMediaModule : Module() {
           )
         },
       )
+    }
+
+    // H19 Subtitles: the tracks a stream offers (never their URLs), a download's choice, and its saved files
+
+    AsyncFunction("probeSubtitles") Coroutine { request: ProbeRequestRecord ->
+      val model = request.toModel()
+      SubtitleDownloads.require { engine }.tracks(model.url, model.kind, model.request).map { it.toSubtitleJs() }
+    }
+
+    AsyncFunction("setDownloadSubtitles") Coroutine { id: String, trackIds: List<String> ->
+      SubtitleDownloads.require { engine }.choose(id, trackIds)
+    }
+
+    AsyncFunction("getDownloadSubtitles") Coroutine { id: String -> SubtitleDownloads.require { engine }.record(id)?.toSubtitleJs() }
+
+    AsyncFunction("readSubtitle") Coroutine { id: String, index: Int ->
+      val file = SubtitleDownloads.require { engine }.file(id, index) ?: throw NotFoundException("No such subtitle")
+      withContext(Dispatchers.IO) { file.readText(Charsets.UTF_8) }
+    }
+
+    AsyncFunction("shareSubtitleText") Coroutine { fileName: String, text: String ->
+      val (file, mime) = withContext(Dispatchers.IO) { SubtitleExport.write(services.paths, fileName, text) }
+      withContext(Dispatchers.Main) { SubtitleExport.share(context, appContext.currentActivity, file, mime) }
     }
 
     // Library

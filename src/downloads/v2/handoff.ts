@@ -13,6 +13,7 @@ import type { V2EnginePort } from './engine-port';
 import { applyDownloadOptions } from './download-options';
 import { namedTitleFor } from './filename-naming';
 import { ensureGalleryPermission } from './gallery-permission';
+import { attachSubtitleChoice } from './subtitle-store';
 import { ensureDownloadNotificationPermission } from './notification-permission';
 import { projectV2Download, type V2DownloadEntry } from './projection';
 
@@ -237,6 +238,8 @@ export async function handOffVerifiedVariant(
       return duplicate;
     }
     const record = result.record;
+    // H19: the stream's subtitles, chosen by Download Settings (off by default), are fetched once it completed.
+    void attachSubtitleChoice(deps.engine, record.id, decision.request);
     acceptedByVariant.set(key, record.id);
     // Ask for the permissions from this gesture; a refusal never affects the download itself.
     void ensureDownloadNotificationPermission().then(() => ensureGalleryPermission());
