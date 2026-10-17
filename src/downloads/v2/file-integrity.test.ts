@@ -15,6 +15,7 @@ import {
   playableUri,
   REPAIR_MESSAGE_KEYS,
   repairMessageKey,
+  shouldAskAgain,
   storedChecksum,
   type FileIntegrityPort,
 } from './file-integrity';
@@ -117,6 +118,15 @@ describe('play while downloading (#411)', () => {
     ]) {
       assert.equal(playableUri({ ...source, uri }), null, uri);
     }
+  });
+
+  test('only "not enough bytes yet" is asked about again; a refusal for good is not', () => {
+    assert.equal(shouldAskAgain({ playable: false, reason: 'not_enough_bytes' }), true);
+    assert.equal(shouldAskAgain(null), true, 'no answer this time');
+    for (const reason of ['stream', 'not_mp4', 'index_at_end', 'fragmented', 'encrypted', 'unknown_size', 'unsupported_device', 'processing', 'not_found', 'not_downloading'] as const) {
+      assert.equal(shouldAskAgain({ playable: false, reason }), false, reason);
+    }
+    assert.equal(shouldAskAgain({ playable: true, playableBytes: 1, totalBytes: 2, mimeType: 'video/mp4' }), false);
   });
 
   test('without the native module nothing is offered', () => {

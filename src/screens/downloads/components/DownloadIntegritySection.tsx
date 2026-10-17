@@ -1,7 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import type { Href } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Share } from 'react-native';
+import { AccessibilityInfo, Platform, Share, ToastAndroid } from 'react-native';
 
 import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
@@ -16,6 +16,7 @@ import {
   isSha256,
   mayPlayWhileDownloading,
   repairMessageKey,
+  shouldAskAgain,
   storedChecksum,
 } from '@/downloads/v2/file-integrity';
 import { useTranslation } from '@/localization';
@@ -44,6 +45,8 @@ const ChecksumPanel = memo(function ChecksumPanel({ id }: { id: string }) {
   const [computing, setComputing] = useState(false);
   const [note, setNote] = useState<string | null>(null);
   const alive = useRef(true);
+  /** True while this panel's own compute call waits for its answer. */
+  const ownRun = useRef(false);
 
   useEffect(() => {
     alive.current = true;
@@ -57,12 +60,24 @@ const ChecksumPanel = memo(function ChecksumPanel({ id }: { id: string }) {
     };
   }, [id]);
 
-  // While it runs, the progress is read a few times a second (the native call is synchronous and cheap).
+  // While it runs, the progress is read a few times a second (the native call is synchronous and cheap). A run that
+  // began before this screen opened has no answer to wait for here: when it ends, the stored hash is read.
   useEffect(() => {
     if (!computing) return;
     const port = fileIntegrity();
     const timer = setInterval(() => {
-      setPercent(checksumPercent(port?.getChecksumProgress?.(id) ?? null));
+      const progress = port?.getChecksumProgress?.(id) ?? null;
+      if (progress) {
+        setPercent(checksumPercent(progress));
+        return;
+      }
+      if (ownRun.current) return;
+      void storedChecksum(port, id).then((state) => {
+        if (!alive.current || !state || state.computing) return;
+        setSha256(state.sha256);
+        setComputing(false);
+        setPercent(null);
+      });
     }, PROGRESS_POLL_MS);
     return () => clearInterval(timer);
   }, [computing, id]);
@@ -76,6 +91,7 @@ const ChecksumPanel = memo(function ChecksumPanel({ id }: { id: string }) {
     setNote(null);
     setPercent(0);
     setComputing(true);
+    ownRun.current = true;
     try {
       const result = await port.computeChecksum(id);
       if (!alive.current) return;
@@ -87,6 +103,7 @@ const ChecksumPanel = memo(function ChecksumPanel({ id }: { id: string }) {
     } catch {
       if (alive.current) setNote(t('fileIntegrity.checksumFailed'));
     } finally {
+      ownRun.current = false;
       if (alive.current) {
         setComputing(false);
         setPercent(null);
@@ -183,13 +200,17 @@ const RepairPanel = memo(function RepairPanel({ id, status }: { id: string; stat
     if (!port?.repairDownload) return;
     setBusy(true);
     setNote(null);
+    let message: string;
     try {
-      setNote(t(repairMessageKey(await port.repairDownload(id))));
+      message = t(repairMessageKey(await port.repairDownload(id)));
     } catch {
-      setNote(t('fileIntegrity.repairFailed'));
-    } finally {
-      setBusy(false);
+      message = t('fileIntegrity.repairFailed');
     }
+    setBusy(false);
+    setNote(message);
+    // The download usually leaves "failed" at once (it is retried), which replaces this panel: say it as a toast too.
+    if (Platform.OS === 'android') ToastAndroid.show(message, ToastAndroid.LONG);
+    AccessibilityInfo.announceForAccessibility(message);
   }, [id, t]);
 
   if (!canOfferRepair(status, info) && !note) return null;
@@ -227,8 +248,9 @@ const PlayWhileDownloadingPanel = memo(function PlayWhileDownloadingPanel({ id }
       if (!alive) return;
       const now = isPlayable(answer);
       setPlayable(now);
-      // Until it can be played the answer is asked again now and then; once playable it stays offered.
-      if (!now) timer = setTimeout(() => void check(), PLAYABLE_POLL_MS);
+      // Only "not enough bytes yet" can change by itself: then it is asked again now and then. Once playable it stays
+      // offered; a file that can never be played (a stream, an index at the end…) is not asked about again.
+      if (shouldAskAgain(answer)) timer = setTimeout(() => void check(), PLAYABLE_POLL_MS);
     };
     void check();
     return () => {

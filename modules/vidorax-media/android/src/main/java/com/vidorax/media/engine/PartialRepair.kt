@@ -255,9 +255,9 @@ internal class PartialRepairer(
 
   suspend fun inspect(row: DownloadRow, context: RequestContext): Plan {
     val workDir = workDirOf(row.id)
-    val video = File(workDir, DownloadEngine.PART_NAME) to File(workDir, DownloadEngine.HLS_CHECKPOINT_NAME)
-    val audio = File(workDir, DownloadEngine.AUDIO_PART_NAME) to File(workDir, DownloadEngine.AUDIO_CHECKPOINT_NAME)
-    val present = listOf(video, audio).filter { (part, checkpoint) -> hasBytes(part) || checkpoint.isFile }
+    val present = PartialRepair.TRACK_FILES
+      .map { (part, checkpoint) -> File(workDir, part) to File(workDir, checkpoint) }
+      .filter { (part, checkpoint) -> hasBytes(part) || checkpoint.isFile }
     if (present.isEmpty()) return Plan(RepairOutcome.NOTHING) {}
 
     val sources = TrackSources(row, context)

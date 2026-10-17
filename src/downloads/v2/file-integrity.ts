@@ -108,6 +108,18 @@ export function isPlayable(answer: PlayableCheck | PlayableSource | null | undef
   return answer?.playable === true && Number.isFinite(answer.totalBytes) && answer.totalBytes > 0;
 }
 
+/**
+ * Pure: whether to ask again later. Only "not enough bytes yet" (or an answer that did not come) changes by itself as
+ * the download goes on; a playable answer stays, and a refusal for good (a stream, an index at the end, protected…)
+ * is not asked about again.
+ */
+export function shouldAskAgain(answer: PlayableCheck | null | undefined): boolean {
+  if (!answer) {
+    return true;
+  }
+  return answer.playable !== true && answer.reason === 'not_enough_bytes';
+}
+
 /** Pure: the opened source's URI, only when it is VidoraX's own growing-file provider. */
 export function playableUri(source: PlayableSource | null | undefined): string | null {
   if (!source || source.playable !== true || typeof source.uri !== 'string') {
