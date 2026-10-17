@@ -40,6 +40,15 @@ class PreferredExtensionsTest {
     assertNull(PreferredExtensions.resolve("mkv", Container.MP4, audioOnly = false))
   }
 
+  @Test fun anM4vFileIsRecordedAsVideoXM4vAndNothingElseChanges() {
+    assertEquals("video/x-m4v", PreferredExtensions.libraryMimeType(java.io.File("a/Clip_ab12.m4v"), "video/mp4"))
+    assertEquals("video/x-m4v", PreferredExtensions.libraryMimeType(java.io.File("Clip.M4V"), "video/mp4"))
+    assertEquals("video/mp4", PreferredExtensions.libraryMimeType(java.io.File("Clip.mp4"), "video/mp4"))
+    assertEquals("audio/mp4", PreferredExtensions.libraryMimeType(java.io.File("Clip.m4a"), "audio/mp4"))
+    assertEquals("video/webm", PreferredExtensions.libraryMimeType(java.io.File("Clip.m4v"), "video/webm"))
+    assertNull(PreferredExtensions.libraryMimeType(java.io.File("Clip.m4v"), null))
+  }
+
   @Test fun theChoiceSurvivesARestartAndGoneDownloadsAreDropped() {
     val storage = PreferredExtensions.Storage.memory()
     val first = PreferredExtensions(storage)

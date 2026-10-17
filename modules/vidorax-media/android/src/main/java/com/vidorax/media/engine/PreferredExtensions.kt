@@ -73,6 +73,14 @@ internal class PreferredExtensions(private val storage: Storage = Storage.memory
       raw?.trim()?.removePrefix(".")?.lowercase()?.takeIf { it in ACCEPTED }
 
     /**
+     * The type a library file is recorded with: [base] (from its container), except that an MP4 named `.m4v` is
+     * `video/x-m4v` — what Android's MediaStore and document providers pair with that name, so a gallery copy, a copy
+     * to a folder or an export keeps `.m4v` instead of getting `.mp4` added.
+     */
+    fun libraryMimeType(file: java.io.File, base: String?): String? =
+      if (base == "video/mp4" && file.extension.equals("m4v", ignoreCase = true)) "video/x-m4v" else base
+
+    /**
      * The extension to name a finished file with: [preferred] when it is a safe alias for [container] (an MP4: `mp4`
      * or `m4v` for a video, `m4a` or `mp4` when the file has sound and no picture), else null — the usual one.
      */
