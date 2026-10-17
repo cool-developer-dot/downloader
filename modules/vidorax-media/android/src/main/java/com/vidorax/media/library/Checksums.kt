@@ -36,7 +36,7 @@ internal class Checksums(
   private val running = ConcurrentHashMap<String, Running>()
 
   /** The stored SHA-256 of library item [id] (lowercase hex), or null when none was computed yet. */
-  suspend fun cached(id: String): String? = runCatching { storedHashOf(id) }.getOrNull()?.takeIf(::isSha256)
+  suspend fun cached(id: String): String? = runCatching { storedHashOf(id) }.getOrNull()?.takeIf { isSha256(it) }
 
   fun isComputing(id: String): Boolean = running[id]?.job?.isActive == true
 

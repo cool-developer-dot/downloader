@@ -216,18 +216,22 @@ internal class RealPartialChecks(private val http: HttpClient) : PartialChecks {
         if (!aligned) return@use null
         try {
           var written = 0L
+          var tooLarge = false
+          val input = it.byteStream()
           into.outputStream().use { out ->
-            val input = it.byteStream()
             val buffer = ByteArray(64 * 1024)
             while (true) {
               val read = input.read(buffer)
               if (read < 0) break
               written += read
-              if (written > maxBytes) return@use null
+              if (written > maxBytes) {
+                tooLarge = true
+                break
+              }
               out.write(buffer, 0, read)
             }
           }
-          written
+          if (tooLarge) null else written
         } catch (e: IOException) {
           null
         }
@@ -270,8 +274,8 @@ internal class PartialRepairer(
       }
     }
     val outcome = PartialRepair.outcomeOf(tracks.map { it.verdict })
-    return Plan(outcome) {
-      if (outcome == RepairOutcome.UNREACHABLE || outcome == RepairOutcome.NOTHING) return@Plan
+    val change: () -> Unit = change@{
+      if (outcome == RepairOutcome.UNREACHABLE || outcome == RepairOutcome.NOTHING) return@change
       for (track in tracks) {
         when (track.verdict) {
           PartialRepair.Verdict.CHANGED, PartialRepair.Verdict.CORRUPT, PartialRepair.Verdict.NO_RESUME ->
@@ -281,11 +285,12 @@ internal class PartialRepairer(
         }
       }
     }
+    return Plan(outcome, change)
   }
 
   /** Where each track of [row] comes from, resolved once and only when a check needs it. */
   private inner class TrackSources(private val row: DownloadRow, private val context: RequestContext) {
-    private var hlsPlan: HlsPlan? = null
+    private var cachedPlan: HlsPlan? = null
     private var dashResolution: DashResolution? = null
     private var hlsTried = false
     private var dashTried = false
@@ -293,9 +298,9 @@ internal class PartialRepairer(
     private suspend fun hlsPlan(): HlsPlan? {
       if (!hlsTried) {
         hlsTried = true
-        hlsPlan = (runCatching { hls.plan(row.url, context, row.variant) }.getOrNull() as? HlsPlanResult.Ready)?.plan
+        cachedPlan = (runCatching { hls.plan(row.url, context, row.variant) }.getOrNull() as? HlsPlanResult.Ready)?.plan
       }
-      return hlsPlan
+      return cachedPlan
     }
 
     private suspend fun dashResolved(): DashResolution? {

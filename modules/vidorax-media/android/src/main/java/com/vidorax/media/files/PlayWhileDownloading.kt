@@ -208,10 +208,13 @@ internal object Mp4Layout {
   fun inspect(file: File, available: Long): Verdict = runCatching {
     RandomAccessFile(file, "r").use { raf ->
       inspect(available) { offset, length ->
-        if (length <= 0) return@inspect ByteArray(0)
-        ByteArray(length).also {
-          raf.seek(offset)
-          raf.readFully(it)
+        if (length <= 0) {
+          ByteArray(0)
+        } else {
+          ByteArray(length).also {
+            raf.seek(offset)
+            raf.readFully(it)
+          }
         }
       }
     }
@@ -219,7 +222,7 @@ internal object Mp4Layout {
 }
 
 /**
- * Reads a growing `.part` for the player: bytes up to [prefix] at once; a read past them waits (in [pollMs] steps,
+ * Reads a growing `.part` for the player: the bytes downloaded so far at once; a read past them waits (in [pollMs] steps,
  * at most [maxWaitMs]) for the download to bring more. A read fails ([IOException], which the player retries or shows)
  * when nothing more arrives in time — the download was paused, failed or the network is gone — and when what was
  * already served can no longer be trusted: the `.part` got shorter (the download restarted from zero) or its file is
