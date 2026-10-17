@@ -1244,6 +1244,9 @@ export const en = {
     timeout: 'Timeout',
     seconds: '{seconds} s',
     timeoutHint: 'Automatic waits 20 s to connect and 30 s for data, as before. A longer timeout helps slow servers.',
+    retryLimit: 'Retry limit',
+    retryLimitAutomatic: 'Automatic ({count})',
+    retryLimitHint: 'How many times in a row a download retries after a network or server error before it stops. Automatic retries 5 times, as before.',
     reset: 'Reset network options',
     resetDone: 'Network options reset',
     problems: {

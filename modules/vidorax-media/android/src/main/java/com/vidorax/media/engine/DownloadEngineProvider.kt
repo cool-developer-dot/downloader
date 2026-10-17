@@ -59,6 +59,8 @@ object DownloadEngineProvider {
       onSettingsChanged = { writeSettings(context, it) },
       // The work folder and the library live on the same volume, so one free-space reading answers for both.
       freeSpace = { services.paths.workRoot.usableSpace },
+      // #332: the saved retry limit applies from process start, before any JavaScript runs.
+      retryLimit = { RetryLimit.current(context) },
     )
     // One runner per process: it observes the engine to keep transfers alive in the background, to show their
     // notifications, and to reconcile what a previous process left behind.

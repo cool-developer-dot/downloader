@@ -466,6 +466,12 @@ export interface DownloadSettings {
   connectTimeoutSeconds?: number;
   readTimeoutSeconds?: number;
   /**
+   * #332 Retry limit: how many transient failures in a row (a dropped connection, a 5xx/408/429) a download waits out,
+   * without progress in between, before it fails. Sent only when the user changed it; omitted is "Automatic", today's
+   * 5. The native side clamps it to 1..10 and saves it with the download settings. Ignored by older native builds.
+   */
+  retryLimit?: number;
+  /**
    * Default true: every completed download is also copied to the device gallery (`Movies/VidoraX/<Site>`), after it
    * is COMPLETED and only as the final verified file. A failed copy never affects the download or its library item.
    */
