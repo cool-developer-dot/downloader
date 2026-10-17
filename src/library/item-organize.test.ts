@@ -14,7 +14,13 @@ import {
   sizeBucketOf,
   tagProblem,
 } from './item-organize';
-import { forgetItemOrganize, useItemNotesStore, useItemTagsStore, useOrganizeFiltersStore } from './item-organize-store';
+import {
+  carryItemOrganize,
+  forgetItemOrganize,
+  useItemNotesStore,
+  useItemTagsStore,
+  useOrganizeFiltersStore,
+} from './item-organize-store';
 
 const MB = 1024 * 1024;
 const GB = 1024 * MB;
@@ -73,6 +79,27 @@ describe('H12 notes', () => {
     forgetItemOrganize(['v1']);
     assert.deepEqual(useItemNotesStore.getState().notesById, { v2: 'keep' });
     assert.deepEqual(useItemTagsStore.getState().tagsById, { v2: ['b'] });
+  });
+});
+
+describe('H12 Replace keeps what the user organized', () => {
+  beforeEach(() => {
+    useItemTagsStore.setState({ tagsById: {} });
+    useItemNotesStore.setState({ notesById: {} });
+  });
+
+  test('the new copy takes the old one’s tags (merged) and note (unless it has one)', () => {
+    useItemTagsStore.setState({ tagsById: { old: ['Music', 'Live'], new: ['live'] } });
+    useItemNotesStore.setState({ notesById: { old: 'From the concert' } });
+    carryItemOrganize('old', 'new');
+    assert.deepEqual(useItemTagsStore.getState().tagsById.new, ['live', 'Music']);
+    assert.equal(useItemNotesStore.getState().notesById.new, 'From the concert');
+
+    useItemNotesStore.setState({ notesById: { old: 'old note', other: 'mine' } });
+    carryItemOrganize('old', 'other');
+    assert.equal(useItemNotesStore.getState().notesById.other, 'mine');
+    carryItemOrganize('old', 'old');
+    assert.equal(useItemNotesStore.getState().notesById.old, 'old note');
   });
 });
 

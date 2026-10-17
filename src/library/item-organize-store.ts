@@ -175,6 +175,25 @@ export function forgetItemOrganize(ids: readonly string[]): void {
   useItemNotesStore.getState().forget(ids);
 }
 
+/**
+ * Replace (#386): the new copy takes over the old one's tags (merged with any it already has) and its note (unless it
+ * has one), before the old one is deleted.
+ */
+export function carryItemOrganize(fromId: string, toId: string): void {
+  if (!fromId || !toId || fromId === toId) {
+    return;
+  }
+  const tagsStore = useItemTagsStore.getState();
+  for (const tag of tagsStore.tagsById[fromId] ?? []) {
+    useItemTagsStore.getState().addTag(toId, tag);
+  }
+  const notes = useItemNotesStore.getState();
+  const note = notes.notesById[fromId];
+  if (note && !notes.notesById[toId]) {
+    notes.setNote(toId, note);
+  }
+}
+
 const LISTENER_KEY = '__vidoraxItemOrganizeCleanup';
 
 /**

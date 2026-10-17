@@ -59,8 +59,8 @@ export type ReplacementDeps = {
   libraryHas: (id: string) => Promise<boolean>;
   /** Whether the old item still exists. */
   oldExists: (id: string) => boolean;
-  /** The app's delete path for a saved video; true when it is gone. */
-  deleteOld: (id: string) => Promise<boolean>;
+  /** The app's delete path for the old video [id], replaced by [newId]; true when it is gone. */
+  deleteOld: (id: string, newId: string) => Promise<boolean>;
   now: () => number;
 };
 
@@ -92,7 +92,7 @@ export async function settleReplacements(deps: ReplacementDeps): Promise<void> {
       continue;
     }
     if (verdict === 'delete' && deps.oldExists(entry.oldId)) {
-      const deleted = await deps.deleteOld(entry.oldId).catch(() => false);
+      const deleted = await deps.deleteOld(entry.oldId, newId).catch(() => false);
       if (!deleted && entry.attempts + 1 < MAX_DELETE_ATTEMPTS) {
         useReplacementsStore.setState((state) => {
           const current = state.pending[newId];

@@ -1,3 +1,4 @@
+import { carryItemOrganize } from '@/library/item-organize-store';
 import { useDownloadsStore } from '@/store/downloads';
 
 import { settleReplacements, useReplacementsStore, type ReplacementDeps } from './duplicate-replacements';
@@ -18,7 +19,9 @@ function appDeps(): ReplacementDeps {
       const state = useDownloadsStore.getState();
       return Boolean(state.engineRowsById[id] ?? state.itemsById[id]);
     },
-    deleteOld: async (id) => {
+    deleteOld: async (id, newId) => {
+      // The new copy keeps the old one's tags and note.
+      carryItemOrganize(id, newId);
       const { deleteCompletedFileFromVidoraX } = await import('@/downloads/completed-file/delete/delete-service');
       const result = await deleteCompletedFileFromVidoraX(id);
       return result.ok;
