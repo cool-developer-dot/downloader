@@ -234,10 +234,7 @@ internal class SubtitleDownloads(
     @Volatile
     private var instance: SubtitleDownloads? = null
 
-    /** Built once with the engine (DownloadEngineProvider); null before that. */
-    fun current(): SubtitleDownloads? = instance
-
-    /** The instance, after [buildEngine] made sure the engine (and with it this) exists. */
+    /** The instance (built once with the engine), after [buildEngine] made sure the engine exists. */
     fun require(buildEngine: () -> Any): SubtitleDownloads {
       buildEngine()
       return instance ?: throw IllegalStateException("Subtitles are not available")
@@ -256,10 +253,6 @@ internal class SubtitleDownloads(
       )
       instance = downloads
       downloads.attach(engine, services.library.changes)
-    }
-
-    internal fun resetForTests() {
-      instance = null
     }
   }
 }
