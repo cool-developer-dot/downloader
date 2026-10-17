@@ -1407,8 +1407,10 @@ internal class DownloadEngine(
    * How many downloads may actually run at once. Extra taps stay QUEUED — which is what the word means — so a
    * user who starts ten videos gets a working queue instead of ten transfers fighting for the same connection,
    * the same disk and the same CPU.
+   *
+   * Internal (not private) only so DownloadEngineSlotsTest can drive it directly.
    */
-  private class Slots(limit: Int) {
+  internal class Slots(limit: Int) {
     private val lock = Mutex()
     private val waiting = ArrayDeque<kotlinx.coroutines.CompletableDeferred<Unit>>()
     private var limit = limit.coerceAtLeast(1)
@@ -1435,16 +1437,14 @@ internal class DownloadEngine(
       try {
         waiter.await()
       } catch (c: kotlinx.coroutines.CancellationException) {
-        // A download paused or cancelled while queued must not hold a place in the line.
-        lock.withLock {
-          waiterIds.remove(waiter)
-          if (!waiting.remove(waiter) && waiter.isCompleted) {
-            // The slot was handed to it just as it was stopped: pass it on instead of losing it for good.
-            val next = nextLocked()
-            if (next != null) {
-              next.complete(Unit)
-            } else {
-              used = (used - 1).coerceAtLeast(0)
+        // A download paused or cancelled while queued must not hold a place in the line — nor keep a slot that was
+        // handed to it just as it was stopped: that one goes on to the next download (or is freed), or the queue
+        // would stall for good. NonCancellable: this coroutine is already cancelled, and a busy lock must not skip it.
+        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+          lock.withLock {
+            waiterIds.remove(waiter)
+            if (!waiting.remove(waiter) && waiter.isCompleted) {
+              handOnLocked()
             }
           }
         }
@@ -1453,14 +1453,23 @@ internal class DownloadEngine(
     }
 
     suspend fun release() {
-      lock.withLock {
-        val next = nextLocked()
-        if (next != null) {
-          // The slot moves straight to the next download: `used` stays as it is.
-          next.complete(Unit)
-        } else {
-          used = (used - 1).coerceAtLeast(0)
-        }
+      // Runs in the `finally` of a worker that may have just been paused or cancelled: a busy lock must not skip it.
+      kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+        lock.withLock { handOnLocked() }
+      }
+    }
+
+    /**
+     * Must be called while holding [lock]: a slot given up moves straight to the next download that may start
+     * (H4: [nextLocked]), or is freed.
+     */
+    private fun handOnLocked() {
+      val next = nextLocked()
+      if (next != null) {
+        // The slot moves straight to the next download: `used` stays as it is.
+        next.complete(Unit)
+      } else {
+        used = (used - 1).coerceAtLeast(0)
       }
     }
 
