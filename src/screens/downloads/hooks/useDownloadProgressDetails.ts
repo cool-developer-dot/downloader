@@ -6,6 +6,7 @@ import {
   elapsedActiveMs,
   formatElapsed,
   remainingBytes,
+  type SegmentCounts,
   speedGraphPoints,
   totalSpeedBps,
 } from '@/downloads/v2/progress-stats';
@@ -21,9 +22,17 @@ export type DownloadProgressDetails = {
   averageSpeed: string | null;
   elapsed: string | null;
   graph: { points: number[]; maxBps: number } | null;
+  /** #315: segments done / in all of an HLS or DASH segment download; null for a file or when not reported. */
+  segments: SegmentCounts | null;
 };
 
-const NONE: DownloadProgressDetails = { remaining: null, averageSpeed: null, elapsed: null, graph: null };
+const NONE: DownloadProgressDetails = {
+  remaining: null,
+  averageSpeed: null,
+  elapsed: null,
+  graph: null,
+  segments: null,
+};
 
 /**
  * Remaining size, average speed, elapsed (active) time and the last minute's speed for one v2 download that is
@@ -51,6 +60,7 @@ export function useDownloadProgressDetails(id: string | null | undefined): Downl
       averageSpeed: formatTransferSpeed(averageSpeedBps(stats)),
       elapsed: formatElapsed(elapsedActiveMs(stats)),
       graph: status === 'DOWNLOADING' && newestAt != null ? speedGraphPoints(stats, newestAt) : null,
+      segments: stats?.segments ?? null,
     };
     // `revision` re-reads the stats map when it changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
