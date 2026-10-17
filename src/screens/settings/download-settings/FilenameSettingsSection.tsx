@@ -5,6 +5,7 @@ import { Text } from '@/components/base/Text';
 import { Button } from '@/components/buttons/Button';
 import { Chip } from '@/components/common/Chip';
 import { TextField } from '@/components/inputs/TextField';
+import { FILE_EXTENSION_CHOICES, type FileExtensionChoice } from '@/downloads/v2/file-extension';
 import {
   applyFilenameTemplate,
   DEFAULT_FILENAME_TEMPLATE,
@@ -14,7 +15,7 @@ import {
   normalizeFilenameTemplate,
 } from '@/downloads/v2/filename-template';
 import { useTranslation } from '@/localization';
-import { selectFilenameTemplate, useSettingsStore } from '@/store/settings';
+import { selectFileExtension, selectFilenameTemplate, useSettingsStore } from '@/store/settings';
 
 import { SettingsSection, SettingsStaggerItem } from '../components';
 
@@ -27,8 +28,8 @@ export type FilenameSettingsSectionProps = {
 const PREVIEW_DATE = new Date(2026, 0, 31, 18, 30);
 
 /**
- * Download Settings → File naming: Filename Template (#379) with a live preview. Applies to new downloads only; the
- * default `{title}` keeps today's naming exactly.
+ * Download Settings → File naming: Filename Template (#379) with a live preview, and the File extension (#494, MP4
+ * videos only). Both apply to new downloads only; the defaults (`{title}`, Automatic) keep today's naming exactly.
  */
 export const FilenameSettingsSection = memo(function FilenameSettingsSection({
   index,
@@ -36,7 +37,12 @@ export const FilenameSettingsSection = memo(function FilenameSettingsSection({
 }: FilenameSettingsSectionProps) {
   const { t } = useTranslation();
   const saved = useSettingsStore(selectFilenameTemplate);
+  const extension = useSettingsStore(selectFileExtension);
   const [draft, setDraft] = useState(saved);
+
+  const chooseExtension = useCallback((choice: FileExtensionChoice) => {
+    useSettingsStore.getState().updateSetting('fileExtension', choice);
+  }, []);
 
   // The template can change elsewhere (Reset Settings, a settings import): follow it, but never fight the typing —
   // a draft that saves to the same value (e.g. with a trailing space) is kept.
@@ -128,6 +134,24 @@ export const FilenameSettingsSection = memo(function FilenameSettingsSection({
             </Text>
             <Text variant="caption" color="textSecondary">
               {t('downloadNaming.newDownloadsOnly')}
+            </Text>
+          </Box>
+          <Box gap={6}>
+            <Text variant="bodySmall">{t('downloadNaming.extension')}</Text>
+            <Box row gap={6} style={{ flexWrap: 'wrap' }}>
+              {FILE_EXTENSION_CHOICES.map((choice) => (
+                <Chip
+                  key={choice}
+                  label={choice === 'auto' ? t('downloadNaming.extensionAuto') : `.${choice}`}
+                  selected={extension === choice}
+                  onPress={() => chooseExtension(choice)}
+                  disabled={disabled}
+                  testID={`download-settings-file-extension-${choice}`}
+                />
+              ))}
+            </Box>
+            <Text variant="caption" color="textSecondary">
+              {t('downloadNaming.extensionHint')}
             </Text>
           </Box>
           {!isDefaultFilenameTemplate(draft) ? (

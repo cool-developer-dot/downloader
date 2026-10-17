@@ -2,6 +2,7 @@ package com.vidorax.media.bridge
 
 import com.vidorax.media.InvalidRequestException
 import com.vidorax.media.analyze.PageFetchRequest
+import com.vidorax.media.engine.PreferredExtensions
 import com.vidorax.media.library.Titles
 import com.vidorax.media.model.DownloadSettings
 import com.vidorax.media.model.EnqueueRequest
@@ -114,6 +115,8 @@ data class EnqueueRequestRecord(
   @Field val estimatedBytes: Double? = null,
   @Field val qualityLabel: String? = null,
   @Field val saveToGallery: Boolean? = null,
+  /** #494: "mp4" / "m4v" / "m4a"; missing or anything else = the usual extension. */
+  @Field val preferredExtension: String? = null,
   @Field val identityUrl: String? = null,
   /** H12: "Keep both" / "Replace" — download it although it is already saved. Missing = false (today). */
   @Field val allowDuplicate: Boolean? = null,
@@ -138,6 +141,7 @@ data class EnqueueRequestRecord(
       estimatedBytes = estimatedBytes.positiveLong(),
       qualityLabel = qualityLabel.nonBlank()?.trim(),
       saveToGallery = saveToGallery,
+      preferredExtension = PreferredExtensions.normalize(preferredExtension),
       // Only an identity hint: an unusable value falls back to `url` instead of refusing the download.
       identityUrl = identityUrl?.trim()?.takeIf { it.toHttpUrlOrNull() != null },
       allowDuplicate = allowDuplicate == true,

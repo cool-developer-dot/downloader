@@ -1669,6 +1669,9 @@ export const en = {
     newDownloadsOnly: 'Applies to new downloads only.',
     reset: 'Use default naming',
     sampleTitle: 'My video',
+    extension: 'File extension',
+    extensionAuto: 'Automatic',
+    extensionHint: 'Used for MP4 videos only. Other files keep their usual extension.',
   },
   bookmarks: {
     title: 'Bookmarks',

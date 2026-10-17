@@ -1,6 +1,7 @@
 import { persist } from 'zustand/middleware';
 
 import { isSupportedLanguage, normalizeLanguageCode, storageKeys } from '@/constants';
+import { normalizeFileExtensionChoice } from '@/downloads/v2/file-extension';
 import { normalizeFilenameTemplate } from '@/downloads/v2/filename-template';
 import { bindLanguageReader } from '@/localization/translate';
 import { createStore } from '@/store/shared/create-store';
@@ -69,6 +70,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         afterDownloadAction: state.afterDownloadAction,
         wifiOnly: state.wifiOnly,
         filenameTemplate: state.filenameTemplate,
+        fileExtension: state.fileExtension,
         confirmBeforeStart: state.confirmBeforeStart,
         autoResume: state.autoResume,
         debugLogs: state.debugLogs,
@@ -107,6 +109,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.filenameTemplate === 'string'
               ? normalizeFilenameTemplate(raw.filenameTemplate)
               : current.filenameTemplate,
+          fileExtension:
+            raw.fileExtension === undefined ? current.fileExtension : normalizeFileExtensionChoice(raw.fileExtension),
           confirmBeforeStart:
             typeof raw.confirmBeforeStart === 'boolean' ? raw.confirmBeforeStart : current.confirmBeforeStart,
           saveToGallery:

@@ -49,6 +49,8 @@ object DownloadEngineProvider {
       // H20 Repair: a failed download's partial files are checked against the server through the same client.
       partialChecks = RealPartialChecks(http),
       verification = RealVerification,
+      // #494: the extension each download asked for, kept until its file is named (survives a restart).
+      preferredExtensions = PreferredExtensions(SharedPreferencesPreferredExtensionStorage(context)),
       inspector = RealMediaInspector(services.mediaInfo),
       thumbnails = RealThumbnails(services.thumbnails),
       library = RealLibraryWriter(services.library),

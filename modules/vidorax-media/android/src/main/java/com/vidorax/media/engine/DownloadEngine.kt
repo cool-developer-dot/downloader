@@ -106,6 +106,8 @@ internal class DownloadEngine(
   private val split: SplitDownloads = SplitDownloads.UNSUPPORTED,
   /** Keep / remux / merge / transcode of what the transfers downloaded, before it becomes a library file. */
   private val processing: MediaProcessing = MediaProcessing.PASSTHROUGH,
+  /** #494: the file extension each download asked for (a safe alias of its container only); none = today's naming. */
+  private val preferredExtensions: PreferredExtensions = PreferredExtensions(),
   /** Videos the user already has: a second download of one of them is refused as a duplicate. */
   private val savedVideos: SavedVideos = SavedVideos.NONE,
   /** H12: downloads the user chose to keep although they already had the video; none by default. */
@@ -425,6 +427,11 @@ internal class DownloadEngine(
   private suspend fun createRow(request: EnqueueRequest, identity: String?): DownloadRow {
     val id = idFactory()
     val ts = now()
+    // #494: kept until the finished file is named; only a safe alias of its container is ever used.
+    PreferredExtensions.normalize(request.preferredExtension)?.let { extension ->
+      val live = store.list(ts).filter { !it.state.isTerminal || it.state == DownloadState.FAILED }.map { it.id }
+      preferredExtensions.put(id, extension, live)
+    }
     val row = DownloadRow(
       id = id,
       state = DownloadState.QUEUED,
@@ -1338,7 +1345,8 @@ internal class DownloadEngine(
     contentType: String?,
   ) {
     val mediaType = MediaTypes.forContainer(container)
-    val extension = mediaType?.extension ?: container.wire.takeIf { it != Container.UNKNOWN.wire } ?: "bin"
+    val extension = preferredExtensionFor(id, container, partFile)
+      ?: mediaType?.extension ?: container.wire.takeIf { it != Container.UNKNOWN.wire } ?: "bin"
     val dest = paths.newLibraryFile(start.site, start.title, id, extension)
     // Persist the intended final path *before* the move, so a crash between the move and the COMPLETED commit is
     // recoverable at startup by the real file. Superseded (paused/cancelled) → abort and leave temp for cleanup.
@@ -1403,6 +1411,18 @@ internal class DownloadEngine(
       dest.delete()
       cleanupWork(id)
     }
+  }
+
+  /**
+   * #494: the extension [id] asked for when it is a safe alias for [container] ([PreferredExtensions.resolve]); null
+   * keeps the usual one. Only an MP4 with a preference is looked at (whether it has a picture).
+   */
+  private suspend fun preferredExtensionFor(id: String, container: Container, file: File): String? {
+    val preferred = preferredExtensions.get(id) ?: return null
+    if (container != Container.MP4) return null
+    val metadata = runCatching { inspector.inspect(file) }.getOrNull()
+    val audioOnly = metadata != null && !metadata.hasVideo && metadata.hasAudio
+    return PreferredExtensions.resolve(preferred, container, audioOnly)
   }
 
   /**
@@ -1699,8 +1719,11 @@ internal class DownloadEngine(
     sourceUrl = row.url,
     file = dest,
     // The container proven from the bytes names the type; the platform's report only fills in an unknown one.
-    mimeType = MediaTypes.libraryMimeType(container, metadata?.containerMimeType ?: probeContentType)
-      ?: "application/octet-stream",
+    // #494: a `.m4v` is recorded as `video/x-m4v`, the type Android pairs with that name, so no copy gets `.mp4` added.
+    mimeType = PreferredExtensions.libraryMimeType(
+      dest,
+      MediaTypes.libraryMimeType(container, metadata?.containerMimeType ?: probeContentType),
+    ) ?: "application/octet-stream",
     container = container,
     videoCodec = metadata?.videoCodec,
     audioCodec = metadata?.audioCodec,
