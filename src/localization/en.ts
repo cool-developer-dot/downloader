@@ -1269,6 +1269,8 @@ export const en = {
     averageShort: 'avg {speed}',
     elapsedShort: '{time} active',
     totalSpeed: 'Total speed {speed}',
+    segments: 'Segments',
+    segmentsValue: '{done} of {total}',
   },
   player: {
     mini: {

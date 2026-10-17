@@ -10,6 +10,8 @@
  *   cover what this app session saw.
  * - Speed Graph (#316): the engine's own speed, one value per second over the last `GRAPH_WINDOW_MS`.
  * - Total Speed Overview (#322): the sum of the running downloads' current speeds.
+ * - Segment Progress (#315): the newest `segmentsDone` / `segmentsTotal` an HLS or DASH segment download reported;
+ *   events without them (a file download, an older native build) leave it unknown.
  *
  * Every selector returns null for a value it cannot know; none returns NaN, Infinity or a negative number.
  */
@@ -30,13 +32,19 @@ export type ProgressStats = {
   activeBytes: number;
   /** Engine speeds inside the graph window, oldest first. */
   samples: SpeedSample[];
+  /** #315: the newest valid segment counts; null until an event carried them. */
+  segments: SegmentCounts | null;
 };
+
+export type SegmentCounts = { done: number; total: number };
 
 export type ProgressSampleInput = {
   at: number;
   phase: 'download' | 'processing';
   bytesDone: number;
   speedBps: number;
+  segmentsDone?: number | null;
+  segmentsTotal?: number | null;
 };
 
 export const EMPTY_PROGRESS_STATS: ProgressStats = {
@@ -45,7 +53,22 @@ export const EMPTY_PROGRESS_STATS: ProgressStats = {
   activeMs: 0,
   activeBytes: 0,
   samples: [],
+  segments: null,
 };
+
+/**
+ * Pure (#315): the event's segment counts when both are whole numbers with 0 ≤ done ≤ total and total > 0; anything
+ * else (missing, NaN, negative, done past total) is null, so a bad value never shows.
+ */
+export function segmentCounts(done: unknown, total: unknown): SegmentCounts | null {
+  if (typeof done !== 'number' || typeof total !== 'number') {
+    return null;
+  }
+  if (!Number.isInteger(done) || !Number.isInteger(total) || total <= 0 || done < 0 || done > total) {
+    return null;
+  }
+  return { done, total };
+}
 
 function finiteNonNegative(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
@@ -90,6 +113,7 @@ export function applyProgressSample(stats: ProgressStats, input: ProgressSampleI
     activeMs,
     activeBytes,
     samples: trimSamples(samples, at),
+    segments: segmentCounts(input.segmentsDone, input.segmentsTotal) ?? stats.segments,
   };
 }
 

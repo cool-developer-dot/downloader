@@ -54,9 +54,18 @@ export function recordProgressEvent(event: {
   phase: 'download' | 'processing';
   bytesDone: number;
   speedBps: number;
+  segmentsDone?: number | null;
+  segmentsTotal?: number | null;
 }, at: number = Date.now()): void {
   const current = statsById.get(event.id) ?? EMPTY_PROGRESS_STATS;
-  const next = applyProgressSample(current, { at, phase: event.phase, bytesDone: event.bytesDone, speedBps: event.speedBps });
+  const next = applyProgressSample(current, {
+    at,
+    phase: event.phase,
+    bytesDone: event.bytesDone,
+    speedBps: event.speedBps,
+    segmentsDone: event.segmentsDone,
+    segmentsTotal: event.segmentsTotal,
+  });
   if (next !== current) {
     statsById.set(event.id, next);
     // Bounded: a download whose terminal event never arrived (process death, removal) cannot pile up.

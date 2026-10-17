@@ -35,8 +35,8 @@ function DetailsRow({ label, value, testID }: { label: string; value: string; te
 }
 
 /**
- * Download Details: Remaining Size (#308), Average Speed (#312), Elapsed Time (#314) and Speed Graph (#316) of a
- * queued, running or paused v2 download. Each row is left out while its value is unknown.
+ * Download Details: Remaining Size (#308), Average Speed (#312), Elapsed Time (#314), Segment Progress (#315) and
+ * Speed Graph (#316) of a queued, running or paused v2 download. Each row is left out while its value is unknown.
  */
 export const DownloadProgressDetailsRows = memo(function DownloadProgressDetailsRows({ id }: { id: string }) {
   const { t } = useTranslation();
@@ -63,6 +63,16 @@ export const DownloadProgressDetailsRows = memo(function DownloadProgressDetails
           label={t('downloadProgress.elapsed')}
           value={details.elapsed}
           testID="download-details-elapsed"
+        />
+      ) : null}
+      {details.segments ? (
+        <DetailsRow
+          label={t('downloadProgress.segments')}
+          value={t('downloadProgress.segmentsValue', {
+            done: details.segments.done,
+            total: details.segments.total,
+          })}
+          testID="download-details-segments"
         />
       ) : null}
       {details.graph ? (

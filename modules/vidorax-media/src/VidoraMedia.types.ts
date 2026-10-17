@@ -345,6 +345,12 @@ export interface DownloadProgressEvent {
   phase: 'download' | 'processing';
   /** `processing` only: merging tracks, remuxing into MP4, converting a track, or verifying the result. */
   stage?: ProcessingStage | null;
+  /**
+   * Segment Progress (#315), HLS and DASH segment downloads only: segments durably on disk and segments in all (video
+   * and a separate audio track together). Absent for a file download and from older native builds.
+   */
+  segmentsDone?: number | null;
+  segmentsTotal?: number | null;
   bytesDone: number;
   totalBytes: number | null;
   /** 0..1 when known. */

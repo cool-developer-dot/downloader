@@ -1272,6 +1272,8 @@ export const ur: CatalogStrings<typeof en> = {
     averageShort: 'اوسط {speed}',
     elapsedShort: '{time} فعال',
     totalSpeed: 'کل رفتار {speed}',
+    segments: 'حصے',
+    segmentsValue: '{total} میں سے {done}',
   },
   player: {
     mini: {
