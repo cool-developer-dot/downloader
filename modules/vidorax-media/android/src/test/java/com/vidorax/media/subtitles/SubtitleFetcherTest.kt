@@ -228,6 +228,28 @@ class SubtitleFetcherTest {
     assertNull(downloads.record("dl-1"))
   }
 
+  @Test fun subtitlesOfAVideoDeletedWhileNothingListenedAreDeletedAtStart() = runBlocking {
+    serve("/dash/manifest.mpd", mpd)
+    serve("/dash/subs/en.vtt", "WEBVTT\n\n00:00:01.000 --> 00:00:02.000\nHello\n")
+    val paths = StoragePaths(File(tmp.root, "files"), tmp.newFolder("nobackup3"))
+    var videoThere = true
+    val downloads = SubtitleDownloads(
+      store = SubtitleStore.inMemory(),
+      fetcher = fetcher,
+      downloadRow = { row(it, DownloadState.COMPLETED) },
+      videoFile = { if (videoThere) video else null },
+      paths = paths,
+      scope = CoroutineScope(Dispatchers.Unconfined),
+    )
+    val english = fetcher.list(url("/dash/manifest.mpd"), SourceKind.DASH, context).first().id
+    downloads.choose("dl-3", listOf(english))
+    val file = downloads.file("dl-3", 0)!!
+    videoThere = false
+    downloads.pruneOrphans()
+    assertFalse(file.exists())
+    assertNull(downloads.record("dl-3"))
+  }
+
   @Test fun aCancelledDownloadForgetsItsChoice() = runBlocking {
     val store = SubtitleStore.inMemory()
     val downloads = SubtitleDownloads(

@@ -183,6 +183,17 @@ internal class SubtitleDownloads(
     }
   }
 
+  /**
+   * At start-up: saved subtitles whose video is gone (deleted while nothing listened for it) are deleted too. A record
+   * still waiting for its video is left alone.
+   */
+  suspend fun pruneOrphans() {
+    val orphans = store.ids().filter { id ->
+      store.get(id)?.state != SubtitleRecord.State.PENDING && videoFile(id)?.isFile != true
+    }
+    if (orphans.isNotEmpty()) forget(orphans)
+  }
+
   /** A deleted video's subtitle files and record go with it. */
   suspend fun forget(ids: List<String>) {
     lock.withLock {
@@ -210,7 +221,10 @@ internal class SubtitleDownloads(
     scope.launch {
       libraryChanges.collect { if (it.reason == LibraryChangeReason.DELETED) runCatching { forget(it.ids) } }
     }
-    scope.launch { runCatching { fetchAllPending() } }
+    scope.launch {
+      runCatching { pruneOrphans() }
+      runCatching { fetchAllPending() }
+    }
   }
 
   companion object {
