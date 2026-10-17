@@ -26,6 +26,7 @@ import {
   getDownloadSupportContext,
 } from '@/support';
 import { openSupportWithContext } from '@/support/support-navigation';
+import { DownloadIntegritySection } from './components/DownloadIntegritySection';
 import type { DownloadItem } from '@/store/downloads';
 import { useDownloadsStore } from '@/store/downloads';
 import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
@@ -423,6 +424,9 @@ const DetailsBody = memo(function DetailsBody({
           />
         </Box>
       ) : null}
+
+      {/* H20 File integrity: the checksum, Repair, or Play while downloading — as the download's state allows. */}
+      <DownloadIntegritySection id={item.id} status={item.status} workerState={item.workerState} />
 
       {actionError ? (
         <Text variant="caption" color="error" accessibilityLiveRegion="polite">

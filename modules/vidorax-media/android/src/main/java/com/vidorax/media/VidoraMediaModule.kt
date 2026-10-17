@@ -190,6 +190,51 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("clearTempFiles") Coroutine { -> engine.clearTempFiles() }
 
+    // H20 File integrity: Checksum Verify (#409), Repair Partial File (#412) and Play While Downloading (#411).
+
+    AsyncFunction("getChecksum") Coroutine { id: String ->
+      val checksums = com.vidorax.media.library.Checksums.shared(services)
+      mapOf("sha256" to checksums.cached(id), "computing" to checksums.isComputing(id))
+    }
+
+    // Resolves with the SHA-256 (stored for next time), or null when it was cancelled.
+    AsyncFunction("computeChecksum") Coroutine { id: String ->
+      com.vidorax.media.library.Checksums.shared(services).compute(id)
+    }
+
+    Function("getChecksumProgress") { id: String ->
+      com.vidorax.media.library.Checksums.shared(services).progress(id)?.let {
+        mapOf("bytesDone" to it.bytesDone.toDouble(), "totalBytes" to it.totalBytes.toDouble())
+      }
+    }
+
+    Function("cancelChecksum") { id: String ->
+      com.vidorax.media.library.Checksums.shared(services).cancel(id)
+    }
+
+    Function("getRepairInfo") { id: String ->
+      com.vidorax.media.engine.PartialRepair.partialBytes(services.paths.workDir(id)).takeIf { it > 0 }?.let {
+        mapOf("partialBytes" to it.toDouble())
+      }
+    }
+
+    AsyncFunction("repairDownload") Coroutine { id: String -> engine.repairPartial(id).wire }
+
+    // Whether it can be played now, without opening anything.
+    AsyncFunction("checkPlayable") Coroutine { id: String ->
+      val record = engine.listDownloads().firstOrNull { it.id == id }
+      com.vidorax.media.files.PlayableSources.answer(context, record, services.paths.workDir(id), open = false)
+    }
+
+    AsyncFunction("getPlayableSource") Coroutine { id: String ->
+      val record = engine.listDownloads().firstOrNull { it.id == id }
+      com.vidorax.media.files.PlayableSources.answer(context, record, services.paths.workDir(id), open = true)
+    }
+
+    Function("releasePlayableSource") { uri: String ->
+      com.vidorax.media.files.PlayableSources.release(uri)
+    }
+
     // Completions for JavaScript to count once (the in-app review), including ones that happened while it was not running
 
     AsyncFunction("listCompletedDownloads") Coroutine { ->

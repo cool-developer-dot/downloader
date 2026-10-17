@@ -202,6 +202,13 @@ class LibraryStore internal constructor(
     }
   }
 
+  /** H20 Checksum Verify: the SHA-256 the duplicate check (or an earlier Compute) stored for [id], or null. */
+  suspend fun contentHashOf(id: String): String? = database.read { db ->
+    db.rawQuery("SELECT content_sha256 FROM $TABLE WHERE id = ?", arrayOf(id)).use { cursor ->
+      if (cursor.moveToFirst()) cursor.textOrNull("content_sha256") else null
+    }
+  }
+
   suspend fun setContentHash(id: String, sha256: String) {
     database.transaction { db ->
       db.update(TABLE, ContentValues().apply { put("content_sha256", sha256) }, "id = ?", arrayOf(id))

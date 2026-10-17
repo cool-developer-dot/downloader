@@ -357,6 +357,54 @@ export interface DownloadStateEvent {
   record: DownloadRecord;
 }
 
+/** H20 Checksum Verify (#409): a library item's SHA-256 (lowercase hex) when one is stored, and whether one is running. */
+export interface ChecksumState {
+  sha256: string | null;
+  computing: boolean;
+}
+
+/**
+ * H20 Repair Partial File (#412), what `repairDownload` did: resumed from where it stopped (the partial checked out);
+ * restarted from zero because the server's file changed, the partial was damaged, or the server cannot continue it;
+ * a damaged last segment is fetched again; the server could not be asked now (nothing changed); nothing to repair.
+ */
+export type RepairOutcome =
+  | 'resumed'
+  | 'restarted_changed'
+  | 'restarted_corrupt'
+  | 'restarted_no_resume'
+  | 'segment_refetched'
+  | 'unreachable'
+  | 'nothing';
+
+/** H20 Play While Downloading (#411): why an unfinished download cannot be played now. */
+export type PlayableRefusal =
+  | 'not_found'
+  | 'stream'
+  | 'processing'
+  | 'not_downloading'
+  | 'unknown_size'
+  | 'not_mp4'
+  | 'index_at_end'
+  | 'fragmented'
+  | 'encrypted'
+  | 'not_enough_bytes'
+  | 'unsupported_device';
+
+/**
+ * H20 Play While Downloading (#411): a `content://` URI (VidoraX only) the player reads the download's growing file
+ * through — the bytes downloaded so far from the start, waiting at their end for more. Only a progressive MP4 whose
+ * index comes first, with enough of it on disk. `releasePlayableSource(uri)` when the player closes.
+ */
+export type PlayableSource =
+  | { playable: true; uri: string; playableBytes: number; totalBytes: number; mimeType: 'video/mp4' }
+  | { playable: false; reason: PlayableRefusal };
+
+/** `checkPlayable`: the same answer without opening a playback session (no URI). */
+export type PlayableCheck =
+  | { playable: true; playableBytes: number; totalBytes: number; mimeType: 'video/mp4' }
+  | { playable: false; reason: PlayableRefusal };
+
 export type LibraryChangeReason = 'added' | 'updated' | 'deleted' | 'imported';
 
 export interface LibraryChangeEvent {
@@ -642,6 +690,25 @@ export interface VidoraMediaModuleApi {
   getLibrarySiteCounts(): Promise<{ site: SiteId; count: number }[]>;
   renameLibraryItem(id: string, title: string): Promise<LibraryItem>;
   setFavorite(id: string, favorite: boolean): Promise<void>;
+
+  // H20 File integrity. Missing on older native builds.
+  /** The stored SHA-256 of a library item (from the duplicate check or an earlier compute), never computed here. */
+  getChecksum?(id: string): Promise<ChecksumState>;
+  /**
+   * Streams the item's file through SHA-256 and stores the result; a second call while one runs joins it. Resolves
+   * with the hex digest, or null when `cancelChecksum` stopped it. ERR_NOT_FOUND when the item or its file is gone.
+   */
+  computeChecksum?(id: string): Promise<string | null>;
+  getChecksumProgress?(id: string): { bytesDone: number; totalBytes: number } | null;
+  cancelChecksum?(id: string): void;
+  /** A failed download's partial bytes on disk, or null when there is nothing to repair. */
+  getRepairInfo?(id: string): { partialBytes: number } | null;
+  /** Checks a failed download's partial file(s) against the server and retries it (see `RepairOutcome`). */
+  repairDownload?(id: string): Promise<RepairOutcome>;
+  /** Whether an unfinished download can be played now (no session is opened). */
+  checkPlayable?(id: string): Promise<PlayableCheck>;
+  getPlayableSource?(id: string): Promise<PlayableSource>;
+  releasePlayableSource?(uri: string): void;
 
   /**
    * Videos already on the device (MediaStore), newest first. Read-only. `permissionGranted` is false until the
