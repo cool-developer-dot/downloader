@@ -13,6 +13,7 @@ import com.vidorax.media.model.SourceKind
 import com.vidorax.media.net.HttpClient
 import com.vidorax.media.net.MediaRequest
 import com.vidorax.media.plan.HlsKeys
+import com.vidorax.media.plan.Probe
 import java.io.ByteArrayInputStream
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -106,13 +107,17 @@ internal class SubtitleFetcher(private val http: HttpClient) {
     return WebVtt.assemble(segments)
   }
 
-  /** (final URL, body) of a 2xx answer within [maxBytes]; null otherwise. */
-  private fun get(url: String, context: RequestContext, maxBytes: Int): Pair<String, ByteArray>? =
-    http.execute(MediaRequest(url = url, context = context)).use { response ->
+  /** (final URL, body) of a 2xx answer within [maxBytes]; null otherwise, and for YouTube (refused by policy). */
+  private fun get(url: String, context: RequestContext, maxBytes: Int): Pair<String, ByteArray>? {
+    if (Probe.isPolicyBlockedHost(url)) return null
+    return http.execute(MediaRequest(url = url, context = context)).use { response ->
       if (response.status !in 200..299) return null
       val body = response.readBounded(maxBytes) ?: return null
+      // A redirect onto a refused host is refused too.
+      if (Probe.isPolicyBlockedHost(response.finalUrl)) return null
       response.finalUrl to body
     }
+  }
 
   companion object {
     const val MAX_MANIFEST_BYTES = 4 * 1024 * 1024

@@ -100,6 +100,13 @@ class SubtitleFetcherTest {
     assertTrue("unreachable: nothing, no exception", fetcher.list(url("/missing.m3u8"), SourceKind.HLS, context).isEmpty())
   }
 
+  @Test fun youTubeIsRefusedByPolicyWithoutARequest() = runBlocking {
+    val before = server.requestCount
+    assertTrue(fetcher.list("https://www.youtube.com/watch/master.m3u8", SourceKind.HLS, context).isEmpty())
+    assertTrue(fetcher.list("https://rr1.googlevideo.com/manifest.mpd", SourceKind.DASH, context).isEmpty())
+    assertEquals(before, server.requestCount)
+  }
+
   @Test fun segmentedHlsWebVttIsAssembledBesideTheVideo() = runBlocking {
     serve("/stream/master.m3u8", master)
     serve("/stream/subs/ur.m3u8", subtitlePlaylist("ur/0.vtt", "ur/1.vtt"))
