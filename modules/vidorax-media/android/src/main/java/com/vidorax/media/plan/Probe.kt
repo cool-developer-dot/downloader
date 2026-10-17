@@ -9,6 +9,7 @@ import com.vidorax.media.model.ProbeResult
 import com.vidorax.media.model.RequestContext
 import com.vidorax.media.model.SourceKind
 import com.vidorax.media.model.VariantChoice
+import com.vidorax.media.net.BasicChallenge
 import com.vidorax.media.net.HttpClient
 import com.vidorax.media.net.MediaNetworkException
 import com.vidorax.media.net.MediaRefusedException
@@ -67,7 +68,7 @@ internal class Probe(
   private val dash: DashPlanner = DashPlanner(http),
 ) {
   suspend fun probe(request: ProbeRequest): ProbeResult =
-    withContext(Dispatchers.IO) { probeBlocking(request, request.variant) }
+    withContext(Dispatchers.IO) { withAuthChallenge(probeBlocking(request, request.variant), request) }
 
   /** The file a DASH download would fetch, for the engine; [probe] reports the same verdict for the manifest. */
   suspend fun resolveDash(url: String, context: RequestContext, choice: VariantChoice?): DashResolution =
@@ -135,7 +136,10 @@ internal class Probe(
     // The first response is a `bytes=0-` stream: it is closed once its prefix is read, before any further request.
     return response.use {
       when (val status = it.status) {
-        403, 401 -> return failure(ProbeFailure.HTTP_403, status, "Access denied")
+        // #299: a 401 says whether the server asks for Basic sign-in (realm and origin only, never a secret).
+        401 -> return failure(ProbeFailure.HTTP_403, status, "Access denied")
+          .copy(authChallenge = BasicChallenge.of(it))
+        403 -> return failure(ProbeFailure.HTTP_403, status, "Access denied")
         404, 410 -> return failure(ProbeFailure.HTTP_404, status, "Not found")
         in 200..299 -> Unit
         else -> return failure(ProbeFailure.HTTP_ERROR, status, "Server error")
@@ -382,6 +386,19 @@ internal class Probe(
 
   private fun failure(reason: ProbeFailure, httpStatus: Int?, message: String?): ProbeResult.Failure =
     ProbeResult.Failure(reason = reason, httpStatus = httpStatus, message = message)
+
+  /**
+   * #299: a playlist or manifest refused with a 401 by the HLS/DASH planners carries no challenge of its own; one plain
+   * request to the same URL reads it. Only for a stream and only after a 401 — a file's first read already looked.
+   */
+  private fun withAuthChallenge(result: ProbeResult, request: ProbeRequest): ProbeResult {
+    if (request.kind != SourceKind.HLS && request.kind != SourceKind.DASH) return result
+    if (result !is ProbeResult.Failure || result.httpStatus != 401 || result.authChallenge != null) return result
+    val challenge = runCatching {
+      http.execute(MediaRequest(url = request.url, context = request.request)).use { BasicChallenge.of(it) }
+    }.getOrNull()
+    return if (challenge != null) result.copy(authChallenge = challenge) else result
+  }
 
   internal companion object {
     /** 64 KiB: enough for an ftyp+moov header or a manifest, small enough to stay off the heap. */

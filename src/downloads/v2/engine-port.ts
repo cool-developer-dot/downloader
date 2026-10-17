@@ -2,6 +2,7 @@ import { getVidoraMedia, isVidoraMediaAvailable } from '@modules/vidorax-media';
 import type {
   CompletedDownload,
   DeviceVideoPage,
+  DownloadCredentials,
   DownloadRecord,
   DownloadSettings,
   EnqueueRequest,
@@ -43,6 +44,10 @@ export type V2EnginePort = {
     queues: import('@modules/vidorax-media/src/VidoraMedia.types').DownloadQueue[],
   ): Promise<import('@modules/vidorax-media/src/VidoraMedia.types').DownloadQueueState>;
   retry(id: string): Promise<void>;
+  /** #299: where a download started with sign-in must sign in again; null when not needed. Older builds: missing. */
+  downloadNeedsCredentials?(id: string): { origin: string; realm: string | null } | null;
+  /** #299: the credentials again for such a download (never read back). Older builds: missing. */
+  setDownloadCredentials?(id: string, credentials: DownloadCredentials): Promise<boolean>;
   cancel(id: string): Promise<void>;
   removeDownload(id: string): Promise<void>;
   /** Pauses every pausable download (the engine's own). Missing on older native builds: per-item `pause` then. */

@@ -4,6 +4,7 @@ import com.vidorax.media.InvalidRequestException
 import com.vidorax.media.analyze.PageFetchRequest
 import com.vidorax.media.engine.PreferredExtensions
 import com.vidorax.media.library.Titles
+import com.vidorax.media.model.BasicCredentials
 import com.vidorax.media.model.DownloadSettings
 import com.vidorax.media.model.EnqueueRequest
 import com.vidorax.media.model.LegacyMetadata
@@ -113,6 +114,8 @@ data class EnqueueRequestRecord(
   @Field val thumbnailUrl: String? = null,
   @Field val durationMs: Double? = null,
   @Field val estimatedBytes: Double? = null,
+  /** #299: sign-in for this download only (https). Never stored with the download, never sent back to JavaScript. */
+  @Field val credentials: CredentialsRecord? = null,
   @Field val qualityLabel: String? = null,
   @Field val saveToGallery: Boolean? = null,
   /** #494: "mp4" / "m4v" / "m4a"; missing or anything else = the usual extension. */
@@ -139,6 +142,7 @@ data class EnqueueRequestRecord(
       thumbnailUrl = thumbnailUrl.nonBlank(),
       durationMs = durationMs.positiveLong(),
       estimatedBytes = estimatedBytes.positiveLong(),
+      credentials = credentials?.toModel(url),
       qualityLabel = qualityLabel.nonBlank()?.trim(),
       saveToGallery = saveToGallery,
       preferredExtension = PreferredExtensions.normalize(preferredExtension),
@@ -146,6 +150,38 @@ data class EnqueueRequestRecord(
       identityUrl = identityUrl?.trim()?.takeIf { it.toHttpUrlOrNull() != null },
       allowDuplicate = allowDuplicate == true,
     )
+  }
+}
+
+/**
+ * #299: a user name and password from JavaScript. A plain class (not a data class) so it is never printed: [toString]
+ * hides both. Rejected with ERR_INVALID_REQUEST — the message never holds either value — when they cannot be sent.
+ */
+class CredentialsRecord(
+  @Field val username: String = "",
+  @Field val password: String = "",
+) : Record {
+  override fun toString(): String = "CredentialsRecord(<redacted>)"
+
+  /** For a download of [downloadUrl]: https only (the credentials are pinned to its origin). */
+  fun toModel(downloadUrl: String): BasicCredentials {
+    if (!downloadUrl.trim().startsWith("https://", ignoreCase = true)) invalid("Sign-in details are only sent over https")
+    return toModel()
+  }
+
+  /** RFC 7617: a user-id has no colon; neither value may hold control characters; both are bounded. */
+  fun toModel(): BasicCredentials {
+    if (username.isEmpty() || username.length > MAX_LENGTH) invalid("The user name must be 1-$MAX_LENGTH characters")
+    if (password.length > MAX_LENGTH) invalid("The password must be at most $MAX_LENGTH characters")
+    if (':' in username) invalid("The user name cannot contain a colon")
+    if (username.any { it.isISOControl() } || password.any { it.isISOControl() }) {
+      invalid("Sign-in details contain control characters")
+    }
+    return BasicCredentials(username, password)
+  }
+
+  private companion object {
+    const val MAX_LENGTH = 256
   }
 }
 

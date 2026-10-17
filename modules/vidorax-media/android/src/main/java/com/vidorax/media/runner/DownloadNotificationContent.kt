@@ -105,6 +105,7 @@ internal object DownloadNotificationText {
     DownloadErrorCode.MUX_FAILED -> "Download failed: couldn't merge audio and video"
     DownloadErrorCode.TRANSCODE_FAILED -> "Download failed: couldn't convert the video"
     DownloadErrorCode.INVALID_MEDIA -> "Download failed: the file did not verify"
+    DownloadErrorCode.AUTH_REQUIRED -> "Download failed: sign in to continue"
     else -> "Download failed"
   }
 }
