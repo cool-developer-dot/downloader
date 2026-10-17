@@ -6,10 +6,14 @@ import {
   type SectionListRenderItem,
 } from 'react-native';
 
+import { useQueueOrderStore } from '@/downloads/v2/queue-order-store';
+
 import type { DownloadListSection } from '../utils/download-format';
 import { DownloadCard } from './DownloadCard';
 import { DownloadFooterLoader } from './DownloadFooterLoader';
 import { DownloadSectionHeader } from './DownloadSectionHeader';
+import { QueueReorderButton } from './QueueReorderButton';
+import { QueueReorderPanel } from './QueueReorderPanel';
 
 export type DownloadsListProps = {
   orderedIds: string[];
@@ -50,6 +54,7 @@ export const DownloadsList = memo(function DownloadsList({
   onRemove,
   testID = 'downloads-list',
 }: DownloadsListProps) {
+  const queueReorderMode = useQueueOrderStore((s) => s.reorderMode);
   const renderCard = useCallback(
     (id: string) => (
       <DownloadCard
@@ -82,6 +87,7 @@ export const DownloadsList = memo(function DownloadsList({
         title={section.title}
         count={section.data.length}
         testID={`downloads-section-${section.key}`}
+        action={section.key === 'QUEUED' || section.key === 'PAUSED' ? <QueueReorderButton sectionKey={section.key} /> : undefined}
       />
     ),
     [],
@@ -110,6 +116,11 @@ export const DownloadsList = memo(function DownloadsList({
     () => ({ flexGrow: 1, paddingBottom: 24 }),
     [],
   );
+
+  // H4: Reorder mode shows the queues and their downloads in start order instead of the list.
+  if (queueReorderMode) {
+    return <QueueReorderPanel />;
+  }
 
   if (showSections) {
     return (
