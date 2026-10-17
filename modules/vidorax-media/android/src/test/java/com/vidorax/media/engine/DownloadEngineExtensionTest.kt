@@ -2,7 +2,6 @@ package com.vidorax.media.engine
 
 import com.vidorax.media.library.MediaMetadata
 import com.vidorax.media.library.StoragePaths
-import com.vidorax.media.library.galleryMimeType
 import com.vidorax.media.model.Container
 import com.vidorax.media.model.DownloadState
 import com.vidorax.media.model.EnqueueRequest
@@ -128,12 +127,10 @@ class DownloadEngineExtensionTest {
     assertTrue(name, name.endsWith(".m4v"))
   }
 
-  @Test fun anM4vGalleryCopyIsPublishedWithTheTypeAndroidPairsWithIt() = runBlocking {
-    val name = fileNameOf(engine(Container.MP4), "m4v")
-    val item = library.items.values.single { it.file.name == name }
-    assertEquals("video/mp4", item.mimeType)
-    assertEquals("video/x-m4v", galleryMimeType(item))
-    val mp4 = library.items.values.firstOrNull { it.file.name.endsWith(".mp4") }
-    if (mp4 != null) assertEquals("video/mp4", galleryMimeType(mp4))
+  @Test fun anM4vIsRecordedWithTheTypeAndroidPairsWithItSoEveryCopyKeepsTheName() = runBlocking {
+    val m4v = fileNameOf(engine(Container.MP4), "m4v")
+    assertEquals("video/x-m4v", library.items.values.single { it.file.name == m4v }.mimeType)
+    val mp4 = fileNameOf(engine(Container.MP4), null)
+    assertEquals("today's type for today's name", "video/mp4", library.items.values.single { it.file.name == mp4 }.mimeType)
   }
 }

@@ -1549,8 +1549,11 @@ internal class DownloadEngine(
     sourceUrl = row.url,
     file = dest,
     // The container proven from the bytes names the type; the platform's report only fills in an unknown one.
-    mimeType = MediaTypes.libraryMimeType(container, metadata?.containerMimeType ?: probeContentType)
-      ?: "application/octet-stream",
+    // #494: a `.m4v` is recorded as `video/x-m4v`, the type Android pairs with that name, so no copy gets `.mp4` added.
+    mimeType = PreferredExtensions.libraryMimeType(
+      dest,
+      MediaTypes.libraryMimeType(container, metadata?.containerMimeType ?: probeContentType),
+    ) ?: "application/octet-stream",
     container = container,
     videoCodec = metadata?.videoCodec,
     audioCodec = metadata?.audioCodec,
