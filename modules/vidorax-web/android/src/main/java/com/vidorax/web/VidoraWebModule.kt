@@ -16,9 +16,9 @@ import com.reactnativecommunity.webview.RNCWebView
 import com.reactnativecommunity.webview.RNCWebViewHooks
 import com.reactnativecommunity.webview.RNCWebViewModule
 import com.reactnativecommunity.webview.RNCWebViewWrapper
-import com.vidorax.web.network.NetworkMediaClassifier
 import com.vidorax.web.network.NetworkMediaObserver
 import com.vidorax.web.network.ServiceWorkerRequests
+import com.vidorax.web.network.WebDownloadRoute
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
@@ -68,8 +68,13 @@ class VidoraWebModule : Module() {
       if (!hasWebDownloadListeners || !isHttpUrl(url)) {
         return false
       }
-      // Only videos go to the detection pipeline; every other download goes to DownloadManager as before.
-      val hint = NetworkMediaClassifier.classifyDownload(url, mimeType, contentDisposition) ?: return false
+      // Videos go to the detection pipeline, and app or program files (H17) to JavaScript for the warning before
+      // DownloadManager; every other download goes to DownloadManager as before.
+      val hint = when (val route = WebDownloadRoute.of(url, mimeType, contentDisposition)) {
+        is WebDownloadRoute.Detect -> route.hint.value
+        WebDownloadRoute.Warn -> WebDownloadRoute.RISKY_HINT
+        WebDownloadRoute.System -> return false
+      }
       sendEvent(
         ON_WEB_DOWNLOAD,
         mapOf(
@@ -79,7 +84,7 @@ class VidoraWebModule : Module() {
           "contentDisposition" to contentDisposition?.takeIf { it.isNotBlank() },
           "mimeType" to mimeType?.takeIf { it.isNotBlank() },
           "contentLength" to contentLength.takeIf { it > 0 },
-          "hint" to hint.value,
+          "hint" to hint,
         ),
       )
       return true

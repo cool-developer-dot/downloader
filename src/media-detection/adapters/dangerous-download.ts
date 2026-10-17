@@ -186,6 +186,29 @@ export function createSystemDownloadGate(
   };
 }
 
+/**
+ * H17 native routing: a download the native side sent only for the warning (`hint: 'risky'` — an app or program
+ * file that used to go straight to DownloadManager). It is handed to the system downloader only after the warning was
+ * confirmed; a cancel drops it. True when it was handed over.
+ */
+export async function routeRiskyDownload(
+  input: DownloadDangerInput,
+  confirm: (input: DownloadDangerInput) => Promise<boolean>,
+  handOff: () => Promise<void>,
+): Promise<boolean> {
+  let allowed = false;
+  try {
+    allowed = (await confirm(input)) === true;
+  } catch {
+    allowed = false;
+  }
+  if (!allowed) {
+    return false;
+  }
+  await handOff();
+  return true;
+}
+
 const MAX_DISPLAY_NAME = 80;
 
 /**
