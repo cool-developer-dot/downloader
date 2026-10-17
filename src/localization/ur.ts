@@ -1278,6 +1278,9 @@ export const ur: CatalogStrings<typeof en> = {
     newDownloadsOnly: 'صرف نئے ڈاؤن لوڈز پر لاگو ہوتا ہے۔',
     reset: 'ڈیفالٹ نام استعمال کریں',
     sampleTitle: 'میری ویڈیو',
+    extension: 'فائل ایکسٹینشن',
+    extensionAuto: 'خودکار',
+    extensionHint: 'صرف MP4 ویڈیوز کے لیے۔ باقی فائلیں اپنی معمول کی ایکسٹینشن رکھتی ہیں۔',
   },
   bookmarks: {
     title: 'بک مارکس',

@@ -9,7 +9,7 @@ import {
   type V2HandoffRejection,
 } from './enqueue-request';
 import type { V2EnginePort } from './engine-port';
-import { namedTitleFor } from './filename-naming';
+import { namedTitleFor, preferredExtensionFor } from './filename-naming';
 import { ensureGalleryPermission } from './gallery-permission';
 import { ensureDownloadNotificationPermission } from './notification-permission';
 import { projectV2Download, type V2DownloadEntry } from './projection';
@@ -214,6 +214,11 @@ export async function handOffVerifiedVariant(
     }
     // Filename Template (#379): the engine names the file after this title; the default template keeps it as is.
     decision.request.title = namedTitleFor(decision.request);
+    // Custom Extension (#494): sent only when the user chose one; the engine uses it only for a matching container.
+    const preferredExtension = preferredExtensionFor();
+    if (preferredExtension) {
+      decision.request.preferredExtension = preferredExtension;
+    }
     // The engine checks for the same video again and creates the download in one atomic step: two taps, two entry
     // points or a tap racing a restart still start one download.
     const result: EnqueueResult = deps.engine.enqueueUnique
