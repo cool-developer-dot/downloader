@@ -74,23 +74,6 @@ export function queueOf(state: DownloadQueueState, id: string): string {
   return queueId && state.queues.some((queue) => queue.id === queueId) ? queueId : MAIN_QUEUE_ID;
 }
 
-/** True while the download waits in a held queue. */
-export function isHeldDownload(state: DownloadQueueState, id: string): boolean {
-  const queueId = queueOf(state, id);
-  return state.queues.some((queue) => queue.id === queueId && queue.held);
-}
-
-/** True when nothing is set: downloads start exactly as before. */
-export function isDefaultQueueState(state: DownloadQueueState): boolean {
-  return (
-    state.queues.length === 1 &&
-    state.queues[0]?.id === MAIN_QUEUE_ID &&
-    !state.queues[0]?.held &&
-    Object.keys(state.assignments).length === 0 &&
-    state.order.length === 0
-  );
-}
-
 /**
  * The downloads grouped by queue, every queue listed (also an empty one), each in start order: the user's order
  * first, then first-come (oldest first) for downloads the user has not moved.

@@ -10,8 +10,6 @@ import {
   canMoveQueue,
   DEFAULT_QUEUE_STATE,
   groupByQueue,
-  isDefaultQueueState,
-  isHeldDownload,
   MAIN_QUEUE_ID,
   MAX_QUEUES,
   movedWithin,
@@ -50,7 +48,6 @@ function downloads(...ids: string[]) {
 
 describe('H4 reorder', () => {
   test('nothing set: one Main queue, oldest first (first-come)', () => {
-    assert.equal(isDefaultQueueState(DEFAULT_QUEUE_STATE), true);
     const groups = groupByQueue(DEFAULT_QUEUE_STATE, downloads('a', 'b', 'c'));
     assert.deepEqual(groups, [{ queue: MAIN, ids: ['a', 'b', 'c'] }]);
   });
@@ -108,8 +105,8 @@ describe('H4 queues', () => {
     const held = withHeld([MAIN, NIGHT], NIGHT.id, true);
     assert.equal(held[1]?.held, true);
     const queues = state({ queues: held, assignments: { b: NIGHT.id } });
-    assert.equal(isHeldDownload(queues, 'b'), true);
-    assert.equal(isHeldDownload(queues, 'a'), false);
+    assert.equal(queues.queues.find((queue) => queue.id === queueOf(queues, 'b'))?.held, true);
+    assert.equal(queues.queues.find((queue) => queue.id === queueOf(queues, 'a'))?.held, false);
     assert.deepEqual(withHeld([MAIN], MAIN_QUEUE_ID, true), [MAIN]);
     assert.deepEqual(withHeld(held, NIGHT.id, false), [MAIN, NIGHT]);
   });
