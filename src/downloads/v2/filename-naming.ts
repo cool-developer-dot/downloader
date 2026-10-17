@@ -5,14 +5,30 @@
 
 import type { EnqueueRequest } from '@modules/vidorax-media/src/VidoraMedia.types';
 
+import { preferredExtensionForEngine } from './file-extension';
 import { applyFilenameTemplate } from './filename-template';
 
 type TemplateSource = () => string | null | undefined;
 
 let templateSource: TemplateSource | null = null;
+let extensionSource: (() => unknown) | null = null;
 
 export function setFilenameTemplateSource(source: TemplateSource | null): void {
   templateSource = source;
+}
+
+/** Custom Extension (#494): where the handoff reads the "File extension" choice from. */
+export function setFileExtensionSource(source: (() => unknown) | null): void {
+  extensionSource = source;
+}
+
+/** The extension to ask the engine for, or undefined (Automatic, nothing registered, or a failing source). */
+export function preferredExtensionFor(): 'mp4' | 'm4v' | undefined {
+  try {
+    return preferredExtensionForEngine(extensionSource?.());
+  } catch {
+    return undefined;
+  }
 }
 
 /** The title to give the engine for this request: the template applied, or the request's own title. */

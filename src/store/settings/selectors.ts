@@ -3,6 +3,7 @@ import type { SettingsStore } from './types';
 export const selectDownloadDirectory = (state: SettingsStore) => state.downloadDirectory;
 export const selectWifiOnly = (state: SettingsStore) => state.wifiOnly;
 export const selectFilenameTemplate = (state: SettingsStore) => state.filenameTemplate;
+export const selectFileExtension = (state: SettingsStore) => state.fileExtension;
 export const selectConfirmBeforeStart = (state: SettingsStore) => state.confirmBeforeStart;
 export const selectSaveToGallery = (state: SettingsStore) => state.saveToGallery;
 export const selectAutoResume = (state: SettingsStore) => state.autoResume;

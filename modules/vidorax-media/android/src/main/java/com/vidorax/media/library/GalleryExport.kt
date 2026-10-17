@@ -204,7 +204,7 @@ class GalleryExport internal constructor(
     val values = ContentValues().apply {
       put(MediaStore.MediaColumns.DISPLAY_NAME, galleryFileName(item.title, item.file.extension))
       put(MediaStore.MediaColumns.TITLE, Titles.clamp(item.title))
-      put(MediaStore.MediaColumns.MIME_TYPE, item.mimeType)
+      put(MediaStore.MediaColumns.MIME_TYPE, galleryMimeType(item))
       put(MediaStore.MediaColumns.RELATIVE_PATH, galleryFolder(audioOnly, item.site) + "/")
       put(MediaStore.MediaColumns.IS_PENDING, 1)
     }
@@ -241,7 +241,7 @@ class GalleryExport internal constructor(
       target.delete()
       throw e
     }
-    return scan(target, item.mimeType)
+    return scan(target, galleryMimeType(item))
   }
 
   private fun hasLegacyPermission(): Boolean =
@@ -295,6 +295,15 @@ internal fun galleryRoot(audioOnly: Boolean): String = "${if (audioOnly) "Music"
 internal fun galleryFolder(audioOnly: Boolean, site: SiteId): String = "${galleryRoot(audioOnly)}/${site.folderName}"
 
 /** `<Safe Title>.<ext>`, or `<Safe Title> (<copy>).<ext>` when [copy] is above 1. */
+/**
+ * #494: the type the gallery copy is published as. A `.m4v` file (an MP4 its download asked to be named so) is
+ * `video/x-m4v` — the type Android pairs with that extension — so MediaStore keeps the name instead of adding `.mp4`.
+ */
+internal fun galleryMimeType(item: LibraryItem): String {
+  val m4v = item.file.extension.equals("m4v", ignoreCase = true) && item.mimeType == "video/mp4"
+  return if (m4v) "video/x-m4v" else item.mimeType
+}
+
 internal fun galleryFileName(title: String, extension: String, copy: Int = 1): String {
   val suffix = if (copy > 1) " ($copy)" else ""
   return "${FileNames.safeTitle(title)}$suffix.${FileNames.safeExtension(extension)}"
