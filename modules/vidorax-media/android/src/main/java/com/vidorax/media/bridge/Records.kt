@@ -115,6 +115,8 @@ data class EnqueueRequestRecord(
   @Field val qualityLabel: String? = null,
   @Field val saveToGallery: Boolean? = null,
   @Field val identityUrl: String? = null,
+  /** H12: "Keep both" / "Replace" — download it although it is already saved. Missing = false (today). */
+  @Field val allowDuplicate: Boolean? = null,
 ) : Record {
   fun toModel(): EnqueueRequest {
     val sourceKind = parseWire<SourceKind>(kind, "kind")
@@ -138,6 +140,7 @@ data class EnqueueRequestRecord(
       saveToGallery = saveToGallery,
       // Only an identity hint: an unusable value falls back to `url` instead of refusing the download.
       identityUrl = identityUrl?.trim()?.takeIf { it.toHttpUrlOrNull() != null },
+      allowDuplicate = allowDuplicate == true,
     )
   }
 }

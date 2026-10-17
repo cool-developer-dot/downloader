@@ -55,6 +55,8 @@ object DownloadEngineProvider {
       queueOrder = QueueOrderBook(SharedPreferencesQueueOrderStorage(context)),
       gallery = RealGalleryPublisher(services.galleryExport),
       paths = services.paths,
+      // H12: "Keep both" / "Replace" downloads stay exempt from the same-bytes check across restarts.
+      duplicateBypass = DuplicateBypass(SharedPreferencesDuplicateBypassStorage(context)),
       scope = services.scope,
       network = AndroidNetworkGate(context),
       initialSettings = readSettings(context),

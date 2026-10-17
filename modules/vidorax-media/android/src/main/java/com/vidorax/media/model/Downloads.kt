@@ -96,6 +96,11 @@ data class EnqueueRequest(
    * `engine/DownloadIdentity`), so a re-signed or redirected link is still the same video. Null uses [url].
    */
   val identityUrl: String? = null,
+  /**
+   * H12 (Duplicate Action #386): the user wants this video although they already have it ("Keep both", or the new
+   * copy of "Replace"): no identity check, and its finished file is kept even when the same bytes are saved.
+   */
+  val allowDuplicate: Boolean = false,
 )
 
 /**

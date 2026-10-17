@@ -2,6 +2,7 @@ import type { EnqueueRequest, EnqueueResult, ProbeFailure } from '@modules/vidor
 
 import type { DownloadStatus } from '@/api/types';
 
+import { applyDuplicateBypass, hasDuplicateBypass } from './duplicate-action';
 import {
   buildV2EnqueueRequest,
   v2HandoffRejectionMessage,
@@ -84,6 +85,10 @@ export async function findExistingDownload(
   deps: Pick<V2HandoffDeps, 'engine' | 'applyEntries'>,
 ): Promise<Extract<V2HandoffResult, { ok: true }> | null> {
   const decision = buildV2EnqueueRequest(input);
+  // H12 (#386): a video the user chose to download again (Keep both / Replace) is not looked up.
+  if (decision.ok && hasDuplicateBypass(decision.request)) {
+    return null;
+  }
   if (!decision.ok || !deps.engine?.findDuplicate) {
     return null;
   }
@@ -169,6 +174,8 @@ export async function handOffVerifiedVariant(
   if (!decision.ok) {
     return { ok: false, reason: decision.reason, message: v2HandoffRejectionMessage(decision.reason) };
   }
+  // H12 (#386): Keep both / Replace — this one request skips the engine's duplicate checks (Keep both: "Title (2)").
+  applyDuplicateBypass(decision.request);
   const key = input.variantKey;
   const accepted = acceptedByVariant.get(key);
   if (accepted) {

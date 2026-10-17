@@ -25,6 +25,7 @@ import { useWithSaveThumbnailAction } from './hooks/useSaveThumbnailSheetAction'
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
 import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
+import { useTagSheetActions } from '@/screens/downloads/hooks/useTagSheetActions';
 import { useFoldersStore } from '@/store/organization/folders';
 import { EmptyState } from '@/components/common/EmptyState';
 import { usePrivateMoveSheet } from '@/screens/library/hooks/usePrivateMoveSheet';
@@ -89,6 +90,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
   const showInFolderActionsFor = useShowInFolderSheetActions();
 
   const foldersById = useFoldersStore((s) => s.itemsById);
+  const tagActionsFor = useTagSheetActions();
   const folderOrderedIds = useFoldersStore((s) => s.orderedIds);
   const { privateMoveActionsFor, privateMove } = usePrivateMoveSheet();
 
@@ -106,6 +108,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
           void openItemExternal(id);
         },
       },
+      ...tagActionsFor(id, closeItemActions),
       {
         id: 'share',
         label: t('library.share'),
@@ -141,6 +144,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
     privateMoveActionsFor,
     requestDeleteItem,
     saveItemToDevice,
+    tagActionsFor,
     shareItem,
     t,
   ]);
