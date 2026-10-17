@@ -127,6 +127,18 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("retry") Coroutine { id: String -> engine.retry(id) }
 
+    // #299: a download started with sign-in needs its user name and password again after a process death or a failure.
+    // JavaScript learns only where to sign in; the credentials themselves never come back from native code.
+    Function("downloadNeedsCredentials") { id: String ->
+      engine // the provider restores which downloads use sign-in
+      com.vidorax.media.net.DownloadCredentials.neededFor(id)?.let { mapOf("origin" to it.origin, "realm" to it.realm) }
+    }
+
+    AsyncFunction("setDownloadCredentials") { id: String, credentials: com.vidorax.media.bridge.CredentialsRecord ->
+      engine
+      com.vidorax.media.net.DownloadCredentials.restore(id, credentials.toModel())
+    }
+
     AsyncFunction("cancel") Coroutine { id: String -> engine.cancel(id) }
 
     AsyncFunction("removeDownload") Coroutine { id: String -> engine.removeDownload(id) }

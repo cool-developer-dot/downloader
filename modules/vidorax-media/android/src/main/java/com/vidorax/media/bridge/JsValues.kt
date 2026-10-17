@@ -114,6 +114,7 @@ internal fun ProbeResult.toJs(): Map<String, Any?> = when (this) {
     "reason" to reason.wire,
     "httpStatus" to httpStatus,
     "message" to message,
+    "authChallenge" to authChallenge?.let { mapOf("scheme" to "basic", "origin" to it.origin, "realm" to it.realm) },
   )
 }
 

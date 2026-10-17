@@ -12,6 +12,7 @@ import {
   ProtectedRouteGuard,
 } from '@/navigation';
 import { PlayerSessionHost } from '@/player/session-host';
+import { DownloadSignInHost } from '@/screens/downloads/components/DownloadSignInHost';
 import { ReviewPromptHost } from '@/review';
 import { MiniPlayerOverlay } from '@/screens/player/mini';
 import { AppLockGate } from '@/security/app-lock';
@@ -80,6 +81,8 @@ export default function AppLayout() {
   return (
     <ProtectedRouteGuard>
       <AppLockGate>
+        {/* #299: "Sign in to download" for a server that asks for a user name and password. */}
+        <DownloadSignInHost />
         <ReviewPromptHost />
         {/* The one player session, shared by the Player screen and the mini player (outlives the Player screen). */}
         <PlayerSessionHost />
