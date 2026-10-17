@@ -70,6 +70,8 @@ object DownloadEngineProvider {
     )
     // One runner per process: it observes the engine to keep transfers alive in the background, to show their
     // notifications, and to reconcile what a previous process left behind.
+    // (H22: the home-screen widget follows the engine's state changes too, at most every 2 s.)
+    com.vidorax.media.widget.DownloadsWidget.install(context, engine, services.scope)
     BackgroundDownloads.install(context, engine, services.scope) { engine.restore() }
     // H19: the subtitles chosen for a download are fetched beside the video once it completed (none by default).
     com.vidorax.media.subtitles.SubtitleDownloads.install(context, engine, services)
