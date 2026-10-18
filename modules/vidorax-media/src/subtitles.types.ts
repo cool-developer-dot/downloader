@@ -4,7 +4,10 @@
  * native side reads it again from the manifest when the subtitle is fetched.
  */
 
-/** Why a listed track cannot be downloaded: protected, inside the video segments (stpp/wvtt), segmented DASH text, or another format. */
+/**
+ * Why a listed track cannot be downloaded: protected, TTML inside fMP4 segments (stpp), segmented DASH text (or WebVTT
+ * inside fMP4 whose segments cannot be listed), or another format. WebVTT inside fMP4 (`wvtt`) is fetched (#370).
+ */
 export type SubtitleRefusal = 'encrypted' | 'embedded' | 'segmented' | 'unsupported';
 
 export type SubtitleTrackInfo = {

@@ -2,6 +2,7 @@ package com.vidorax.media.subtitles
 
 import android.net.Uri
 import androidx.annotation.OptIn
+import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.UriUtil
 import androidx.media3.exoplayer.dash.manifest.DashManifestParser
@@ -78,6 +79,7 @@ internal class SubtitleFetcher(private val http: HttpClient) {
   /** The WebVTT text of [track], or null when it cannot be fetched, is protected, or does not convert. */
   private fun textOf(track: SubtitleTrack, context: RequestContext): String? {
     if (track.refused != null) return null
+    track.embedded?.let { return fmp4WebVtt(it.init, it.segments, it.offsetMs, context) }
     val url = track.url ?: return null
     return when {
       track.id.startsWith("hls:") -> hlsWebVtt(url, context)
@@ -95,6 +97,10 @@ internal class SubtitleFetcher(private val http: HttpClient) {
     if (HlsKeys.declaresEncryption(text)) return null
     val playlist = HlsPlaylistParser().parse(Uri.parse(finalUrl), ByteArrayInputStream(bytes)) as? HlsMediaPlaylist ?: return null
     if (playlist.segments.size > MAX_SEGMENTS) return null
+    // #370: fMP4 segments (EXT-X-MAP) carry WebVTT as `wvtt` samples; the first segment stays at the video's start.
+    playlist.segments.firstNotNullOfOrNull { it.initializationSegment }?.let { init ->
+      return fmp4WebVtt(hlsRef(playlist, init), playlist.segments.map { hlsRef(playlist, it) }, offsetMs = null, context)
+    }
     var total = 0L
     val segments = ArrayList<String>(playlist.segments.size)
     for (segment in playlist.segments) {
@@ -107,10 +113,53 @@ internal class SubtitleFetcher(private val http: HttpClient) {
     return WebVtt.assemble(segments)
   }
 
+  /**
+   * #370: the WebVTT of a track inside fMP4 — the `wvtt` track named by [init] (or by the one file, when there is no
+   * init segment), read from [segments] in order. [offsetMs] moves its cues onto the video's timeline; null starts
+   * the first segment at zero (HLS, as for WebVTT text segments). Null when anything cannot be fetched or read.
+   */
+  private fun fmp4WebVtt(init: SegmentRef?, segments: List<SegmentRef>, offsetMs: Long?, context: RequestContext): String? {
+    if (segments.isEmpty() || segments.size > MAX_SEGMENTS) return null
+    val track = init?.let { ref -> fetch(ref, context, MAX_SEGMENT_BYTES)?.let(Fmp4WebVtt::trackOf) ?: return null }
+    var total = 0L
+    var firstStartMs: Long? = null
+    val cues = ArrayList<WebVtt.Cue>()
+    for (segment in segments) {
+      // A single-file track (no init segment) holds its own moov and every fragment: it is read whole.
+      val body = fetch(segment, context, if (init == null) MAX_FILE_BYTES else MAX_SEGMENT_BYTES) ?: return null
+      total += body.size
+      if (total > MAX_FILE_BYTES) return null
+      val fragments = Fmp4WebVtt.fragments(body, track ?: Fmp4WebVtt.trackOf(body) ?: return null)
+      if (firstStartMs == null) firstStartMs = fragments.startMs
+      cues += fragments.cues
+      if (cues.size > Fmp4WebVtt.MAX_CUES) return null
+    }
+    return Fmp4WebVtt.assemble(cues, offsetMs ?: firstStartMs ?: 0L)
+  }
+
+  private fun hlsRef(playlist: HlsMediaPlaylist, segment: HlsMediaPlaylist.Segment): SegmentRef {
+    val url = UriUtil.resolve(playlist.baseUri, segment.url)
+    return if (segment.byteRangeLength != C.LENGTH_UNSET.toLong()) {
+      SegmentRef(url, segment.byteRangeOffset, segment.byteRangeOffset + segment.byteRangeLength - 1)
+    } else {
+      SegmentRef(url)
+    }
+  }
+
+  private fun fetch(ref: SegmentRef, context: RequestContext, maxBytes: Int): ByteArray? =
+    get(ref.url, context, maxBytes, ref.rangeStart, ref.rangeEnd)?.second
+
   /** (final URL, body) of a 2xx answer within [maxBytes]; null otherwise, and for YouTube (refused by policy). */
-  private fun get(url: String, context: RequestContext, maxBytes: Int): Pair<String, ByteArray>? {
+  private fun get(
+    url: String,
+    context: RequestContext,
+    maxBytes: Int,
+    rangeStart: Long? = null,
+    rangeEnd: Long? = null,
+  ): Pair<String, ByteArray>? {
     if (Probe.isPolicyBlockedHost(url)) return null
-    return http.execute(MediaRequest(url = url, context = context)).use { response ->
+    val request = MediaRequest(url = url, context = context, rangeStart = rangeStart, rangeEnd = rangeEnd)
+    return http.execute(request).use { response ->
       if (response.status !in 200..299) return null
       val body = response.readBounded(maxBytes) ?: return null
       // A redirect onto a refused host is refused too.
