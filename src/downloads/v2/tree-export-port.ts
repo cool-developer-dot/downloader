@@ -1,6 +1,8 @@
 import { getVidoraMedia, isVidoraMediaAvailable } from '@modules/vidorax-media';
 import type { FolderCopy } from '@modules/vidorax-media/src/VidoraMedia.types';
 
+import { withExpectedSystemScreen } from '@/security/app-lock/expected-system-screen';
+
 /**
  * The native side of Save Location (#297) and Show in Folder (#398): the `VidoraMedia` functions backed by
  * library/TreeExport.kt. Null on builds without them, and the feature then stays hidden.
@@ -49,7 +51,8 @@ export function setTreeExportPortForTests(port: TreeExportPort | null | undefine
 export async function pickTreeFolder(): Promise<string | null> {
   try {
     const { Directory } = await import('expo-file-system');
-    const directory = await Directory.pickDirectoryAsync();
+    // The system folder picker is part of this action: App Lock does not relock for it (fix/app-lock-grace).
+    const directory = await withExpectedSystemScreen(() => Directory.pickDirectoryAsync());
     // expo-file-system adds a trailing slash to a directory's URI; the grant is held for the URI without it.
     const uri = typeof directory?.uri === 'string' ? directory.uri.replace(/\/+$/, '') : '';
     return uri.startsWith('content://') ? uri : null;
