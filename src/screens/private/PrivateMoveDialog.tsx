@@ -23,7 +23,8 @@ type ConfirmState = Extract<PrivateMoveDialogState, { kind: 'confirm' | 'moving'
 
 /**
  * The confirm of a move. It always says that private videos live only on this phone and are lost for good if VidoraX
- * is uninstalled or its data is cleared; the very first move also needs "I understand" ticked.
+ * is uninstalled or its data is cleared; the very first move also needs "I understand" ticked. A video with a Gallery
+ * copy offers "Also remove the Gallery copy" (off by default).
  */
 function MoveConfirm({
   dialog,
@@ -32,7 +33,7 @@ function MoveConfirm({
   testID,
 }: {
   dialog: ConfirmState;
-  onConfirm: (understood: boolean) => void;
+  onConfirm: (understood: boolean, removeGallery: boolean) => void;
   onCancel: () => void;
   testID: string;
 }) {
@@ -40,6 +41,7 @@ function MoveConfirm({
   const { height } = useWindowDimensions();
   const acknowledged = usePrivateVaultPrefs((s) => s.dataLossAcknowledged);
   const [ticked, setTicked] = useState(false);
+  const [removeGallery, setRemoveGallery] = useState(false);
   const moving = dialog.kind === 'moving';
   const gate = moveConfirmGate({ acknowledged, ticked, busy: moving });
 
@@ -62,6 +64,19 @@ function MoveConfirm({
                   {t('privateVault.moveGalleryNote')}
                 </Text>
               ) : null}
+              {dialog.kind === 'confirm' && dialog.canRemoveGallery ? (
+                <Box gap={4}>
+                  <PrivateCheckbox
+                    checked={removeGallery}
+                    onToggle={() => setRemoveGallery((value) => !value)}
+                    label={t('privateVault.removeGalleryCopy')}
+                    testID={`${testID}-remove-gallery`}
+                  />
+                  <Text variant="caption" color="textSecondary">
+                    {t('privateVault.removeGalleryCopyHint')}
+                  </Text>
+                </Box>
+              ) : null}
             </>
           )}
           <PrivateDataLossNotice testID={`${testID}-data-loss`} />
@@ -82,7 +97,7 @@ function MoveConfirm({
           <Box flex={1}>
             <Button
               title={t('privateVault.moveConfirm')}
-              onPress={() => onConfirm(ticked)}
+              onPress={() => onConfirm(ticked, removeGallery)}
               disabled={!gate.canConfirm}
               loading={moving}
               fullWidth
@@ -124,8 +139,8 @@ export const PrivateMoveDialog = memo(function PrivateMoveDialog({
       <MoveConfirm
         key={dialog.id}
         dialog={dialog}
-        onConfirm={(understood) => {
-          void confirm(understood);
+        onConfirm={(understood, removeGallery) => {
+          void confirm(understood, removeGallery);
         }}
         onCancel={cancel}
         testID={`${testID}-confirm`}
