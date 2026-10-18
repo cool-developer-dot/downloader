@@ -1,4 +1,5 @@
-import { memo } from 'react';
+import { usePathname } from 'expo-router';
+import { memo, useEffect, useRef } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Box } from '@/components/base/Box';
@@ -19,6 +20,16 @@ export const ClipboardLinkBanner = memo(function ClipboardLinkBanner() {
   const { t } = useTranslation();
   const host = useClipboardBannerStore((state) => state.host);
   const url = useClipboardBannerStore((state) => state.url);
+  const pathname = usePathname();
+  const shownOn = useRef(pathname);
+
+  // Navigating (Paste link opening the Browser, any other screen) answers the banner: it never lingers as a second prompt.
+  useEffect(() => {
+    if (shownOn.current !== pathname) {
+      shownOn.current = pathname;
+      dismissClipboardBanner();
+    }
+  }, [pathname]);
 
   if (!url) {
     return null;

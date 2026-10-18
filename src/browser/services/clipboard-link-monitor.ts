@@ -3,6 +3,10 @@
  * the clipboard read — never in the background, never on a timer. A new allowed link (not offered before) shows a
  * small "Download from copied link?" banner; accepting opens it through the pasted-link path. Only a hash of the
  * last offered link is stored; the link itself stays in memory for the banner and is dropped with it.
+ *
+ * It steps aside for "Paste link" (the button, the app shortcut, the widget — Faran's F7 flow handles the clipboard
+ * there): no banner while that flow runs, the link it handles is remembered as offered, and a banner already shown
+ * goes away when the user navigates (e.g. Paste link opening the Browser). One prompt per copied link, never two.
  */
 
 import * as Clipboard from 'expo-clipboard';
@@ -18,6 +22,8 @@ import { openLinkLikePaste } from './open-link-like-paste';
 const LAST_HASH_KEY = 'vidorax.clipboardMonitor.lastHash';
 /** Android only lets the focused app read the clipboard: wait for the window to take focus. */
 const READ_DELAY_MS = 700;
+/** How long after a Paste link request the monitor stays quiet (the foreground return that request caused). */
+const PASTE_STEP_ASIDE_MS = 3_000;
 
 type BannerState = { url: string | null; host: string | null };
 
@@ -25,6 +31,7 @@ export const useClipboardBannerStore = createStore<BannerState>(() => ({ url: nu
 
 let attached = false;
 let readTimer: ReturnType<typeof setTimeout> | null = null;
+let quietUntil = 0;
 
 function readLastHash(): string | null {
   try {
@@ -43,7 +50,7 @@ function writeLastHash(hash: string): void {
 }
 
 async function checkClipboard(): Promise<void> {
-  if (AppState.currentState !== 'active' || !useSettingsStore.getState().clipboardMonitor) {
+  if (AppState.currentState !== 'active' || !useSettingsStore.getState().clipboardMonitor || Date.now() < quietUntil) {
     return;
   }
   let text: string | null = null;
@@ -71,6 +78,32 @@ async function checkClipboard(): Promise<void> {
     host = null;
   }
   useClipboardBannerStore.setState({ url: offer.url, host });
+}
+
+/**
+ * "Paste link" is handling what was copied: no banner for it now, and it is remembered as offered so a later return
+ * does not offer it either. Reads the clipboard only when the monitor is on.
+ */
+export function stepAsideForPasteLink(): void {
+  quietUntil = Date.now() + PASTE_STEP_ASIDE_MS;
+  if (readTimer) {
+    clearTimeout(readTimer);
+    readTimer = null;
+  }
+  dismissClipboardBanner();
+  if (!useSettingsStore.getState().clipboardMonitor) {
+    return;
+  }
+  void (async () => {
+    try {
+      const offer = clipboardOffer(await Clipboard.getStringAsync(), readLastHash());
+      if (offer) {
+        writeLastHash(offer.hash);
+      }
+    } catch {
+      // Not remembered: at worst the banner offers it once later.
+    }
+  })();
 }
 
 export function acceptClipboardBanner(): void {
