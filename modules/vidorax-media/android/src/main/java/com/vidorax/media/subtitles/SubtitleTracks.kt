@@ -103,10 +103,10 @@ internal object SubtitleTracks {
           language = format.language,
           name = format.label,
           format = subtitleFormat,
+          // Media3 folds the set's <Role>s into the format: "main" into roleFlags, "forced-subtitle" into selectionFlags.
           isDefault = format.selectionFlags and C.SELECTION_FLAG_DEFAULT != 0 ||
-            set.roleDescriptors.any { it.value == "main" },
-          isForced = format.selectionFlags and C.SELECTION_FLAG_FORCED != 0 ||
-            set.roleDescriptors.any { it.value == "forced-subtitle" },
+            format.roleFlags and C.ROLE_FLAG_MAIN != 0,
+          isForced = format.selectionFlags and C.SELECTION_FLAG_FORCED != 0,
           refused = refused,
           url = url,
         )
