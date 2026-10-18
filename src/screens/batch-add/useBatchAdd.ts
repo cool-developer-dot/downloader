@@ -6,6 +6,7 @@ import { pendingNavigationService } from '@/browser/services';
 import { extractLinks } from '@/browser/services/link-intake';
 import { useBrowserStore } from '@/browser/stores';
 import { navigation, routePaths } from '@/navigation';
+import { withExpectedSystemScreen } from '@/security/app-lock/expected-system-screen';
 
 const MAX_FILE_BYTES = 512 * 1024;
 
@@ -69,7 +70,8 @@ export function useBatchAdd() {
   const importFromFile = useCallback(async () => {
     setFileError(null);
     try {
-      const picked = await File.pickFileAsync({ mimeTypes: ['text/plain', 'text/*'] });
+      // The system file picker is part of this action: App Lock does not relock for it (fix/app-lock-grace).
+      const picked = await withExpectedSystemScreen(() => File.pickFileAsync({ mimeTypes: ['text/plain', 'text/*'] }));
       if (picked.canceled || !picked.result) {
         return;
       }

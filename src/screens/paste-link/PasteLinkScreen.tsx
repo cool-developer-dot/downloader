@@ -1,54 +1,22 @@
-import * as Clipboard from 'expo-clipboard';
 import { memo, useEffect } from 'react';
-import { AppState, View } from 'react-native';
+import { View } from 'react-native';
 
-import { urlFromSharedText } from '@/browser/services/incoming-link';
-import { openLinkLikePaste } from '@/browser/services/open-link-like-paste';
+import { requestPasteLink } from '@/browser/services/paste-link-request';
 import { useTheme } from '@/hooks/use-theme';
 import { navigation, routePaths } from '@/navigation';
 
-/** Android lets only the focused app read the clipboard: give the window a moment to take focus. */
-const READ_DELAY_MS = 400;
-
-async function readClipboardText(): Promise<string | null> {
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, READ_DELAY_MS));
-    if (AppState.currentState !== 'active') {
-      return null;
-    }
-    try {
-      const text = await Clipboard.getStringAsync();
-      if (text?.trim()) {
-        return text;
-      }
-    } catch {
-      // try once more after focus settles
-    }
-  }
-  return null;
-}
-
 /**
- * Quick Add Shortcut (#515): the app shortcut "Paste link" opens `vidorax://paste-link`. While VidoraX is in front
- * the clipboard is read once; a link in it opens through the pasted-link path (YouTube refused, private hosts never
- * opened), otherwise the browser simply opens — the same place the existing Paste link button goes.
+ * Quick Add Shortcut (#515), and H22's widget: "Paste link" opens `vidorax://paste-link`, which does exactly what the
+ * in-app Paste link button does — that button's own action runs (`paste-link-request.ts`; with Faran's F7 it reads
+ * the clipboard and opens the copied link, otherwise it opens the Browser). This route never reads the clipboard.
  */
 export const PasteLinkScreen = memo(function PasteLinkScreen() {
   const theme = useTheme();
 
   useEffect(() => {
-    let cancelled = false;
-    void readClipboardText().then((text) => {
-      if (cancelled) {
-        return;
-      }
-      // Replace (not push) this blank route with the browser, so Back never returns to it.
-      openLinkLikePaste(urlFromSharedText(text), { navigate: false });
-      navigation.replace(routePaths.browser);
-    });
-    return () => {
-      cancelled = true;
-    };
+    requestPasteLink();
+    // Replace (not push) this blank route with the browser, so Back never returns to it.
+    navigation.replace(routePaths.browser);
   }, []);
 
   return <View testID="paste-link-screen" style={{ flex: 1, backgroundColor: theme.colors.background }} />;

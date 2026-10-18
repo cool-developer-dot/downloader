@@ -7,18 +7,14 @@ import { announceYouTubeNotSupported } from './youtube-refusal';
 export type OpenLinkOutcome = 'opened' | 'youtube' | 'refused' | 'no-link';
 
 /**
- * Opens `url` exactly as a link shared to VidoraX is opened (the existing pasted-link path: the direct analyzer reads
- * the page, then the active tab loads it) and shows the browser. YouTube is refused with the usual notice; private
+ * The Clipboard Monitor's "Download from copied link?" (H7): opens `url` exactly as a link shared to VidoraX is opened
+ * (the existing pasted-link path: the direct analyzer reads the page, then the active tab loads it) and shows the
+ * browser. ("Paste link" itself is the Paste link button's action — `paste-link-request.ts`.) YouTube is refused with the usual notice; private
  * and local addresses are never opened.
  */
-export function openLinkLikePaste(
-  url: string | null | undefined,
-  options: { navigate?: boolean } = {},
-): OpenLinkOutcome {
+export function openLinkLikePaste(url: string | null | undefined): OpenLinkOutcome {
   const showBrowser = () => {
-    if (options.navigate !== false) {
-      navigation.navigate(routePaths.browser);
-    }
+    navigation.navigate(routePaths.browser);
   };
   if (!url) {
     showBrowser();
