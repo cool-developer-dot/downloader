@@ -32,6 +32,8 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
   override fun show(content: DownloadNotificationContent) {
     val manager = manager ?: return
     if (!canPost()) return
+    // "Download notifications" off: no notification of a download's own (the required one is only minimized).
+    if (!DownloadNotificationsToggle.postsOwnNotifications(DownloadNotificationsToggle.isEnabled(context))) return
     ensureChannels()
     runCatching { manager.notify(notificationIdFor(content.downloadId), build(content)) }
       .onFailure { Log.w(TAG, "notification refused: ${it.javaClass.simpleName}") }
@@ -144,7 +146,17 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
       .setProgress(100, summary.percent ?: 0, summary.indeterminate)
     // With one live download this notification *is* that download, so it carries its buttons too.
     summary.downloadId?.let { addActions(builder, it, summary.actions) }
+    // "Download notifications" off: Android still requires this one while downloads run, so it is only minimized.
+    if (!DownloadNotificationsToggle.isEnabled(context)) minimize(builder)
     return builder.build()
+  }
+
+  /** As unobtrusive as the foreground-service rules allow: shown only if the work lasts (Android 12+), no time. */
+  private fun minimize(builder: Notification.Builder) {
+    builder.setShowWhen(false)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_DEFERRED)
+    }
   }
 
   private fun addActions(

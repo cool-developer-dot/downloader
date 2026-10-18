@@ -11,6 +11,7 @@ import {
   subscribeV2Downloads,
   type V2BridgeSink,
 } from './bridge';
+import { ensureV2NotificationToggle } from './ensure-notification-toggle';
 import { getV2Engine } from './engine-port';
 import { projectV2LibraryItem } from './projection';
 import { createLibraryReconciler } from './library-reconcile';
@@ -114,6 +115,8 @@ export function ensureV2DownloadBridge(): void {
       notificationSilent: settings.notificationSilent,
     });
   };
+  // The "Download notifications" setting reaches the native runner too.
+  ensureV2NotificationToggle();
   pushSettings();
   detachSettings = useSettingsStore.subscribe(pushSettings);
   // Download Settings → Advanced network (and its headers once read from the secure store).
