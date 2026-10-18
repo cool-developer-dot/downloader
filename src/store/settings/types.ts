@@ -1,6 +1,12 @@
 export interface SettingsState {
   downloadDirectory: string | null;
   wifiOnly: boolean;
+  /** Filename Template for new downloads; the default `{title}` keeps today's naming exactly. */
+  filenameTemplate: string;
+  /** Custom Extension (#494) for new downloads; 'auto' (the default) keeps today's extensions exactly. */
+  fileExtension: import('@/downloads/v2/file-extension').FileExtensionChoice;
+  /** Confirm Before Start: "Video available" always opens the quality sheet first (default off). */
+  confirmBeforeStart: boolean;
   autoResume: boolean;
   notifications: boolean;
   language: string;

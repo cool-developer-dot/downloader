@@ -244,6 +244,19 @@ export interface EnqueueRequest {
   /** Overrides `DownloadSettings.autoSaveToGallery` for this download. */
   saveToGallery?: boolean;
   /**
+   * Custom Extension (#494): the finished file's extension, used only when it is a safe alias for the container its
+   * bytes prove — `mp4` or `m4v` for an MP4 video, `m4a` or `mp4` for an audio-only MP4. Anything else, or omitted,
+   * keeps the usual extension. Kept by the engine until the file is named (survives a restart). Ignored by older
+   * native builds.
+   */
+  preferredExtension?: 'mp4' | 'm4v' | 'm4a';
+  /**
+   * #480: this download's own Wi-Fi only — true waits for (and keeps to) Wi-Fi, false may use mobile data. Omitted
+   * follows `DownloadSettings.wifiOnly`. Kept by the engine while the download can still run (survives a restart).
+   * Ignored by older native builds.
+   */
+  wifiOnly?: boolean;
+  /**
    * The source as the page offered it, before a refresh or redirect. The engine derives the video's identity from it
    * (host, path, query without rotating signature fields, the chosen variant, and the page when a signature was
    * removed), so a re-signed or redirected link is still recognised as the same video. Defaults to `url`.

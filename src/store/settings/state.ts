@@ -1,10 +1,15 @@
 import { DEFAULT_DOWNLOAD_SETTINGS } from '@/downloads/settings/types';
+import { DEFAULT_FILE_EXTENSION } from '@/downloads/v2/file-extension';
+import { DEFAULT_FILENAME_TEMPLATE } from '@/downloads/v2/filename-template';
 
 import type { SettingsState } from './types';
 
 export const initialSettingsState: SettingsState = {
   downloadDirectory: null,
   wifiOnly: DEFAULT_DOWNLOAD_SETTINGS.wifiOnly,
+  filenameTemplate: DEFAULT_FILENAME_TEMPLATE,
+  fileExtension: DEFAULT_FILE_EXTENSION,
+  confirmBeforeStart: false,
   autoResume: true,
   notifications: true,
   language: 'en',
