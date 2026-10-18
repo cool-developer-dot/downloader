@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- H16: the finished-download channels for the alert options (sound / vibration / silent). -->
+<resources>
+  <string name="vidorax_status_channel_sound_vibrate">مکمل ڈاؤن لوڈز (آواز اور وائبریشن)</string>
+  <string name="vidorax_status_channel_vibrate">مکمل ڈاؤن لوڈز (صرف وائبریشن)</string>
+  <string name="vidorax_status_channel_silent">مکمل ڈاؤن لوڈز (خاموش)</string>
+  <string name="vidorax_status_channel_options_description">ڈاؤن لوڈ مکمل یا ناکام ہونے پر بتاتا ہے۔</string>
+</resources>

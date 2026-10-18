@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import com.vidorax.media.R
 
 /**
  * Posts the download notifications. Everything shown comes from the persisted record — title, state, byte
@@ -104,10 +105,11 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
     if (spec == StatusChannel.EXISTING || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
     if (spec.id in createdStatusChannels) return true
     val manager = manager ?: return false
+    val nameRes = spec.nameRes ?: return false
     return runCatching {
       manager.createNotificationChannel(
-        NotificationChannel(spec.id, spec.channelName, NotificationManager.IMPORTANCE_DEFAULT).apply {
-          description = "Tells you when a download finishes or fails."
+        NotificationChannel(spec.id, context.getString(nameRes), NotificationManager.IMPORTANCE_DEFAULT).apply {
+          description = context.getString(R.string.vidorax_status_channel_options_description)
           if (!spec.playsSound) setSound(null, null)
           enableVibration(spec.vibrates)
         },
