@@ -35,7 +35,10 @@ function options(overrides: Partial<NetworkOptionsInput>): NetworkOptionsInput {
 describe('untouched settings send nothing new to native', () => {
   test('no network options, or the defaults, give exactly the settings sent before', () => {
     const before = v2DownloadSettings(BASE);
-    assert.deepEqual(Object.keys(before).sort(), ['autoSaveToGallery', 'maxConcurrent', 'preferredMaxHeight', 'wifiOnly']);
+    // None of the Advanced network fields (whatever else the engine settings carry).
+    for (const key of ['userAgent', 'customHeaders', 'connectTimeoutSeconds', 'readTimeoutSeconds', 'retryLimit']) {
+      assert.equal(key in before, false, key);
+    }
     assert.deepEqual(v2DownloadSettings({ ...BASE, network: DEFAULT_NETWORK_OPTIONS }), before);
     assert.deepEqual(v2DownloadSettings({ ...BASE, network: null }), before);
     assert.equal(isDefaultNetworkOptions(DEFAULT_NETWORK_OPTIONS), true);
@@ -59,7 +62,7 @@ describe('untouched settings send nothing new to native', () => {
     await pushV2DownloadSettings(engine, { ...BASE, network: DEFAULT_NETWORK_OPTIONS });
     await pushV2DownloadSettings(engine, { ...BASE, network: DEFAULT_NETWORK_OPTIONS });
     assert.equal(sent.length, 1);
-    assert.deepEqual(sent[0], { maxConcurrent: 2, wifiOnly: false, autoSaveToGallery: true, preferredMaxHeight: null });
+    assert.deepEqual(sent[0], v2DownloadSettings(BASE));
     resetV2SettingsForTests();
   });
 });

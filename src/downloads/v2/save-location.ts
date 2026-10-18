@@ -162,6 +162,8 @@ const SITE_FOLDERS: Record<SiteId, string> = {
   snapchat: 'Snapchat',
   linkedin: 'LinkedIn',
   web: 'Web',
+  // F16: files opened from other apps and saved to VidoraX (SiteId.DEVICE, folderName "Device").
+  device: 'Device',
 };
 
 /** A named site's folder, else the page's host without `www.` (generic websites), else "Web". */

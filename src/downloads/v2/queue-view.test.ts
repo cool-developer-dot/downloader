@@ -52,11 +52,12 @@ describe('v2 Queue view', () => {
         r('b', 'completed', 2),
         r('c', 'failed', 3),
         r('d', 'cancelled', 4),
-        r('e', 'recording' as V2QueueRecord['state'], 5),
+        r('e', 'made_up' as V2QueueRecord['state'], 5),
       ],
       { wifiOnly: false },
     );
     assert.deepEqual(view, { active: [], pending: [] });
+    assert.deepEqual(v2QueueView([r('f', 'recording', 6)], { wifiOnly: false }).active, ['f'], 'F6: a live recording is active');
   });
 
   test('v1 lists come first; places in line count across both', () => {

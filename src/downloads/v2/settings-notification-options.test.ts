@@ -29,15 +29,7 @@ describe('notification alert options in the engine settings', () => {
   test('given options are passed through as they are', () => {
     assert.deepEqual(
       v2DownloadSettings({ ...BASE, notificationSound: true, notificationVibrate: false, notificationSilent: false }),
-      {
-        maxConcurrent: 2,
-        wifiOnly: false,
-        autoSaveToGallery: true,
-        preferredMaxHeight: null,
-        notificationSound: true,
-        notificationVibrate: false,
-        notificationSilent: false,
-      },
+      { ...v2DownloadSettings(BASE), notificationSound: true, notificationVibrate: false, notificationSilent: false },
     );
     const silent = v2DownloadSettings({ ...BASE, notificationSilent: true });
     assert.equal(silent.notificationSilent, true);

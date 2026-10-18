@@ -22,7 +22,8 @@ export type V2QueueView = {
   pending: { downloadId: string; waitingReason: QueueWaitingReason }[];
 };
 
-const ACTIVE: ReadonlySet<DownloadState> = new Set<DownloadState>(['probing', 'downloading', 'processing']);
+// F6: a live recording is an active transfer too.
+const ACTIVE: ReadonlySet<DownloadState> = new Set<DownloadState>(['probing', 'downloading', 'recording', 'processing']);
 
 function waitingReason(state: DownloadState, wifiOnly: boolean): QueueWaitingReason | null {
   switch (state) {
