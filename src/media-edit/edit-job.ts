@@ -45,6 +45,12 @@ export function editFailure(error: unknown): EditFailure {
   }
 }
 
+/** The native editor stopped the edit — Cancel in the app or in the edit's notification (H23). */
+export function isEditCancelled(error: unknown): boolean {
+  const code = error && typeof error === 'object' ? (error as { code?: unknown }).code : undefined;
+  return code === 'ERR_EDIT_CANCELLED';
+}
+
 export function isEditRunning(state: EditJobState): state is Extract<EditJobState, { phase: 'running' | 'cancelling' }> {
   return state.phase === 'running' || state.phase === 'cancelling';
 }
@@ -107,7 +113,8 @@ export function createEditJob(deps: EditJobDeps) {
         set({ phase: 'done', sourceId: request.sourceId, kind, itemId: item.id });
       } catch (error) {
         stopPolling();
-        const cancelled = current().phase === 'cancelling';
+        // Cancel in the edit's notification reaches only the native side: its rejection says so.
+        const cancelled = current().phase === 'cancelling' || isEditCancelled(error);
         set(
           cancelled
             ? { phase: 'cancelled', sourceId: request.sourceId, kind }

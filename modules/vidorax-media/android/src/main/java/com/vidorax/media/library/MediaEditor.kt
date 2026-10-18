@@ -47,6 +47,9 @@ class EditRefusedException(message: String) : CodedException("ERR_EDIT_REFUSED",
 /** Not enough free space for the edit's output. */
 class EditNoSpaceException(message: String) : CodedException("ERR_NO_SPACE", message, null)
 
+/** The edit was stopped (Cancel in the app or in its notification); nothing partial was kept. */
+class EditCancelledException : CodedException("ERR_EDIT_CANCELLED", "The edit was cancelled", null)
+
 internal enum class EditKind(val wire: String) { TRIM("trim"), MP4("mp4"), AUDIO("audio") }
 
 /** How one track goes into the output: copied as it is (transmuxed), re-encoded, or left out. */
@@ -106,7 +109,8 @@ data class EditRequestRecord(
  *
  * One edit at a time; [cancel] stops it and its partial output is deleted, as on any failure. The output is checked
  * before it is added: it must read back with the tracks asked for and about the expected length. Free space is checked
- * before starting. No foreground service: a long edit may be stopped by the system if the app stays in the background.
+ * before starting. A long edit (a conversion, or a trim keeping 30 s or more) runs with [MediaEditService] in the
+ * foreground, with its progress and Cancel in a notification; if Android refuses that service, it runs as before.
  */
 @OptIn(UnstableApi::class)
 internal class MediaEditor(
@@ -150,6 +154,10 @@ internal class MediaEditor(
     try {
       val source = library.get(request.sourceId) ?: throw NotFoundException("Unknown library item ${request.sourceId}")
       val plan = withContext(Dispatchers.IO) { check(source, request) }
+      val keptMs = (plan.clipEndMs ?: plan.durationMs) - plan.clipStartMs
+      // The service stops itself once this edit has ended (progress() is null again): never stopped from here, so it
+      // is never stopped before it entered the foreground.
+      if (MediaEditForeground.needsForeground(request.kind, keptMs)) MediaEditForeground.start(context, request.title)
       workDir.mkdirs()
       val output = File(workDir, if (request.kind == EditKind.AUDIO) "edit.m4a" else "edit.mp4")
       export(source, request, plan, output)
@@ -197,7 +205,9 @@ internal class MediaEditor(
       target?.delete()
       thumbnail?.delete()
       throw when (e) {
-        is CancellationException, is CodedException -> e
+        // A coded rejection, so JavaScript tells a cancel (also one from the notification) from a failure.
+        is CancellationException -> EditCancelledException()
+        is CodedException -> e
         else -> StorageException("The edit failed", e)
       }
     } finally {
