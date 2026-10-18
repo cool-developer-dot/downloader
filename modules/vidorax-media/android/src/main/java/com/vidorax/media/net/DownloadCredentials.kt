@@ -221,10 +221,10 @@ internal object DownloadCredentials {
  */
 internal object BasicChallenge {
   private const val MAX_REALM = 128
-  private val BASIC = Regex("(?:^|,)\s*Basic(?=\s|,|$)", RegexOption.IGNORE_CASE)
-  private val NEXT_CHALLENGE = Regex(",\s*[\w!#$%&'*+.^`|~-]+\s+[\w!#$%&'*+.^`|~-]+\s*=")
-  private val REALM = Regex("realm\s*=\s*(?:\"((?:[^\"\\]|\\.)*)\"|([^\s,]+))", RegexOption.IGNORE_CASE)
-  private val QUOTED_PAIR = Regex("\\(.)")
+  private val BASIC = Regex("""(?:^|,)\s*Basic(?=\s|,|$)""", RegexOption.IGNORE_CASE)
+  private val NEXT_CHALLENGE = Regex(""",\s*[\w!#$%&'*+.^`|~-]+\s+[\w!#$%&'*+.^`|~-]+\s*=""")
+  private val REALM = Regex("""realm\s*=\s*(?:"((?:[^"\\]|\\.)*)"|([^\s,]+))""", RegexOption.IGNORE_CASE)
+  private val QUOTED_PAIR = Regex("""\\(.)""")
 
   fun of(response: HttpResponse): com.vidorax.media.model.AuthChallenge? {
     if (response.status != 401) return null
