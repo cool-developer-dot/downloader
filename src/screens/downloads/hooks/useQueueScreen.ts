@@ -1,16 +1,20 @@
 /**
- * Queue screen controller — observes scheduler snapshot; never starts workers.
+ * Queue screen controller — observes the v1 scheduler snapshot and the v2 engine's own queued and running downloads
+ * (fix/queue-v2); never starts workers.
  */
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { downloadEngine } from '@/downloads/engine';
 import {
   formatQueueWaitingReason,
   type QueueSnapshot,
 } from '@/downloads/scheduler';
+import { ensureV2QueueRecords, useV2QueueRecords } from '@/downloads/v2/queue-records-store';
+import { combineQueueSnapshots, v2QueueView } from '@/downloads/v2/queue-view';
 import { downloadDetailsPath, navigation } from '@/navigation';
 import { useDownloadsStore } from '@/store/downloads';
+import { selectWifiOnly, useSettingsStore } from '@/store/settings';
 
 const EMPTY_SNAPSHOT: QueueSnapshot = {
   active: [],
@@ -39,6 +43,17 @@ export function useQueueScreen() {
     });
   }, []);
 
+  // The v2 engine's downloads: their state changes move them between the lists; their rows show live progress.
+  useEffect(() => {
+    ensureV2QueueRecords();
+  }, []);
+  const v2Records = useV2QueueRecords((s) => s.byId);
+  const wifiOnly = useSettingsStore(selectWifiOnly);
+  const combined = useMemo(
+    () => combineQueueSnapshots(snapshot, v2QueueView(Object.values(v2Records), { wifiOnly })),
+    [snapshot, v2Records, wifiOnly],
+  );
+
   const openDetails = useCallback((id: string) => {
     navigation.push(downloadDetailsPath(id));
   }, []);
@@ -65,7 +80,7 @@ export function useQueueScreen() {
   );
 
   return {
-    snapshot,
+    snapshot: combined,
     mutatingIds,
     formatWaitingReason: formatQueueWaitingReason,
     openDetails,
