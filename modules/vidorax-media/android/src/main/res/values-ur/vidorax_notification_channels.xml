@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The download notification channels' names and descriptions (Android Settings → Apps → VidoraX → Notifications). -->
+<resources>
+  <string name="vidorax_channel_progress_name">جاری ڈاؤن لوڈز</string>
+  <string name="vidorax_channel_progress_description">وہ ویڈیوز دکھاتا ہے جو VidoraX ڈاؤن لوڈ کر رہا ہے۔</string>
+  <string name="vidorax_channel_status_name">مکمل ڈاؤن لوڈز</string>
+  <string name="vidorax_channel_status_description">ڈاؤن لوڈ مکمل یا ناکام ہونے پر بتاتا ہے۔</string>
+</resources>

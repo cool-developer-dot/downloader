@@ -1,4 +1,5 @@
 import type { IconName } from '@/components/base/Icon';
+import type { TranslationKey } from '@/localization';
 
 /**
  * Context provided to long-press (and future) browser actions.
@@ -22,7 +23,8 @@ export type BrowserActionId =
 
 export type BrowserLongPressAction = {
   id: BrowserActionId;
-  label: string;
+  /** Sheet label, translated when the sheet is shown. */
+  labelKey: TranslationKey;
   icon?: IconName;
   /** Sort ascending — lower runs first in the sheet. */
   order: number;

@@ -16,6 +16,7 @@ import {
 import { formatDuration } from '@/media-detection/utils';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import type { TranslationKey } from '@/localization/types';
 import { primaryAlphas } from '@/theme';
 
 export type MediaResultCardProps = {
@@ -24,31 +25,33 @@ export type MediaResultCardProps = {
   testID?: string;
 };
 
-function formatAudioStatus(option: DownloadQualityOption | null): string | null {
+type Translate = (key: TranslationKey, params?: Record<string, string | number>) => string;
+
+function formatAudioStatus(option: DownloadQualityOption | null, t: Translate): string | null {
   if (!option) {
     return null;
   }
   if (option.hasAudio === true && option.hasVideo === true) {
-    return 'Audio included';
+    return t('mediaResult.audioIncluded');
   }
   if (option.hasAudio === false && option.hasVideo === true) {
-    return 'Video only';
+    return t('mediaResult.videoOnly');
   }
   if (option.isAudioOnly || option.hasVideo === false) {
-    return 'Audio only';
+    return t('mediaResult.audioOnly');
   }
   return null;
 }
 
-function formatSizeLabel(option: DownloadQualityOption | null): string {
+function formatSizeLabel(option: DownloadQualityOption | null, t: Translate): string {
   if (!option) {
-    return 'Calculating…';
+    return t('mediaResult.calculating');
   }
   const exact = formatQualityFileSize(option.estimatedFileSize ?? option.fileSize);
   if (exact) {
     return exact.replace(/^≈\s*/, '');
   }
-  return 'Calculating…';
+  return t('mediaResult.calculating');
 }
 
 export const MediaResultCard = memo(function MediaResultCard({
@@ -71,9 +74,9 @@ export const MediaResultCard = memo(function MediaResultCard({
     '—';
 
   const qualityLabel = selectedOption?.label ?? '—';
-  const sizeLabel = formatSizeLabel(selectedOption);
+  const sizeLabel = formatSizeLabel(selectedOption, t);
   const durationLabel = formatDuration(selection.duration) ?? '—';
-  const audioLabel = formatAudioStatus(selectedOption) ?? '—';
+  const audioLabel = formatAudioStatus(selectedOption, t) ?? '—';
 
   const platformLabel = useMemo(() => {
     const platform = selection.platform?.trim().toUpperCase() ?? '';
@@ -101,7 +104,7 @@ export const MediaResultCard = memo(function MediaResultCard({
     { label: t('downloads.infoQuality'), value: qualityLabel },
     { label: t('downloads.infoFileSize'), value: sizeLabel },
     { label: t('downloads.infoDuration'), value: durationLabel },
-    { label: 'Audio', value: audioLabel },
+    { label: t('mediaResult.audio'), value: audioLabel },
   ];
 
   return (
@@ -116,7 +119,7 @@ export const MediaResultCard = memo(function MediaResultCard({
         borderColor: theme.colors.border,
       }}
       accessibilityRole="summary"
-      accessibilityLabel={`Video found. ${title}`}>
+      accessibilityLabel={t('mediaResult.videoFoundA11y', { title })}>
       <Box row gap={14} style={{ alignItems: 'center' }}>
         <Box
           style={{
@@ -127,7 +130,7 @@ export const MediaResultCard = memo(function MediaResultCard({
             backgroundColor: primary.medium,
           }}
           accessibilityRole="image"
-          accessibilityLabel={showImage ? 'Video thumbnail' : 'Video placeholder'}>
+          accessibilityLabel={showImage ? t('mediaResult.thumbnailA11y') : t('mediaResult.placeholderA11y')}>
           {showImage ? (
             <Image
               source={{ uri: thumbnail }}
@@ -145,7 +148,7 @@ export const MediaResultCard = memo(function MediaResultCard({
 
         <Box flex={1} gap={6}>
           <Text variant="caption" color="primary">
-            ✓ Video found
+            {`✓ ${t('mediaResult.videoFound')}`}
           </Text>
           <Text variant="title" numberOfLines={2}>
             {title}
