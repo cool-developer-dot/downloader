@@ -21,6 +21,7 @@ import {
   unlockWithPin,
 } from './app-lock.service';
 import { appLockTrace } from './app-lock-trace';
+import { useBiometricUnlockPrefs } from './biometric-prefs-store';
 import type { AppLockStatus, LockedSurface } from './types';
 
 export type AppLockGateMode =
@@ -51,6 +52,11 @@ type AppLockActions = {
   bootstrap: () => Promise<void>;
   lock: () => void;
   unlock: (pin: string) => Promise<boolean>;
+  /**
+   * Unlocks when `authenticate` (the biometric prompt) resolves true. The PIN's throttle state is left exactly as it
+   * is: this never resets or bypasses it for PIN entries.
+   */
+  unlockWithBiometric: (authenticate: () => Promise<boolean>) => Promise<boolean>;
   beginSetup: () => void;
   prepareSetup: (pin: string, confirmPin: string) => Promise<boolean>;
   completeSetup: (acknowledged: boolean) => Promise<boolean>;
@@ -259,6 +265,38 @@ export const useAppLockStore = createStore<AppLockStore>((set, get) => ({
     }
   },
 
+  unlockWithBiometric: async (authenticate) => {
+    const { status, isBusy, isEnabled } = get();
+    if (!isEnabled || status !== 'LOCKED' || isBusy) {
+      return false;
+    }
+    set({ isBusy: true, unlockError: null });
+    let recognised = false;
+    try {
+      recognised = await authenticate();
+    } catch {
+      recognised = false;
+    }
+    // Locked, unlocked or disabled meanwhile by another path: nothing to do here.
+    if (get().status !== 'LOCKED' || !get().isEnabled) {
+      set({ isBusy: false });
+      return false;
+    }
+    if (!recognised) {
+      set({ isBusy: false });
+      return false;
+    }
+    appLockTrace('UNLOCKED_BIOMETRIC');
+    set({
+      status: 'UNLOCKED',
+      privateUiMounted: true,
+      isBusy: false,
+      unlockError: null,
+      lockedSurface: 'unlock',
+    });
+    return true;
+  },
+
   beginSetup: () => {
     cancelSetupSession();
     set({
@@ -367,6 +405,8 @@ export const useAppLockStore = createStore<AppLockStore>((set, get) => ({
         pinRetryAfter: null,
         recoveryRetryAfter: null,
       });
+      // Biometric unlock goes with App Lock: setting App Lock up again starts with it off.
+      useBiometricUnlockPrefs.getState().setEnabled(false);
       return true;
     } catch {
       set({ isBusy: false, setupError: 'error' });

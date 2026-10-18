@@ -5,6 +5,9 @@ import { Switch } from '@/components/inputs/Switch';
 import { push, routePaths } from '@/navigation';
 import { useTranslation } from '@/localization';
 import { useAppLockStore } from '@/security/app-lock';
+import { useBiometricUnlockPrefs } from '@/security/app-lock/biometric-prefs-store';
+import { showsBiometricSetting } from '@/security/app-lock/biometric-unlock';
+import { promptBiometrics, useBiometricAvailability } from '@/security/app-lock/use-biometric-unlock';
 import { AppLockDataLossWarning } from '@/screens/security/AppLockDataLossWarning';
 
 import { SettingsRow } from './SettingsRow';
@@ -25,6 +28,31 @@ export const PrivacySection = memo(function PrivacySection({
   const { t } = useTranslation();
   const isEnabled = useAppLockStore((s) => s.isEnabled);
   const isBusy = useAppLockStore((s) => s.isBusy);
+  const biometricOn = useBiometricUnlockPrefs((s) => s.enabled);
+  const biometricAvailable = useBiometricAvailability();
+  const showBiometric = showsBiometricSetting({ appLockEnabled: isEnabled, available: biometricAvailable });
+
+  // Turning it on asks for the biometric once, so it is known to work before the lock screen relies on it.
+  const onBiometricChange = useCallback(
+    (next: boolean) => {
+      if (disabled || isBusy) {
+        return;
+      }
+      if (!next) {
+        useBiometricUnlockPrefs.getState().setEnabled(false);
+        return;
+      }
+      void promptBiometrics({
+        promptMessage: t('appLock.biometricConfirmPrompt'),
+        cancelLabel: t('common.cancel'),
+      }).then((outcome) => {
+        if (outcome === 'success') {
+          useBiometricUnlockPrefs.getState().setEnabled(true);
+        }
+      });
+    },
+    [disabled, isBusy, t],
+  );
 
   const onValueChange = useCallback(
     (next: boolean) => {
@@ -75,6 +103,24 @@ export const PrivacySection = memo(function PrivacySection({
             accessibilityHint={t('settings.changePinA11y')}
             testID={`${testID}-change-pin`}
           />
+          {showBiometric ? (
+            <SettingsRow
+              title={t('appLock.biometricSetting')}
+              description={t('appLock.biometricSettingHint')}
+              icon="fingerprint"
+              trailing={
+                <Switch
+                  value={biometricOn}
+                  onValueChange={onBiometricChange}
+                  disabled={disabled || isBusy}
+                  accessibilityLabel={t('appLock.biometricSetting')}
+                  accessibilityHint={t('appLock.biometricSettingHint')}
+                  testID="settings-biometric-unlock-switch"
+                />
+              }
+              testID={`${testID}-biometric-unlock`}
+            />
+          ) : null}
           <SettingsRow
             title={t('settings.generateRecoveryCode')}
             description={t('settings.generateRecoveryCodeHint')}
