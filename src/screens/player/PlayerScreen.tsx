@@ -60,6 +60,7 @@ import { PlaybackSpeedSheet } from './components/PlaybackSpeedSheet';
 import { OrientationSheet } from './components/OrientationSheet';
 import { PlayerTimeline } from './components/PlayerTimeline';
 import { PlayerTopBar } from './components/PlayerTopBar';
+import { useMediaArtist } from '@/media-edit/media-tags-store';
 import { PlayerVideoSurface } from './components/PlayerVideoSurface';
 import {
   DoubleTapSeekFeedback,
@@ -508,6 +509,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
   }, [setLocked, showControls]);
 
   const title = session.displayName ?? t('player.untitled');
+  // Edit after download: the artist VidoraX keeps for this item (app-level tag), shown next to the title.
+  const artist = useMediaArtist(activeMediaId);
   const showError = session.phase === 'error' && session.error != null;
   const overlayVisible = !locked && (controlsVisible || session.isSeeking || speedSheetOpen);
   const orientationIcon = resolveOrientationIcon(orientationMode);
@@ -575,6 +578,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           {(startupCoverVisible || overlayVisible) && !showError && !locked ? (
             <PlayerTopBar
               title={title}
+              artist={artist}
               isFullscreen={isFullscreen}
               visible
               orientationIcon={orientationIcon}

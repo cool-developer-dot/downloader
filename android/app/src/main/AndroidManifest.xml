@@ -8,6 +8,12 @@
   <!-- No expo-video background playback service: the player pauses in the background (PiP excepted) and never sets
        staysActiveInBackground / showNowPlayingNotification, so an unused mediaPlayback FGS type is not declared to Play.
        Re-add the service and FOREGROUND_SERVICE_MEDIA_PLAYBACK together if background audio is ever shipped. -->
+  <!-- H23: a long trim or conversion keeps running in the background (MediaEditService): mediaProcessing on Android 15+,
+       dataSync (local file processing) on Android 10-14. Declare this foreground service in Play Console in the same
+       release. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>
@@ -91,5 +97,7 @@
         <data android:scheme="about"/>
       </intent-filter>
     </activity>
+    <!-- H23: edits nothing itself; only keeps a long edit's process alive and shows its progress with Cancel. -->
+    <service android:name="com.vidorax.media.library.MediaEditService" android:exported="false" android:foregroundServiceType="mediaProcessing|dataSync"/>
   </application>
 </manifest>

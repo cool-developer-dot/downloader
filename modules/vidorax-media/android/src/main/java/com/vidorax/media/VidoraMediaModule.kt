@@ -9,6 +9,8 @@ import com.vidorax.media.bridge.LegacyMetadataRecord
 import com.vidorax.media.bridge.LibraryQueryRecord
 import com.vidorax.media.bridge.PageFetchRequestRecord
 import com.vidorax.media.bridge.ProbeRequestRecord
+import com.vidorax.media.library.EditRequestRecord
+import com.vidorax.media.library.MediaEditor
 import com.vidorax.media.bridge.toJs
 import com.vidorax.media.engine.DownloadEngineApi
 import com.vidorax.media.engine.DownloadEngineProvider
@@ -35,6 +37,8 @@ class VidoraMediaModule : Module() {
   private val services: MediaServices get() = MediaServices.get(context)
   private val engine: DownloadEngineApi get() = DownloadEngineProvider.get(context)
   private val deviceVideos: DeviceVideos get() = DeviceVideos(context)
+
+  private fun editor() = MediaEditor(context, services.library, services.paths, services.mediaInfo, services.thumbnails)
 
   private var volume: Volume? = null
 
@@ -221,6 +225,21 @@ class VidoraMediaModule : Module() {
     AsyncFunction("reconcileLibrary") Coroutine { ids: List<String>? ->
       services.library.removeMissingFiles(ids)
     }
+
+    // Edit after download (#374, #376): trim or convert a library item into a NEW library item (library/MediaEditor,
+    // Media3 Transformer). The original file is never modified. One edit at a time.
+
+    AsyncFunction("getTrimStart") Coroutine { id: String, positionMs: Double ->
+      editor().keyframeAtOrBefore(id, positionMs.toLong())?.toDouble()
+    }
+
+    AsyncFunction("startEdit") Coroutine { request: EditRequestRecord ->
+      editor().edit(request.toModel()).toJs()
+    }
+
+    Function("getEditProgress") { MediaEditor.progress() }
+
+    AsyncFunction("cancelEdit") Coroutine { -> MediaEditor.cancel() }
 
     AsyncFunction("saveToGallery") Coroutine { ids: List<String> ->
       services.galleryExport.save(ids)

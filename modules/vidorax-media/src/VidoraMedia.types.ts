@@ -423,6 +423,25 @@ export interface LibraryPage {
   total: number;
 }
 
+/**
+ * Edit after download (#374, #376): what `startEdit` does to a library item. Every edit writes a new library item;
+ * the original is never modified. Per track: `copy` keeps it as it is (no re-encoding), `h264`/`aac` re-encode,
+ * `drop` leaves it out.
+ */
+export interface EditRequest {
+  sourceId: string;
+  kind: 'trim' | 'mp4' | 'audio';
+  /** Trim only (ms). */
+  startMs?: number | null;
+  endMs?: number | null;
+  /** Trim only: the start was moved to a keyframe (from `getTrimStart`), so the video can be copied. */
+  keyframeStart?: boolean;
+  video: 'copy' | 'h264' | 'drop';
+  audio: 'copy' | 'aac' | 'drop';
+  /** The new item's title. */
+  title: string;
+}
+
 export interface DownloadSettings {
   /** 1..4, default 2. */
   maxConcurrent: number;
@@ -528,6 +547,18 @@ export interface VidoraMediaModuleApi {
    * item. Resolves with the removed ids. Also runs once whenever the module starts.
    */
   reconcileLibrary(ids?: string[] | null): Promise<string[]>;
+  /** Edit after download: the video keyframe time (ms) at or before `positionMs`; null when it can't be read. */
+  getTrimStart?(id: string, positionMs: number): Promise<number | null>;
+  /**
+   * Runs one edit and resolves with the new library item (also announced as `added`). ERR_INVALID_STATE while another
+   * edit runs, ERR_EDIT_REFUSED for a file that can't be edited (protected, unreadable, rejected by the verifier),
+   * ERR_NO_SPACE without room for the output, ERR_STORAGE when it fails. A partial output is always deleted.
+   */
+  startEdit?(request: EditRequest): Promise<LibraryItem>;
+  /** 0..1 while an edit runs; null otherwise. */
+  getEditProgress?(): number | null;
+  /** Stops the running edit; its partial output is deleted. */
+  cancelEdit?(): Promise<void>;
   saveToGallery(ids: string[]): Promise<void>;
   /** System chooser to play the file in another app. */
   openWith(id: string): Promise<void>;

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- H23: the notification of a long edit running in the background (MediaEditService). -->
+<resources>
+  <string name="vidorax_edit_channel_name">Editing videos</string>
+  <string name="vidorax_edit_channel_description">Shows a trim or conversion VidoraX is saving.</string>
+  <string name="vidorax_edit_notification_title">Saving the edited video</string>
+  <string name="vidorax_edit_cancel">Cancel</string>
+</resources>
