@@ -41,6 +41,14 @@ interface DownloadEngineApi {
 
   suspend fun retry(id: String)
 
+  /**
+   * H20 Repair Partial File (#412): checks a failed download's partial file(s) against the server and retries it —
+   * resumed, restarted from zero (the file changed or is damaged), or with a damaged last segment fetched again.
+   * [RepairOutcome.UNREACHABLE] / [RepairOutcome.NOTHING] change nothing. InvalidStateException for a
+   * download that is not failed.
+   */
+  suspend fun repairPartial(id: String): RepairOutcome = RepairOutcome.UNREACHABLE
+
   suspend fun cancel(id: String)
 
   /** Removes a failed, cancelled or completed record and its temp files, never the library item. */

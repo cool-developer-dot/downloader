@@ -71,5 +71,11 @@
         android:name="android.support.FILE_PROVIDER_PATHS"
         android:resource="@xml/vidorax_media_file_paths" />
     </provider>
+
+    <!-- Play while downloading: the in-app player reads a download's growing file through this; not exported. -->
+    <provider
+      android:name="com.vidorax.media.files.GrowingFileProvider"
+      android:authorities="${applicationId}.vidorax.growing"
+      android:exported="false" />
   </application>
 </manifest>
