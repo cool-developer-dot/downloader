@@ -60,6 +60,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
       name: storageKeys.userPreferences,
       storage: createPersistStorage<SettingsState>(),
       partialize: (state): SettingsState => ({
+        clipboardMonitor: state.clipboardMonitor,
         downloadDirectory: state.downloadDirectory,
         wifiOnly: state.wifiOnly,
         autoResume: state.autoResume,
@@ -96,6 +97,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
             raw.downloadDirectory === null || typeof raw.downloadDirectory === 'string'
               ? raw.downloadDirectory
               : current.downloadDirectory,
+          clipboardMonitor:
+            typeof raw.clipboardMonitor === 'boolean' ? raw.clipboardMonitor : current.clipboardMonitor,
         };
       },
     },

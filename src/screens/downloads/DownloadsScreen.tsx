@@ -9,6 +9,7 @@ import { ScreenHeader } from '@/components/headers/ScreenHeader';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
+import { BatchAddHeaderButton } from '@/screens/batch-add/BatchAddHeaderButton';
 
 import {
   DownloadDeleteDialog,
@@ -216,6 +217,7 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
               color="headerIcon"
               testID="downloads-favorites-button"
             />
+            <BatchAddHeaderButton />
           </Box>
         }
         testID="downloads-header"
