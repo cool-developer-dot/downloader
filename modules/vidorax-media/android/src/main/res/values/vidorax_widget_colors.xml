@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- H22 Home Widget: light theme (dark: values-night). -->
+<resources>
+  <color name="vidorax_widget_background">#F2FFFFFF</color>
+  <color name="vidorax_widget_text">#FF1A2517</color>
+  <color name="vidorax_widget_text_secondary">#B31A2517</color>
+  <color name="vidorax_widget_button">#FFFF9A3D</color>
+  <color name="vidorax_widget_button_text">#FF1A2517</color>
+</resources>
