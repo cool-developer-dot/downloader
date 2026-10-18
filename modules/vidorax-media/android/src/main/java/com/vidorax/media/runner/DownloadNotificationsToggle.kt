@@ -54,15 +54,3 @@ internal object DownloadNotificationsToggle {
 
   private fun prefs(context: Context) = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }
-
-/** What the runner posts per download, gated by the "Download notifications" setting; clearing always goes through. */
-internal class ToggledNotifier(
-  private val delegate: DownloadNotifier,
-  private val enabled: () -> Boolean,
-) : DownloadNotifier {
-  override fun show(content: DownloadNotificationContent) {
-    if (DownloadNotificationsToggle.postsOwnNotifications(enabled())) delegate.show(content)
-  }
-
-  override fun clear(downloadId: String) = delegate.clear(downloadId)
-}

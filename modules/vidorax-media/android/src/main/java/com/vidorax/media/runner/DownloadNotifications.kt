@@ -28,6 +28,8 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
   override fun show(content: DownloadNotificationContent) {
     val manager = manager ?: return
     if (!canPost()) return
+    // "Download notifications" off: no notification of a download's own (the required one is only minimized).
+    if (!DownloadNotificationsToggle.postsOwnNotifications(DownloadNotificationsToggle.isEnabled(context))) return
     ensureChannels()
     runCatching { manager.notify(notificationIdFor(content.downloadId), build(content)) }
       .onFailure { Log.w(TAG, "notification refused: ${it.javaClass.simpleName}") }

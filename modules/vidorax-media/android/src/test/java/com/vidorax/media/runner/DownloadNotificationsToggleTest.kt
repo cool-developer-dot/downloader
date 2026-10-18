@@ -79,23 +79,28 @@ class DownloadNotificationsToggleTest {
 
   @Test
   fun `off, finished, failed, paused and running downloads post nothing of their own`() {
-    var enabled = false
-    val gated = ToggledNotifier(notifications) { enabled }
+    DownloadNotificationsToggle.setEnabled(context, false)
     for ((index, kind) in DownloadNotificationContent.Kind.values().withIndex()) {
-      gated.show(content("dl-$index", kind))
+      notifications.show(content("dl-$index", kind))
     }
     assertTrue(shadowOf(manager).allNotifications.isEmpty())
 
-    enabled = true
-    gated.show(content("dl-done", DownloadNotificationContent.Kind.COMPLETED))
+    DownloadNotificationsToggle.setEnabled(context, true)
+    notifications.show(content("dl-done", DownloadNotificationContent.Kind.COMPLETED))
     assertNotNull(shadowOf(manager).getNotification(notificationIdFor("dl-done")))
   }
 
   @Test
   fun `clearing a download's notification always goes through`() {
     notifications.show(content("dl-1", DownloadNotificationContent.Kind.PAUSED))
-    ToggledNotifier(notifications) { false }.clear("dl-1")
+    DownloadNotificationsToggle.resetForTests()
+    DownloadNotificationsToggle.setEnabled(context, true)
+    notifications.show(content("dl-2", DownloadNotificationContent.Kind.PAUSED))
+    // Off later: the per-download ones go, and clearing one by hand still works.
+    DownloadNotificationsToggle.setEnabled(context, false)
+    notifications.clear("dl-1")
     assertNull(shadowOf(manager).getNotification(notificationIdFor("dl-1")))
+    assertNull(shadowOf(manager).getNotification(notificationIdFor("dl-2")))
   }
 
   @Test
@@ -139,7 +144,7 @@ class DownloadNotificationsToggleTest {
       override fun update(summary: RunnerSummaryContent) = Unit
       override fun stop() = Unit
     }
-    val runner = DownloadRunner(host, ToggledNotifier(notifications) { DownloadNotificationsToggle.isEnabled(context) })
+    val runner = DownloadRunner(host, notifications)
     DownloadNotificationsToggle.setEnabled(context, false)
     runner.onState(record("dl-9", com.vidorax.media.model.DownloadState.COMPLETED))
     runner.onState(record("dl-8", com.vidorax.media.model.DownloadState.FAILED))
