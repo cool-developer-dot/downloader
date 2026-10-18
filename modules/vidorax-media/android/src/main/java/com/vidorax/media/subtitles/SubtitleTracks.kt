@@ -4,7 +4,9 @@ import androidx.annotation.OptIn
 import androidx.media3.common.C
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.dash.DashSegmentIndex
 import androidx.media3.exoplayer.dash.manifest.DashManifest
+import androidx.media3.exoplayer.dash.manifest.RangedUri
 import androidx.media3.exoplayer.dash.manifest.Representation
 import androidx.media3.exoplayer.hls.playlist.HlsMultivariantPlaylist
 
@@ -17,9 +19,9 @@ enum class SubtitleFormat(val wire: String) {
 enum class SubtitleRefusal(val wire: String) {
   /** A key or ContentProtection on it. */
   ENCRYPTED("encrypted"),
-  /** `stpp`/`wvtt` inside fMP4 segments: out of scope. */
+  /** TTML inside fMP4 segments (`stpp`): not converted. (`wvtt` is read out of its segments, #370.) */
   EMBEDDED("embedded"),
-  /** A DASH text track delivered as segments rather than one file: not supported. */
+  /** A DASH text track delivered as segments rather than one file (or a `wvtt` one whose segments cannot be listed). */
   SEGMENTED("segmented"),
   /** Another text format. */
   UNSUPPORTED("unsupported"),
@@ -42,7 +44,18 @@ data class SubtitleTrack(
   val refused: SubtitleRefusal?,
   /** Native only: the subtitle playlist (HLS) or file (DASH). */
   val url: String?,
+  /** #370, native only: where a DASH `wvtt` track's fMP4 lives (null for every other track). */
+  val embedded: EmbeddedWebVtt? = null,
 )
+
+/** One fetch of a track's fMP4: a URL and, for a part of a file, its inclusive byte range. */
+data class SegmentRef(val url: String, val rangeStart: Long? = null, val rangeEnd: Long? = null)
+
+/**
+ * #370: a DASH track of WebVTT inside fMP4 (`wvtt`): its init segment (null when the one file holds it), its media
+ * segments in order, and the presentation time offset (ms) that puts its cues on the video's timeline.
+ */
+data class EmbeddedWebVtt(val init: SegmentRef?, val segments: List<SegmentRef>, val offsetMs: Long)
 
 /** Subtitle tracks from manifests Media3 parsed. Pure (no network). */
 @OptIn(UnstableApi::class)
@@ -71,7 +84,10 @@ internal object SubtitleTracks {
     }
   }
 
-  /** The text adaptation sets of the first period: WebVTT or TTML files; segmented, embedded or protected ones refused. */
+  /**
+   * The text adaptation sets of the first period: WebVTT or TTML files, and WebVTT inside fMP4 (`wvtt`, #370) whose
+   * segments can be listed; segmented text, TTML inside fMP4 (`stpp`) or protected ones refused.
+   */
   fun fromDash(manifest: DashManifest): List<SubtitleTrack> {
     if (manifest.periodCount == 0) return emptyList()
     val period = manifest.getPeriod(0)
@@ -83,14 +99,20 @@ internal object SubtitleTracks {
         val mime = format.sampleMimeType ?: format.containerMimeType
         val codecs = format.codecs.orEmpty()
         val embedded = format.containerMimeType == MimeTypes.APPLICATION_MP4 || codecs.startsWith("stpp") || codecs.startsWith("wvtt")
-        val subtitleFormat = when (mime) {
-          MimeTypes.TEXT_VTT -> SubtitleFormat.WEBVTT
-          MimeTypes.APPLICATION_TTML -> SubtitleFormat.TTML
+        val wvtt = codecs.startsWith("wvtt")
+        val subtitleFormat = when {
+          // #370: Media3 calls it application/x-mp4-vtt; it is saved as WebVTT.
+          wvtt -> SubtitleFormat.WEBVTT
+          mime == MimeTypes.TEXT_VTT -> SubtitleFormat.WEBVTT
+          mime == MimeTypes.APPLICATION_TTML -> SubtitleFormat.TTML
           else -> null
         }
         val singleFile = representation is Representation.SingleSegmentRepresentation
+        val wvttSource = if (wvtt && format.drmInitData == null) wvttSource(manifest, representation) else null
         val refused = when {
           format.drmInitData != null -> SubtitleRefusal.ENCRYPTED
+          // #370: read out of its fMP4 after the video completes; refused only when its segments cannot be listed.
+          wvtt -> if (wvttSource == null) SubtitleRefusal.SEGMENTED else null
           embedded -> SubtitleRefusal.EMBEDDED
           subtitleFormat == null -> SubtitleRefusal.UNSUPPORTED
           !singleFile -> SubtitleRefusal.SEGMENTED
@@ -109,9 +131,34 @@ internal object SubtitleTracks {
           isForced = format.selectionFlags and C.SELECTION_FLAG_FORCED != 0,
           refused = refused,
           url = url,
+          embedded = wvttSource,
         )
       }
     }
     return out
+  }
+
+  /** The fMP4 of a DASH `wvtt` representation; null when its segments cannot be listed (live, unbounded, too many). */
+  private fun wvttSource(manifest: DashManifest, representation: Representation): EmbeddedWebVtt? {
+    val base = representation.baseUrls.firstOrNull()?.url ?: return null
+    val offsetMs = representation.presentationTimeOffsetUs / 1000
+    if (representation is Representation.SingleSegmentRepresentation) {
+      return EmbeddedWebVtt(init = null, segments = listOf(SegmentRef(representation.uri.toString())), offsetMs = offsetMs)
+    }
+    val index = representation.index ?: return null
+    val count = index.getSegmentCount(manifest.getPeriodDurationUs(0))
+    if (count == DashSegmentIndex.INDEX_UNBOUNDED.toLong() || count <= 0 || count > SubtitleFetcher.MAX_SEGMENTS) return null
+    val first = index.firstSegmentNum
+    val segments = (first until first + count).map { ref(index.getSegmentUrl(it), base) }
+    return EmbeddedWebVtt(representation.initializationUri?.let { ref(it, base) }, segments, offsetMs)
+  }
+
+  private fun ref(uri: RangedUri, base: String): SegmentRef {
+    val url = uri.resolveUriString(base)
+    return when {
+      uri.length != C.LENGTH_UNSET.toLong() -> SegmentRef(url, uri.start, uri.start + uri.length - 1)
+      uri.start > 0 -> SegmentRef(url, uri.start, null)
+      else -> SegmentRef(url)
+    }
   }
 }

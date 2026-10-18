@@ -3,8 +3,9 @@
  *
  * Off by default. When on, the subtitle tracks of an HLS or DASH download are chosen by the setting — All, the app's
  * language (falling back to the first track), or the first track only — and the native side fetches them beside the
- * video once it completed (`<video>.<lang>.vtt`). Protected, embedded (stpp/wvtt) and other refused tracks are never
- * chosen. A saved subtitle can be exported as .vtt, or as .srt converted here.
+ * video once it completed (`<video>.<lang>.vtt`); WebVTT inside fMP4 (`wvtt`, #370) is read out of its segments there.
+ * Protected, TTML inside fMP4 (stpp) and other refused tracks are never chosen. A saved subtitle can be exported as
+ * .vtt, or as .srt converted here.
  */
 
 import type { SubtitleTrackInfo } from '@modules/vidorax-media/src/subtitles.types';
