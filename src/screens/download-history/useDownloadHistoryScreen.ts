@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, Platform, Share, ToastAndroid } from 'react-native';
 
 import { debugLog, debugLogToText, type DebugLogEntry } from '@/diagnostics/debug-log';
+import { withExpectedSystemScreen } from '@/security/app-lock/expected-system-screen';
 import {
   clearableHistoryIds,
   errorLogToText,
@@ -116,7 +117,9 @@ export function useDownloadHistoryScreen() {
   );
 
   const shareErrorLog = useCallback(() => {
-    void Share.share({ message: errorLogToText(errorLog, t('downloadHistory.errorLogTitle')) }).catch(() => {
+    // The share sheet is a system screen of this action: App Lock does not relock for it (fix/app-lock-grace).
+    const message = errorLogToText(errorLog, t('downloadHistory.errorLogTitle'));
+    void withExpectedSystemScreen(() => Share.share({ message })).catch(() => {
       announce(t('downloadHistory.exportFailed'));
     });
   }, [errorLog, t]);
@@ -130,7 +133,7 @@ export function useDownloadHistoryScreen() {
 
   const shareDebugLog = useCallback(() => {
     const text = debugLogToText(debugLog.entries(), t('downloadHistory.debugLogTitle'));
-    void Share.share({ message: text }).catch(() => announce(t('downloadHistory.exportFailed')));
+    void withExpectedSystemScreen(() => Share.share({ message: text })).catch(() => announce(t('downloadHistory.exportFailed')));
   }, [t]);
 
   const clearDebugLog = useCallback(() => {
