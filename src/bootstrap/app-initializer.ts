@@ -175,6 +175,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureFavoritesMigration } = await import('@/library/ensure-favorites-migration');
       // One-time: legacy favorites onto the library items they unambiguously name. Off the startup path.
       setTimeout(ensureFavoritesMigration, FAVORITES_MIGRATION_DELAY_MS);
+      const { ensureAfterDownloadAction } = await import('@/downloads/v2/ensure-after-download');
+      // Download Settings → After a download finishes (default: do nothing).
+      ensureAfterDownloadAction();
       const { ensureIncomingLinkHandling } = await import('@/browser/services/incoming-link.service');
       // A link shared to VidoraX, or opened through it as the device's browser, lands in the browser tab.
       ensureIncomingLinkHandling();
