@@ -15,6 +15,7 @@ import { getV2Engine } from './engine-port';
 import { projectV2LibraryItem } from './projection';
 import { createLibraryReconciler } from './library-reconcile';
 import { pushV2DownloadSettings } from './settings';
+import { ensureV2NotificationToggle } from './ensure-notification-toggle';
 
 let attached = false;
 let detach: (() => void) | null = null;
@@ -110,6 +111,8 @@ export function ensureV2DownloadBridge(): void {
   };
   pushSettings();
   detachSettings = useSettingsStore.subscribe(pushSettings);
+  // The "Download notifications" setting reaches the native runner too.
+  ensureV2NotificationToggle();
   const sink = storeSink();
   // Subscribe before hydrating so a completion during startup is never missed.
   detach = subscribeV2Downloads(engine, sink);

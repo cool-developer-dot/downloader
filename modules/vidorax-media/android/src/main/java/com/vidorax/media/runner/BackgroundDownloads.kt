@@ -42,7 +42,8 @@ internal object BackgroundDownloads {
     val appContext = context.applicationContext
     val notifier = DownloadNotifications(appContext)
     val runnerHost = AndroidRunnerHost(appContext, notifier)
-    val downloadRunner = DownloadRunner(runnerHost, notifier)
+    // "Download notifications" off: no notification of a download's own (the required one is only minimized).
+    val downloadRunner = DownloadRunner(runnerHost, ToggledNotifier(notifier) { DownloadNotificationsToggle.isEnabled(appContext) })
     notifications = notifier
     host = runnerHost
     runner = downloadRunner
