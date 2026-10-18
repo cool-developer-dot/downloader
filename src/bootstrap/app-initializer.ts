@@ -213,6 +213,12 @@ export async function runAppInitializer(): Promise<RoutePath> {
           console.warn('[bootstrap] pending export reconcile failed', exportError);
         }
       }
+      const { ensureDuplicateReplacements } = await import('@/downloads/v2/ensure-duplicate-replacements');
+      // Duplicate Action → Replace: the old copy goes once its new copy completed (nothing pending by default).
+      ensureDuplicateReplacements();
+      const { ensureItemOrganizeCleanup } = await import('@/library/item-organize-store');
+      // A saved video's tags and note go with it when it is deleted.
+      ensureItemOrganizeCleanup();
     } catch (error) {
       if (__DEV__) {
         console.warn('[bootstrap] download engine init failed', error);
