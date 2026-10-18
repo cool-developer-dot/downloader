@@ -4,6 +4,12 @@ import * as ReactNative from 'react-native';
 import { formatFileSize } from '@/media-detection/utils/format';
 import { useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
+import {
+  canOfferGalleryRemoval,
+  galleryRemovalMessageKey,
+  getGalleryCopyPort,
+  removeGalleryCopyAfterMove,
+} from '@/private-vault/gallery-copy';
 import { canMoveToPrivate, moveLibraryItemToPrivate, privateMoveSource } from '@/private-vault/move-to-private.runtime';
 import { isMovingToPrivate } from '@/private-vault/move-to-private';
 import { vaultSealedLength } from '@/private-vault/vault-format';
@@ -15,7 +21,16 @@ import { formatUsagePercent } from '@/storage-manager/utils/format-bytes';
 export type PrivateMoveDialogState =
   | { kind: 'closed' }
   | { kind: 'needs-app-lock' }
-  | { kind: 'confirm'; id: string; title: string; spaceLabel: string | null; inGallery: boolean }
+  | {
+      kind: 'confirm';
+      id: string;
+      title: string;
+      spaceLabel: string | null;
+      inGallery: boolean;
+      /** H21: the Gallery copy "Also remove the Gallery copy" would remove; offered only when it can be. */
+      galleryUri: string | null;
+      canRemoveGallery: boolean;
+    }
   | { kind: 'moving'; id: string; title: string; percent: string | null };
 
 /** How often the encryption's progress is read while a move runs (memory only on the native side). */
@@ -30,7 +45,8 @@ function announce(message: string): void {
 
 /**
  * "Move to Private" (#459) for one screen: the App Lock check, the confirm (with the Gallery note), the move with its
- * progress, and the result. `onMoved` runs after the original is gone (Download details goes back then).
+ * progress, and the result (then the Gallery copy, when the user asked for it). `onMoved` runs after the original is
+ * gone (Download details goes back then).
  */
 export function usePrivateMove(onMoved?: (id: string) => void) {
   const { t } = useTranslation();
@@ -79,6 +95,8 @@ export function usePrivateMove(onMoved?: (id: string) => void) {
           title: source.title,
           spaceLabel: formatFileSize(vaultSealedLength(source.sizeBytes)),
           inGallery: Boolean(source.galleryUri),
+          galleryUri: source.galleryUri,
+          canRemoveGallery: canOfferGalleryRemoval(source.galleryUri, getGalleryCopyPort()),
         });
       } finally {
         requestingRef.current = false;
@@ -87,8 +105,11 @@ export function usePrivateMove(onMoved?: (id: string) => void) {
     [t],
   );
 
-  /** `understood`: the "I understand" box, required before the very first move (re-checked here, not trusted). */
-  const confirm = useCallback(async (understood = false) => {
+  /**
+   * `understood`: the "I understand" box, required before the very first move (re-checked here, not trusted).
+   * `removeGallery`: "Also remove the Gallery copy" — only after the move succeeded, never undoing it.
+   */
+  const confirm = useCallback(async (understood = false, removeGallery = false) => {
     if (dialog.kind !== 'confirm') {
       return;
     }
@@ -100,11 +121,15 @@ export function usePrivateMove(onMoved?: (id: string) => void) {
       prefs.acknowledgeDataLoss();
     }
     const { id, title } = dialog;
+    const galleryUri = removeGallery && dialog.canRemoveGallery ? dialog.galleryUri : null;
     setDialog({ kind: 'moving', id, title, percent: null });
     const result = await moveLibraryItemToPrivate(id);
     setDialog({ kind: 'closed' });
     if (result.ok) {
       announce(t('privateVault.moved'));
+      if (galleryUri) {
+        announce(t(galleryRemovalMessageKey(await removeGalleryCopyAfterMove(galleryUri))));
+      }
       onMovedRef.current?.(id);
       return;
     }

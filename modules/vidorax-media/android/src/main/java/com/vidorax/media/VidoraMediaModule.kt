@@ -440,6 +440,19 @@ class VidoraMediaModule : Module() {
       }
     }
 
+    // "Also remove the Gallery copy": only the copy VidoraX recorded making, in its own gallery folders; Android's own
+    // delete dialog where it requires one (its answer arrives in OnActivityResult).
+
+    AsyncFunction("removeGalleryCopy") Coroutine { uri: String ->
+      com.vidorax.media.library.GalleryCopyRemoval
+        .create(context, services.database, services.library) { appContext.currentActivity }
+        .remove(uri).wire
+    }
+
+    OnActivityResult { _, payload ->
+      com.vidorax.media.library.ActivityGalleryDeleteConsent.onActivityResult(payload.requestCode, payload.resultCode)
+    }
+
     AsyncFunction("getStorageStats") Coroutine { ->
       services.storageUsage.read().toJs()
     }
