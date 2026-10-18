@@ -36,7 +36,8 @@ export const QueuePendingRow = memo(function QueuePendingRow({
 }: QueuePendingRowProps) {
   const downloadsTokens = useDownloadsTokens();
   const { t } = useTranslation();
-  const item = useDownloadsStore((s) => s.itemsById[id] ?? null);
+  // A v2 download is in the Queue whatever filter Downloads shows (engineRowsById holds every one).
+  const item = useDownloadsStore((s) => s.itemsById[id] ?? s.engineRowsById[id] ?? null);
 
   const handlePress = useCallback(() => onPress(id), [id, onPress]);
   const handleCancel = useCallback(() => onCancel(id), [id, onCancel]);
