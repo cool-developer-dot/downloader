@@ -3,6 +3,7 @@ package com.vidorax.media.bridge
 import com.vidorax.media.InvalidRequestException
 import com.vidorax.media.analyze.PageFetchRequest
 import com.vidorax.media.library.Titles
+import com.vidorax.media.model.BasicCredentials
 import com.vidorax.media.model.DownloadSettings
 import com.vidorax.media.model.EnqueueRequest
 import com.vidorax.media.model.LegacyMetadata
@@ -112,6 +113,8 @@ data class EnqueueRequestRecord(
   @Field val thumbnailUrl: String? = null,
   @Field val durationMs: Double? = null,
   @Field val estimatedBytes: Double? = null,
+  /** #299: sign-in for this download only (https). Never stored with the download, never sent back to JavaScript. */
+  @Field val credentials: CredentialsRecord? = null,
   @Field val qualityLabel: String? = null,
   @Field val saveToGallery: Boolean? = null,
   @Field val identityUrl: String? = null,
@@ -134,6 +137,7 @@ data class EnqueueRequestRecord(
       thumbnailUrl = thumbnailUrl.nonBlank(),
       durationMs = durationMs.positiveLong(),
       estimatedBytes = estimatedBytes.positiveLong(),
+      credentials = credentials?.toModel(url),
       qualityLabel = qualityLabel.nonBlank()?.trim(),
       saveToGallery = saveToGallery,
       // Only an identity hint: an unusable value falls back to `url` instead of refusing the download.
@@ -142,9 +146,48 @@ data class EnqueueRequestRecord(
   }
 }
 
+/**
+ * #299: a user name and password from JavaScript. A plain class (not a data class) so it is never printed: [toString]
+ * hides both. Rejected with ERR_INVALID_REQUEST — the message never holds either value — when they cannot be sent.
+ */
+class CredentialsRecord(
+  @Field val username: String = "",
+  @Field val password: String = "",
+) : Record {
+  override fun toString(): String = "CredentialsRecord(<redacted>)"
+
+  /** For a download of [downloadUrl]: https only (the credentials are pinned to its origin). */
+  fun toModel(downloadUrl: String): BasicCredentials {
+    if (!downloadUrl.trim().startsWith("https://", ignoreCase = true)) invalid("Sign-in details are only sent over https")
+    return toModel()
+  }
+
+  /** RFC 7617: a user-id has no colon; neither value may hold control characters; both are bounded. */
+  fun toModel(): BasicCredentials {
+    if (username.isEmpty() || username.length > MAX_LENGTH) invalid("The user name must be 1-$MAX_LENGTH characters")
+    if (password.length > MAX_LENGTH) invalid("The password must be at most $MAX_LENGTH characters")
+    if (':' in username) invalid("The user name cannot contain a colon")
+    if (username.any { it.isISOControl() } || password.any { it.isISOControl() }) {
+      invalid("Sign-in details contain control characters")
+    }
+    return BasicCredentials(username, password)
+  }
+
+  private companion object {
+    const val MAX_LENGTH = 256
+  }
+}
+
 data class DownloadSettingsRecord(
   @Field val maxConcurrent: Int = DownloadSettings.DEFAULT.maxConcurrent,
   @Field val wifiOnly: Boolean = DownloadSettings.DEFAULT.wifiOnly,
+  /** Advanced network (net/NetworkOptions): each is sent only when the user changed it; null = today's behaviour. */
+  @Field val userAgent: String? = null,
+  @Field val customHeaders: Map<String, String>? = null,
+  @Field val connectTimeoutSeconds: Int? = null,
+  @Field val readTimeoutSeconds: Int? = null,
+  /** #332 Retry limit (engine/RetryLimit): sent only when the user changed it; null = Automatic (5). Clamped to 1..10. */
+  @Field val retryLimit: Int? = null,
   @Field val autoSaveToGallery: Boolean = DownloadSettings.DEFAULT.autoSaveToGallery,
   @Field val preferredMaxHeight: Int? = null,
 ) : Record {

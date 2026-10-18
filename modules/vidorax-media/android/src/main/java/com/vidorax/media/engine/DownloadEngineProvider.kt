@@ -59,7 +59,11 @@ object DownloadEngineProvider {
       onSettingsChanged = { writeSettings(context, it) },
       // The work folder and the library live on the same volume, so one free-space reading answers for both.
       freeSpace = { services.paths.workRoot.usableSpace },
+      // #332: the saved retry limit applies from process start, before any JavaScript runs.
+      retryLimit = { RetryLimit.current(context) },
     )
+    // #299: credentials of a download are dropped when it completes, is cancelled or fails (memory only).
+    com.vidorax.media.net.DownloadCredentials.install(context, engine.stateChanges, services.scope)
     // One runner per process: it observes the engine to keep transfers alive in the background, to show their
     // notifications, and to reconcile what a previous process left behind.
     BackgroundDownloads.install(context, engine, services.scope) { engine.restore() }

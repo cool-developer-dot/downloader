@@ -9,10 +9,14 @@
  */
 
 import type { PageFetchRequest } from '@modules/vidorax-media/src/VidoraMedia.types';
+// A namespace import: Node tests' react-native stub has no ToastAndroid; it is only read when a toast is shown.
+import * as ReactNative from 'react-native';
 
 import { buildBrowserUserAgent } from '@/browser/constants/user-agent';
 import { useBrowserStore } from '@/browser/stores';
+import { askForSignIn } from '@/downloads/v2/download-auth';
 import { getV2Engine } from '@/downloads/v2/engine-port';
+import { offerSignInDownload, type SignInDownloadOutcome } from '@/downloads/v2/sign-in-download';
 import { contentTokensOf } from '@/media-detection/direct-analyzer/content-tokens';
 import {
   decideDirectPublish,
@@ -37,6 +41,8 @@ import { recordPipelineOutcome, type PipelineOutcome } from '@/media-detection/p
 import { resolveSocialPlatform, socialPageContextStore } from '@/media-detection/social';
 import { useMediaDetectionStore } from '@/media-detection/stores';
 import { isSameDocumentUrl } from '@/media-detection/utils';
+import { translate } from '@/localization/translate';
+import { useDownloadsStore } from '@/store/downloads';
 
 import { browserMediaActionService } from './browser-media-action.service';
 
@@ -560,6 +566,16 @@ export function startDirectAnalysis(input: {
         watchForPublish(session);
       } else {
         finish(session, `result:${result.status}`);
+        // #299: a password-protected file server answered the link with 401: offer to sign in and download the file.
+        if (!session.controller.signal.aborted && result.fetches.some((fetch) => fetch.status === 401)) {
+          void offerSignInDownload(input.url, {
+            engine,
+            ask: askForSignIn,
+            applyEntries: (entries) => useDownloadsStore.getState().applyEngineEntries(entries),
+            notify: announceSignInDownload,
+            userAgent: buildBrowserUserAgent({ desktop: tabDesktop }),
+          }).catch(() => undefined);
+        }
       }
     })
     .catch(() => {
@@ -569,6 +585,28 @@ export function startDirectAnalysis(input: {
     });
 
   return session.id;
+}
+
+/** #299: the toast for a signed-in download from a pasted link (nothing for a cancel). */
+function announceSignInDownload(outcome: SignInDownloadOutcome): void {
+  const key =
+    outcome === 'started'
+      ? 'downloadSignIn.started'
+      : outcome === 'insecure'
+        ? 'downloadSignIn.notSecure'
+        : outcome === 'failed'
+          ? 'downloadSignIn.failed'
+          : outcome === 'already_downloading'
+            ? 'downloads.alreadyDownloadingToast'
+            : outcome === 'already_downloaded'
+              ? 'downloads.alreadyDownloadedToast'
+              : null;
+  if (!key) return;
+  const message = translate(key);
+  if (ReactNative.Platform.OS === 'android') {
+    ReactNative.ToastAndroid.show(message, ReactNative.ToastAndroid.SHORT);
+  }
+  ReactNative.AccessibilityInfo.announceForAccessibility(message);
 }
 
 function fileKeyOf(url: string): string {

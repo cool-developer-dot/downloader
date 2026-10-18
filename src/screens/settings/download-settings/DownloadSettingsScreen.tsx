@@ -8,6 +8,7 @@ import { Switch } from '@/components/inputs/Switch';
 
 import { useTranslation } from '@/localization';
 import { selectSaveToGallery, useSettingsStore } from '@/store/settings';
+import { AdvancedNetworkSettingsSection } from '@/screens/settings/download-settings/AdvancedNetworkSettingsSection';
 
 import {
   SettingsFeedbackBanner,
@@ -195,6 +196,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
             </Box>
           </SettingsSection>
         </SettingsStaggerItem>
+        <AdvancedNetworkSettingsSection index={1} disabled={preferenceDisabled} />
 
         <SettingsStaggerItem index={2}>
           <SettingsSection

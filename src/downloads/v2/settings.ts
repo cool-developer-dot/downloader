@@ -6,10 +6,13 @@
 import type { DownloadSettings } from '@modules/vidorax-media/src/VidoraMedia.types';
 
 import type { V2EnginePort } from './engine-port';
+import { networkSettingsFields, sameNetworkFields, type NetworkOptionsInput } from './network-options';
 
 export type V2SettingsInput = {
   wifiOnly: boolean;
   maxConcurrentDownloads: number;
+  /** Download Settings → Advanced network; omitted or untouched = today's behaviour (nothing extra is sent). */
+  network?: NetworkOptionsInput | null;
   /** Copy every completed download to the device gallery. Default true. */
   saveToGallery?: boolean;
 };
@@ -27,12 +30,15 @@ export function v2DownloadSettings(input: V2SettingsInput): DownloadSettings {
     wifiOnly: input.wifiOnly === true,
     // A finished video also appears in the device gallery, unless the user turned that off.
     autoSaveToGallery: input.saveToGallery !== false,
+    // Advanced network: only what the user changed; untouched options add nothing.
+    ...networkSettingsFields(input.network),
     preferredMaxHeight: null,
   };
 }
 
 export function sameV2Settings(a: DownloadSettings, b: DownloadSettings): boolean {
   return (
+    sameNetworkFields(a, b) &&
     a.maxConcurrent === b.maxConcurrent &&
     a.wifiOnly === b.wifiOnly &&
     a.autoSaveToGallery === b.autoSaveToGallery &&
