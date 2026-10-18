@@ -179,6 +179,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       // A link shared to VidoraX, or opened through it as the device's browser, lands in the browser tab.
       ensureIncomingLinkHandling();
       downloadAppLifecycle.ensureAttached();
+      const { ensureDefaultTab } = await import('@/navigation/helpers/ensure-default-tab');
+      // Settings → Default tab: where the splash lands a returning user (Browser unless changed).
+      ensureDefaultTab();
       bindDownloadEngineToStore();
       ensureDownloadRecoveryListener();
       ensureDownloadNotificationBridge();
@@ -186,6 +189,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
         ensureLibraryCompletionBridge();
       }
       void downloadEngine.recover();
+      const { ensureDebugLogs } = await import('@/diagnostics/ensure-debug-logs');
+      // Download Settings → History & logs → Debug logs (off by default; in memory only).
+      ensureDebugLogs();
 
       try {
         const { bindPlaybackPersistence } = await import(
