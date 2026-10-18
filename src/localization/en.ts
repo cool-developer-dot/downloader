@@ -383,6 +383,8 @@ export const en = {
     MUX_FAILED: 'Couldn’t merge the audio and video. Retry to try again.',
     TRANSCODE_FAILED: 'Couldn’t convert this video on this device.',
     INVALID_MEDIA: 'The finished file didn’t play back correctly.',
+    /** H15 (#299): a download started with sign-in was refused. */
+    AUTH_REQUIRED: 'This site needs your user name and password. Retry to sign in again.',
   },
   files: {
     actionsTitle: 'File actions',
