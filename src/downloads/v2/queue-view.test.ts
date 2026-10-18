@@ -135,3 +135,51 @@ describe('v2 Queue records from the engine', () => {
     assert.deepEqual(Object.keys(useV2QueueRecords.getState().byId), ['a']);
   });
 });
+
+describe('v2 Queue view in the engine start order (H4)', () => {
+  test('"Up next" follows the start order given; running ones are not reordered', () => {
+    const view = v2QueueView(
+      [r('a', 'queued', 1), r('b', 'queued', 2), r('c', 'waiting_retry', 3), r('d', 'downloading', 4)],
+      { wifiOnly: false, startOrder: (ids) => [...ids].reverse() },
+    );
+    assert.deepEqual(view.active, ['d']);
+    assert.deepEqual(
+      view.pending.map((item) => item.downloadId),
+      ['c', 'b', 'a'],
+    );
+  });
+
+  test('an id the order leaves out keeps its first-come place at the end; unknown ids are ignored', () => {
+    const view = v2QueueView([r('a', 'queued', 1), r('b', 'queued', 2), r('c', 'queued', 3)], {
+      wifiOnly: false,
+      startOrder: () => ['c', 'zzz', 'a'],
+    });
+    assert.deepEqual(
+      view.pending.map((item) => item.downloadId),
+      ['c', 'a', 'b'],
+    );
+  });
+
+  test("H4's queues decide: a later queue's downloads come after Main's, the user's order inside each", async () => {
+    const { groupByQueue } = await import('./queue-order');
+    const state = {
+      queues: [
+        { id: 'main', name: 'Main', held: false },
+        { id: 'night', name: 'Night', held: false },
+      ],
+      assignments: { a: 'night' },
+      order: ['c', 'b'],
+    };
+    const records = [r('a', 'queued', 1), r('b', 'queued', 2), r('c', 'queued', 3)];
+    const byId = Object.fromEntries(records.map((record) => [record.id, record]));
+    const startOrder = (ids: string[]) =>
+      groupByQueue(state, ids.map((id) => ({ id, createdAt: new Date(byId[id]!.createdAt).toISOString() }))).flatMap(
+        (group) => group.ids,
+      );
+    const view = v2QueueView(records, { wifiOnly: false, startOrder });
+    assert.deepEqual(
+      view.pending.map((item) => item.downloadId),
+      ['c', 'b', 'a'],
+    );
+  });
+});

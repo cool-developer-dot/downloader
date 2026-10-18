@@ -393,6 +393,8 @@ export const ur: CatalogStrings<typeof en> = {
     MUX_FAILED: 'آڈیو اور ویڈیو جوڑے نہیں جا سکے۔ دوبارہ کوشش کریں۔',
     TRANSCODE_FAILED: 'یہ ویڈیو اس ڈیوائس پر تبدیل نہیں ہو سکی۔',
     INVALID_MEDIA: 'مکمل فائل ٹھیک سے نہیں چلی۔',
+    /** H15 (#299): a download started with sign-in was refused. */
+    AUTH_REQUIRED: 'اس سائٹ کو آپ کا صارف نام اور پاس ورڈ درکار ہے۔ دوبارہ سائن ان کرنے کے لیے پھر کوشش کریں۔',
   },
   files: {
     actionsTitle: 'فائل کے اختیارات',

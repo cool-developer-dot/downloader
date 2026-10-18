@@ -43,8 +43,15 @@ function firstCome(a: V2QueueRecord, b: V2QueueRecord): number {
   return a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
-/** Pure: the v2 engine's active and up-next downloads. States it does not know are on neither list. */
-export function v2QueueView(records: Iterable<V2QueueRecord>, options: { wifiOnly: boolean }): V2QueueView {
+/**
+ * Pure: the v2 engine's active and up-next downloads. States it does not know are on neither list. `startOrder` (H4:
+ * queues, the user's order, then first-come) puts "Up next" in the order the engine will start it; without it the
+ * order is first-come, the engine's default.
+ */
+export function v2QueueView(
+  records: Iterable<V2QueueRecord>,
+  options: { wifiOnly: boolean; startOrder?: (ids: string[]) => string[] },
+): V2QueueView {
   const sorted = [...records].sort(firstCome);
   const active: string[] = [];
   const pending: V2QueueView['pending'] = [];
@@ -58,7 +65,17 @@ export function v2QueueView(records: Iterable<V2QueueRecord>, options: { wifiOnl
       pending.push({ downloadId: record.id, waitingReason: reason });
     }
   }
-  return { active, pending };
+  if (!options.startOrder || pending.length < 2) {
+    return { active, pending };
+  }
+  const byId = new Map(pending.map((item) => [item.downloadId, item]));
+  const ordered = options.startOrder(pending.map((item) => item.downloadId)).flatMap((id) => {
+    const item = byId.get(id);
+    byId.delete(id);
+    return item ? [item] : [];
+  });
+  // Anything the order did not name keeps its first-come place at the end.
+  return { active, pending: [...ordered, ...byId.values()] };
 }
 
 /**
