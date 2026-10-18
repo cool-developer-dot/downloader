@@ -10,6 +10,7 @@ import type {
 import type { DownloadItem, DownloadStatus, DownloadWorkerState } from '@/api/types';
 import type { TransferProgressSnapshot } from '@/downloads/engine/types';
 import type { DownloadExecutionState } from '@/downloads/execution/download-execution-state';
+import { getFlattenedCatalog } from '@/localization/translate';
 
 /** One v2 download as the existing Downloads/Library UI renders it: the catalog-shaped row plus its live transfer. */
 export type V2DownloadEntry = {
@@ -80,8 +81,17 @@ function percent(bytes: number, total: number | null): number {
   return Math.max(0, Math.min(100, Math.floor((bytes / total) * 100)));
 }
 
+/**
+ * The reason shown for a failed download, in the app's language (`downloadFailures.<CODE>` in en/ur). A code without
+ * a translation yet keeps its English text from FAILURE_MESSAGES.
+ */
 export function v2FailureMessage(code: DownloadErrorCode | null): string {
-  return (code && FAILURE_MESSAGES[code]) || FAILURE_MESSAGES.UNKNOWN;
+  const key = `downloadFailures.${code ?? 'UNKNOWN'}`;
+  const translated = getFlattenedCatalog()[key];
+  if (translated) {
+    return translated;
+  }
+  return (code && FAILURE_MESSAGES[code]) || getFlattenedCatalog()['downloadFailures.UNKNOWN'] || FAILURE_MESSAGES.UNKNOWN;
 }
 
 /**

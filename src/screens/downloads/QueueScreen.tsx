@@ -6,13 +6,25 @@ import { Text } from '@/components/base/Text';
 import { EmptyState } from '@/components/common/EmptyState';
 import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { ScreenHeader } from '@/components/headers/ScreenHeader';
+import type { QueueWaitingReason } from '@/downloads/scheduler';
 import { useTheme } from '@/hooks/use-theme';
+import { useTranslation } from '@/localization';
+import type { TranslationKey } from '@/localization/types';
 import { navigation } from '@/navigation';
 
 import { QueueActiveRow } from './components/QueueActiveRow';
 import { QueuePendingRow } from './components/QueuePendingRow';
 import { useQueueScreen } from './hooks/useQueueScreen';
 import { useDownloadsTokens } from './theme/downloads-tokens';
+
+/** The waiting reasons, in the app's language (the v1 scheduler's own copy stays English for its logs). */
+const WAITING_REASON_KEYS: Record<QueueWaitingReason, TranslationKey> = {
+  CAPACITY: 'downloads.queued',
+  WAITING_FOR_WIFI: 'downloads.waitingWifi',
+  OFFLINE: 'downloads.waitingNetwork',
+  RETRY_DELAY: 'downloads.retrying',
+  RECOVERY_PENDING: 'downloads.preparing',
+};
 
 type QueueSection = {
   key: 'active' | 'pending';
@@ -23,10 +35,10 @@ type QueueSection = {
 export const QueueScreen = memo(function QueueScreen() {
   const downloadsTokens = useDownloadsTokens();
   const theme = useTheme();
+  const { t } = useTranslation();
   const {
     snapshot,
     mutatingIds,
-    formatWaitingReason,
     openDetails,
     onCancel,
     onPause,
@@ -38,19 +50,19 @@ export const QueueScreen = memo(function QueueScreen() {
     if (snapshot.active.length > 0) {
       next.push({
         key: 'active',
-        title: 'Active',
+        title: t('queueScreen.active'),
         data: snapshot.active.map((item) => item.downloadId),
       });
     }
     if (snapshot.pending.length > 0) {
       next.push({
         key: 'pending',
-        title: 'Up Next',
+        title: t('queueScreen.upNext'),
         data: snapshot.pending.map((item) => item.downloadId),
       });
     }
     return next;
-  }, [snapshot]);
+  }, [snapshot, t]);
 
   const pendingById = useMemo(() => {
     const map = new Map(
@@ -93,8 +105,8 @@ export const QueueScreen = memo(function QueueScreen() {
       edges={['top', 'left', 'right', 'bottom']}
       style={{ backgroundColor: theme.colors.background }}>
       <ScreenHeader
-        title="Queue"
-        subtitle="Active and up next"
+        title={t('queueScreen.title')}
+        subtitle={t('queueScreen.subtitle')}
         showBack
         onBackPress={handleBack}
         testID="download-queue-header"
@@ -103,8 +115,8 @@ export const QueueScreen = memo(function QueueScreen() {
       {empty ? (
         <Box px={downloadsTokens.spacing.screenX} py={32}>
           <EmptyState
-            title="No downloads waiting"
-            description="Active downloads and queued items will appear here."
+            title={t('queueScreen.emptyTitle')}
+            description={t('queueScreen.emptyDescription')}
             testID="download-queue-empty"
           />
         </Box>
@@ -150,7 +162,7 @@ export const QueueScreen = memo(function QueueScreen() {
                 id={id}
                 position={pending.position}
                 waitingReason={pending.waitingReason}
-                waitingLabel={formatWaitingReason(pending.waitingReason)}
+                waitingLabel={t(WAITING_REASON_KEYS[pending.waitingReason])}
                 onPress={openDetails}
                 onCancel={handleCancel}
                 mutating={Boolean(mutatingIds[id])}
