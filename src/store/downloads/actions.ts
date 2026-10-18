@@ -337,7 +337,7 @@ export function createDownloadsActions(
   /** v2-owned downloads: the native engine performs the action; its state event updates the row. */
   const runEngineAction = async (
     id: string,
-    action: 'pause' | 'resume' | 'retry' | 'cancel',
+    action: 'pause' | 'resume' | 'retry' | 'cancel' | 'stopRecording',
     fallback: string,
   ): Promise<DownloadItem | null> => {
     setMutating(id, true);
@@ -994,6 +994,9 @@ export function createDownloadsActions(
         setMutating(id, false);
       }
     },
+    // F6: only the native engine records live streams.
+    stopRecording: async (id) =>
+      isEngineOwned(get(), id) ? runEngineAction(id, 'stopRecording', 'Couldn’t stop this recording.') : null,
     resume: async (id) => {
       if (isEngineOwned(get(), id)) {
         return runEngineAction(id, 'resume', 'Unable to resume this download.');

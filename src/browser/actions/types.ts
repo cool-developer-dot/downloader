@@ -10,7 +10,7 @@ export type BrowserActionContext = {
   title?: string;
   linkText?: string;
   pageUrl?: string;
-  /** Reserved for future tab orchestration — no-op in Phase 1 Day 4. */
+  /** Opens `url` in a new tab and switches to it (or reports the tab limit). */
   openInNewTab?: (url: string) => void;
 };
 

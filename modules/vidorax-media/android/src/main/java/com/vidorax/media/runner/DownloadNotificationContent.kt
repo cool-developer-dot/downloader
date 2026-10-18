@@ -4,6 +4,12 @@ import com.vidorax.media.model.DownloadErrorCode
 import com.vidorax.media.model.DownloadRecord
 import com.vidorax.media.model.DownloadState
 import com.vidorax.media.model.ProcessingStage
+import com.vidorax.media.model.WaitReason
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 import kotlin.math.abs
 
 /**
@@ -33,6 +39,8 @@ internal data class DownloadNotificationContent(
     RESUME("Resume"),
     RETRY("Retry"),
     CANCEL("Cancel"),
+    /** F6: ends a live recording and keeps what was recorded. */
+    STOP("Stop"),
   }
 
   enum class Target { DOWNLOADS, LIBRARY }
@@ -75,6 +83,21 @@ internal object DownloadNotificationText {
   const val WAITING_RETRY = "Retrying"
   const val PROCESSING = "Finishing up"
 
+  /** F6: "Recording · 12:34 · 85 MB" — the same words as the Downloads row, in the app's language. */
+  fun recording(recordedMs: Long?, bytes: Long): String {
+    val seconds = (recordedMs ?: 0L) / 1000
+    val time = if (seconds >= 3600) {
+      "%d:%02d:%02d".format(java.util.Locale.US, seconds / 3600, seconds / 60 % 60, seconds % 60)
+    } else {
+      "%d:%02d".format(java.util.Locale.US, seconds / 60, seconds % 60)
+    }
+    val urdu = language == "ur"
+    // Left-to-right marks keep "0:38" and "3.3 MB" in order after the Urdu label (an RTL line reorders "3.3 MB").
+    val ltr = { text: String -> if (urdu) "\u200E$text\u200E" else text }
+    val label = if (urdu) "ریکارڈنگ" else "Recording"
+    return listOfNotNull(label, ltr(time), formatBytes(bytes).takeIf { bytes > 0 }?.let(ltr)).joinToString(" · ")
+  }
+
   fun processing(stage: ProcessingStage?): String = when (stage) {
     ProcessingStage.MERGING -> "Merging audio and video"
     ProcessingStage.REMUXING -> "Preparing the video file"
@@ -82,6 +105,46 @@ internal object DownloadNotificationText {
     ProcessingStage.VERIFYING, null -> PROCESSING
   }
   const val COMPLETED = "Download complete"
+
+  /**
+   * F3: the app's language for the wait texts ("en" or "ur"), set from the download settings JavaScript pushes. The
+   * other texts here are English (as before F3).
+   */
+  @Volatile
+  var language: String = "en"
+
+  /** F3: what a download held by a rule says — the same words as its Downloads row. */
+  fun waiting(
+    reason: WaitReason?,
+    until: Long?,
+    now: Long = System.currentTimeMillis(),
+    zone: TimeZone = TimeZone.getDefault(),
+  ): String {
+    val urdu = language == "ur"
+    return when (reason) {
+      WaitReason.SCHEDULED -> {
+        val at = until?.let { whenText(it, now, zone, urdu) }
+        if (urdu) (at?.let { "$it کے لیے شیڈول" } ?: "شیڈول") else (at?.let { "Scheduled for $it" } ?: "Scheduled")
+      }
+      WaitReason.OUTSIDE_HOURS -> if (urdu) "ڈاؤن لوڈ کے اوقات سے باہر" else "Outside download hours"
+      WaitReason.ROAMING -> if (urdu) "رکا ہوا — رومنگ" else "Paused — roaming"
+      WaitReason.CHARGING -> if (urdu) "چارجنگ کا انتظار" else "Waiting for charging"
+      WaitReason.BATTERY_LOW -> if (urdu) "رکا ہوا — بیٹری کم" else "Paused — battery low"
+      null -> if (urdu) "انتظار" else "Waiting"
+    }
+  }
+
+  /** "02:00" today, else with the weekday ("Tue 02:00"); 24-hour, Latin digits. */
+  internal fun whenText(at: Long, now: Long, zone: TimeZone, urdu: Boolean): String {
+    val time = SimpleDateFormat("HH:mm", Locale.US).apply { timeZone = zone }.format(Date(at))
+    val day = Calendar.getInstance(zone).apply { timeInMillis = at }
+    val today = Calendar.getInstance(zone).apply { timeInMillis = now }
+    val sameDay = day.get(Calendar.YEAR) == today.get(Calendar.YEAR) &&
+      day.get(Calendar.DAY_OF_YEAR) == today.get(Calendar.DAY_OF_YEAR)
+    if (sameDay) return time
+    val weekday = SimpleDateFormat("EEE", if (urdu) Locale("ur") else Locale.US).apply { timeZone = zone }.format(Date(at))
+    return "$weekday $time"
+  }
 
   /** Short, non-sensitive reasons; the Downloads row carries the fuller message. */
   fun failure(code: DownloadErrorCode?): String = when (code) {
@@ -171,6 +234,8 @@ internal fun notificationContentFor(
   speedBps: Long = 0L,
   /** What PROCESSING is doing (merging, converting…), from the engine's progress events. */
   stage: ProcessingStage? = null,
+  /** F6: a recording's recorded length (ms), from the engine's progress events. */
+  recordedMs: Long? = record.recordedMs,
 ): DownloadNotificationContent? {
   val detail = transferDetail(bytesDone, totalBytes)
   val speed = formatSpeed(speedBps).takeIf { record.state == DownloadState.DOWNLOADING }
@@ -204,6 +269,26 @@ internal fun notificationContentFor(
       content(DownloadNotificationText.WAITING_NETWORK, active, progress = true, ongoing = true, actions = pauseAndCancel)
     DownloadState.WAITING_RETRY ->
       content(DownloadNotificationText.WAITING_RETRY, active, progress = true, ongoing = true, actions = pauseAndCancel)
+    // F3: held by a rule — not running work, so not ongoing; it goes on by itself when the rule clears.
+    DownloadState.WAITING_CONDITIONS ->
+      content(
+        DownloadNotificationText.waiting(record.waitReason, record.waitUntil),
+        DownloadNotificationContent.Kind.PAUSED,
+        progress = true,
+        ongoing = false,
+        withDetail = false,
+        actions = pauseAndCancel,
+      )
+    // F6: running work with a Stop that keeps what was recorded (no pause: a live stream does not wait).
+    DownloadState.RECORDING ->
+      content(
+        DownloadNotificationText.recording(recordedMs, bytesDone),
+        active,
+        progress = true,
+        ongoing = true,
+        withDetail = false,
+        actions = listOf(DownloadNotificationContent.Action.STOP, DownloadNotificationContent.Action.CANCEL),
+      )
     // Finishing up is verify → finalize → library: stopping it there is not something the engine allows.
     DownloadState.PROCESSING ->
       content(DownloadNotificationText.processing(stage), active, progress = true, ongoing = true)

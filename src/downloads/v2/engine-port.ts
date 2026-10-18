@@ -2,11 +2,14 @@ import { getVidoraMedia, isVidoraMediaAvailable } from '@modules/vidorax-media';
 import type {
   CompletedDownload,
   DeviceVideoPage,
+  DownloadBandwidth,
   DownloadCredentials,
   DownloadRecord,
   DownloadSettings,
   EnqueueRequest,
   EnqueueResult,
+  LeftoverFiles,
+  LeftoverFilesOptions,
   LibraryItem,
   LibraryPage,
   LibraryQuery,
@@ -73,6 +76,19 @@ export type V2EnginePort = {
   /** The item's thumbnail as a JPEG in Pictures/VidoraX. Missing on older native builds: the action is hidden. */
   saveThumbnailToGallery?(id: string): Promise<string>;
   setDownloadSettings(settings: DownloadSettings): Promise<void>;
+  /** A download's own speed limit / Priority mark (F2). Missing on older native builds. */
+  setDownloadBandwidth?(
+    id: string,
+    options: { speedLimitBytesPerSecond?: number | null; priority?: boolean },
+  ): Promise<DownloadBandwidth[]>;
+  listDownloadBandwidth?(): Promise<DownloadBandwidth[]>;
+  /** F3 "Start at…" (epoch ms; null = now). Missing on older native builds: the control is hidden. */
+  setDownloadStartAt?(id: string, startAt: number | null): Promise<DownloadRecord>;
+  /** F6: stops a live recording and finalizes what was recorded. Missing on older native builds. */
+  stopRecording?(id: string): Promise<DownloadRecord>;
+  /** Download files that belong to nothing (F15). Missing on older native builds: the Storage row is not shown. */
+  measureLeftoverFiles?(options?: LeftoverFilesOptions): Promise<LeftoverFiles>;
+  cleanLeftoverFiles?(options?: LeftoverFilesOptions): Promise<LeftoverFiles>;
   setFavorite(id: string, favorite: boolean): Promise<void>;
   /** Missing on older native builds; callers check before use. */
   listDeviceVideos?(limit: number, offset: number): Promise<DeviceVideoPage>;

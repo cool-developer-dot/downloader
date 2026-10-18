@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regression smoke R1-R10 on the Pixel_8 AVD (release build installed over seeded test1).
 
-usage: regress.py <tag> [steps...]   steps default: r10 r1 r2 r3 r7 r5 r8 r9 r4
+usage: regress.py <tag> [steps...]   steps default: r10 r1 r2 r3 r7 r5 r8 r9 r4 r11 r12 (r6 on request)
 Prints one line per check; screenshots go to shots/<tag>_<step>.png.
 """
 import re
@@ -17,7 +17,7 @@ os.makedirs(f'{S}/shots', exist_ok=True)
 A = ['adb', '-s', os.environ.get('ANDROID_SERIAL', 'emulator-5554')]
 PKG = 'com.vidorax.fast.videodownloader'
 TAG = sys.argv[1]
-STEPS = sys.argv[2:] or ['r10', 'r1', 'r2', 'r3', 'r7', 'r5', 'r8', 'r9', 'r4']
+STEPS = sys.argv[2:] or ['r10', 'r1', 'r2', 'r3', 'r7', 'r5', 'r8', 'r9', 'r4', 'r11', 'r12']
 results = []
 
 
@@ -178,15 +178,34 @@ def r10():
     searches_row = find('Clear recent searches', nodes=nodes)
     shot('r10_history')
     sh('input', 'keyevent', '4')
-    record('R10', bool(rows) and bool(fav) and len(visited) >= 2,
+    # The download paused on test1 (seed_test1.sh) must resume on this build and complete.
+    to_tab(405)
+    nodes = dump()
+    paused = find('Resume download', nodes=nodes)
+    completed_before = sum(1 for t, d, x, y in nodes if 'Completed' in d)
+    resumed = False
+    if paused:
+        tap(paused[0], paused[1])
+        end = time.time() + 600
+        while time.time() < end:
+            w(10)
+            nodes = dump()
+            done = sum(1 for t, d, x, y in nodes if 'Completed' in d)
+            if done > completed_before and not find('Pause download', nodes=nodes) and not find('Resume download', nodes=nodes):
+                resumed = True
+                break
+    shot('r10_paused_resumed')
+    record('R10', bool(rows) and bool(fav) and len(visited) >= 2 and bool(paused) and resumed,
            f'download rows={len(rows)} favorite={"yes" if fav else "no"} history={len(visited)}'
-           f'{" recent-searches-row=yes" if searches_row else ""}')
+           f'{" recent-searches-row=yes" if searches_row else ""}'
+           f' paused-on-test1={"yes" if paused else "no"} resumed+completed={resumed}')
 
 
 def r1():
     out = subprocess.run(['bash', f'{Q}/coldstart.sh'], capture_output=True, text=True).stdout.strip()
     times = [float(x) for x in re.findall(r'at ([0-9.]+)s', out)]
-    crash = 'FATAL' in sh('logcat', '-d', '-b', 'crash')
+    # Only the app's own crashes: uiautomator itself crashes now and then ("UiAutomationService already registered").
+    crash = f'Process: {PKG}' in sh('logcat', '-d', '-b', 'crash')
     record('R1', bool(times) and not crash,
            f'browser chrome at {", ".join(f"{t:.1f}" for t in times)} s (test1 baseline 6.2-6.4 s); crash={crash}')
 
@@ -257,12 +276,21 @@ def r6():
         paused_ok = bool(find('Resume download')) and a is not None and b is not None and a[2] == b[2]
         shot('r6_paused')
         tapq('Resume download')
+    # Force-stop mid-download: the next start resumes it on its own.
+    w(6)
+    sh('am', 'force-stop', PKG)
+    w(3)
+    sh('am', 'start', '-n', f'{PKG}/com.anonymous.vidorax.MainActivity')
+    w(10)
+    to_tab(405)
+    resumed_after_kill = bool(wait_for('Pause download', 60)) or any('288p' in d and 'Completed' in d for t, d, x, y in dump())
     end = time.time() + 420
     done = False
     while time.time() < end and not done:
         done = any('288p' in d and 'Completed' in d for t, d, x, y in dump())
         w(5)
-    record('R6', paused_ok and done, f'paused at {a[2] if a else "-"}, unchanged after 8 s={paused_ok}, resumed, completed={done}')
+    record('R6', paused_ok and resumed_after_kill and done,
+           f'paused at {a[2] if a else "-"}, unchanged after 8 s={paused_ok}, resumed; force-stop → running again={resumed_after_kill}; completed={done}')
 
 
 def r7():
@@ -436,6 +464,97 @@ def r4():
     fb = [d for t, d, x, y in dump() if 'Facebook · Completed' in d]
     record('R4', bool(row1 and 'Completed' in row1 and fb),
            f'tiktok offer={ok1} row={row1[:55] if row1 else None}; facebook offer={ok2} completed={len(fb)}')
+
+
+def r11():
+    # DASH (separate audio + video) through the pasted-link analyzer: the lowest quality, downloaded and played. The
+    # tab starts from the browser's home: an .mpd does not replace the page underneath, whose inputs could take taps.
+    browser()
+    sh('input', 'keyevent', '111')
+    tapq('Go home', exact=True)
+    w(2)
+    to_tab(405)
+    before = {d for t, d, x, y in dump() if 'Completed' in d}
+    browser()
+    sh(f"am start -a android.intent.action.VIEW -d 'https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd' {PKG}")
+    ok = wait_for('Video available', 60)
+    if ok:
+        tapq('Video available', exact=True)
+        w(4)
+    for _ in range(4):
+        sh('input', 'swipe', '540', '1800', '540', '800', '400')
+        w(1.2)
+    heights = sorted({int(m.group(1)) for t, d, x, y in dump() for m in [re.match(r'(\d+)p, ', d or t)] if m})
+    chosen = heights[0] if heights else None
+    if chosen:
+        tapq(f'{chosen}p, ')
+        w(1.5)
+        tapq(f'Download {chosen}p')
+    w(5)
+    done = None
+    end = time.time() + 600
+    while time.time() < end and not done:
+        to_tab(405)
+        done = next((d for t, d, x, y in dump() if 'Completed' in d and d not in before and f'{chosen}p' in d), None)
+        if not done:
+            w(10)
+    playing = None
+    if done:
+        to_tab(675)
+        if tapq('× 180'):
+            w(6)
+            playing = media_state()
+            shot('r11_player')
+            sh('input', 'keyevent', '4')
+            w(1)
+    record('R11', bool(done) and playing in ('PLAYING', 'PAUSED'),
+           f'offer={bool(ok)} qualities={heights} chose={chosen} row={done[:70] if done else None} player={playing}')
+
+
+def set_wifi_only(on):
+    to_tab(945)
+    tapq('Download Settings')
+    w(2.5)
+    hit = find('Download over Wi-Fi only', exact=True)
+    nodes = dump()
+    switch = next(((x, y) for t, d, x, y in nodes if d == 'Download over Wi-Fi only' and x > 800), None)
+    if switch:
+        # The switch reports its state through the checked attribute; read it from the raw dump.
+        xml = subprocess.run(A + ['exec-out', 'cat', '/sdcard/ui.xml'], capture_output=True).stdout.decode('utf-8', 'replace')
+        m = re.search(r'content-desc="Download over Wi-Fi only"[^>]*checked="(true|false)"', xml)
+        checked = m and m.group(1) == 'true'
+        if bool(checked) != on:
+            tap(*switch)
+            w(1.5)
+    sh('input', 'keyevent', '4')
+    w(1.5)
+    return hit is not None
+
+
+def r12():
+    # Wi-Fi only: a running download waits while only mobile data is up and continues on Wi-Fi.
+    set_wifi_only(True)
+    open_url('https://upload.wikimedia.org/wikipedia/commons/transcoded/c/c0/Big_Buck_Bunny_4K.webm/Big_Buck_Bunny_4K.webm.480p.vp9.webm', 20)
+    download_offer()
+    to_tab(405)
+    w(6)
+    sh('svc', 'wifi', 'disable')
+    waiting = wait_for('Waiting for Wi-Fi', 40)
+    shot('r12_waiting')
+    before = find(' of ')
+    w(6)
+    held = find(' of ')
+    sh('svc', 'wifi', 'enable')
+    w(25)
+    after = find(' of ')
+    moved = bool(held and after and held[2] != after[2]) or bool(find('Completed'))
+    shot('r12_resumed')
+    if find('Pause download'):
+        tapq('Pause download')
+        w(2)
+    set_wifi_only(False)
+    record('R12', bool(waiting) and moved,
+           f'waiting-for-wifi={bool(waiting)} held={held[2] if held else None} (before {before[2] if before else None}) after-wifi={after[2] if after else None}')
 
 
 for step in STEPS:

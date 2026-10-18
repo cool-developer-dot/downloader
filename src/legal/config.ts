@@ -36,7 +36,7 @@ const WEBSITE_ORIGIN = 'https://vidorax.app';
 export const legalConfig: LegalConfig = {
   productName: 'VidoraX',
   effectiveDate: '2026-08-25',
-  updatedDate: '2026-08-25',
+  updatedDate: '2026-10-10',
   contact: {
     privacyEmail: null,
     supportEmail: 'Vidoraxlabs@gmail.com',

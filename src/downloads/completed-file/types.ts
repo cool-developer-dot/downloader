@@ -9,6 +9,7 @@ export type CompletedMediaContainer =
   | 'mov'
   | 'avi'
   | 'wmv'
+  | 'mpg'
   | 'webm'
   | 'ts'
   | 'm4a'

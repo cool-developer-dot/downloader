@@ -14,6 +14,8 @@ export const mmkvKeys = {
   downloadNotificationEvents: 'vidorax.mmkv.downloads.notificationEvents.v1',
   /** Library grid/list preference (local only). */
   libraryViewMode: 'vidorax.mmkv.library.viewMode.v1',
+  /** Player timeline's right label: total length or time left (local only). */
+  playerDurationLabelMode: 'vidorax.mmkv.player.durationLabelMode.v1',
   firstLaunch: 'vidorax.mmkv.flags.firstLaunch',
   onboardingComplete: 'vidorax.mmkv.flags.onboardingComplete',
   analyticsEnabled: 'vidorax.mmkv.flags.analyticsEnabled',

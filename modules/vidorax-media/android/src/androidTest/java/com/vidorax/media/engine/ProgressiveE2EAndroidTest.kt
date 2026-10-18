@@ -10,6 +10,7 @@ import com.vidorax.media.library.StoragePaths
 import com.vidorax.media.model.Container
 import com.vidorax.media.model.DownloadErrorCode
 import com.vidorax.media.model.DownloadRecord
+import com.vidorax.media.model.DownloadSettings
 import com.vidorax.media.model.DownloadState
 import com.vidorax.media.model.EnqueueRequest
 import com.vidorax.media.model.LibraryItem
@@ -20,8 +21,10 @@ import com.vidorax.media.model.SourceKind
 import com.vidorax.media.net.HttpClient
 import com.vidorax.media.net.UrlPolicy
 import com.vidorax.media.plan.Probe
+import com.vidorax.media.transfer.PartsCheckpoint
 import com.vidorax.media.transfer.ProgressiveTransfer
 import java.io.File
+import java.nio.ByteBuffer
 import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
@@ -65,7 +68,10 @@ class ProgressiveE2EAndroidTest {
   private lateinit var server: MockWebServer
   private lateinit var media: ByteArray
 
-  private fun newEngine() = DownloadEngine(
+  /** A real MP4 (the fixture) followed by a 17 MiB `free` box: large enough for parallel connections, still valid. */
+  private lateinit var big: ByteArray
+
+  private fun newEngine(settings: DownloadSettings = DownloadSettings.DEFAULT) = DownloadEngine(
     store = store,
     prober = RealProber(Probe(http)),
     transfers = RealTransfers(ProgressiveTransfer(http)),
@@ -74,6 +80,7 @@ class ProgressiveE2EAndroidTest {
     library = RealLibraryWriter(library),
     paths = paths,
     scope = scope,
+    initialSettings = settings,
   )
 
   @Before fun setUp() = runBlocking {
@@ -88,7 +95,9 @@ class ProgressiveE2EAndroidTest {
     // The fixture server is on-device loopback; production refuses non-public hosts.
     http = HttpClient.create(urlPolicy = UrlPolicy.ALLOW_ALL)
     scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
-    server = MockWebServer().apply { dispatcher = MediaDispatcher(media); start() }
+    val pad = 17 * 1024 * 1024
+    big = media + ByteBuffer.allocate(8).putInt(pad + 8).put("free".toByteArray()).array() + ByteArray(pad) { (it % 251).toByte() }
+    server = MockWebServer().apply { dispatcher = MediaDispatcher(media, big); start() }
   }
 
   @After fun tearDown() {
@@ -239,6 +248,54 @@ class ProgressiveE2EAndroidTest {
     assertEquals("recovered file must be byte-identical to source", sha256(media), sha256(item.file.readBytes()))
   }
 
+  // ---------- several connections per file ----------
+
+  @Test fun aLargeFileIsDownloadedOverSeveralConnectionsByteForByte() = runBlocking {
+    val engine = newEngine(DownloadSettings.DEFAULT.copy(connectionsPerFile = 3))
+    val rec = engine.enqueue(request("/big.mp4"))
+    engine.awaitIdle()
+
+    assertEquals(DownloadState.COMPLETED, store.find(rec.id)!!.state)
+    val item = library.get(rec.id)!!
+    assertEquals("final file must be byte-identical to source", sha256(big), sha256(item.file.readBytes()))
+    assertEquals(Container.MP4, item.container)
+    val ranges = recordedRequests().mapNotNull { it.getHeader("Range") }
+    // The probe's and the transfer's `bytes=0-`, then the other parts as bounded ranges.
+    assertTrue("bounded part ranges: $ranges", ranges.count { Regex("bytes=\\d+-\\d+").matches(it) } >= 2)
+    assertFalse("work dir cleaned", paths.workDir(rec.id).exists())
+  }
+
+  @Test fun oneConnectionPerFileFetchesTheLargeFileInOneRequest() = runBlocking {
+    val engine = newEngine(DownloadSettings.DEFAULT.copy(connectionsPerFile = 1))
+    val rec = engine.enqueue(request("/big.mp4"))
+    engine.awaitIdle()
+
+    assertEquals(sha256(big), sha256(library.get(rec.id)!!.file.readBytes()))
+    val all = recordedRequests()
+    assertEquals("the probe's sniff and one plain GET", 2, all.size)
+    assertEquals(listOf("bytes=0-", null), all.map { it.getHeader("Range") })
+  }
+
+  @Test fun aLargeParallelDownloadSurvivesPauseAndAProcessRestart() = runBlocking {
+    val first = newEngine()
+    val rec = first.enqueue(request("/big-slow.mp4"))
+    val part = File(paths.workDir(rec.id), "download.part")
+    pollUntil(30_000) { (PartsCheckpoint.read(part)?.parts?.count { it.done > 0 } ?: 0) >= 2 }
+    first.pause(rec.id)
+    val saved = PartsCheckpoint.read(part)!!
+    assertEquals(big.size.toLong(), saved.total)
+    assertEquals("pre-sized to the whole file", big.size.toLong(), part.length())
+
+    // Process death: the row says DOWNLOADING with a byte count nobody can trust.
+    store.save(store.find(rec.id)!!.copy(state = DownloadState.DOWNLOADING, bytesDone = 1))
+    val second = newEngine()
+    second.restore()
+    second.awaitIdle()
+
+    assertEquals(DownloadState.COMPLETED, store.find(rec.id)!!.state)
+    assertEquals("recovered file must be byte-identical to source", sha256(big), sha256(library.get(rec.id)!!.file.readBytes()))
+  }
+
   // ---------- helpers ----------
 
   private fun request(path: String, title: String = "Clip", site: SiteId = SiteId.WEB): EnqueueRequest =
@@ -271,13 +328,14 @@ class ProgressiveE2EAndroidTest {
 }
 
 /** Serves the fixture with real Range/ETag semantics plus deliberately misbehaving endpoints. */
-private class MediaDispatcher(private val media: ByteArray) : Dispatcher() {
+private class MediaDispatcher(private val media: ByteArray, private val big: ByteArray) : Dispatcher() {
   private val verifyFailCalls = AtomicInteger(0)
 
   override fun dispatch(request: RecordedRequest): MockResponse {
     val path = request.requestUrl?.encodedPath ?: ""
     val hasRange = request.getHeader("Range") != null
     return when {
+      path.startsWith("/big") -> bigResponse(request, slow = path.contains("slow"))
       path.startsWith("/forbidden") -> MockResponse().setResponseCode(403)
       path.startsWith("/verifyfail") ->
         if (hasRange) rangeResponse(request, throttle = false) // probe sees a valid header
@@ -311,6 +369,19 @@ private class MediaDispatcher(private val media: ByteArray) : Dispatcher() {
       .setHeader("Content-Type", "video/mp4").setHeader("Accept-Ranges", "bytes").setHeader("ETag", ETAG)
       .setHeader("Content-Range", "bytes $start-${media.size - 1}/${media.size}")
       .setBody(Buffer().write(body))
+  }
+
+  /** The large file with full byte-range semantics, bounded ranges included. */
+  private fun bigResponse(request: RecordedRequest, slow: Boolean): MockResponse {
+    val range = request.getHeader("Range")?.removePrefix("bytes=")
+    val base = MockResponse().setHeader("Content-Type", "video/mp4").setHeader("Accept-Ranges", "bytes").setHeader("ETag", ETAG)
+    if (range == null) return base.setResponseCode(200).setBody(Buffer().write(big))
+    val start = range.substringBefore('-').toInt()
+    val end = range.substringAfter('-').takeIf { it.isNotEmpty() }?.toInt()?.coerceAtMost(big.size - 1) ?: (big.size - 1)
+    return base.setResponseCode(206)
+      .setHeader("Content-Range", "bytes $start-$end/${big.size}")
+      .setBody(Buffer().write(big.copyOfRange(start, end + 1)))
+      .apply { if (slow) throttleBody(64 * 1024, 100, TimeUnit.MILLISECONDS) }
   }
 
   private companion object {

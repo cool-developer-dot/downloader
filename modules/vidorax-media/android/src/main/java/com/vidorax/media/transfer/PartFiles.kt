@@ -1,5 +1,6 @@
 package com.vidorax.media.transfer
 
+import com.vidorax.media.net.Validators
 import java.io.File
 import java.io.IOException
 
@@ -31,8 +32,10 @@ internal inline fun <T> diskWrite(block: () -> T): T =
 internal object ResumeValidator {
   fun fileFor(partFile: File): File = File(partFile.path + SUFFIX)
 
+  /** Normalized ([Validators.normalize]): a partial an older build started with an unquoted ETag still resumes. */
   fun read(partFile: File): String? =
     runCatching { fileFor(partFile).takeIf { it.isFile }?.readText()?.trim()?.takeIf { it.isNotEmpty() } }.getOrNull()
+      ?.let { Validators.normalize(it) }
 
   /** Records the validator of the response now filling the `.part` from byte 0; null forgets an older one. */
   fun write(partFile: File, validator: String?) {

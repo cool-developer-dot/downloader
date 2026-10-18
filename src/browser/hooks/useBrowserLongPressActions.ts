@@ -8,6 +8,9 @@ import {
   type BrowserActionContext,
   type BrowserLinkLongPressPayload,
 } from '@/browser/actions';
+import { openLinkInNewTab } from '@/browser/actions/open-link-in-new-tab';
+import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
+import { useBrowserStore } from '@/browser/stores';
 import { useTranslation } from '@/localization';
 
 function isActionableLink(url: string): boolean {
@@ -57,8 +60,11 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
       linkText: payload.text,
       pageUrl: payload.pageUrl,
       title: payload.text,
-      openInNewTab: (_url: string) => {
-        // Tabs phase will wire this callback via registry re-registration.
+      openInNewTab: (url: string) => {
+        openLinkInNewTab(url, {
+          createTab: (options) => useBrowserStore.getState().createTab(options),
+          onLimitReached: announceTabsLimitReached,
+        });
       },
     };
   }, [payload]);

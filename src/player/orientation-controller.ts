@@ -101,6 +101,21 @@ async function restoreAppDefaultOrientation(): Promise<void> {
   }
 }
 
+/**
+ * Website video fullscreen (src/browser/fullscreen): turns the phone for the page's video without touching the
+ * player's own orientation mode.
+ */
+export async function lockWebFullscreenOrientation(
+  orientation: 'landscape' | 'portrait',
+): Promise<void> {
+  await applyOrientationMode(orientation);
+}
+
+/** Website video fullscreen ended: back to the app's portrait default. */
+export async function restoreWebFullscreenOrientation(): Promise<void> {
+  await restoreAppDefaultOrientation();
+}
+
 /** Alias used by lifecycle restore paths (player leave / error). */
 export async function restoreOrientation(): Promise<void> {
   userMode = DEFAULT_ORIENTATION_MODE;

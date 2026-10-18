@@ -1,10 +1,13 @@
 package com.vidorax.media
 
 import android.content.Context
+import android.os.StatFs
 import com.vidorax.media.analyze.BrowserIdentity
 import com.vidorax.media.analyze.PageFetcher
 import com.vidorax.media.db.MediaDatabase
 import com.vidorax.media.files.FileActions
+import com.vidorax.media.incoming.IncomingMediaRegistry
+import com.vidorax.media.library.IncomingImport
 import com.vidorax.media.library.GalleryExport
 import com.vidorax.media.library.LegacyImport
 import com.vidorax.media.library.LibraryStore
@@ -33,6 +36,20 @@ class MediaServices private constructor(context: Context) {
   val fileActions = FileActions(context)
   val storageUsage = StorageUsage(paths, library)
   val legacyImport = LegacyImport(context, paths, library, mediaInfo, thumbnails)
+
+  /** Files other apps opened in VidoraX during this process, by token. */
+  val incomingMedia = IncomingMediaRegistry()
+
+  /** "Save to VidoraX" for those files. */
+  val incomingImport = IncomingImport(
+    paths = paths,
+    library = library,
+    openStream = { uri -> context.contentResolver.openInputStream(uri) },
+    readMetadata = mediaInfo::read,
+    makeThumbnail = thumbnails::create,
+    findSameContent = { file, audioOnly -> savedVideos.findByContent(file, excludeId = "", audioOnly = audioOnly) },
+    freeBytes = { StatFs(paths.filesDir.path).availableBytes },
+  )
 
   // Advanced network: the saved User-Agent and timeouts apply from process start, before any JavaScript runs.
   init {

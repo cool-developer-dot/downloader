@@ -14,6 +14,7 @@ import androidx.media3.extractor.Extractor
 import androidx.media3.extractor.ExtractorsFactory
 import androidx.media3.extractor.ts.AdtsExtractor
 import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
+import androidx.media3.extractor.ts.PsExtractor
 import androidx.media3.extractor.ts.TsExtractor
 import androidx.media3.inspector.MediaExtractorCompat
 import java.io.File
@@ -31,6 +32,8 @@ internal enum class TrackContainer {
   AVI,
   FLV,
   THREE_GP,
+  /** MPEG program stream (`.mpg`/`.mpeg`/`.vob`, F4): MPEG-1/2 video with MP2/AC-3 audio, never kept as such. */
+  MPEG_PS,
   /** ADTS AAC (an HLS packed-audio rendition with its ID3 timestamps removed). */
   PACKED_AUDIO,
   /** Media3 sniffs it. */
@@ -81,6 +84,7 @@ internal object ProcessingExtractors {
       )
     }
     TrackContainer.PACKED_AUDIO -> ExtractorsFactory { arrayOf<Extractor>(AdtsExtractor()) }
+    TrackContainer.MPEG_PS -> ExtractorsFactory { arrayOf<Extractor>(PsExtractor()) }
     else -> DefaultExtractorsFactory()
   }
 }
@@ -375,6 +379,7 @@ internal object TrackContainers {
       return TrackContainer.AVI
     }
     if (head.size >= 3 && String(head, 0, 3, Charsets.ISO_8859_1) == "FLV") return TrackContainer.FLV
+    if (com.vidorax.media.plan.MpegProgramStream.isProgramStream(head)) return TrackContainer.MPEG_PS
     // MP3, ADTS and anything else: Media3's default extractors sniff it.
     return TrackContainer.UNKNOWN
   }

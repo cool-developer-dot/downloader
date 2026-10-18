@@ -40,6 +40,12 @@ internal class AndroidRunnerHost(
       mode = Mode.SERVICE
       return
     }
+    // In the background (an F3 rule cleared, a wake-up started the work) both are refused; a plain job is allowed.
+    if (BackgroundDownloads.scheduleContinuation(context)) {
+      Log.i(TAG, "downloads continue under a background job")
+      notifications.showSummary(summary)
+      return
+    }
     // Truthful degradation: the transfer still runs, but only for as long as Android keeps this process alive.
     Log.w(TAG, "No background runner could be started; downloads run only while the app process lives")
     notifications.showSummary(summary)

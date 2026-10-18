@@ -141,3 +141,18 @@ internal class TransformerTranscoder(private val context: Context) : Transcoder 
     const val PROGRESS_POLL_MS = 500L
   }
 }
+
+/**
+ * Sends an MPEG audio Layer II track to [mpegAudio] — no Android device has a decoder for it, so Media3 Transformer
+ * cannot convert it — and every other track to [platform] (F4).
+ */
+internal class RoutingTranscoder(
+  private val platform: Transcoder,
+  private val mpegAudio: Transcoder = MpegAudioTranscoder(),
+) : Transcoder {
+  override suspend fun transcode(request: TranscodeRequest, output: File, onProgress: (Double) -> Unit): TranscodeOutcome {
+    val layer2 = request.track == TrackKind.AUDIO &&
+      MediaFiles.read(request.input, TrackContainers.sniff(request.input))?.audio?.mimeType == MpegAudioDecoder.MIME_TYPE
+    return (if (layer2) mpegAudio else platform).transcode(request, output, onProgress)
+  }
+}

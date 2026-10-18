@@ -24,7 +24,7 @@ export const BROWSER_CHROME_ACTIONS: readonly BrowserChromeAction[] = [
   },
   { id: 'copy_link', icon: 'content-copy', accessibilityLabel: 'Copy link', enabled: false },
   { id: 'reader_mode', icon: 'book-open-page-variant', accessibilityLabel: 'Reader mode', enabled: false },
-  { id: 'translate', icon: 'translate', accessibilityLabel: 'Translate page', enabled: false },
+  { id: 'translate', icon: 'translate', accessibilityLabel: 'Translate page', enabled: true },
   { id: 'desktop_site', icon: 'monitor', accessibilityLabel: 'Desktop site', enabled: false },
   { id: 'ai_assistant', icon: 'auto-fix', accessibilityLabel: 'AI assistant', enabled: false },
   { id: 'qr_code', icon: 'qrcode', accessibilityLabel: 'Scan QR code', enabled: false },

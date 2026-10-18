@@ -1,6 +1,9 @@
 import { persist } from 'zustand/middleware';
 
 import { isSupportedLanguage, normalizeLanguageCode, storageKeys } from '@/constants';
+import { normalizeConnectionsPerFile, normalizeLiveRecordingMaxMinutes } from '@/downloads/v2/settings';
+import { normalizeDownloadHours } from '@/downloads/v2/conditions';
+import { normalizeSpeedLimit } from '@/downloads/v2/speed-limit';
 import { normalizeFileExtensionChoice } from '@/downloads/v2/file-extension';
 import { normalizeFilenameTemplate } from '@/downloads/v2/filename-template';
 import { bindLanguageReader } from '@/localization/translate';
@@ -84,6 +87,15 @@ export const useSettingsStore = createStore<SettingsStore>()(
         dataLimitDailyMb: state.dataLimitDailyMb,
         dataLimitMonthlyMb: state.dataLimitMonthlyMb,
         saveToGallery: state.saveToGallery,
+        connectionsPerFile: state.connectionsPerFile,
+        backgroundPlayback: state.backgroundPlayback,
+        downloadSpeedLimit: state.downloadSpeedLimit,
+        downloadHours: state.downloadHours,
+        notOnRoaming: state.notOnRoaming,
+        pauseOnLowBattery: state.pauseOnLowBattery,
+        onlyWhileCharging: state.onlyWhileCharging,
+        liveRecording: state.liveRecording,
+        liveRecordingMaxMinutes: state.liveRecordingMaxMinutes,
         tapToToggle: state.tapToToggle,
       }),
       merge: (persisted, current) => {
@@ -115,6 +127,30 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.confirmBeforeStart === 'boolean' ? raw.confirmBeforeStart : current.confirmBeforeStart,
           saveToGallery:
             typeof raw.saveToGallery === 'boolean' ? raw.saveToGallery : current.saveToGallery,
+          connectionsPerFile:
+            raw.connectionsPerFile === undefined
+              ? current.connectionsPerFile
+              : normalizeConnectionsPerFile(raw.connectionsPerFile),
+          downloadSpeedLimit:
+            raw.downloadSpeedLimit === undefined
+              ? current.downloadSpeedLimit
+              : normalizeSpeedLimit(raw.downloadSpeedLimit),
+          backgroundPlayback:
+            typeof raw.backgroundPlayback === 'boolean'
+              ? raw.backgroundPlayback
+              : current.backgroundPlayback,
+          downloadHours:
+            raw.downloadHours === undefined ? current.downloadHours : normalizeDownloadHours(raw.downloadHours),
+          notOnRoaming: typeof raw.notOnRoaming === 'boolean' ? raw.notOnRoaming : current.notOnRoaming,
+          pauseOnLowBattery:
+            typeof raw.pauseOnLowBattery === 'boolean' ? raw.pauseOnLowBattery : current.pauseOnLowBattery,
+          onlyWhileCharging:
+            typeof raw.onlyWhileCharging === 'boolean' ? raw.onlyWhileCharging : current.onlyWhileCharging,
+          liveRecording: typeof raw.liveRecording === 'boolean' ? raw.liveRecording : current.liveRecording,
+          liveRecordingMaxMinutes:
+            raw.liveRecordingMaxMinutes === undefined
+              ? current.liveRecordingMaxMinutes
+              : normalizeLiveRecordingMaxMinutes(raw.liveRecordingMaxMinutes),
           tapToToggle:
             typeof raw.tapToToggle === 'boolean' ? raw.tapToToggle : current.tapToToggle,
           autoResume:

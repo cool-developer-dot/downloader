@@ -8,6 +8,9 @@ export const selectFilenameTemplate = (state: SettingsStore) => state.filenameTe
 export const selectFileExtension = (state: SettingsStore) => state.fileExtension;
 export const selectConfirmBeforeStart = (state: SettingsStore) => state.confirmBeforeStart;
 export const selectSaveToGallery = (state: SettingsStore) => state.saveToGallery;
+export const selectConnectionsPerFile = (state: SettingsStore) => state.connectionsPerFile;
+export const selectBackgroundPlayback = (state: SettingsStore) => state.backgroundPlayback;
+export const selectDownloadSpeedLimit = (state: SettingsStore) => state.downloadSpeedLimit;
 export const selectTapToToggle = (state: SettingsStore) => state.tapToToggle;
 export const selectAutoResume = (state: SettingsStore) => state.autoResume;
 export const selectDebugLogs = (state: SettingsStore) => state.debugLogs;
@@ -19,5 +22,11 @@ export const selectLanguage = (state: SettingsStore) => state.language;
 export const selectDefaultTab = (state: SettingsStore) => state.defaultTab;
 export const selectMaxConcurrentDownloads = (state: SettingsStore) =>
   state.maxConcurrentDownloads;
+export const selectDownloadHours = (state: SettingsStore) => state.downloadHours;
+export const selectNotOnRoaming = (state: SettingsStore) => state.notOnRoaming;
+export const selectPauseOnLowBattery = (state: SettingsStore) => state.pauseOnLowBattery;
+export const selectOnlyWhileCharging = (state: SettingsStore) => state.onlyWhileCharging;
+export const selectLiveRecording = (state: SettingsStore) => state.liveRecording;
+export const selectLiveRecordingMaxMinutes = (state: SettingsStore) => state.liveRecordingMaxMinutes;
 export const selectDataLimitDailyMb = (state: SettingsStore) => state.dataLimitDailyMb;
 export const selectDataLimitMonthlyMb = (state: SettingsStore) => state.dataLimitMonthlyMb;

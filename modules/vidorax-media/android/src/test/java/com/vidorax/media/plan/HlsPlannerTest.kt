@@ -642,4 +642,121 @@ class HlsPlannerTest {
     assertNull(HlsPlanner.withParentQuery("https://c.example/v.m3u8?own=1", "https://c.example/m.m3u8?auth=1"))
     assertNull(HlsPlanner.withParentQuery("https://c.example/v.m3u8", "https://c.example/m.m3u8"))
   }
+
+  // ---------- F6: live recording ----------
+
+  private val live = """
+    #EXTM3U
+    #EXT-X-VERSION:3
+    #EXT-X-TARGETDURATION:6
+    #EXT-X-MEDIA-SEQUENCE:1041
+    #EXT-X-DISCONTINUITY-SEQUENCE:7
+    #EXTINF:6.0,
+    s1041.ts
+    #EXTINF:6.0,
+    s1042.ts
+    #EXT-X-DISCONTINUITY
+    #EXTINF:6.0,
+    s1043.ts
+    #EXT-X-GAP
+    #EXTINF:6.0,
+    s1044.ts
+    #EXTINF:5.5,
+    s1045.ts
+  """
+
+  private fun planLive(path: String, choice: VariantChoice? = null) = runBlocking { planner.planLive(url(path), context, choice) }
+
+  private fun window(path: String) = runBlocking { planner.liveWindow(url(path), context) }
+
+  @Test fun aLivePlaylistIsPlannedForRecordingWithItsTargetDuration() {
+    playlist("/rec/index.m3u8", live)
+    val plan = ready(planLive("/rec/index.m3u8"))
+    assertEquals(6_000_000L, plan.live?.targetDurationUs)
+    assertFalse(plan.live!!.ended)
+    assertEquals(url("/rec/index.m3u8"), plan.mediaPlaylistUrl)
+    assertNull("a live stream has no size", plan.estimatedBytes)
+    playlist("/v/index.m3u8", vod)
+    assertNull("a download plan is no recording", ready(plan("/v/index.m3u8")).live)
+  }
+
+  @Test fun theLiveWindowNumbersSegmentsBySequenceAndSkipsGaps() {
+    playlist("/rec/index.m3u8", live)
+    val now = window("/rec/index.m3u8")
+    assertEquals(listOf(1041L, 1042L, 1043L, 1045L), now.segments.map { it.sequence })
+    assertEquals(listOf(7L, 7L, 8L, 8L), now.segments.map { it.discontinuity })
+    assertEquals(url("/rec/s1043.ts"), now.segments[2].media.url)
+    assertEquals(5_500_000L, now.segments.last().durationUs)
+    assertEquals(6_000_000L, now.targetDurationUs)
+    assertFalse(now.ended)
+
+    playlist("/rec/index.m3u8", "$live\n#EXT-X-ENDLIST")
+    assertTrue("the stream ended", window("/rec/index.m3u8").ended)
+  }
+
+  @Test fun aLiveStreamPicksAVariantThatCarriesItsOwnSound() {
+    playlist(
+      "/lm/master.m3u8",
+      """
+      #EXTM3U
+      #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="en",DEFAULT=YES,URI="a.m3u8"
+      #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,CODECS="avc1.640028,mp4a.40.2",AUDIO="aud"
+      hi.m3u8
+      #EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360,CODECS="avc1.4d401e,mp4a.40.2"
+      low.m3u8
+      """,
+    )
+    playlist("/lm/hi.m3u8", live)
+    playlist("/lm/low.m3u8", live)
+    playlist("/lm/a.m3u8", live)
+    val plan = ready(planLive("/lm/master.m3u8"))
+    assertEquals(url("/lm/low.m3u8"), plan.mediaPlaylistUrl)
+    assertNull(plan.audio)
+    val hi = VariantChoice(videoId = url("/lm/hi.m3u8"), audioId = null, maxHeight = null)
+    refused(planLive("/lm/master.m3u8", hi), ProbeFailure.UNSUPPORTED_FORMAT)
+
+    playlist(
+      "/ls/master.m3u8",
+      """
+      #EXTM3U
+      #EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="en",DEFAULT=YES,URI="a.m3u8"
+      #EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,CODECS="avc1.640028,mp4a.40.2",AUDIO="aud"
+      hi.m3u8
+      """,
+    )
+    playlist("/ls/hi.m3u8", live)
+    playlist("/ls/a.m3u8", live)
+    refused(planLive("/ls/master.m3u8"), ProbeFailure.UNSUPPORTED_FORMAT)
+  }
+
+  @Test fun anEncryptedLiveStreamIsRefusedWhenPlannedAndWhenItTurnsEncrypted() {
+    val encrypted = live.replace("#EXT-X-DISCONTINUITY-SEQUENCE:7", "#EXT-X-DISCONTINUITY-SEQUENCE:7\n#EXT-X-KEY:METHOD=AES-128,URI=\"k\"")
+    playlist("/enc/index.m3u8", encrypted)
+    refused(planLive("/enc/index.m3u8"), ProbeFailure.DRM_PROTECTED)
+
+    playlist("/turn/index.m3u8", encrypted)
+    try {
+      window("/turn/index.m3u8")
+      fail("expected a refusal")
+    } catch (e: com.vidorax.media.net.MediaRefusedException) {
+      assertEquals(ProbeFailure.DRM_PROTECTED, e.reason)
+    }
+  }
+
+  @Test fun aLiveWindowThatCannotBeReadThrowsLikeATransfer() {
+    routes["/down/index.m3u8"] = { MockResponse().setResponseCode(503) }
+    try {
+      window("/down/index.m3u8")
+      fail("expected an HTTP failure")
+    } catch (e: com.vidorax.media.net.MediaHttpException) {
+      assertEquals(503, e.statusCode)
+    }
+    playlist("/notmedia/index.m3u8", "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nv.m3u8")
+    try {
+      window("/notmedia/index.m3u8")
+      fail("expected a refusal")
+    } catch (e: com.vidorax.media.net.MediaRefusedException) {
+      assertEquals(ProbeFailure.UNSUPPORTED_FORMAT, e.reason)
+    }
+  }
 }

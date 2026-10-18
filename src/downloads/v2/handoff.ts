@@ -206,7 +206,8 @@ export async function handOffVerifiedVariant(
     if (existing) {
       return existing;
     }
-    if (decision.request.kind === 'hls' || decision.request.kind === 'dash' || decision.request.kind === 'split') {
+    const kind = decision.request.kind;
+    if (kind === 'hls' || kind === 'dash' || kind === 'split' || kind === 'live') {
       // Streams and split tracks: the native classifier decides for the exact variant / pair about to be enqueued.
       const verdict = await classifyStream(deps.engine, decision.request);
       if (!verdict.ok) {

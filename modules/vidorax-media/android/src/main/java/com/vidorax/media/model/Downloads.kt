@@ -164,7 +164,18 @@ data class DownloadRecord(
   val libraryItemId: String?,
   val createdAt: Long,
   val updatedAt: Long,
+  /** F3, [DownloadState.WAITING_CONDITIONS] only: the rule that holds it. */
+  val waitReason: WaitReason? = null,
+  /** F3, [DownloadState.WAITING_CONDITIONS] only: when a time rule ends (epoch ms). */
+  val waitUntil: Long? = null,
+  /** F3 "Start at…" (epoch ms), persisted in `download_schedule`. */
+  val startAt: Long? = null,
+  /** F6: the recorded length of a live recording so far (ms), from its checkpoint. */
+  val recordedMs: Long? = null,
 )
+
+/** A download's own speed limit and Priority mark (F2), persisted in `download_bandwidth`. */
+data class DownloadBandwidth(val id: String, val speedLimitBytesPerSecond: Long?, val priority: Boolean)
 
 data class DownloadProgress(
   val id: String,
@@ -177,6 +188,8 @@ data class DownloadProgress(
   val etaSeconds: Long?,
   /** [ProgressPhase.PROCESSING] only: what the engine is doing with the downloaded tracks. */
   val stage: ProcessingStage? = null,
+  /** F6: a live recording's recorded length so far (ms). */
+  val recordedMs: Long? = null,
   /**
    * #315, HLS/DASH segment downloads only (null otherwise): segments durably on disk and segments in all, over the
    * video and a separate audio track.
@@ -191,11 +204,55 @@ data class DownloadSettings(
   val autoSaveToGallery: Boolean,
   /** Null means best available. */
   val preferredMaxHeight: Int?,
+  /**
+   * Connections one file may use at once (parallel byte ranges of a large progressive file, segments of a stream
+   * fetched ahead). Still one [maxConcurrent] slot per download.
+   */
+  val connectionsPerFile: Int = DEFAULT_CONNECTIONS,
+  /** All downloads together, bytes per second (Download Settings → "Speed limit"); null = no limit. */
+  val speedLimitBytesPerSecond: Long? = null,
+  /** F3: the daily download hours; null = any time. */
+  val window: DownloadWindow? = null,
+  /** F3: hold downloads while roaming. */
+  val notOnRoaming: Boolean = false,
+  /** F3: hold downloads at ≤ [com.vidorax.media.engine.DownloadRules.LOW_BATTERY_PERCENT] % while not charging. */
+  val pauseOnLowBattery: Boolean = false,
+  /** F3: run downloads only while charging. */
+  val onlyWhileCharging: Boolean = false,
+  /** The app's language for the F3 wait texts in notifications ("en" or "ur"). */
+  val language: String = "en",
+  /** F6: Settings → "Live recording (beta)"; off = live streams are refused. */
+  val liveRecording: Boolean = false,
+  /** F6: a recording stops by itself after this many minutes. */
+  val liveRecordingMaxMinutes: Int = DEFAULT_LIVE_MAX_MINUTES,
 ) {
   companion object {
+    const val MIN_LIVE_MAX_MINUTES = 15
+    const val MAX_LIVE_MAX_MINUTES = 720
+    /** F6 default: 2 hours. */
+    const val DEFAULT_LIVE_MAX_MINUTES = 120
     const val MIN_CONCURRENT = 1
     const val MAX_CONCURRENT = 4
+    const val MIN_CONNECTIONS = 1
+    const val MAX_CONNECTIONS = 4
+    /** Tester-facing default of "Connections per file". */
+    const val DEFAULT_CONNECTIONS = 3
     // A finished video also appears in the device gallery unless the user turned that off.
     val DEFAULT = DownloadSettings(maxConcurrent = 2, wifiOnly = false, autoSaveToGallery = true, preferredMaxHeight = null)
+  }
+}
+
+/**
+ * F3: the daily download hours, in minutes after local midnight. [startMinute] > [endMinute] crosses midnight; equal
+ * means the whole day. [days] are ISO weekdays (1 = Monday … 7 = Sunday) on which the window starts.
+ */
+data class DownloadWindow(val startMinute: Int, val endMinute: Int, val days: Set<Int>) {
+  init {
+    require(startMinute in 0 until MINUTES_PER_DAY && endMinute in 0 until MINUTES_PER_DAY) { "minutes out of range" }
+    require(days.all { it in 1..7 }) { "days are ISO weekdays 1..7" }
+  }
+
+  companion object {
+    const val MINUTES_PER_DAY = 24 * 60
   }
 }

@@ -30,6 +30,7 @@ class DownloadActionReceiver : BroadcastReceiver() {
             ACTION_RESUME -> engine.resume(id)
             ACTION_RETRY -> engine.retry(id)
             ACTION_CANCEL -> engine.cancel(id)
+            ACTION_STOP -> engine.stopRecording(id)
             else -> Unit
           }
         }
@@ -44,15 +45,17 @@ class DownloadActionReceiver : BroadcastReceiver() {
     const val ACTION_RESUME = "com.vidorax.media.action.RESUME"
     const val ACTION_RETRY = "com.vidorax.media.action.RETRY"
     const val ACTION_CANCEL = "com.vidorax.media.action.CANCEL"
+    const val ACTION_STOP = "com.vidorax.media.action.STOP"
     const val EXTRA_ID = "downloadId"
 
-    private val ACTIONS = setOf(ACTION_PAUSE, ACTION_RESUME, ACTION_RETRY, ACTION_CANCEL)
+    private val ACTIONS = setOf(ACTION_PAUSE, ACTION_RESUME, ACTION_RETRY, ACTION_CANCEL, ACTION_STOP)
 
     internal fun actionName(action: DownloadNotificationContent.Action): String = when (action) {
       DownloadNotificationContent.Action.PAUSE -> ACTION_PAUSE
       DownloadNotificationContent.Action.RESUME -> ACTION_RESUME
       DownloadNotificationContent.Action.RETRY -> ACTION_RETRY
       DownloadNotificationContent.Action.CANCEL -> ACTION_CANCEL
+      DownloadNotificationContent.Action.STOP -> ACTION_STOP
     }
   }
 }

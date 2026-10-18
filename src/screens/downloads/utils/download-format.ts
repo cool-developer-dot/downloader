@@ -16,7 +16,9 @@ import {
 import type { QueueWaitingReason } from '@/downloads/scheduler';
 import type { ProcessingStage } from '@modules/vidorax-media/src/VidoraMedia.types';
 
-import { translate } from '@/localization/translate';
+import { waitLabel } from '@/downloads/v2/conditions';
+import { recordingLine } from '@/downloads/v2/live-recording';
+import { getActiveLanguage, translate } from '@/localization/translate';
 import type { TranslationKey } from '@/localization/types';
 
 import { DOWNLOAD_SECTION_ORDER } from '../constants/downloads.constants';
@@ -247,7 +249,8 @@ export function getExecutionStatusLabel(options: {
   return translate(DOWNLOAD_EXECUTION_KEYS[state]);
 }
 
-export function buildMetaLine(item: DownloadItem): string {
+/** [options.hideSize]: F6 — a recording has no total; its size so far is on its own line. */
+export function buildMetaLine(item: DownloadItem, options?: { hideSize?: boolean }): string {
   const parts: string[] = [];
   const mediaType =
     item.container?.toUpperCase() ||
@@ -259,7 +262,7 @@ export function buildMetaLine(item: DownloadItem): string {
           ? 'TS'
           : extractMediaType(item.fileName));
   const size =
-    item.status === 'COMPLETED' && item.fileSize === '0'
+    options?.hideSize || (item.status === 'COMPLETED' && item.fileSize === '0')
       ? null
       : formatDownloadFileSize(item.fileSize);
   const platform = formatPlatform(item.platform);
@@ -296,6 +299,12 @@ export function buildProgressMeta(
         ? formatDownloadFileSize(String(transfer.totalBytes))
         : formatDownloadFileSize(item.fileSize);
     return size ? `${size} saved` : null;
+  }
+
+  // F6: a live recording has no total, speed or ETA — its length and size so far.
+  const recording = item.status === 'DOWNLOADING' ? recordingLabelFor(transfer) : null;
+  if (recording) {
+    return recording;
   }
 
   if (
@@ -359,7 +368,31 @@ export function buildProgressMeta(
         ? `${downloaded} downloaded`
         : null;
 
+  // F3: a download held by a rule says why ("Scheduled for 02:00", "Waiting for charging"…) and keeps its bytes.
+  const waiting = waitingLabelFor(transfer);
+  if (waiting) {
+    // Left-to-right marks keep "52.6 MB of 144.8 MB" in order after an Urdu label (no effect in English).
+    const size = transfer?.bytesWritten && sizePart ? `\u200E${sizePart}\u200E` : null;
+    return [waiting, size].filter(Boolean).join(' · ');
+  }
+
   return [sizePart, speed, eta].filter(Boolean).join(' · ') || null;
+}
+
+/** F6: "Recording · 12:34 · 85 MB" while a live stream records; null for anything else. */
+export function recordingLabelFor(transfer?: TransferProgressSnapshot | null): string | null {
+  if (!transfer?.recording) {
+    return null;
+  }
+  const size = transfer.bytesWritten > 0 ? formatDownloadFileSize(String(transfer.bytesWritten)) : null;
+  return recordingLine(translate('downloads.recording'), transfer.recordedMs, size);
+}
+
+/** F3: the wait label of a `waiting_conditions` download, in the app's language; null otherwise. */
+export function waitingLabelFor(transfer?: TransferProgressSnapshot | null, now: number = Date.now()): string | null {
+  return waitLabel(transfer?.waitReason, transfer?.waitUntil, now, getActiveLanguage(), (key, params) =>
+    translate(key as TranslationKey, params),
+  );
 }
 
 export function groupDownloadsIntoSections(
@@ -393,6 +426,7 @@ export function groupDownloadsIntoSections(
 }
 
 export type DownloadCardAction =
+  | 'stop'
   | 'pause'
   | 'resume'
   | 'cancel'
@@ -411,6 +445,8 @@ export type LocalMediaActionOptions = {
   supportsResume?: boolean | null;
   /** A FAILED row's error code: protected/unsupported sources get no Retry. */
   errorCode?: string | null;
+  /** F6: a live recording — stopped (and kept), never paused. */
+  recording?: boolean | null;
 };
 
 /** Canonical Open/Share gate — Card and Details must share this. */
@@ -464,6 +500,11 @@ export function getSupportedActions(
 
   if (status === 'CANCELLED') {
     return ['remove'];
+  }
+
+  // F6: Stop keeps what was recorded; Cancel throws it away.
+  if (status === 'DOWNLOADING' && localMedia?.recording) {
+    return ['stop', 'cancel'];
   }
 
   const runtime = resolveTransferRuntime(status, localMedia);

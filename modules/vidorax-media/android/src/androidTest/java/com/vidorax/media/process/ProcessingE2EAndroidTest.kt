@@ -33,7 +33,8 @@ class ProcessingE2EAndroidTest {
 
   @Before fun setUp() {
     work = File(context.cacheDir, "processing-e2e").apply { deleteRecursively(); mkdirs() }
-    processor = MediaProcessor(Remuxer(), TransformerTranscoder(context), AndroidCodecSupport)
+    // As DownloadEngineProvider wires it: MP2 sound goes to VidoraX's own decoder (F4).
+    processor = MediaProcessor(Remuxer(), RoutingTranscoder(TransformerTranscoder(context)), AndroidCodecSupport)
   }
 
   @After fun tearDown() {
@@ -173,5 +174,53 @@ class ProcessingE2EAndroidTest {
     val result = process(ProcessingInput.Single(TrackFile(wmv, TrackContainer.UNKNOWN)))
     assertEquals(ProcessingOperation.KEEP, result.operation)
     assertEquals(wmv, result.file)
+  }
+
+  // --- F4: MPEG program streams (.mpg / .mpeg / .vob) and MP2 sound ---
+
+  @Test fun mp2SoundIsConvertedToAacAndTheH264Kept() {
+    // MPEG-TS with H.264 + MP2 (as DVB recordings are): the H.264 is copied, the MP2 goes through MpegAudioDecoder and
+    // the platform AAC encoder — the path every .mpg's sound takes.
+    val result = process(ProcessingInput.Single(TrackFile(fixture("h264-mp2.ts"), TrackContainer.TS)))
+    assertEquals(result.note, ProcessingOperation.TRANSCODE, result.operation)
+    assertPlaysBothTracks(result.file, 1_800L..2_300L, video = "video/avc", audio = "audio/mp4a-latm")
+  }
+
+  /**
+   * MPEG-1/2 video needs a platform MPEG-2 decoder: Android's own (`c2.android.mpeg2.decoder`) is enabled only on TV
+   * devices (`domain="tv"`); phones have one when their chip vendor ships it. Without it the download is kept as it is,
+   * for "Open with" — the original file, never the re-packaged copy of an MPEG-1 system stream.
+   */
+  private fun assertConvertedOrKept(name: String) {
+    val input = fixture(name)
+    val result = process(ProcessingInput.Single(TrackFile(input, TrackContainer.MPEG_PS)))
+    if (AndroidCodecSupport.canDecode("video/mpeg2")) {
+      assertEquals("$name: ${result.note}", ProcessingOperation.TRANSCODE, result.operation)
+      assertEquals(Container.MP4, result.container)
+      assertPlaysBothTracks(result.file, 1_800L..2_500L, video = "video/avc", audio = "audio/mp4a-latm")
+    } else {
+      assertEquals("$name: ${result.note}", ProcessingOperation.KEEP, result.operation)
+      assertEquals(input, result.file)
+    }
+    assertTrue("no re-packaged copy is left", !File(work, MediaProcessor.REWRAPPED_PS).exists())
+  }
+
+  @Test fun mpeg2ProgramStreamIsConvertedOrKept() = assertConvertedOrKept("ps-dvd.vob")
+
+  @Test fun mpeg1SystemStreamIsConvertedOrKept() = assertConvertedOrKept("ps-mpeg1.mpg")
+
+  @Test fun mpeg2VideoInMpeg1PackagingIsConvertedOrKept() = assertConvertedOrKept("ps-mpeg2.mpg")
+
+  @Test fun ac3VobIsConvertedWhereTheDeviceDecodesBothTracksElseKept() {
+    val vob = fixture("ps-ac3.vob")
+    val result = process(ProcessingInput.Single(TrackFile(vob, TrackContainer.MPEG_PS)))
+    if (AndroidCodecSupport.canDecode("video/mpeg2") && AndroidCodecSupport.canDecode("audio/ac3")) {
+      assertEquals(result.note, ProcessingOperation.TRANSCODE, result.operation)
+      assertPlaysBothTracks(result.file, 1_800L..2_500L, video = "video/avc", audio = "audio/mp4a-latm")
+    } else {
+      // No AC-3 decoder (no Dolby licence) or no MPEG-2 decoder: kept as downloaded for "Open with", like a WMV.
+      assertEquals(result.note, ProcessingOperation.KEEP, result.operation)
+      assertEquals(vob, result.file)
+    }
   }
 }

@@ -70,6 +70,13 @@ internal class Probe(
   suspend fun probe(request: ProbeRequest): ProbeResult =
     withContext(Dispatchers.IO) { withAuthChallenge(probeBlocking(request, request.variant), request) }
 
+  /** F6: a live HLS stream as a recording would plan it, its first bytes confirmed to be a video. */
+  suspend fun probeLive(request: ProbeRequest): ProbeResult =
+    when (val result = hls.planLive(request.url, request.request, request.variant)) {
+      is HlsPlanResult.Ready -> hls.confirmMedia(result.plan, request.request) ?: HlsPlanner.toProbeResult(result.plan)
+      is HlsPlanResult.Refused -> result.failure
+    }
+
   /** The file a DASH download would fetch, for the engine; [probe] reports the same verdict for the manifest. */
   suspend fun resolveDash(url: String, context: RequestContext, choice: VariantChoice?): DashResolution =
     withContext(Dispatchers.IO) { resolveDashBlocking(url, context, choice) }

@@ -5,7 +5,7 @@
  */
 
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { BackHandler, StyleSheet, View } from 'react-native';
+import { AccessibilityInfo, BackHandler, Platform, StyleSheet, ToastAndroid, View } from 'react-native';
 import { router as appRouter, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { Box } from '@/components/base/Box';
@@ -35,7 +35,19 @@ import { usePlayerOrientation } from '@/player/hooks/use-player-orientation';
 import type { OrientationMode } from '@/player/orientation-mode';
 import { usePlayerVolume } from '@/player/hooks/use-player-volume';
 import { usePlayerSideGestures } from '@/player/use-player-side-gestures';
-import { armNativePictureInPicture, pictureInPictureSupported } from '@/player/picture-in-picture';
+import {
+  armNativePictureInPicture,
+  pictureInPictureSupported,
+  subscribeActivityStopped,
+} from '@/player/picture-in-picture';
+import { externalTokenOf } from '@/player/external-media';
+import { isStreamMediaId } from '@/player/remote-stream';
+import { useSeekPreview } from '@/player/use-seek-preview';
+import {
+  openIncomingWithOtherApp,
+  saveIncomingMedia,
+  type SaveIncomingOutcome,
+} from '@/player/incoming-media.runtime';
 import { parseResolution } from '@/player/zoom-math';
 import { useDownloadsStore } from '@/store/downloads';
 import { resolveOrientationIcon, resolveVolumeIcon } from '@/player/volume-icons';
@@ -45,6 +57,7 @@ import {
   setPlayerSessionPictureInPicture,
   useFullPlayerSession,
   useRedrawOnAttach,
+  useVideoSurfaceAttachment,
   type LivePlayerSession,
 } from '@/player/session-host';
 import { Button } from '@/components/buttons/Button';
@@ -156,10 +169,19 @@ const PlayerSessionView = memo(function PlayerSessionView({
     onPictureInPictureStop,
   } = live;
   const activeMediaId = session.mediaId ?? mediaId;
+  // F14: a frame above the scrubber while dragging (files on the device that show video; not streams or audio).
+  const seekPreview = useSeekPreview(player, {
+    mediaId: activeMediaId,
+    hasVideoFrame: session.hasFirstFrame,
+    scrubSeconds: session.isSeeking ? seekPreviewSeconds : null,
+  });
   // Resume seek and autoplay run with the session (PlayerSessionHost), not here: reopening the Player from the mini
   // player continues where it is — and shows the paused frame there, which a new surface lacks.
   const [reopened] = useState(() => session.isSurfaceRevealed);
   useRedrawOnAttach(player, reopened);
+  // Background play lets the surface go while VidoraX is stopped; a paused frame is drawn again on return.
+  const surface = useVideoSurfaceAttachment();
+  useRedrawOnAttach(player, surface.generation > 0, surface.generation);
 
   const {
     isFullscreen,
@@ -172,10 +194,34 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const [speedSheetOpen, setSpeedSheetOpen] = useState(false);
   const [externalOpenError, setExternalOpenError] = useState<string | null>(null);
   const [externalOpenBusy, setExternalOpenBusy] = useState(false);
+  // A file another app opened with VidoraX: no library row; it can be saved into the library.
+  const incomingToken = externalTokenOf(activeMediaId);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const onSaveToLibrary = useCallback(async () => {
+    if (!incomingToken || saveState !== 'idle') return;
+    setSaveState('saving');
+    const outcome = await saveIncomingMedia(incomingToken);
+    const saved = outcome.kind === 'saved' || outcome.kind === 'duplicate';
+    setSaveState(saved ? 'saved' : 'idle');
+    const message = t(SAVE_OUTCOME_MESSAGE[outcome.kind]);
+    if (Platform.OS === 'android') {
+      ToastAndroid.show(message, ToastAndroid.SHORT);
+    }
+    AccessibilityInfo.announceForAccessibility(message);
+  }, [incomingToken, saveState, t]);
+
   const openExternal = useCallback(async () => {
     if (!mediaId || externalOpenBusy) return;
     setExternalOpenBusy(true);
     setExternalOpenError(null);
+    if (incomingToken) {
+      const code = await openIncomingWithOtherApp(incomingToken);
+      if (code) {
+        setExternalOpenError(t(code === 'ERR_NO_APP' ? 'files.noCompatibleApp' : 'errors.openFailed'));
+      }
+      setExternalOpenBusy(false);
+      return;
+    }
     try {
       const { openCompletedFile } = await import('@/downloads/completed-file/action-service');
       const result = await openCompletedFile(mediaId);
@@ -185,7 +231,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     } finally {
       setExternalOpenBusy(false);
     }
-  }, [externalOpenBusy, mediaId, t]);
+  }, [externalOpenBusy, incomingToken, mediaId, t]);
   const [orientationSheetOpen, setOrientationSheetOpen] = useState(false);
   const [doubleTapSide, setDoubleTapSide] = useState<DoubleTapSeekSide | null>(
     null,
@@ -260,6 +306,16 @@ const PlayerSessionView = memo(function PlayerSessionView({
       setPlayerSessionPictureInPicture(false);
     },
     [setPictureInPictureArmed],
+  );
+
+  // A stopped activity shows no PiP window, also when expo-video's stop event never came (see use-player-session).
+  useEffect(
+    () =>
+      subscribeActivityStopped(() => {
+        setPipActive(false);
+        setPlayerSessionPictureInPicture(false);
+      }),
+    [],
   );
 
   const hud = sideGestures.hud;
@@ -457,6 +513,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
     [bumpControls, controller, session.error, session.isReady],
   );
 
+  // Double tap in the middle third: same as the play/pause button (which also keeps the controls' timer fresh).
+  const onDoubleTapTogglePlay = onPlayPause;
+
   useEffect(() => {
     if (!doubleTapSide) {
       return;
@@ -465,12 +524,14 @@ const PlayerSessionView = memo(function PlayerSessionView({
     return () => clearTimeout(timer);
   }, [doubleTapSide]);
 
+  const beginPreviewDrag = seekPreview.beginDrag;
   const onSeekStart = useCallback(
     (seconds: number) => {
+      beginPreviewDrag();
       beginSeekPreview(seconds);
       showControls();
     },
-    [beginSeekPreview, showControls],
+    [beginPreviewDrag, beginSeekPreview, showControls],
   );
 
   const onSeekCommit = useCallback(() => {
@@ -533,6 +594,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           brightnessGesturesEnabled={sideGestures.brightnessAvailable}
           onSingleTap={onSingleTap}
           onDoubleTapSeek={onDoubleTapSeek}
+          onDoubleTapTogglePlay={onDoubleTapTogglePlay}
           onFirstFrameRender={markFirstFrameRendered}
           onSurfaceLayout={({ height }) => {
             if (height > 0) {
@@ -550,6 +612,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           zoomResetKey={activeMediaId ?? ''}
           contentSize={contentSize}
           pictureInPictureAutoEnter={pipAutoEnter}
+          surfaceAttached={surface.attached}
           onPictureInPictureStart={handlePictureInPictureStart}
           onPictureInPictureStop={handlePictureInPictureStop}
         />
@@ -588,6 +651,17 @@ const PlayerSessionView = memo(function PlayerSessionView({
                 bumpControls();
                 void toggleFullscreen();
               }}
+              save={
+                incomingToken
+                  ? {
+                      state: saveState,
+                      onPress: () => {
+                        bumpControls();
+                        void onSaveToLibrary();
+                      },
+                    }
+                  : null
+              }
             />
           ) : null}
           {overlayVisible && !startupCoverVisible ? (
@@ -631,6 +705,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
             positionSeconds={session.positionSeconds}
             durationSeconds={session.durationSeconds}
             previewSeconds={seekPreviewSeconds}
+            previewFrame={seekPreview.frame}
             disabled={!session.isReady || Boolean(session.error)}
             onSeekStart={onSeekStart}
             onSeekChange={updateSeekPreview}
@@ -700,7 +775,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
                 : undefined
             }
           />
-          {session.error === 'UNSUPPORTED_MEDIA' || session.error === 'PLAYBACK_FAILED' ? (
+          {!isStreamMediaId(activeMediaId) &&
+          (session.error === 'UNSUPPORTED_MEDIA' ||
+            session.error === 'PLAYBACK_FAILED' ||
+            // A file from another app that this device cannot read may still open in that kind of app.
+            (incomingToken != null && session.error === 'CORRUPT_MEDIA')) ? (
             <Button
               title={t('library.openWith')}
               onPress={() => { void openExternal(); }}
@@ -709,6 +788,25 @@ const PlayerSessionView = memo(function PlayerSessionView({
             />
           ) : null}
           {externalOpenError ? <Text color="error">{externalOpenError}</Text> : null}
+          {incomingToken ? (
+            // Kept even when this device cannot play it: it then opens with another app from the library.
+            <Button
+              title={
+                saveState === 'saved'
+                  ? t('player.savedToLibrary')
+                  : saveState === 'saving'
+                    ? t('player.savingToLibrary')
+                    : t('player.saveToLibrary')
+              }
+              variant="outline"
+              disabled={saveState !== 'idle'}
+              onPress={() => {
+                void onSaveToLibrary();
+              }}
+              accessibilityHint={saveState === 'idle' ? t('player.saveToLibraryHint') : undefined}
+              testID="player-error-save-to-library"
+            />
+          ) : null}
           <Button
             title={t('common.goBack')}
             variant="outline"
@@ -746,6 +844,14 @@ const PlayerSessionView = memo(function PlayerSessionView({
     </SafeAreaScreen>
   );
 });
+
+const SAVE_OUTCOME_MESSAGE: Record<SaveIncomingOutcome['kind'], TranslationKey> = {
+  saved: 'player.savedToLibrary',
+  duplicate: 'player.alreadyInLibrary',
+  no_space: 'player.saveNoSpace',
+  unavailable: 'player.saveUnavailable',
+  failed: 'player.saveFailed',
+};
 
 const styles = StyleSheet.create({
   openingShell: {
