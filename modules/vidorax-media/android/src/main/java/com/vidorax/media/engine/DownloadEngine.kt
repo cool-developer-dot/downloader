@@ -107,6 +107,8 @@ internal class DownloadEngine(
   private val processing: MediaProcessing = MediaProcessing.PASSTHROUGH,
   /** #494: the file extension each download asked for (a safe alias of its container only); none = today's naming. */
   private val preferredExtensions: PreferredExtensions = PreferredExtensions(),
+  /** #480: each download's own "Wi-Fi only"; a download without one follows [DownloadSettings.wifiOnly]. */
+  private val networkChoices: NetworkChoices = NetworkChoices(),
   /** Videos the user already has: a second download of one of them is refused as a duplicate. */
   private val savedVideos: SavedVideos = SavedVideos.NONE,
   /** The automatic device-gallery copy of each completed download. */
@@ -388,6 +390,11 @@ internal class DownloadEngine(
     PreferredExtensions.normalize(request.preferredExtension)?.let { extension ->
       val live = store.list(ts).filter { !it.state.isTerminal || it.state == DownloadState.FAILED }.map { it.id }
       preferredExtensions.put(id, extension, live)
+    }
+    // #480: kept while the download can still run (a failed one may be retried); none = the app setting.
+    request.wifiOnly?.let { wifiOnly ->
+      val live = store.list(ts).filter { !it.state.isTerminal || it.state == DownloadState.FAILED }.map { it.id }
+      networkChoices.put(id, wifiOnly, live)
     }
     val row = DownloadRow(
       id = id,
@@ -1321,7 +1328,7 @@ internal class DownloadEngine(
    * user superseded it meanwhile (paused, cancelled), so the caller stops without touching the row.
    */
   private suspend fun awaitNetwork(id: String, gen: Long, force: Boolean = false): Boolean {
-    val wifiOnly = settings.wifiOnly
+    val wifiOnly = NetworkChoices.effective(networkChoices.wifiOnly(id), settings.wifiOnly)
     if (!force && network.isUsable(wifiOnly)) return true
     if (network.isUsable(wifiOnly)) return true
     if (setState(id, gen, DownloadState.WAITING_NETWORK) == null) return false
@@ -1418,7 +1425,7 @@ internal class DownloadEngine(
       // Watches the connection for as long as the transfer runs: Wi-Fi-only must hold a download that is
       // already going, not only refuse to start one.
       val watchdog = launch {
-        network.awaitUnusable(settings.wifiOnly)
+        network.awaitUnusable(NetworkChoices.effective(networkChoices.wifiOnly(id), settings.wifiOnly))
         stoppedByPolicy.set(true)
         transfer.cancel()
       }

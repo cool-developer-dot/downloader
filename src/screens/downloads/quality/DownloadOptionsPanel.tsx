@@ -8,7 +8,7 @@ import { Chip } from '@/components/common/Chip';
 import { TextField } from '@/components/inputs/TextField';
 import { browserMediaActionService } from '@/browser/media-actions/browser-media-action.service';
 import { resolveDisplayTitle, type AnalyzedMediaSelection, type DownloadQualityOption } from '@/downloads/quality';
-import { hasChangedOptions, type GalleryChoice } from '@/downloads/v2/download-options';
+import { hasChangedOptions, type GalleryChoice, type WifiChoice } from '@/downloads/v2/download-options';
 import {
   followSelectedQuality,
   updateDownloadOptionsDraft,
@@ -27,9 +27,16 @@ const GALLERY_CHOICES: { value: GalleryChoice; label: TranslationKey }[] = [
   { value: 'off', label: 'downloadOptions.galleryOff' },
 ];
 
+const WIFI_CHOICES: { value: WifiChoice; label: TranslationKey }[] = [
+  { value: 'default', label: 'downloadOptions.wifiOnlyDefault' },
+  { value: 'on', label: 'downloadOptions.wifiOnlyOn' },
+  { value: 'off', label: 'downloadOptions.wifiOnlyOff' },
+];
+
 /**
  * Quality sheet → "Options" (H8), collapsed until tapped. Shown only for a browser offer (the v2 handoff applies it).
- * Name (#296), library folder (#155) and per-download Save to Gallery (#480). Left alone, nothing changes.
+ * Name (#296), library folder (#155), and per-download Save to Gallery and Wi-Fi only (#480). Left alone, nothing
+ * changes.
  */
 export const DownloadOptionsPanel = memo(function DownloadOptionsPanel({
   selection,
@@ -150,6 +157,23 @@ export const DownloadOptionsPanel = memo(function DownloadOptionsPanel({
                   selected={(current?.saveToGallery ?? 'default') === choice.value}
                   onPress={() => updateDownloadOptionsDraft({ identity, saveToGallery: choice.value })}
                   testID={`quality-download-options-gallery-${choice.value}`}
+                />
+              ))}
+            </Box>
+          </Box>
+
+          <Box gap={6}>
+            <Text variant="caption" color="textSecondary">
+              {t('downloadOptions.wifiOnly')}
+            </Text>
+            <Box row gap={6} style={{ flexWrap: 'wrap' }}>
+              {WIFI_CHOICES.map((choice) => (
+                <Chip
+                  key={choice.value}
+                  label={t(choice.label)}
+                  selected={(current?.wifiOnly ?? 'default') === choice.value}
+                  onPress={() => updateDownloadOptionsDraft({ identity, wifiOnly: choice.value })}
+                  testID={`quality-download-options-wifi-${choice.value}`}
                 />
               ))}
             </Box>

@@ -251,6 +251,12 @@ export interface EnqueueRequest {
    */
   preferredExtension?: 'mp4' | 'm4v' | 'm4a';
   /**
+   * #480: this download's own Wi-Fi only — true waits for (and keeps to) Wi-Fi, false may use mobile data. Omitted
+   * follows `DownloadSettings.wifiOnly`. Kept by the engine while the download can still run (survives a restart).
+   * Ignored by older native builds.
+   */
+  wifiOnly?: boolean;
+  /**
    * The source as the page offered it, before a refresh or redirect. The engine derives the video's identity from it
    * (host, path, query without rotating signature fields, the chosen variant, and the page when a signature was
    * removed), so a re-signed or redirected link is still recognised as the same video. Defaults to `url`.
