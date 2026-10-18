@@ -10,6 +10,8 @@ import { EXTENSION_TO_MIME } from '../constants';
 import { logGeneralNetworkTrace } from '../general-media/general-media-diagnostics';
 import { recordPipelineOutcome } from '../pipeline/pipeline-outcome';
 import { buildMediaRequestContextSync } from '../services/request-context.service';
+import { routeRiskyDownload } from './dangerous-download';
+import { confirmSystemDownload } from './dangerous-download-dialog';
 import { resolveNativeObservationScope } from './native-observation-scope';
 import {
   nativeCandidateEventFromObservation,
@@ -179,14 +181,25 @@ async function handOffToSystemDownloader(event: WebDownloadEvent, reason: string
  * phone's Downloads folder. What turns out not to be a video, or has no tab, goes back to the system downloader.
  */
 export async function handleWebDownload(event: WebDownloadEvent): Promise<void> {
+  if (event.hint === 'risky') {
+    // H17: an app or program file, routed here natively only for the warning; never a video candidate.
+    await routeRiskyDownload(event, confirmSystemDownload, () => handOffToSystemDownloader(event, 'download_risky'));
+    return;
+  }
   const observedAt = Date.now();
   const mimeType = event.hint === 'unknown' ? await identifyUnnamedDownload(event) : mimeOfWebDownload(event);
   if (event.hint === 'unknown' && !mimeType) {
+    if (!(await confirmSystemDownload(event))) {
+      return;
+    }
     await handOffToSystemDownloader(event, 'download_not_video');
     return;
   }
   const candidate = nativeCandidateFromWebDownload({ viewTag: event.viewTag, url: event.url, mimeType, observedAt });
   if (!candidate || !candidateHandler) {
+    if (!(await confirmSystemDownload(event))) {
+      return;
+    }
     await handOffToSystemDownloader(event, 'download_without_owner');
     return;
   }
