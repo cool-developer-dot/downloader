@@ -58,6 +58,9 @@ internal class DownloadRunner(
   private val ownNotification = LinkedHashSet<String>()
   private var hostRunning = false
 
+  /** H4: whether a waiting download is in a held queue (the engine's answer); such a download is not work. */
+  @Volatile var isHeld: (String) -> Boolean = { false }
+
   /** Downloads the engine is working on, i.e. what the foreground host exists for. Paused work is not live. */
   fun hasLiveWork(): Boolean = synchronized(lock) { tracked.values.any { it.state in LIVE } }
 
@@ -80,6 +83,9 @@ internal class DownloadRunner(
   }
 
   fun onState(record: DownloadRecord) {
+    // H4: a download waiting in a held queue keeps neither the host nor a notification up; the engine announces it
+    // again when its queue is resumed.
+    if (record.state == DownloadState.QUEUED && isHeld(record.id)) return dropHeld(record.id)
     val plan = synchronized(lock) {
       if (record.state in TERMINAL) {
         tracked.remove(record.id)
@@ -144,6 +150,21 @@ internal class DownloadRunner(
       Plan(
         show = listOfNotNull(next.takeIf { progress.id in ownNotification }),
         host = if (entry.state in LIVE) hostActionLocked() else HostAction {},
+      )
+    }
+    apply(plan)
+  }
+
+  /** H4: stops tracking a download that now waits in a held queue, as if it were not there. */
+  private fun dropHeld(id: String) {
+    val plan = synchronized(lock) {
+      if (tracked.remove(id) == null) return
+      val hadOwn = ownNotification.remove(id)
+      val reconciled = reconcileLocked()
+      Plan(
+        show = reconciled.show,
+        clear = reconciled.clear + listOfNotNull(id.takeIf { hadOwn }),
+        host = hostActionLocked(),
       )
     }
     apply(plan)

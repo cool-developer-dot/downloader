@@ -1,6 +1,7 @@
 package com.vidorax.media.engine
 
 import com.vidorax.media.AlreadyDownloadedException
+import com.vidorax.media.InvalidRequestException
 import com.vidorax.media.InvalidStateException
 import com.vidorax.media.NotFoundException
 import com.vidorax.media.library.MediaMetadata
@@ -109,6 +110,8 @@ internal class DownloadEngine(
   private val savedVideos: SavedVideos = SavedVideos.NONE,
   /** The automatic device-gallery copy of each completed download. */
   private val gallery: GalleryPublisher = GalleryPublisher.NONE,
+  /** H4: the user's start order and queues; empty (the default) is today's first-come order. */
+  private val queueOrder: QueueOrderBook = QueueOrderBook(),
   /** Backoff sleeps; injectable so tests do not wait in real time. */
   private val retryDelay: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
   private val now: () -> Long = System::currentTimeMillis,
@@ -140,6 +143,15 @@ internal class DownloadEngine(
   /** Guards startup reconciliation so it can never run twice and spawn duplicate workers. */
   private val restoreStarted = AtomicBoolean(false)
 
+  init {
+    // H4: the slot scheduler follows the user's queues and start order (today's first-come order when none is set),
+    // and a download that finished or was cancelled leaves them.
+    slots.order = queueOrder
+    scope.launch {
+      stateFlow.collect { if (it.state == DownloadState.COMPLETED || it.state == DownloadState.CANCELLED) queueOrder.forget(listOf(it.id)) }
+    }
+  }
+
   // --- startup reconciliation ---
 
   /**
@@ -155,7 +167,11 @@ internal class DownloadEngine(
    */
   internal suspend fun restore() {
     if (!restoreStarted.compareAndSet(false, true)) return
-    for (listed in store.list(now())) {
+    // H4: downloads that finished meanwhile leave the start order, and the rest restart in it (a failed one keeps its
+    // queue for Retry), so the first free slots go to the user's first downloads.
+    val rows = store.list(now())
+    queueOrder.pruneTo(rows.filter { !it.state.isTerminal || it.state == DownloadState.FAILED }.map { it.id })
+    for (listed in QueueOrder.inStartOrder(rows, queueOrder.snapshot) { it.id }) {
       if (activeJobs.containsKey(listed.id)) continue
       val row = withIdentity(listed)
       when (row.state) {
@@ -421,6 +437,44 @@ internal class DownloadEngine(
     return VariantChoice(videoId = requested?.videoId, audioId = requested?.audioId, maxHeight = maxHeight)
   }
 
+  // --- start order and queues (H4: Priority #305, Move Priority #334, Multiple Queues #343) ---
+
+  override suspend fun downloadQueues(): QueueOrderSnapshot = pruneQueueOrder()
+
+  override suspend fun setDownloadOrder(ids: List<String>): QueueOrderSnapshot =
+    changeQueues { QueueOrder.withOrder(it, ids) }
+
+  override suspend fun moveDownloadsToQueue(ids: List<String>, queueId: String): QueueOrderSnapshot =
+    changeQueues { QueueOrder.withMoved(it, ids, queueId) }
+
+  override suspend fun setDownloadQueues(queues: List<DownloadQueue>): QueueOrderSnapshot =
+    changeQueues { QueueOrder.withQueues(it, queues) }
+
+  override fun isQueueHeld(downloadId: String): Boolean = queueOrder.snapshot.isHeld(downloadId)
+
+  /**
+   * Applies a change to the start order or the queues; no download changes state. Free slots then go to downloads
+   * that may start now (a resumed queue), and a waiting download whose queue was held or resumed is announced again,
+   * so the background runner stops or starts counting it as work.
+   */
+  private suspend fun changeQueues(change: (QueueOrderSnapshot) -> QueueOrderSnapshot): QueueOrderSnapshot {
+    val before = pruneQueueOrder()
+    val after = try {
+      queueOrder.update(change)
+    } catch (e: IllegalArgumentException) {
+      throw InvalidRequestException(e.message ?: "Invalid queue change")
+    }
+    slots.reconsider()
+    for (row in store.list(now())) {
+      if (row.state == DownloadState.QUEUED && before.isHeld(row.id) != after.isHeld(row.id)) stateFlow.tryEmit(row.toRecord())
+    }
+    return after
+  }
+
+  /** Only downloads that can still start keep a place: finished, cancelled and removed ones are dropped. */
+  private suspend fun pruneQueueOrder(): QueueOrderSnapshot =
+    queueOrder.pruneTo(store.list(now()).filter { !it.state.isTerminal || it.state == DownloadState.FAILED }.map { it.id })
+
   override suspend fun pause(id: String) {
     val paused = mutex.withLock {
       val row = store.find(id) ?: throw NotFoundException("Unknown download $id")
@@ -497,7 +551,7 @@ internal class DownloadEngine(
   }
 
   override suspend fun resumeAll() {
-    for (row in store.list(now())) {
+    for (row in QueueOrder.inStartOrder(store.list(now()), queueOrder.snapshot) { it.id }) {
       if (row.state == DownloadState.PAUSED) runCatching { resume(row.id) }
     }
   }
@@ -565,7 +619,7 @@ internal class DownloadEngine(
     val start = store.find(id) ?: return
     if (!awaitNetwork(id, gen)) return
     // Beyond the configured limit the download simply stays QUEUED until a slot frees.
-    slots.acquire()
+    slots.acquire(id)
     try {
       runTransfer(id, gen, start)
     } finally {
@@ -1331,39 +1385,69 @@ internal class DownloadEngine(
    * How many downloads may actually run at once. Extra taps stay QUEUED — which is what the word means — so a
    * user who starts ten videos gets a working queue instead of ten transfers fighting for the same connection,
    * the same disk and the same CPU.
+   *
+   * Internal (not private) only so DownloadEngineSlotsTest can drive it directly.
    */
-  private class Slots(limit: Int) {
+  internal class Slots(limit: Int) {
     private val lock = Mutex()
     private val waiting = ArrayDeque<kotlinx.coroutines.CompletableDeferred<Unit>>()
     private var limit = limit.coerceAtLeast(1)
     private var used = 0
 
-    suspend fun acquire() {
+    /** H4: the download each waiter is; [waiting] keeps their arrival order. */
+    private val waiterIds = HashMap<kotlinx.coroutines.CompletableDeferred<Unit>, String>()
+
+    /** H4: the user's queues and start order; null or default = today's first-come order. */
+    @Volatile var order: QueueOrderBook? = null
+
+    suspend fun acquire(id: String) {
       val waiter = lock.withLock {
-        if (used < limit) {
+        // A download of a held queue (H4) waits even when a slot is free.
+        if (used < limit && !isHeld(id)) {
           used += 1
           return
         }
-        kotlinx.coroutines.CompletableDeferred<Unit>().also { waiting.addLast(it) }
+        kotlinx.coroutines.CompletableDeferred<Unit>().also {
+          waiting.addLast(it)
+          waiterIds[it] = id
+        }
       }
       try {
         waiter.await()
       } catch (c: kotlinx.coroutines.CancellationException) {
-        // A download paused or cancelled while queued must not hold a place in the line.
-        lock.withLock { waiting.remove(waiter) }
+        // A download paused or cancelled while queued must not hold a place in the line — nor keep a slot that was
+        // handed to it just as it was stopped: that one goes on to the next download (or is freed), or the queue
+        // would stall for good. NonCancellable: this coroutine is already cancelled, and a busy lock must not skip it.
+        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+          lock.withLock {
+            waiterIds.remove(waiter)
+            if (!waiting.remove(waiter) && waiter.isCompleted) {
+              handOnLocked()
+            }
+          }
+        }
         throw c
       }
     }
 
     suspend fun release() {
-      lock.withLock {
-        val next = waiting.removeFirstOrNull()
-        if (next != null) {
-          // The slot moves straight to the next download: `used` stays as it is.
-          next.complete(Unit)
-        } else {
-          used = (used - 1).coerceAtLeast(0)
-        }
+      // Runs in the `finally` of a worker that may have just been paused or cancelled: a busy lock must not skip it.
+      kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+        lock.withLock { handOnLocked() }
+      }
+    }
+
+    /**
+     * Must be called while holding [lock]: a slot given up moves straight to the next download that may start
+     * (H4: [nextLocked]), or is freed.
+     */
+    private fun handOnLocked() {
+      val next = nextLocked()
+      if (next != null) {
+        // The slot moves straight to the next download: `used` stays as it is.
+        next.complete(Unit)
+      } else {
+        used = (used - 1).coerceAtLeast(0)
       }
     }
 
@@ -1371,11 +1455,42 @@ internal class DownloadEngine(
       lock.withLock {
         limit = next.coerceAtLeast(1)
         while (used < limit) {
-          val waiter = waiting.removeFirstOrNull() ?: break
+          val waiter = nextLocked() ?: break
           used += 1
           waiter.complete(Unit)
         }
       }
+    }
+
+    /** H4: hands free slots to downloads that may start now — after a queue was resumed or a download left one. */
+    suspend fun reconsider() {
+      lock.withLock {
+        while (used < limit) {
+          val waiter = nextLocked() ?: break
+          used += 1
+          waiter.complete(Unit)
+        }
+      }
+    }
+
+    private fun isHeld(id: String): Boolean = order?.snapshot?.isHeld(id) == true
+
+    /**
+     * Must be called while holding [lock]: takes the waiter that starts next out of the line. Today's first in line,
+     * unless the user set queues or an order — then [QueueOrder.pickNext] (queue, the user's order, then arrival),
+     * skipping held queues; null when no waiter may start.
+     */
+    private fun nextLocked(): kotlinx.coroutines.CompletableDeferred<Unit>? {
+      val snapshot = order?.snapshot
+      val next = if (snapshot == null || snapshot.isDefault) {
+        waiting.firstOrNull()
+      } else {
+        val candidates = waiting.mapIndexed { index, waiter -> QueueOrder.Candidate(waiterIds[waiter].orEmpty(), index.toLong()) }
+        QueueOrder.pickNext(candidates, snapshot)?.let { waiting[it.arrival.toInt()] }
+      } ?: return null
+      waiting.remove(next)
+      waiterIds.remove(next)
+      return next
     }
   }
 
