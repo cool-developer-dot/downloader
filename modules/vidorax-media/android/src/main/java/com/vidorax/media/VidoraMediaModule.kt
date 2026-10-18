@@ -263,6 +263,12 @@ class VidoraMediaModule : Module() {
       engine.acknowledgeCompletions(ids.take(MAX_ACKNOWLEDGE_IDS))
     }
 
+    // H6 (#422): a crossed data limit as a system notification (JavaScript decides when and sends the translated text)
+
+    AsyncFunction("showDataLimitNotification") { period: String, title: String, text: String ->
+      com.vidorax.media.runner.DataLimitNotice.show(context, period, title, text)
+    }
+
     // Videos already on the device (read-only; empty until the user grants the media permission)
 
     AsyncFunction("listDeviceVideos") Coroutine { limit: Int, offset: Int ->

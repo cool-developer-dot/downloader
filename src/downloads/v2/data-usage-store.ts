@@ -1,8 +1,8 @@
 /**
  * Data usage (H6) at runtime: a second listener on the v2 engine's progress and state events (the download bridge
  * is untouched) feeding the pure counters in `data-usage.ts`, saved in MMKV under its own key. The screen reads a
- * small zustand store that is refreshed at most once a second. Limit alerts are in-app only and never pause or
- * block a download.
+ * small zustand store that is refreshed at most once a second. A crossed limit is an in-app alert plus a system
+ * notification (#422, `data-limit-notice.ts`); neither ever pauses or blocks a download.
  */
 
 // A namespace import: Alert and AppState are read only at runtime.
@@ -24,6 +24,7 @@ import {
   type DataUsageState,
   type DataUsageSummary,
 } from './data-usage';
+import { getDataLimitNoticePort, postDataLimitNotices } from './data-limit-notice';
 import { getV2Engine } from './engine-port';
 
 export const DATA_USAGE_STORAGE_KEY = 'vidorax.dataUsage.v1';
@@ -89,14 +90,18 @@ function formatMb(bytes: number): string {
   return formatDownloadFileSize(String(Math.max(0, Math.round(bytes)))) ?? '0 B';
 }
 
+function alertText(alert: DataLimitAlert): { title: string; text: string } {
+  return {
+    title: translate(alert.period === 'day' ? 'dataUsage.alertDayTitle' : 'dataUsage.alertMonthTitle'),
+    text: translate('dataUsage.alertMessage', { used: formatMb(alert.usedBytes), limit: formatMb(alert.limitBytes) }),
+  };
+}
+
 function showAlerts(alerts: DataLimitAlert[]): void {
   for (const alert of alerts) {
     try {
-      ReactNative.Alert.alert(
-        translate(alert.period === 'day' ? 'dataUsage.alertDayTitle' : 'dataUsage.alertMonthTitle'),
-        translate('dataUsage.alertMessage', { used: formatMb(alert.usedBytes), limit: formatMb(alert.limitBytes) }),
-        [{ text: translate('common.ok') }],
-      );
+      const { title, text } = alertText(alert);
+      ReactNative.Alert.alert(title, text, [{ text: translate('common.ok') }]);
     } catch {
       // No alert UI right now: nothing else to do; downloads continue regardless.
     }
@@ -116,7 +121,9 @@ function checkLimits(): void {
   }
   state = result.state;
   saveNow();
-  // In-app only: shown now when VidoraX is in front, otherwise the next time it is.
+  // #422: a system notification as well, so a limit crossed while VidoraX is closed is seen at once.
+  void postDataLimitNotices(getDataLimitNoticePort(), result.alerts, alertText);
+  // The in-app alert: shown now when VidoraX is in front, otherwise the next time it is.
   if (ReactNative.AppState.currentState === 'active') {
     showAlerts(result.alerts);
   } else {
