@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import com.vidorax.media.R
 
 /**
  * Posts the download notifications. Everything shown comes from the persisted record — title, state, byte
@@ -225,14 +226,22 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
       if (channelsReady) return
       runCatching {
         manager.createNotificationChannel(
-          NotificationChannel(CHANNEL_PROGRESS, "Downloads in progress", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Shows videos VidoraX is downloading."
+          NotificationChannel(
+            CHANNEL_PROGRESS,
+            context.getString(R.string.vidorax_channel_progress_name),
+            NotificationManager.IMPORTANCE_LOW,
+          ).apply {
+            description = context.getString(R.string.vidorax_channel_progress_description)
             setShowBadge(false)
           },
         )
         manager.createNotificationChannel(
-          NotificationChannel(CHANNEL_STATUS, "Finished downloads", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "Tells you when a download finishes or fails."
+          NotificationChannel(
+            CHANNEL_STATUS,
+            context.getString(R.string.vidorax_channel_status_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+          ).apply {
+            description = context.getString(R.string.vidorax_channel_status_description)
           },
         )
       }

@@ -4,7 +4,7 @@ import type { BrowserLongPressAction } from '../types';
 
 export const copyLinkAction: BrowserLongPressAction = {
   id: 'copy_link',
-  label: 'Copy Link',
+  labelKey: 'browser.linkActions.copyLink',
   icon: 'content-copy',
   order: 10,
   enabled: true,

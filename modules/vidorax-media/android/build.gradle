@@ -14,6 +14,12 @@ android {
     // On-device instrumented E2E of the real engine (src/androidTest); JVM unit tests are unaffected.
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
+  // Robolectric tests read the module's own string resources (notification texts in values/ and values-ur/).
+  testOptions {
+    unitTests {
+      includeAndroidResources = true
+    }
+  }
 }
 
 dependencies {

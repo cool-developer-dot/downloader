@@ -21,6 +21,8 @@ import type { TranslationKey } from '@/localization/types';
 
 import { DOWNLOAD_SECTION_ORDER } from '../constants/downloads.constants';
 
+import { formatEtaLeft } from './eta-format';
+
 const DOWNLOAD_STATUS_KEYS: Record<DownloadStatus, TranslationKey> = {
   QUEUED: 'downloads.statusQueued',
   DOWNLOADING: 'downloads.statusDownloading',
@@ -115,19 +117,7 @@ export function formatTransferSpeed(bytesPerSecond: number | null): string | nul
 }
 
 export function formatEtaSeconds(etaSeconds: number | null): string | null {
-  if (etaSeconds == null || !Number.isFinite(etaSeconds) || etaSeconds <= 0) {
-    return null;
-  }
-  if (etaSeconds < 60) {
-    return `${Math.ceil(etaSeconds)}s left`;
-  }
-  const minutes = Math.floor(etaSeconds / 60);
-  if (minutes < 60) {
-    return `${minutes}m left`;
-  }
-  const hours = Math.floor(minutes / 60);
-  const rem = minutes % 60;
-  return rem > 0 ? `${hours}h ${rem}m left` : `${hours}h left`;
+  return formatEtaLeft(etaSeconds);
 }
 
 export function formatDownloadedBytes(
