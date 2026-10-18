@@ -1,6 +1,7 @@
 package com.vidorax.media.runner
 
 import android.content.Context
+import com.vidorax.media.R
 
 /**
  * How finished/failed download notifications alert (Notification Sound #452, Vibrate #453, Silent Mode #457).
@@ -80,15 +81,18 @@ data class NotificationOptions(
   }
 }
 
-/** One finished/failed-download channel per alert combination. [EXISTING] is today's channel, untouched. */
+/**
+ * One finished/failed-download channel per alert combination. [EXISTING] is today's channel, untouched (created with
+ * the others in DownloadNotifications, so it has no name here). Names are string resources (values/, values-ur/).
+ */
 enum class StatusChannel(
   val id: String,
-  val channelName: String,
+  val nameRes: Int?,
   val playsSound: Boolean,
   val vibrates: Boolean,
 ) {
-  EXISTING(DownloadNotifications.CHANNEL_STATUS, "Finished downloads", playsSound = true, vibrates = false),
-  SOUND_VIBRATE("vidorax_downloads_status_sound_vibrate", "Finished downloads (sound and vibration)", true, true),
-  VIBRATE_ONLY("vidorax_downloads_status_vibrate", "Finished downloads (vibration only)", false, true),
-  QUIET("vidorax_downloads_status_silent", "Finished downloads (silent)", false, false),
+  EXISTING(DownloadNotifications.CHANNEL_STATUS, null, playsSound = true, vibrates = false),
+  SOUND_VIBRATE("vidorax_downloads_status_sound_vibrate", R.string.vidorax_status_channel_sound_vibrate, true, true),
+  VIBRATE_ONLY("vidorax_downloads_status_vibrate", R.string.vidorax_status_channel_vibrate, false, true),
+  QUIET("vidorax_downloads_status_silent", R.string.vidorax_status_channel_silent, false, false),
 }
