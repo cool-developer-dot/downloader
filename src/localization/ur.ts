@@ -1647,6 +1647,14 @@ export const ur: CatalogStrings<typeof en> = {
       },
     },
   },
+  thumbnailSave: {
+    action: 'تھمب نیل محفوظ کریں',
+    actionHint: 'ویڈیو کی کور تصویر آپ کی گیلری میں محفوظ کرتا ہے',
+    saved: 'تھمب نیل گیلری میں محفوظ ہو گیا',
+    needsPermission: 'گیلری میں محفوظ کرنے کے لیے اسٹوریج تک رسائی کی اجازت دیں',
+    missing: 'اس ویڈیو کا کوئی تھمب نیل نہیں',
+    failed: 'تھمب نیل محفوظ نہیں ہو سکا',
+  },
   legal: {
     effectiveLabel: 'تاریخِ نفاذ: {date}',
     updatedLabel: 'آخری تازہ کاری: {date}',

@@ -36,6 +36,7 @@ import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads
 
 import { DownloadDeleteDialog } from './components/DownloadDeleteDialog';
 import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
+import { DownloadSaveThumbnailAction } from './components/DownloadSaveThumbnailAction';
 import { useDownloadDetailsScreen } from './hooks/useDownloadDetailsScreen';
 import { useDownloadsTokens } from './theme/downloads-tokens';
 import {
@@ -510,6 +511,8 @@ const DetailsBody = memo(function DetailsBody({
         {created ? <InfoRow label={t('downloads.infoCreatedDate')} value={created} /> : null}
         {completed ? <InfoRow label={t('downloads.infoDownloadedDate')} value={completed} /> : null}
       </Box>
+
+      <DownloadSaveThumbnailAction id={item.id} />
 
       {(sourceHost || item.sourceUrl) && (
         <Box mt={8} gap={8}>
