@@ -51,6 +51,32 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
       .isSuccess
   }
 
+  /**
+   * A notice on the finished-downloads channel that belongs to no download (H6 #422: a data limit was crossed). It
+   * replaces an earlier notice with the same [id], and tapping it opens [deepLink]. False when it was not posted.
+   */
+  fun showNotice(id: Int, title: String, text: String, deepLink: String): Boolean {
+    val manager = manager ?: return false
+    if (!canPost()) return false
+    ensureChannels()
+    val open = (viewIntent(deepLink) ?: context.packageManager.getLaunchIntentForPackage(context.packageName))?.let {
+      it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      runCatching { PendingIntent.getActivity(context, id, it, immutableFlags(PendingIntent.FLAG_UPDATE_CURRENT)) }
+        .getOrNull()
+    }
+    val builder = builder(CHANNEL_STATUS)
+      .setContentTitle(title)
+      .setContentText(text)
+      .setStyle(Notification.BigTextStyle().bigText(text))
+      .setSmallIcon(android.R.drawable.stat_sys_warning)
+      .setAutoCancel(true)
+      .setOnlyAlertOnce(true)
+    open?.let { builder.setContentIntent(it) }
+    return runCatching { manager.notify(id, builder.build()) }
+      .onFailure { Log.w(TAG, "notice refused: ${it.javaClass.simpleName}") }
+      .isSuccess
+  }
+
   fun canPost(): Boolean {
     val manager = manager ?: return false
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
