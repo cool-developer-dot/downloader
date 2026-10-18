@@ -24,6 +24,7 @@ import {
   useQualitySelectionContext,
 } from './quality';
 import { useDownloadsTokens } from './theme/downloads-tokens';
+import { DownloadsTotalSpeed } from './components/DownloadsTotalSpeed';
 
 const TOAST_MS = 2200;
 
@@ -239,6 +240,7 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
           onSelectSort={onSelectSort}
           onReset={resetControls}
         />
+        <DownloadsTotalSpeed />
       </Box>
 
       {error && status === 'ready' ? (

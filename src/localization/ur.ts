@@ -940,6 +940,19 @@ export const ur: CatalogStrings<typeof en> = {
     alreadySavedToDevice: 'پہلے سے ڈیوائس پر محفوظ ہے',
     unableToSave: 'یہ فائل محفوظ نہیں ہو سکی',
   },
+  downloadProgress: {
+    remaining: 'باقی',
+    averageSpeed: 'اوسط رفتار',
+    elapsed: 'ڈاؤن لوڈ کا وقت',
+    speedGraph: 'رفتار، پچھلا ایک منٹ',
+    speedGraphA11y: 'پچھلے ایک منٹ میں ڈاؤن لوڈ کی رفتار',
+    remainingShort: '{size} باقی',
+    averageShort: 'اوسط {speed}',
+    elapsedShort: '{time} فعال',
+    totalSpeed: 'کل رفتار {speed}',
+    segments: 'حصے',
+    segmentsValue: '{total} میں سے {done}',
+  },
   player: {
     mini: {
       openA11y: 'اب چل رہا ہے: {title}۔ پلیئر کھولیں',
