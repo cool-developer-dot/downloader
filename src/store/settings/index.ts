@@ -64,6 +64,9 @@ export const useSettingsStore = createStore<SettingsStore>()(
         wifiOnly: state.wifiOnly,
         autoResume: state.autoResume,
         notifications: state.notifications,
+        notificationSound: state.notificationSound,
+        notificationVibrate: state.notificationVibrate,
+        notificationSilent: state.notificationSilent,
         language: state.language,
         maxConcurrentDownloads: state.maxConcurrentDownloads,
         saveToGallery: state.saveToGallery,
@@ -87,6 +90,12 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.notifications === 'boolean'
               ? raw.notifications
               : current.notifications,
+          notificationSound:
+            typeof raw.notificationSound === 'boolean' ? raw.notificationSound : current.notificationSound,
+          notificationVibrate:
+            typeof raw.notificationVibrate === 'boolean' ? raw.notificationVibrate : current.notificationVibrate,
+          notificationSilent:
+            typeof raw.notificationSilent === 'boolean' ? raw.notificationSilent : current.notificationSilent,
           language:
             typeof raw.language === 'string' &&
             isSupportedLanguage(normalizeLanguageCode(raw.language))

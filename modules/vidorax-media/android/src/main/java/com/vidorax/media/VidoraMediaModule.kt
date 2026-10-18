@@ -16,6 +16,7 @@ import com.vidorax.media.library.DeviceVideos
 import com.vidorax.media.player.ActivityVisibility
 import com.vidorax.media.player.PictureInPictureAutoEnter
 import com.vidorax.media.player.Volume
+import com.vidorax.media.runner.NotificationOptions
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
@@ -139,6 +140,13 @@ class VidoraMediaModule : Module() {
     }
 
     AsyncFunction("setDownloadSettings") Coroutine { settings: DownloadSettingsRecord ->
+      // Notification alert options are the runner's, not the engine's: saved for DownloadNotifications to read.
+      NotificationOptions.saveFromJs(
+        context,
+        settings.notificationSound,
+        settings.notificationVibrate,
+        settings.notificationSilent,
+      )
       engine.setDownloadSettings(settings.toModel())
     }
 

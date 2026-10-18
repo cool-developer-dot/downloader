@@ -147,6 +147,10 @@ data class DownloadSettingsRecord(
   @Field val wifiOnly: Boolean = DownloadSettings.DEFAULT.wifiOnly,
   @Field val autoSaveToGallery: Boolean = DownloadSettings.DEFAULT.autoSaveToGallery,
   @Field val preferredMaxHeight: Int? = null,
+  /** Finished/failed notification alerts (runner/NotificationOptions); null = not sent, keep the saved value. */
+  @Field val notificationSound: Boolean? = null,
+  @Field val notificationVibrate: Boolean? = null,
+  @Field val notificationSilent: Boolean? = null,
 ) : Record {
   fun toModel(): DownloadSettings {
     if (maxConcurrent !in DownloadSettings.MIN_CONCURRENT..DownloadSettings.MAX_CONCURRENT) {
