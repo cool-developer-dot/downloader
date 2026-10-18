@@ -186,6 +186,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
         ensureLibraryCompletionBridge();
       }
       void downloadEngine.recover();
+      const { ensureDebugLogs } = await import('@/diagnostics/ensure-debug-logs');
+      // Download Settings → History & logs → Debug logs (off by default; in memory only).
+      ensureDebugLogs();
 
       try {
         const { bindPlaybackPersistence } = await import(
