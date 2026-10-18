@@ -117,6 +117,11 @@ data class EnqueueRequest(
    */
   val preferredExtension: String? = null,
   /**
+   * #480 per-download "Wi-Fi only": true waits for (and keeps to) an unmetered network, false lets this download use
+   * mobile data. Null follows [DownloadSettings.wifiOnly]. Kept by the engine until the download ends (NetworkChoices).
+   */
+  val wifiOnly: Boolean? = null,
+  /**
    * The source as the page offered it, before any refresh or redirect: the video's identity is derived from it (see
    * `engine/DownloadIdentity`), so a re-signed or redirected link is still the same video. Null uses [url].
    */

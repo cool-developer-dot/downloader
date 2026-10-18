@@ -120,6 +120,8 @@ data class EnqueueRequestRecord(
   @Field val saveToGallery: Boolean? = null,
   /** #494: "mp4" / "m4v" / "m4a"; missing or anything else = the usual extension. */
   @Field val preferredExtension: String? = null,
+  /** #480: this download's own "Wi-Fi only"; missing = Download Settings decides. */
+  @Field val wifiOnly: Boolean? = null,
   @Field val identityUrl: String? = null,
   /** H12: "Keep both" / "Replace" — download it although it is already saved. Missing = false (today). */
   @Field val allowDuplicate: Boolean? = null,
@@ -146,6 +148,7 @@ data class EnqueueRequestRecord(
       qualityLabel = qualityLabel.nonBlank()?.trim(),
       saveToGallery = saveToGallery,
       preferredExtension = PreferredExtensions.normalize(preferredExtension),
+      wifiOnly = wifiOnly,
       // Only an identity hint: an unusable value falls back to `url` instead of refusing the download.
       identityUrl = identityUrl?.trim()?.takeIf { it.toHttpUrlOrNull() != null },
       allowDuplicate = allowDuplicate == true,

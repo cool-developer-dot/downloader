@@ -51,6 +51,8 @@ object DownloadEngineProvider {
       verification = RealVerification,
       // #494: the extension each download asked for, kept until its file is named (survives a restart).
       preferredExtensions = PreferredExtensions(SharedPreferencesPreferredExtensionStorage(context)),
+      // #480: each download's own "Wi-Fi only", kept while it can still run (survives a restart).
+      networkChoices = NetworkChoices(SharedPreferencesNetworkChoiceStorage(context)),
       inspector = RealMediaInspector(services.mediaInfo),
       thumbnails = RealThumbnails(services.thumbnails),
       library = RealLibraryWriter(services.library),

@@ -18,6 +18,7 @@ describe('download options (audit)', () => {
       titleEdited: false,
       folderId: 'f',
       saveToGallery: 'default',
+      wifiOnly: 'default',
     });
   });
 });

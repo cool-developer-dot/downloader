@@ -5,8 +5,8 @@
  *   the same way (`sanitizeFileName`). Only a name the user actually edited replaces the request title.
  * - Ask Where to Save (#155): one of the existing logical library folders; Unfiled (null) is the default. Assigned
  *   with the existing folder-assignment code once the download completes.
- * - Per-item Settings (#480): only what the enqueue contract already takes per request — `saveToGallery`.
- *   ("Default" leaves the request without it, so the app setting decides as today.)
+ * - Per-item Settings (#480): `saveToGallery`, and `wifiOnly` (kept by the engine per download, native
+ *   engine/NetworkChoices). "As in settings" leaves the request without the field, so the app setting decides.
  *
  * Untouched options change nothing: the request reaches the engine exactly as it does without the panel.
  */
@@ -16,6 +16,8 @@ import type { EnqueueRequest } from '@modules/vidorax-media/src/VidoraMedia.type
 import { sanitizeFileName } from './filename-template';
 
 export type GalleryChoice = 'default' | 'on' | 'off';
+/** #480: this download's own Wi-Fi only; 'default' follows Download Settings. */
+export type WifiChoice = 'default' | 'on' | 'off';
 
 export type DownloadOptionsDraft = {
   /** The offer's source URL the options belong to (`identityUrl ?? url` of the request it produces). */
@@ -26,6 +28,8 @@ export type DownloadOptionsDraft = {
   /** A library folder id; null = Unfiled (the default). */
   folderId: string | null;
   saveToGallery: GalleryChoice;
+  /** Older drafts have none: the same as 'default'. */
+  wifiOnly?: WifiChoice;
 };
 
 export function requestIdentity(request: Pick<EnqueueRequest, 'url' | 'identityUrl'>): string {
@@ -48,17 +52,20 @@ export function editedTitle(draft: Pick<DownloadOptionsDraft, 'title' | 'titleEd
 export function requestOverrides(
   request: Pick<EnqueueRequest, 'url' | 'identityUrl'>,
   draft: DownloadOptionsDraft | null,
-): Partial<Pick<EnqueueRequest, 'title' | 'saveToGallery'>> {
+): Partial<Pick<EnqueueRequest, 'title' | 'saveToGallery' | 'wifiOnly'>> {
   if (!draft || draft.identity !== requestIdentity(request)) {
     return {};
   }
-  const overrides: Partial<Pick<EnqueueRequest, 'title' | 'saveToGallery'>> = {};
+  const overrides: Partial<Pick<EnqueueRequest, 'title' | 'saveToGallery' | 'wifiOnly'>> = {};
   const title = editedTitle(draft);
   if (title) {
     overrides.title = title;
   }
   if (draft.saveToGallery !== 'default') {
     overrides.saveToGallery = draft.saveToGallery === 'on';
+  }
+  if (draft.wifiOnly === 'on' || draft.wifiOnly === 'off') {
+    overrides.wifiOnly = draft.wifiOnly === 'on';
   }
   return overrides;
 }
@@ -74,13 +81,20 @@ export function nextDraft(
     titleEdited: false,
     folderId: null,
     saveToGallery: 'default',
+    wifiOnly: 'default',
   };
   return { ...base, ...patch };
 }
 
 /** Pure: whether the options differ from their defaults (the collapsed row says so). */
 export function hasChangedOptions(draft: DownloadOptionsDraft | null): boolean {
-  return Boolean(draft && (editedTitle(draft) || draft.folderId != null || draft.saveToGallery !== 'default'));
+  return Boolean(
+    draft &&
+      (editedTitle(draft) ||
+        draft.folderId != null ||
+        draft.saveToGallery !== 'default' ||
+        (draft.wifiOnly ?? 'default') !== 'default'),
+  );
 }
 
 export type PendingFolders = Record<string, string>;
