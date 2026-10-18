@@ -143,7 +143,7 @@ class ChecksumsTest {
     assertTrue(stores.all { it.second == first })
   }
 
-  @Test fun aGoneItemOrFileIsNotFound() = runBlocking {
+  @Test fun aGoneItemOrFileIsNotFound() = runBlocking<Unit> {
     assertThrows(NotFoundException::class.java) { runBlocking { checksums.compute("nope") } }
     files["gone"] = File(tmp.root, "gone.mp4")
     assertThrows(NotFoundException::class.java) { runBlocking { checksums.compute("gone") } }

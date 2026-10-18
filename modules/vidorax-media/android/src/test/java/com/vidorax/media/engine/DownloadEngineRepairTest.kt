@@ -249,7 +249,7 @@ class DownloadEngineRepairTest {
     assertArrayEquals(ByteArray(2_000) { 9 }, finished.readBytes())
   }
 
-  @Test fun onlyAFailedDownloadCanBeRepairedAndWithoutAPartialThereIsNothingToDo() = runBlocking {
+  @Test fun onlyAFailedDownloadCanBeRepairedAndWithoutAPartialThereIsNothingToDo() = runBlocking<Unit> {
     val engine = engine()
     failedWithPart("g", ByteArray(0))
     assertEquals(RepairOutcome.NOTHING, engine.repairPartial("g"))
