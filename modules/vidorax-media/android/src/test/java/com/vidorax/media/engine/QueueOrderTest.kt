@@ -61,7 +61,8 @@ class QueueOrderTest {
     assertEquals(listOf("a", "c"), pickAll(held, "a", "b", "c"))
     assertNull("only held downloads waiting: nothing starts", QueueOrder.pickNext(candidates("b"), held))
     val resumed = QueueOrder.withQueues(held, held.queues.map { it.copy(held = false) })
-    assertEquals(listOf("a", "b", "c"), pickAll(resumed, "a", "b", "c"))
+    // Resumed, Later still runs after Main: it is listed second.
+    assertEquals(listOf("a", "c", "b"), pickAll(resumed, "a", "b", "c"))
   }
 
   @Test fun mainIsAlwaysThereNeverHeldAndKeepsItsName() {
