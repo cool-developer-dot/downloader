@@ -36,7 +36,8 @@ export const QueueActiveRow = memo(function QueueActiveRow({
 }: QueueActiveRowProps) {
   const downloadsTokens = useDownloadsTokens();
   const { t } = useTranslation();
-  const item = useDownloadsStore((s) => s.itemsById[id] ?? null);
+  // A v2 download is in the Queue whatever filter Downloads shows (engineRowsById holds every one).
+  const item = useDownloadsStore((s) => s.itemsById[id] ?? s.engineRowsById[id] ?? null);
   const transfer = useDownloadsStore((s) => s.transferById[id] ?? null);
 
   const handlePress = useCallback(() => onPress(id), [id, onPress]);
