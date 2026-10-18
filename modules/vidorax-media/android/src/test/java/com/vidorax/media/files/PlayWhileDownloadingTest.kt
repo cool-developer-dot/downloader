@@ -13,6 +13,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
+import org.junit.Assume.assumeFalse
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -204,7 +205,11 @@ class PlayWhileDownloadingTest {
     assertThrows(IOException::class.java) { reader.read(0, 10, ByteArray(10)) }
   }
 
+  // The open reader keeps a moved or deleted file, as on Android; a Windows JVM cannot move or delete an open file.
+  private fun assumeOpenFilesCanBeMoved() = assumeFalse(System.getProperty("os.name").startsWith("Windows"))
+
   @Test fun aCompletedDownloadMovedIntoTheLibraryIsStillServedInFull() {
+    assumeOpenFilesCanBeMoved()
     val part = tmp.newFile("download.part").apply { writeBytes(ByteArray(4_000) { 5 }) }
     val reader = reader(part, 4_000, Clock())
     val moved = File(tmp.root, "library.mp4")
@@ -215,6 +220,7 @@ class PlayWhileDownloadingTest {
   }
 
   @Test fun aCancelledDownloadIsNotServed() {
+    assumeOpenFilesCanBeMoved()
     val part = tmp.newFile("download.part").apply { writeBytes(ByteArray(2_000)) }
     val reader = reader(part, 4_000, Clock())
     check(part.delete())
