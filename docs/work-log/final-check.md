@@ -144,3 +144,12 @@ Client APK: `~/Downloads/VidoraX-Client-APK/VidoraX-1.1.0-vc4.apk` (commit `d453
 the emulator: onboarding → tour → w3schools video downloaded and completed; no crash. Client feature status:
 `~/Downloads/VidoraX-Client-APK/VidoraX-Downloader-Feature-Status.xlsx` (232 features: 176 done — 90 new in this
 phase, 86 already in the app — 56 not included by the plan; 10 extras).
+
+### Live recording on the client APK (F6)
+
+Live recording (beta) turned on; Unified Streaming live HLS (720p, 1.92 s TS). From the page (hls.js playing the
+same stream): detected as "Live stream" with Record; recording started at once but sat at 0:00 for ~50 s – 2 min,
+then caught up (nothing lost) — the page's own player and the recorder share the AVD's capped link. Via Add several
+links (no page playing): real time from the first seconds (0:11 at 20 s, 1:24 at 90 s). Stop → one MP4, 720p
+(17.0 MB and 7.2 MB), plays with picture. Fixed `971d122`: the recording row showed "68.4 MB left". APK rebuilt
+(SHA-256 `b129affe…427ab`, 97,212,897 bytes) and rechecked.
