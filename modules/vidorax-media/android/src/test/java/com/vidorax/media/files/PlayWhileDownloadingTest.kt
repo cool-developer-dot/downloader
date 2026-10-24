@@ -5,6 +5,7 @@ import com.vidorax.media.files.PlayWhileDownloading.Facts
 import com.vidorax.media.files.PlayWhileDownloading.Refusal
 import com.vidorax.media.model.DownloadState
 import com.vidorax.media.model.SourceKind
+import com.vidorax.media.transfer.PartsCheckpoint
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
@@ -138,10 +139,59 @@ class PlayWhileDownloadingTest {
     assertEquals(0L, PlayablePrefix.of(File(tmp.root, "missing.part")))
   }
 
-  @Test fun aMultiConnectionPartIsNotOfferedUntilF1SaysWhatIsContiguous() {
+  @Test fun aMultiConnectionPartIsPlayableUpToItsContiguousPartsFromZero() {
+    // F1: a pre-sized `.part` filled in three ranges. Part 1 is done, part 2 is half written, part 3 has run ahead.
+    val part = tmp.newFile("download.part").apply { writeBytes(ByteArray(9_000)) }
+    PartsCheckpoint.write(
+      part,
+      PartsCheckpoint(
+        total = 9_000,
+        validator = "\"etag\"",
+        parts = listOf(
+          PartsCheckpoint.Part(start = 0, end = 2_999, done = 3_000),
+          PartsCheckpoint.Part(start = 3_000, end = 5_999, done = 1_500),
+          PartsCheckpoint.Part(start = 6_000, end = 8_999, done = 2_000),
+        ),
+      ),
+    )
+    assertEquals("only the bytes from 0 with no hole, never part 3's", 4_500L, PlayablePrefix.of(part))
+  }
+
+  @Test fun anUnreadableOrStaleCheckpointServesNothing() {
     val part = tmp.newFile("download.part").apply { writeBytes(ByteArray(10_000)) }
     File(part.path + ".parts").writeText("{\"v\":1}")
-    assertNull(PlayablePrefix.of(part))
+    assertNull("unreadable", PlayablePrefix.of(part))
+    PartsCheckpoint.write(
+      part,
+      PartsCheckpoint(total = 20_000, validator = "\"etag\"", parts = listOf(PartsCheckpoint.Part(0, 19_999, 5_000))),
+    )
+    assertNull("describes another size of file", PlayablePrefix.of(part))
+  }
+
+  @Test fun theReaderServesAMultiConnectionPartOnlyUpToItsContiguousBytes() {
+    val bytes = ByteArray(6_000) { (it % 251).toByte() }
+    val part = tmp.newFile("download.part").apply { writeBytes(bytes) }
+    fun checkpoint(firstDone: Long, secondDone: Long) = PartsCheckpoint.write(
+      part,
+      PartsCheckpoint(
+        total = 6_000,
+        validator = "\"etag\"",
+        parts = listOf(PartsCheckpoint.Part(0, 2_999, firstDone), PartsCheckpoint.Part(3_000, 5_999, secondDone)),
+      ),
+    )
+    checkpoint(firstDone = 2_000, secondDone = 3_000)
+    val clock = Clock()
+    var sleeps = 0
+    val reader = reader(part, 6_000, clock) {
+      // The first connection catches up while the player waits at the hole.
+      if (++sleeps == 2) checkpoint(firstDone = 3_000, secondDone = 3_000)
+    }
+    val out = ByteArray(4_000)
+    assertEquals("a short read up to the hole", 2_000, reader.read(0, 4_000, out))
+    assertArrayEquals(bytes.copyOfRange(0, 2_000), out.copyOfRange(0, 2_000))
+    assertEquals("waits, then the rest", 4_000, reader.read(2_000, 4_000, out))
+    assertArrayEquals(bytes.copyOfRange(2_000, 6_000), out)
+    assertEquals(200L, clock.now)
   }
 
   // --- the reader behind the player ---

@@ -2,6 +2,7 @@ package com.vidorax.media.files
 
 import com.vidorax.media.model.DownloadState
 import com.vidorax.media.model.SourceKind
+import com.vidorax.media.transfer.PartsCheckpoint
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
@@ -85,18 +86,17 @@ internal object PlayWhileDownloading {
 
 /**
  * The bytes of a `.part` that are downloaded contiguously from byte 0 — what can be played. A single-connection
- * transfer appends in order, so that is the file's length.
- *
- * **The one place F1 (several connections per file) has to change:** a multi-connection `.part` is pre-sized to the
- * whole file and filled in ranges, with a parts checkpoint beside it (`download.part.parts`), so its length says
- * nothing about what is there. Until F1 answers here (`PartsCheckpoint.read(partFile)?.contiguousPrefix`), such a
- * download is not offered: [of] is null.
+ * transfer appends in order, so that is the file's length. A multi-connection `.part` (F1) is pre-sized to the whole
+ * file and filled in ranges: its parts checkpoint (`download.part.parts`) says how far the bytes from 0 are written and
+ * synced (it is written at most a second behind, so it never claims more than the disk has). Null when a checkpoint
+ * is there but cannot be read or no longer describes the `.part` — then nothing is served.
  */
 internal object PlayablePrefix {
-  private const val PARTS_SUFFIX = ".parts"
-
   fun of(partFile: File): Long? {
-    if (File(partFile.path + PARTS_SUFFIX).exists()) return null
+    if (PartsCheckpoint.fileFor(partFile).exists()) {
+      val checkpoint = PartsCheckpoint.read(partFile) ?: return null
+      return if (checkpoint.describes(partFile)) checkpoint.contiguousPrefix else null
+    }
     return if (partFile.isFile) partFile.length() else 0L
   }
 }
@@ -228,8 +228,8 @@ internal object Mp4Layout {
  * already served can no longer be trusted: the `.part` got shorter (the download restarted from zero) or its file is
  * gone and was not completed in full.
  *
- * What may be served is [PlayablePrefix] of [partFile] — when that cannot be told (a multi-connection `.part`) reads
- * fail rather than serve bytes that may not be there. A download that completed moved its `.part` into the library:
+ * What may be served is [PlayablePrefix] of [partFile] — when that cannot be told (an unreadable parts checkpoint)
+ * reads fail rather than serve bytes that may not be there. A download that completed moved its `.part` into the library:
  * the open [file] still reads it, and when it is complete ([total] bytes) all of it is served.
  */
 internal class GrowingFileReader(
