@@ -21,6 +21,8 @@ import type { TranslationKey } from '@/localization/types';
 import { useFoldersStore } from '@/store/organization/folders';
 import { selectFilenameTemplate, useSettingsStore } from '@/store/settings';
 
+import { DownloadPreview } from './DownloadPreview';
+
 const GALLERY_CHOICES: { value: GalleryChoice; label: TranslationKey }[] = [
   { value: 'default', label: 'downloadOptions.galleryDefault' },
   { value: 'on', label: 'downloadOptions.galleryOn' },
@@ -35,8 +37,8 @@ const WIFI_CHOICES: { value: WifiChoice; label: TranslationKey }[] = [
 
 /**
  * Quality sheet → "Options" (H8), collapsed until tapped. Shown only for a browser offer (the v2 handoff applies it).
- * Name (#296), library folder (#155), and per-download Save to Gallery and Wi-Fi only (#480). Left alone, nothing
- * changes.
+ * Preview (#381), name (#296), library folder (#155), and per-download Save to Gallery and Wi-Fi only (#480). Left
+ * alone, nothing changes.
  */
 export const DownloadOptionsPanel = memo(function DownloadOptionsPanel({
   selection,
@@ -110,6 +112,8 @@ export const DownloadOptionsPanel = memo(function DownloadOptionsPanel({
 
       {expanded ? (
         <Box gap={12} pb={4} style={{ borderTopWidth: 1, borderTopColor: theme.colors.divider, paddingTop: 10 }}>
+          <DownloadPreview option={selectedOption} />
+
           <TextField
             label={t('downloadOptions.name')}
             value={name}

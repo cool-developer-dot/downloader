@@ -2635,8 +2635,12 @@ export const en = {
     },
   },
   downloadOptions: {
+    preview: 'Preview',
+    previewClose: 'Close preview',
+    previewHint: 'Plays this quality here before you download it',
+    previewNote: 'Streamed from the site; nothing is saved until you tap Download.',
     title: 'Options',
-    hint: 'Name, folder, gallery copy and Wi-Fi only for this download',
+    hint: 'Preview, name, folder, gallery copy and Wi-Fi only for this download',
     changed: 'Changed for this download',
     name: 'Name',
     nameHint: 'From your File naming setting. Edit it to rename this download.',
