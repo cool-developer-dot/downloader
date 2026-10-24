@@ -80,3 +80,12 @@ function selectTotalSpeedLabel(state: ReturnType<typeof useDownloadsStore.getSta
 export function useTotalDownloadSpeed(): string | null {
   return useDownloadsStore(selectTotalSpeedLabel);
 }
+
+function selectHasRunningDownload(state: ReturnType<typeof useDownloadsStore.getState>): boolean {
+  return Object.values(state.engineRowsById).some((item) => item.status === 'DOWNLOADING');
+}
+
+/** Whether a v2 download is running: the total speed line keeps its place while one is, so the list never jumps. */
+export function useHasRunningDownload(): boolean {
+  return useDownloadsStore(selectHasRunningDownload);
+}

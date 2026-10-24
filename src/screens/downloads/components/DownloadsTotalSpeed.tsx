@@ -5,10 +5,13 @@ import { Icon } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
 import { useTranslation } from '@/localization';
 
-import { useTotalDownloadSpeed } from '../hooks/useDownloadProgressDetails';
+import { useHasRunningDownload, useTotalDownloadSpeed } from '../hooks/useDownloadProgressDetails';
 import { useDownloadsTokens } from '../theme/downloads-tokens';
 
-/** Total Speed Overview (#322): the running v2 downloads' combined speed. Hidden while none is known. */
+/**
+ * Total Speed Overview (#322): the running v2 downloads' combined speed. Shown while one runs — with "—" until a speed
+ * is known, so the list below never jumps a line between progress ticks — and hidden when none runs.
+ */
 export const DownloadsTotalSpeed = memo(function DownloadsTotalSpeed({
   testID = 'downloads-total-speed',
 }: {
@@ -17,12 +20,13 @@ export const DownloadsTotalSpeed = memo(function DownloadsTotalSpeed({
   const downloadsTokens = useDownloadsTokens();
   const { t } = useTranslation();
   const speed = useTotalDownloadSpeed();
+  const running = useHasRunningDownload();
 
-  if (!speed) {
+  if (!speed && !running) {
     return null;
   }
 
-  const label = t('downloadProgress.totalSpeed', { speed });
+  const label = t('downloadProgress.totalSpeed', { speed: speed ?? '—' });
   return (
     <Box
       row
