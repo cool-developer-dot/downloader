@@ -84,14 +84,14 @@ internal class DownloadRunner(
     // A previous process may have left a download's own notification up — one held by an F3 rule, which the engine
     // requeues before this runs — that the runner's notification shows now. This process never posted it, so it
     // would never take it away; cancelling an id that is not posted is a no-op.
-    apply(synchronized(lock) { Plan(clear = (tracked.keys - ownNotification).toList(), host = hostActionLocked()) })
+    update { Plan(clear = (tracked.keys - ownNotification).toList(), host = hostActionLocked()) }
   }
 
   fun onState(record: DownloadRecord) {
     // H4: a download waiting in a held queue keeps neither the host nor a notification up; the engine announces it
     // again when its queue is resumed.
     if (record.state == DownloadState.QUEUED && isHeld(record.id)) return dropHeld(record.id)
-    val plan = synchronized(lock) {
+    update {
       if (record.state in TERMINAL) {
         tracked.remove(record.id)
         // The finished notification is this download's own from here on: the runner stops managing it.
@@ -135,11 +135,10 @@ internal class DownloadRunner(
         )
       }
     }
-    apply(plan)
   }
 
   fun onProgress(progress: DownloadProgress) {
-    val plan = synchronized(lock) {
+    update {
       val entry = tracked[progress.id] ?: return
       entry.bytesDone = progress.bytesDone
       entry.totalBytes = progress.totalBytes ?: entry.totalBytes
@@ -158,12 +157,11 @@ internal class DownloadRunner(
         host = if (entry.state in LIVE) hostActionLocked() else HostAction {},
       )
     }
-    apply(plan)
   }
 
   /** H4: stops tracking a download that now waits in a held queue, as if it were not there. */
   private fun dropHeld(id: String) {
-    val plan = synchronized(lock) {
+    update {
       if (tracked.remove(id) == null) return
       val hadOwn = ownNotification.remove(id)
       val reconciled = reconcileLocked()
@@ -173,13 +171,23 @@ internal class DownloadRunner(
         host = hostActionLocked(),
       )
     }
-    apply(plan)
   }
 
-  private fun apply(plan: Plan) {
-    plan.clear.forEach(notifier::clear)
-    plan.show.forEach(notifier::show)
-    plan.host.run()
+  /**
+   * Plans a change under the lock and posts its notifications before letting go of it, so they reach the system in
+   * the order the changes happened: a progress update planned just before a download completed can never land after
+   * its "Download complete" and leave an ongoing "Finishing up" behind. Posting only talks to the system's
+   * notification service, never back into the runner; the host talks to the platform and may call back in, so it
+   * runs outside the lock.
+   */
+  private inline fun update(plan: () -> Plan) {
+    val host = synchronized(lock) {
+      val next = plan()
+      next.clear.forEach(notifier::clear)
+      next.show.forEach(notifier::show)
+      next.host
+    }
+    host.run()
   }
 
   private class Plan(

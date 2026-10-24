@@ -125,6 +125,48 @@ class DownloadRunnerTest {
   }
 
   @Test
+  fun `a progress update racing the completion never leaves "Finishing up" behind`() {
+    // dl-1 has a notification of its own (two live downloads), and its last progress update is being posted when the
+    // download completes on another thread.
+    val inShow = java.util.concurrent.CountDownLatch(1)
+    val release = java.util.concurrent.CountDownLatch(1)
+    val landed = java.util.Collections.synchronizedList(mutableListOf<DownloadNotificationContent>())
+    val slowNotifier = object : DownloadNotifier {
+      @Volatile var blockActive = false
+
+      override fun show(content: DownloadNotificationContent) {
+        if (blockActive && content.downloadId == "dl-1" && content.kind == DownloadNotificationContent.Kind.ACTIVE) {
+          blockActive = false
+          inShow.countDown()
+          release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        }
+        landed += content
+      }
+
+      override fun clear(downloadId: String) = Unit
+    }
+    val raced = DownloadRunner(FakeHost(), slowNotifier) { now }
+    raced.onState(record(id = "dl-1", state = DownloadState.PROCESSING, bytesDone = 1_000))
+    raced.onState(record(id = "dl-2", state = DownloadState.DOWNLOADING))
+    slowNotifier.blockActive = true
+    tick(10)
+    val progressThread = Thread {
+      raced.onProgress(DownloadProgress("dl-1", ProgressPhase.PROCESSING, 1_000, 1_000, 0.9, 0, null, ProcessingStage.MERGING))
+    }.apply { start() }
+    assertTrue(inShow.await(5, java.util.concurrent.TimeUnit.SECONDS))
+    val completeThread = Thread {
+      raced.onState(record(id = "dl-1", state = DownloadState.COMPLETED, bytesDone = 1_000))
+    }.apply { start() }
+    completeThread.join(300) // before the fix the completion was posted here, ahead of the progress update
+    release.countDown()
+    progressThread.join(5_000)
+    completeThread.join(5_000)
+
+    val last = landed.last { it.downloadId == "dl-1" }
+    assertEquals(DownloadNotificationContent.Kind.COMPLETED, last.kind)
+  }
+
+  @Test
   fun `1 a live download keeps the background host running while it transfers`() {
     runner.onState(record(state = DownloadState.DOWNLOADING))
     assertEquals("the host starts as soon as work is live", 1, host.starts)
