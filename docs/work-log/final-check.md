@@ -118,3 +118,29 @@ AVD `VidoraX_Test2` (Android 15, 4 GB, `-gpu host -feature -Vulkan`), release bu
 | F2 / F1 | 256 KB/s cap held at 255–256 KB/s; auto-resume off → a force-stopped download came back paused |
 
 BLOCKED here: fingerprint unlock (no enrolled fingerprint; the row is hidden as designed), real phone.
+
+## 5. Live test and client APK (24 Oct, evening)
+
+Before the APK the emulator was put back to defaults (English, App Lock off, Reset settings — which found the H18
+bug fixed in `aef19ae`: Reset left max downloads, subtitles, duplicate choice, save-location and network options as
+they were). Live regression `regress.py` on real sites:
+
+| Check | Result |
+| --- | --- |
+| R1 cold start | PASS — 6.3 / 6.4 / 6.3 s, no crash |
+| R2 HTML video (w3schools) | Script FAIL = duplicate: the video was already in this AVD's library from test2 ("Already downloaded", correct). On the fresh install below it downloaded and completed |
+| R3 hls.js 184p | Script FAIL = duplicate for the same reason; HLS covered by R6 (288p) |
+| R4 TikTok + Facebook | Script FAIL = both videos already in the library; fresh ones by hand: TikTok `@complex/7626254334065511711` 720p and Facebook `1376350954687257` 360p completed |
+| R5 YouTube refused | PASS — "YouTube downloads are not supported" |
+| R6 pause / force-stop / resume | PASS — paused at 30.4 MB, unchanged, resumed, running again after force-stop, completed |
+| R7 player | PASS — ±10 s, seek, fullscreen, PiP |
+| R8 App Lock | Script could not find the switch; App Lock checked by hand earlier (setup, lock on start, Private, disable) |
+| R9 Urdu | PASS — 27 Urdu strings, no English left |
+| R11 DASH qualities | PASS — 7 qualities (180–1080p), 180p completed and plays |
+| R12 Wi-Fi only | PASS — "Waiting for Wi-Fi" |
+
+Client APK: `~/Downloads/VidoraX-Client-APK/VidoraX-1.1.0-vc4.apk` (commit `d453404`, 1.1.0 / versionCode 4,
+97,212,757 bytes, SHA-256 `7a4dc7bf…68cc03`, upload-key signed, arm64-v8a + armeabi-v7a + x86_64). Fresh install on
+the emulator: onboarding → tour → w3schools video downloaded and completed; no crash. Client feature status:
+`~/Downloads/VidoraX-Client-APK/VidoraX-Downloader-Feature-Status.xlsx` (232 features: 176 done — 90 new in this
+phase, 86 already in the app — 56 not included by the plan; 10 extras).
