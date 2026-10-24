@@ -8,13 +8,15 @@ import {
   takePasteLinkRequest,
 } from '@/browser/services/paste-link-request';
 import { useQualitySelectionContext } from '@/screens/downloads/quality';
+import { useAppLockStore } from '@/security/app-lock/app-lock.store';
 
 /** Android lets only the focused app read the clipboard: give the window a moment to take focus first. */
 const FOCUS_DELAY_MS = 400;
 
 /**
  * Runs a "Paste link" request from the app shortcut or the widget (`paste-link-request.ts`) with the Paste link
- * button's own action, once VidoraX is in front. The Clipboard Monitor steps aside for it, so its banner never offers
+ * button's own action, once VidoraX is in front and unlocked (with App Lock on, after the PIN — never under the lock
+ * screen, where the request would be used up with nothing to show). The Clipboard Monitor steps aside for it, so its banner never offers
  * the same link a second time. Renders nothing; mounted inside the tabs, next to that action.
  */
 export const PasteLinkRequestHandler = memo(function PasteLinkRequestHandler() {
@@ -28,8 +30,8 @@ export const PasteLinkRequestHandler = memo(function PasteLinkRequestHandler() {
       }
       timer = setTimeout(() => {
         timer = null;
-        // Not in front (yet): the next return to the foreground runs it.
-        if (AppState.currentState !== 'active' || !takePasteLinkRequest()) {
+        // Not in front, or still behind App Lock: the next return to the foreground, or the unlock, runs it.
+        if (AppState.currentState !== 'active' || useAppLockStore.getState().status === 'LOCKED' || !takePasteLinkRequest()) {
           return;
         }
         stepAsideForPasteLink();
@@ -45,8 +47,14 @@ export const PasteLinkRequestHandler = memo(function PasteLinkRequestHandler() {
         run();
       }
     });
+    const unsubscribeLock = useAppLockStore.subscribe((state, previous) => {
+      if (previous.status === 'LOCKED' && state.status !== 'LOCKED' && hasPasteLinkRequest()) {
+        run();
+      }
+    });
     return () => {
       unsubscribe();
+      unsubscribeLock();
       appState.remove();
       if (timer) {
         clearTimeout(timer);
