@@ -179,7 +179,9 @@ export const AdvancedNetworkSettingsSection = memo(function AdvancedNetworkSetti
     () =>
       TIMEOUT_CHOICES.map((choice) => ({
         value: choice,
-        label: choice === 'automatic' ? t('networkOptions.automatic') : t('networkOptions.seconds', { seconds: choice }),
+        // Five segments share the row: the short "Auto" fits on one line; screen readers hear "Automatic".
+        label: choice === 'automatic' ? t('networkOptions.automaticShort') : t('networkOptions.seconds', { seconds: choice }),
+        ...(choice === 'automatic' ? { accessibilityLabel: t('networkOptions.automatic') } : {}),
       })),
     [t],
   );
@@ -189,7 +191,12 @@ export const AdvancedNetworkSettingsSection = memo(function AdvancedNetworkSetti
       RETRY_LIMIT_CHOICES.map((choice) => ({
         value: choice,
         label:
-          choice === 'automatic' ? t('networkOptions.retryLimitAutomatic', { count: String(AUTOMATIC_RETRY_LIMIT) }) : choice,
+          choice === 'automatic'
+            ? t('networkOptions.retryLimitAutomaticShort', { count: String(AUTOMATIC_RETRY_LIMIT) })
+            : choice,
+        ...(choice === 'automatic'
+          ? { accessibilityLabel: t('networkOptions.retryLimitAutomatic', { count: String(AUTOMATIC_RETRY_LIMIT) }) }
+          : {}),
       })),
     [t],
   );

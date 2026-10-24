@@ -83,6 +83,10 @@ function SegmentedControlInner<T extends string>({
               testID={testID ? `${testID}-${option.value}` : undefined}>
               <Text
                 variant="label"
+                // A label too long for its share of the row shrinks a little instead of breaking mid-word.
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.8}
                 style={{
                   color: selected
                     ? theme.colors.textOnPrimary
