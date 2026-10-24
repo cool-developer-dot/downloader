@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
-import type { DownloadQualityOption } from '@/api/types';
+import type { DownloadQualityOption } from '@/downloads/quality';
 import { sniffMediaSignature } from '@/downloads/engine/media-signature';
 import { buildV2EnqueueRequest } from '@/downloads/v2/enqueue-request';
 import { libraryFormatLabel } from '@/library/format-label';
