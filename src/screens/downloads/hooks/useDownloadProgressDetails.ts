@@ -46,13 +46,15 @@ export function useDownloadProgressDetails(id: string | null | undefined): Downl
   const revision = useProgressStatsRevision((state) => (live ? state.revision : 0));
   const bytesWritten = useDownloadsStore((state) => (id ? state.transferById[id]?.bytesWritten : undefined));
   const totalBytes = useDownloadsStore((state) => (id ? state.transferById[id]?.totalBytes : undefined));
+  // F6: a live recording has no end, so nothing is "left" (its length and size so far are on their own line).
+  const recording = useDownloadsStore((state) => (id ? state.transferById[id]?.recording === true : false));
 
   return useMemo(() => {
     if (!live || !id || !status) {
       return NONE;
     }
     const stats = getProgressStats(id);
-    const remaining = remainingBytes(bytesWritten, totalBytes);
+    const remaining = recording ? null : remainingBytes(bytesWritten, totalBytes);
     // The graph ends at the newest sample: it only changes when an event arrives anyway.
     const newestAt = stats?.samples[stats.samples.length - 1]?.at ?? null;
     return {
@@ -64,7 +66,7 @@ export function useDownloadProgressDetails(id: string | null | undefined): Downl
     };
     // `revision` re-reads the stats map when it changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, live, status, bytesWritten, totalBytes, revision]);
+  }, [id, live, status, bytesWritten, totalBytes, recording, revision]);
 }
 
 /** The sum of the running v2 downloads' current speeds, formatted; null when none is known. */
