@@ -109,7 +109,7 @@ AVD `VidoraX_Test2` (Android 15, 4 GB, `-gpu host -feature -Vulkan`), release bu
 | H16 | PASS — Vibrate on → channel `vidorax_downloads_status_sound_vibrate` (vibration on) |
 | H17 | PASS — F-Droid.apk: "This file could harm your device" |
 | H18 | Screen present (default tab, export, import, reset) |
-| H19 | Tears of Steel (WebVTT, 5 languages) downloaded with subtitles on; the subtitle segments of this host answer in ~1.5 s each (710 segments, fetched one by one), still saving at the time of writing |
+| H19 | PASS — Tears of Steel (segmented WebVTT) with subtitles on: de/en/fr/… saved beside the video, each with Export .srt / .vtt. Slow on this host (~1.5 s per 57-byte segment, 710 fetched one by one ≈ 15 min); resumed by itself after the app was reinstalled mid-way |
 | H20 | PASS — SHA-256 equals the host's `5b603ec1…`; Play while downloading after `75c3593` (30 MB 1080p, playing at 44%) |
 | H21 | PASS — needs App Lock, PIN every time, encrypted, plays from the vault |
 | H22 | PASS — widget placed ("No active downloads", Paste link); Paste link after the PIN after `9463a87` |
