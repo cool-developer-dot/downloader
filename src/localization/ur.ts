@@ -1713,7 +1713,7 @@ export const ur: CatalogStrings<typeof en> = {
     saveToGallery: 'گیلری میں محفوظ کریں',
     saveToGalleryHint: 'مکمل ویڈیوز آپ کے فون کی گیلری ایپ میں بھی نظر آئیں گی۔',
     autoResumeLong: 'رکے ہوئے ڈاؤن لوڈز خود بخود جاری رکھیں',
-    autoResumeLongHint: 'موزوں رکے ہوئے ڈاؤن لوڈز محفوظ ہونے پر جاری ہوں گے۔',
+    autoResumeLongHint: 'فون دوبارہ شروع ہو یا اینڈرائیڈ VidoraX بند کر دے تو ڈاؤن لوڈز خود جاری رہتے ہیں۔ بند: ریزیوم پر ٹیپ کرنے تک رکے رہتے ہیں۔',
     maxConcurrent: 'زیادہ سے زیادہ بیک وقت ڈاؤن لوڈز',
     maxConcurrentHint: 'منتخب کریں ایک وقت میں کتنے ڈاؤن لوڈز چلیں۔',
     connectionsPerFile: 'فی فائل کنکشنز',

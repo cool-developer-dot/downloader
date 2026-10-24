@@ -46,7 +46,21 @@ describe('v2 download settings', () => {
       liveRecording: false,
       liveRecordingMaxMinutes: 120,
       language: 'en',
+      autoResume: true,
     });
+  });
+
+  test('"Automatically resume interrupted downloads" reaches the engine (on unless turned off), and a change is pushed', async () => {
+    const base = { wifiOnly: false, maxConcurrentDownloads: 2 };
+    assert.equal(v2DownloadSettings(base).autoResume, true);
+    assert.equal(v2DownloadSettings({ ...base, autoResume: true }).autoResume, true);
+    assert.equal(v2DownloadSettings({ ...base, autoResume: false }).autoResume, false);
+
+    const { port, pushed } = engineSpy();
+    await pushV2DownloadSettings(port, base);
+    await pushV2DownloadSettings(port, { ...base, autoResume: false });
+    await pushV2DownloadSettings(port, { ...base, autoResume: false });
+    assert.deepEqual(pushed.map((s) => s.autoResume), [true, false]);
   });
 
   test('F6 live recording reaches the engine: off by default, the maximum length clamped to 15–720 minutes', async () => {

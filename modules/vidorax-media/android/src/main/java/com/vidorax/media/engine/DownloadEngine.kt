@@ -219,7 +219,9 @@ internal class DownloadEngine(
    * Rules: PAUSED stays paused (bytes reconciled to what is on disk); QUEUED/PROBING re-run from a fresh probe;
    * DOWNLOADING resumes from the `.part` (HLS: from its checkpointed segment); PROCESSING is repaired from its
    * finalized file when one exists and verifies (idempotent, no redownload), otherwise re-run from the `.part`;
-   * COMPLETED/FAILED/CANCELLED are left untouched.
+   * COMPLETED/FAILED/CANCELLED are left untouched. With "Automatically resume interrupted downloads" off
+   * ([DownloadSettings.autoResume]), a download that had started (probing, downloading or waiting) is paused instead,
+   * with its bytes, for the user's Resume; one still queued keeps its place.
    */
   internal suspend fun restore() {
     if (!restoreStarted.compareAndSet(false, true)) return
@@ -230,17 +232,18 @@ internal class DownloadEngine(
     for (listed in QueueOrder.inStartOrder(rows, queueOrder.snapshot) { it.id }) {
       if (activeJobs.containsKey(listed.id)) continue
       val row = withIdentity(listed)
+      val resumeInterrupted = settings.autoResume
       when (row.state) {
         DownloadState.PAUSED -> reconcilePausedBytes(row)
-        DownloadState.QUEUED,
+        DownloadState.QUEUED -> requeueFromPart(row, keepBytes = false)
         DownloadState.PROBING,
         DownloadState.WAITING_NETWORK,
         DownloadState.WAITING_RETRY,
-        -> requeueFromPart(row, keepBytes = false)
+        -> if (resumeInterrupted) requeueFromPart(row, keepBytes = false) else pauseInterrupted(row)
         // Held by a rule, possibly mid-transfer: back in the queue with its bytes; the rules are looked at again.
         DownloadState.WAITING_CONDITIONS,
         DownloadState.DOWNLOADING,
-        -> requeueFromPart(row, keepBytes = true)
+        -> if (resumeInterrupted) requeueFromPart(row, keepBytes = true) else pauseInterrupted(row)
         DownloadState.PROCESSING -> recoverProcessing(row)
         // F6: a recording the process death interrupted is finalized from its checkpoint; it never records on.
         DownloadState.RECORDING -> recoverRecording(row)
@@ -311,6 +314,18 @@ internal class DownloadEngine(
     }
     stateFlow.tryEmit(recordOf(requeued))
     launchWorker(row.id)
+  }
+
+  /**
+   * "Automatically resume interrupted downloads" is off: a download the process death or reboot interrupted waits
+   * paused, with what is on disk, until the user resumes it.
+   */
+  private suspend fun pauseInterrupted(row: DownloadRow) {
+    val paused = mutex.withLock {
+      val current = store.find(row.id) ?: return
+      save(current.copy(state = DownloadState.PAUSED, bytesDone = resumableBytes(row), errorCode = null, errorMessage = null, updatedAt = now()))
+    }
+    stateFlow.tryEmit(recordOf(paused))
   }
 
   private suspend fun recoverProcessing(row: DownloadRow) {

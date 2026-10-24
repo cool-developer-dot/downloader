@@ -698,6 +698,12 @@ export interface DownloadSettings {
   liveRecording?: boolean;
   /** F6: a recording stops by itself after this many minutes (15..720). Default 120. */
   liveRecordingMaxMinutes?: number;
+  /**
+   * Download Settings → "Automatically resume interrupted downloads". Default true: after a process death or a reboot
+   * a download that was running continues by itself; false: it waits paused for Resume (one still queued keeps its
+   * place). Persisted by the engine. Missing = true.
+   */
+  autoResume?: boolean;
 }
 
 /**

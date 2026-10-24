@@ -120,6 +120,7 @@ object DownloadEngineProvider {
       liveRecording = stored.getBoolean(KEY_LIVE_RECORDING, false),
       liveRecordingMaxMinutes = stored.getInt(KEY_LIVE_MAX_MINUTES, DownloadSettings.DEFAULT_LIVE_MAX_MINUTES)
         .coerceIn(DownloadSettings.MIN_LIVE_MAX_MINUTES, DownloadSettings.MAX_LIVE_MAX_MINUTES),
+      autoResume = stored.getBoolean(KEY_AUTO_RESUME, true),
     )
   }
 
@@ -149,6 +150,7 @@ object DownloadEngineProvider {
         .putString(KEY_LANGUAGE, settings.language)
         .putBoolean(KEY_LIVE_RECORDING, settings.liveRecording)
         .putInt(KEY_LIVE_MAX_MINUTES, settings.liveRecordingMaxMinutes)
+        .putBoolean(KEY_AUTO_RESUME, settings.autoResume)
         .apply()
     }
   }
@@ -167,4 +169,5 @@ object DownloadEngineProvider {
   private const val KEY_LANGUAGE = "language"
   private const val KEY_LIVE_RECORDING = "liveRecording"
   private const val KEY_LIVE_MAX_MINUTES = "liveRecordingMaxMinutes"
+  private const val KEY_AUTO_RESUME = "autoResume"
 }

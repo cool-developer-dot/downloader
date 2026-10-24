@@ -35,6 +35,8 @@ export type V2SettingsInput = {
   liveRecordingMaxMinutes?: number;
   /** The app's language, for the engine's own notification texts. */
   language?: string;
+  /** "Automatically resume interrupted downloads" (default true). */
+  autoResume?: boolean;
   /** Finished/failed notification alerts; each is sent only when given (see `DownloadSettings`). */
   notificationSound?: boolean;
   notificationVibrate?: boolean;
@@ -106,6 +108,7 @@ export function v2DownloadSettings(input: V2SettingsInput): DownloadSettings {
     liveRecording: input.liveRecording === true,
     liveRecordingMaxMinutes: normalizeLiveRecordingMaxMinutes(input.liveRecordingMaxMinutes),
     language: input.language === 'ur' ? 'ur' : 'en',
+    autoResume: input.autoResume !== false,
     ...notificationAlertFields(input),
   };
 }
@@ -127,6 +130,7 @@ export function sameV2Settings(a: DownloadSettings, b: DownloadSettings): boolea
     (a.liveRecordingMaxMinutes ?? DEFAULT_LIVE_RECORDING_MAX_MINUTES) ===
       (b.liveRecordingMaxMinutes ?? DEFAULT_LIVE_RECORDING_MAX_MINUTES) &&
     (a.language ?? 'en') === (b.language ?? 'en') &&
+    (a.autoResume ?? true) === (b.autoResume ?? true) &&
     a.notificationSound === b.notificationSound &&
     a.notificationVibrate === b.notificationVibrate &&
     a.notificationSilent === b.notificationSilent

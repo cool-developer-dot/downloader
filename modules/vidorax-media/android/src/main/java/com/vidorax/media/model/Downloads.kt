@@ -225,6 +225,11 @@ data class DownloadSettings(
   val liveRecording: Boolean = false,
   /** F6: a recording stops by itself after this many minutes. */
   val liveRecordingMaxMinutes: Int = DEFAULT_LIVE_MAX_MINUTES,
+  /**
+   * Download Settings → "Automatically resume interrupted downloads" (on by default): after a process death or a
+   * reboot, a download that was running continues by itself; off, it waits paused for the user's Resume.
+   */
+  val autoResume: Boolean = true,
 ) {
   companion object {
     const val MIN_LIVE_MAX_MINUTES = 15

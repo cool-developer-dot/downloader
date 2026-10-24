@@ -1710,7 +1710,7 @@ export const en = {
     saveToGallery: 'Save to Gallery',
     saveToGalleryHint: 'Finished videos also appear in your phone’s Gallery app.',
     autoResumeLong: 'Automatically resume interrupted downloads',
-    autoResumeLongHint: 'Resume eligible interrupted downloads when safe.',
+    autoResumeLongHint: 'When the phone restarts or Android closes VidoraX, downloads continue by themselves. Off: they wait paused until you tap Resume.',
     maxConcurrent: 'Maximum simultaneous downloads',
     maxConcurrentHint: 'Choose how many downloads can run at once.',
     connectionsPerFile: 'Connections per file',

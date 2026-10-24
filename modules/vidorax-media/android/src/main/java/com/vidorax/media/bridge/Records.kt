@@ -220,6 +220,8 @@ data class DownloadSettingsRecord(
   @Field val notificationSound: Boolean? = null,
   @Field val notificationVibrate: Boolean? = null,
   @Field val notificationSilent: Boolean? = null,
+  /** "Automatically resume interrupted downloads"; missing from an older JavaScript bundle = on (the default). */
+  @Field val autoResume: Boolean? = null,
 ) : Record {
   fun toModel(): DownloadSettings {
     if (maxConcurrent !in DownloadSettings.MIN_CONCURRENT..DownloadSettings.MAX_CONCURRENT) {
@@ -250,6 +252,7 @@ data class DownloadSettingsRecord(
       language = if (language == "ur") "ur" else "en",
       liveRecording = liveRecording,
       liveRecordingMaxMinutes = liveMinutes,
+      autoResume = autoResume ?: true,
     )
   }
 }
