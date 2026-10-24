@@ -7,6 +7,7 @@ import { Text } from '@/components/base/Text';
 import { Chip } from '@/components/common/Chip';
 import { TextField } from '@/components/inputs/TextField';
 import { browserMediaActionService } from '@/browser/media-actions/browser-media-action.service';
+import { directMediaFileTitle } from '@/browser/media-actions/download-title';
 import { resolveDisplayTitle, type AnalyzedMediaSelection, type DownloadQualityOption } from '@/downloads/quality';
 import { hasChangedOptions, type GalleryChoice, type WifiChoice } from '@/downloads/v2/download-options';
 import {
@@ -57,13 +58,14 @@ export const DownloadOptionsPanel = memo(function DownloadOptionsPanel({
   const identity = selectedOption?.sourceUrl ?? null;
   const browserOffer = browserMediaActionService.isSelectionLocked();
 
-  // The name the File naming template gives this video, cleaned the same way.
+  // The name the File naming template gives this video, cleaned the same way — from the title the download gets
+  // (a video file opened directly is named by its file, as the handoff does).
   const prefill = useMemo(
     () =>
       sanitizeFileName(
         applyFilenameTemplate({
           template,
-          title: resolveDisplayTitle(selection) ?? '',
+          title: directMediaFileTitle(browserMediaActionService.getState().pageUrl) ?? resolveDisplayTitle(selection) ?? '',
           pageUrl: browserMediaActionService.getState().pageUrl,
           site: null,
           qualityLabel: selectedOption?.label ?? null,
