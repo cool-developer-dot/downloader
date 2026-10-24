@@ -124,6 +124,8 @@ export type TransferProgressSnapshot = {
   waitUntil?: number | null;
   /** F3 "Start at…" (epoch ms). */
   startAt?: number | null;
+  /** v2 `waiting_network`: the engine holds it until it may use a network (Wi-Fi only, or no connection). */
+  waitingNetwork?: boolean;
   /** F6: a live stream being recorded (Stop instead of Pause, no total). */
   recording?: boolean;
   /** F6: how much of the live stream is recorded (ms). */

@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
+import { en } from '@/localization/en';
+
+import { networkWaitLabelKey } from './conditions';
 import { applyV2Progress, projectV2Download, projectV2LibraryItem } from './projection';
 import { downloadRecord, libraryItem, PAGE_URL } from './test-fixtures';
 
@@ -184,5 +187,18 @@ describe('processing stage', () => {
     assert.equal(running.transfer.waitReason, null);
     assert.equal(running.transfer.waitUntil, null);
     assert.equal(running.transfer.startAt, 5);
+  });
+
+  test('a download the engine holds for the network says so, not just "Queued"', () => {
+    const held = projectV2Download(downloadRecord({ state: 'waiting_network', bytesDone: 1_048_576 }));
+    assert.equal(held.item.status, 'QUEUED');
+    assert.equal(held.transfer.waitingNetwork, true);
+    assert.equal(networkWaitLabelKey(true), 'downloads.waitingWifi');
+    assert.equal(networkWaitLabelKey(false), 'downloads.waitingNetwork');
+    assert.equal(en.downloads.waitingWifi, 'Waiting for Wi-Fi');
+    assert.equal(en.downloads.waitingNetwork, 'Waiting for network');
+    for (const state of ['queued', 'downloading', 'waiting_conditions', 'paused'] as const) {
+      assert.equal(projectV2Download(downloadRecord({ state })).transfer.waitingNetwork, undefined, state);
+    }
   });
 });

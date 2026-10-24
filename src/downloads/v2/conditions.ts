@@ -152,6 +152,14 @@ export function waitLabel(
   }
 }
 
+/**
+ * A `waiting_network` download (the engine holds it until it may use a network): "Waiting for Wi-Fi" while Download
+ * over Wi-Fi only is on, "Waiting for network" otherwise — instead of a plain "Queued".
+ */
+export function networkWaitLabelKey(wifiOnly: boolean): 'downloads.waitingWifi' | 'downloads.waitingNetwork' {
+  return wifiOnly ? 'downloads.waitingWifi' : 'downloads.waitingNetwork';
+}
+
 /** "Start at…": today or tomorrow at a minute of the day; a time already past today means tomorrow. */
 export function startAtFrom(day: 'today' | 'tomorrow', minuteOfDay: number, now: number): number {
   const date = new Date(now);

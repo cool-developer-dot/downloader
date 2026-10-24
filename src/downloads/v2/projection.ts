@@ -172,6 +172,8 @@ export function projectV2Download(
     waitReason: record.state === 'waiting_conditions' ? (record.waitReason ?? null) : null,
     waitUntil: record.state === 'waiting_conditions' ? (record.waitUntil ?? null) : null,
     startAt: record.startAt ?? null,
+    // Said on the row ("Waiting for Wi-Fi" / "Waiting for network") instead of a plain "Queued".
+    ...(record.state === 'waiting_network' ? { waitingNetwork: true } : {}),
     // F6: a recording is stopped, never paused; its length comes with every progress event.
     ...(recording ? { recording: true, recordedMs: progress?.recordedMs ?? record.recordedMs ?? 0, supportsResume: false } : {}),
     localState: completed && !library ? 'finalizing' : projection.localState,

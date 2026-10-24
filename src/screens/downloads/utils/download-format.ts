@@ -16,9 +16,10 @@ import {
 import type { QueueWaitingReason } from '@/downloads/scheduler';
 import type { ProcessingStage } from '@modules/vidorax-media/src/VidoraMedia.types';
 
-import { waitLabel } from '@/downloads/v2/conditions';
+import { networkWaitLabelKey, waitLabel } from '@/downloads/v2/conditions';
 import { recordingLine } from '@/downloads/v2/live-recording';
 import { getActiveLanguage, translate } from '@/localization/translate';
+import { useSettingsStore } from '@/store/settings';
 import type { TranslationKey } from '@/localization/types';
 
 import { DOWNLOAD_SECTION_ORDER } from '../constants/downloads.constants';
@@ -388,8 +389,27 @@ export function recordingLabelFor(transfer?: TransferProgressSnapshot | null): s
   return recordingLine(translate('downloads.recording'), transfer.recordedMs, size);
 }
 
-/** F3: the wait label of a `waiting_conditions` download, in the app's language; null otherwise. */
-export function waitingLabelFor(transfer?: TransferProgressSnapshot | null, now: number = Date.now()): string | null {
+function wifiOnlySetting(): boolean {
+  try {
+    return useSettingsStore.getState().wifiOnly === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Why a v2 download waits, in the app's language: F3's rules (`waiting_conditions`), or the network the engine holds
+ * it for (`waiting_network`: "Waiting for Wi-Fi" while Download over Wi-Fi only is on, else "Waiting for network").
+ * Null otherwise.
+ */
+export function waitingLabelFor(
+  transfer?: TransferProgressSnapshot | null,
+  now: number = Date.now(),
+  wifiOnly: boolean = wifiOnlySetting(),
+): string | null {
+  if (transfer?.waitingNetwork) {
+    return translate(networkWaitLabelKey(wifiOnly));
+  }
   return waitLabel(transfer?.waitReason, transfer?.waitUntil, now, getActiveLanguage(), (key, params) =>
     translate(key as TranslationKey, params),
   );

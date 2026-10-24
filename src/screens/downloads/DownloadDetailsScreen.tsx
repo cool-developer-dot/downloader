@@ -29,6 +29,7 @@ import { openSupportWithContext } from '@/support/support-navigation';
 import { DownloadIntegritySection } from './components/DownloadIntegritySection';
 import type { DownloadItem } from '@/store/downloads';
 import { useDownloadsStore } from '@/store/downloads';
+import { useSettingsStore } from '@/store/settings';
 import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
 import { DownloadTagsAndNote } from '@/screens/downloads/components/DownloadTagsAndNote';
 import { useFoldersStore } from '@/store/organization/folders';
@@ -179,6 +180,7 @@ const DetailsBody = memo(function DetailsBody({
   const { t } = useTranslation();
   const [thumbFailed, setThumbFailed] = useState(false);
   const transfer = useDownloadsStore((s) => s.transferById[item.id] ?? null);
+  const wifiOnly = useSettingsStore((s) => s.wifiOnly);
 
   const title = item.title?.trim() || item.fileName?.trim() || t('downloads.untitled');
   const showInternalPlay = item.status === 'COMPLETED' && canUseLocalFile;
@@ -191,6 +193,8 @@ const DetailsBody = memo(function DetailsBody({
         workerState: item.workerState,
         downloadId: item.id,
         processingStage: transfer?.processingStage ?? null,
+        // The engine holds it for a network it may use: "Waiting for Wi-Fi" / "Waiting for network", not "Queued".
+        ...(transfer?.waitingNetwork ? { waitingReason: wifiOnly ? 'WAITING_FOR_WIFI' : 'OFFLINE' } : {}),
       });
   const statusColors = downloadsTokens.status[item.status];
   const mediaType = extractMediaType(item.fileName);
