@@ -109,6 +109,17 @@ export function clipboardOffer(
 export type BatchOutcome = 'added' | 'duplicate' | 'needs-review' | 'refused';
 
 /**
+ * Waits before checking a link again after a transient failure (a timeout or a dropped connection — on a slow link
+ * a download already running can starve the check): two more tries, then the link needs review.
+ */
+export const BATCH_RETRY_DELAYS_MS: readonly number[] = [2_000, 5_000];
+
+/** Pure: whether a Batch Add check that ended with `status` after `attempt` tries (1 = the first) runs again. */
+export function shouldRetryBatchCheck(status: string | null | undefined, attempt: number): boolean {
+  return status === 'TRANSIENT_FAILURE' && attempt <= BATCH_RETRY_DELAYS_MS.length;
+}
+
+/**
  * Pure: how one Batch Add link ended. Only an analyzer result of exactly one verified video (`SUPPORTED`) that the
  * normal handoff accepted is "added" (or "duplicate" when the engine already has it); anything else needs review.
  */

@@ -1,7 +1,16 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { batchOutcomeFor, classifyIntakeLink, clipboardOffer, extractLinks, linkHash, MAX_BATCH_LINKS } from './link-intake';
+import {
+  BATCH_RETRY_DELAYS_MS,
+  batchOutcomeFor,
+  classifyIntakeLink,
+  clipboardOffer,
+  extractLinks,
+  linkHash,
+  MAX_BATCH_LINKS,
+  shouldRetryBatchCheck,
+} from './link-intake';
 
 describe('extractLinks', () => {
   test('finds http(s) links in prose, in order, without trailing punctuation', () => {
@@ -85,5 +94,17 @@ describe('batchOutcomeFor', () => {
     assert.equal(batchOutcomeFor({ verdict: 'youtube' }), 'refused');
     assert.equal(batchOutcomeFor({ verdict: 'private' }), 'refused');
     assert.equal(batchOutcomeFor({ verdict: 'invalid' }), 'refused');
+  });
+});
+
+describe('shouldRetryBatchCheck', () => {
+  test('a transient failure is checked twice more; anything else is final', () => {
+    assert.equal(BATCH_RETRY_DELAYS_MS.length, 2);
+    assert.equal(shouldRetryBatchCheck('TRANSIENT_FAILURE', 1), true);
+    assert.equal(shouldRetryBatchCheck('TRANSIENT_FAILURE', 2), true);
+    assert.equal(shouldRetryBatchCheck('TRANSIENT_FAILURE', 3), false);
+    for (const status of ['SUPPORTED', 'UNRESOLVED', 'PROTECTED', 'UNSUPPORTED', 'STALE', null, undefined]) {
+      assert.equal(shouldRetryBatchCheck(status, 1), false, String(status));
+    }
   });
 });

@@ -8,7 +8,13 @@
 import type { PageFetchRequest } from '@modules/vidorax-media/src/VidoraMedia.types';
 
 import { buildBrowserUserAgent } from '@/browser/constants/user-agent';
-import { batchOutcomeFor, classifyIntakeLink, type BatchOutcome } from '@/browser/services/link-intake';
+import {
+  BATCH_RETRY_DELAYS_MS,
+  batchOutcomeFor,
+  classifyIntakeLink,
+  shouldRetryBatchCheck,
+  type BatchOutcome,
+} from '@/browser/services/link-intake';
 import { getV2Engine } from '@/downloads/v2/engine-port';
 import { directOfferIdentity } from '@/media-detection/direct-analyzer/direct-offer-policy';
 import {
@@ -44,7 +50,7 @@ export async function addLinkFromBatch(url: string, signal: AbortSignal): Promis
     return { url, outcome: 'needs-review', detail: 'UNAVAILABLE', title: null, downloadId: null };
   }
 
-  const result = await analyzePastedLink<DirectOffer>({
+  const analyze = () => analyzePastedLink<DirectOffer>({
     url,
     signal,
     ports: {
@@ -74,6 +80,16 @@ export async function addLinkFromBatch(url: string, signal: AbortSignal): Promis
     },
   });
 
+  let result = await analyze();
+  // A transient failure (timeout, dropped connection) is checked again before the link is called "needs review".
+  for (let attempt = 1; shouldRetryBatchCheck(result.status, attempt) && !signal.aborted; attempt += 1) {
+    await abortableDelay(BATCH_RETRY_DELAYS_MS[attempt - 1]!, signal);
+    if (signal.aborted) {
+      break;
+    }
+    result = await analyze();
+  }
+
   const title = result.offer?.analysis.title ?? null;
   if (result.status !== 'SUPPORTED' || !result.offer || signal.aborted) {
     return {
@@ -101,4 +117,16 @@ export async function addLinkFromBatch(url: string, signal: AbortSignal): Promis
     title,
     downloadId: enqueue.ok ? (enqueue.downloadId ?? null) : null,
   };
+}
+
+function abortableDelay(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    }
+    signal.addEventListener('abort', done);
+  });
 }
