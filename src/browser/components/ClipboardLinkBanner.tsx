@@ -58,7 +58,7 @@ export const ClipboardLinkBanner = memo(function ClipboardLinkBanner() {
           {host}
         </Text>
       ) : null}
-      <Box row gap={8} style={{ justifyContent: 'flex-end' }}>
+      <Box row rtlRow gap={8} style={{ justifyContent: 'flex-end' }}>
         <Button
           title={t('common.dismiss')}
           variant="ghost"

@@ -126,7 +126,7 @@ export const DownloadSignInHost = memo(function DownloadSignInHost() {
         <Text variant="caption" color="textSecondary">
           {t('downloadSignIn.privacy')}
         </Text>
-        <Box row gap={12}>
+        <Box row rtlRow gap={12}>
           <Box flex={1}>
             <Button
               title={t('common.cancel')}

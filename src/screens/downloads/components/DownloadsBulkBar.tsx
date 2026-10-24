@@ -71,7 +71,7 @@ export const DownloadsBulkBar = memo(function DownloadsBulkBar({
       gap={6}
       testID={testID}
       accessibilityLabel={t('downloadBulk.barA11y')}>
-      <Box row gap={8} style={{ flexWrap: 'wrap' }}>
+      <Box row rtlRow gap={8} style={{ flexWrap: 'wrap' }}>
         <Button
           title={t('downloadBulk.pauseAll')}
           variant="outline"

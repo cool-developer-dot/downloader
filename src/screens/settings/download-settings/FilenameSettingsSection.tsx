@@ -110,7 +110,7 @@ export const FilenameSettingsSection = memo(function FilenameSettingsSection({
             accessibilityLabel={t('downloadNaming.template')}
             testID="download-settings-filename-template"
           />
-          <Box row gap={6} style={{ flexWrap: 'wrap' }}>
+          <Box row rtlRow gap={6} style={{ flexWrap: 'wrap' }}>
             {FILENAME_TOKENS.map((token) => (
               <Chip
                 key={token}
@@ -138,7 +138,7 @@ export const FilenameSettingsSection = memo(function FilenameSettingsSection({
           </Box>
           <Box gap={6}>
             <Text variant="bodySmall">{t('downloadNaming.extension')}</Text>
-            <Box row gap={6} style={{ flexWrap: 'wrap' }}>
+            <Box row rtlRow gap={6} style={{ flexWrap: 'wrap' }}>
               {FILE_EXTENSION_CHOICES.map((choice) => (
                 <Chip
                   key={choice}

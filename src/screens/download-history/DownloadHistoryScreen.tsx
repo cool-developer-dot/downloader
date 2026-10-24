@@ -163,7 +163,7 @@ export const DownloadHistoryScreen = memo(function DownloadHistoryScreen() {
         />
         {screen.debugEnabled ? (
           <Box gap={8} py={8}>
-            <Box row gap={8} style={{ flexWrap: 'wrap' }}>
+            <Box row rtlRow gap={8} style={{ flexWrap: 'wrap' }}>
               <Button
                 title={t('downloadHistory.viewDebugLog')}
                 variant="outline"

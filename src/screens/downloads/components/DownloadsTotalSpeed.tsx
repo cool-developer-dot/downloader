@@ -30,6 +30,7 @@ export const DownloadsTotalSpeed = memo(function DownloadsTotalSpeed({
   return (
     <Box
       row
+      rtlRow
       gap={6}
       px={downloadsTokens.spacing.screenX}
       testID={testID}

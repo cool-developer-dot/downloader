@@ -62,7 +62,7 @@ export const BatchAddScreen = memo(function BatchAddScreen() {
         helperText={t('linkIntake.batchCount', { count: batch.links.length })}
         testID="batch-add-text"
       />
-      <Box row gap={8} style={{ flexWrap: 'wrap' }}>
+      <Box row rtlRow gap={8} style={{ flexWrap: 'wrap' }}>
         <Button
           title={t('linkIntake.importFile')}
           variant="outline"
@@ -127,7 +127,7 @@ export const BatchAddScreen = memo(function BatchAddScreen() {
             {t('linkIntake.needsReviewHint')}
           </Text>
           {reviewRows.map((row) => (
-            <Box key={`review-${row.url}`} row gap={8} style={{ alignItems: 'center' }}>
+            <Box key={`review-${row.url}`} row rtlRow gap={8} style={{ alignItems: 'center' }}>
               <Box flex={1} style={{ minWidth: 0 }}>
                 <Text variant="bodySmall" numberOfLines={1}>
                   {row.url}

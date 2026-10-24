@@ -143,7 +143,7 @@ const ChecksumPanel = memo(function ChecksumPanel({ id }: { id: string }) {
             testID="download-details-checksum-value">
             {groupSha256(sha256)}
           </Text>
-          <Box row gap={10}>
+          <Box row rtlRow gap={10}>
             <Box flex={1}>
               <Button title={t('fileIntegrity.copy')} variant="outline" onPress={copy} fullWidth testID="download-details-checksum-copy" />
             </Box>
@@ -155,7 +155,7 @@ const ChecksumPanel = memo(function ChecksumPanel({ id }: { id: string }) {
       ) : computing ? (
         <Box gap={6}>
           <ProgressBar progress={(percent ?? 0) / 100} accessibilityLabel={t('fileIntegrity.computing')} />
-          <Box row style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box row rtlRow style={{ justifyContent: 'space-between', alignItems: 'center' }}>
             <Text variant="caption" color="textSecondary">
               {percent != null ? t('fileIntegrity.computingPercent', { percent }) : t('fileIntegrity.computing')}
             </Text>

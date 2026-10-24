@@ -129,7 +129,7 @@ export const DownloadOptionsPanel = memo(function DownloadOptionsPanel({
             <Text variant="caption" color="textSecondary">
               {t('downloadOptions.folder')}
             </Text>
-            <Box row gap={6} style={{ flexWrap: 'wrap' }}>
+            <Box row rtlRow gap={6} style={{ flexWrap: 'wrap' }}>
               <Chip
                 label={t('downloadOptions.unfiled')}
                 selected={(current?.folderId ?? null) == null}
@@ -155,7 +155,7 @@ export const DownloadOptionsPanel = memo(function DownloadOptionsPanel({
             <Text variant="caption" color="textSecondary">
               {t('downloadOptions.gallery')}
             </Text>
-            <Box row gap={6} style={{ flexWrap: 'wrap' }}>
+            <Box row rtlRow gap={6} style={{ flexWrap: 'wrap' }}>
               {GALLERY_CHOICES.map((choice) => (
                 <Chip
                   key={choice.value}
@@ -172,7 +172,7 @@ export const DownloadOptionsPanel = memo(function DownloadOptionsPanel({
             <Text variant="caption" color="textSecondary">
               {t('downloadOptions.wifiOnly')}
             </Text>
-            <Box row gap={6} style={{ flexWrap: 'wrap' }}>
+            <Box row rtlRow gap={6} style={{ flexWrap: 'wrap' }}>
               {WIFI_CHOICES.map((choice) => (
                 <Chip
                   key={choice.value}
