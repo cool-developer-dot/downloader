@@ -161,10 +161,16 @@ export async function enqueueVerifiedBrowserVariant(
   // H12 (#386): "When a video is already downloaded" — Keep both / Replace download it again through this same path,
   // Ask offers that choice, Skip (the default) keeps today's answer.
   if (existing?.duplicate === 'ALREADY_DOWNLOADED') {
+    // Named as the download itself would be (a direct file by its file name), for the prompt and Keep both's "(2)".
+    const title =
+      directMediaFileTitle(pageUrl) ??
+      pickDownloadTitle({ resolved: payload.title, pageUrl, tabs: useBrowserStore.getState().tabs });
     const again = await resolveDuplicateChoice(
       existing,
-      { option: input.option, title: payload.title, pageUrl, thumbnailUrl: null, requestContext: input.requestContext },
-      () => enqueueVerifiedBrowserVariant(input),
+      { option: input.option, title, pageUrl, thumbnailUrl: null, requestContext: input.requestContext },
+      // With "Ask" the user chooses after the quality sheet has closed, so the sheet's own "offer still current"
+      // check would refuse every choice: the user picked this video by name, and its source is re-checked below.
+      () => enqueueVerifiedBrowserVariant({ ...input, isOfferCurrent: () => true }),
     );
     if (again) {
       return again;
