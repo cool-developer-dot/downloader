@@ -4,6 +4,10 @@ import {
   type BrowserChromeMessageType,
 } from './browser-chrome.channel';
 
+/** The page script's own caps (page-link-grabber.ts); repeated here so the bridge never imports app services. */
+const PAGE_LINKS_MAX_RAW = 400;
+const PAGE_LINK_MAX_LENGTH = 2048;
+
 export type ParsedBrowserChromeMessage =
   | {
       type: 'link_long_press';
@@ -43,6 +47,15 @@ export type ParsedBrowserChromeMessage =
       };
     }
   | {
+      /** Page Link Grabber (#484): the page's answer to one request (`requestId`); links are not yet filtered. */
+      type: 'page_links';
+      payload: {
+        requestId: string;
+        pageUrl: string;
+        links: string[];
+      };
+    }
+  | {
       type: 'ready';
       payload: Record<string, never>;
     };
@@ -53,6 +66,7 @@ const MESSAGE_TYPES = new Set<BrowserChromeMessageType>([
   'pull_to_refresh',
   'spa_navigation',
   'fullscreen',
+  'page_links',
   'ready',
 ]);
 
@@ -170,6 +184,21 @@ export function parseBrowserChromeMessage(
           height: sized ? height : null,
         },
       };
+    }
+    case 'page_links': {
+      const requestId = optionalString(payload.requestId, 64);
+      const pageUrl = optionalString(payload.pageUrl, 8_192);
+      if (!requestId || !pageUrl || !Array.isArray(payload.links)) {
+        return null;
+      }
+      const links: string[] = [];
+      for (const value of payload.links.slice(0, PAGE_LINKS_MAX_RAW)) {
+        const link = optionalString(value, PAGE_LINK_MAX_LENGTH);
+        if (link) {
+          links.push(link);
+        }
+      }
+      return { type: 'page_links', payload: { requestId, pageUrl, links } };
     }
     case 'spa_navigation': {
       const url = optionalString(payload.url, 8_192);

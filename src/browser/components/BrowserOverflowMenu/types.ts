@@ -3,6 +3,7 @@ import type { IconName } from '@/components/base/Icon';
 export type BrowserMenuActionId =
   | 'active_downloads'
   | 'recent_downloads'
+  | 'grab_links'
   | 'continue_watching'
   | 'recently_watched'
   | 'new_tab'

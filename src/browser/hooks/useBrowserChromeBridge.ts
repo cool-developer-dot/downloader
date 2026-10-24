@@ -8,6 +8,7 @@ import {
 import type { BrowserLinkLongPressPayload } from '@/browser/actions';
 import { webFullscreen } from '@/browser/fullscreen/web-fullscreen.runtime';
 import { browserSyncService } from '@/browser/services/browser-sync.service';
+import { receivePageLinks } from '@/browser/services/page-link-grabber';
 import { useBrowserStore } from '@/browser/stores';
 import { isBrowserHomeUrl } from '@/browser/utils';
 
@@ -99,6 +100,12 @@ export function useBrowserChromeBridge(
             active,
             size: width != null && height != null ? { width, height } : null,
           });
+          return true;
+        }
+        case 'page_links': {
+          // Page Link Grabber (#484): only a grab the app started is waiting for this id.
+          const { requestId, pageUrl, links } = message.payload;
+          receivePageLinks(requestId, pageUrl, links);
           return true;
         }
         case 'spa_navigation': {

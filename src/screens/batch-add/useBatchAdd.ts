@@ -8,6 +8,8 @@ import { useBrowserStore } from '@/browser/stores';
 import { navigation, routePaths } from '@/navigation';
 import { withExpectedSystemScreen } from '@/security/app-lock/expected-system-screen';
 
+import { batchAddPrefill } from './batch-add-prefill';
+
 const MAX_FILE_BYTES = 512 * 1024;
 
 export type BatchRow = { url: string; status: 'pending' | 'running' | 'done'; result: BatchLinkResult | null };
@@ -17,7 +19,8 @@ export type BatchRow = { url: string; status: 'pending' | 'running' | 'done'; re
  * (a link already handed to the engine stays queued there).
  */
 export function useBatchAdd() {
-  const [text, setText] = useState('');
+  // Links the Page Link Grabber (#484) found on a page arrive here; the user still starts the run.
+  const [text, setText] = useState(() => batchAddPrefill.take() ?? '');
   const [rows, setRows] = useState<BatchRow[]>([]);
   const [running, setRunning] = useState(false);
   const [fileError, setFileError] = useState<'too-large' | 'unreadable' | null>(null);

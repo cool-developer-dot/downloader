@@ -6,6 +6,7 @@ export type BrowserChromeMessageType =
   | 'pull_to_refresh'
   | 'spa_navigation'
   | 'fullscreen'
+  | 'page_links'
   | 'ready';
 
 export type BrowserChromeEnvelope = {

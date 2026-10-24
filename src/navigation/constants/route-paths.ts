@@ -15,6 +15,8 @@ export const routePaths = {
   settings: '/settings',
   /** The "Paste link" app shortcut (`vidorax://paste-link`). */
   pasteLink: '/paste-link',
+  /** Batch Add (#292): several links at once, also opened by the Page Link Grabber (#484). */
+  batchAdd: '/batch-add',
   downloadSettings: '/download-settings',
   appLockSetup: '/app-lock-setup',
   appLockDisable: '/app-lock-disable',

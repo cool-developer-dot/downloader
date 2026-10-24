@@ -9,8 +9,10 @@ import {
   useBrowserStore,
 } from '@/browser/stores';
 import { navigationService } from '@/browser/services';
+import { grabPageLinks } from '@/browser/services/page-link-grabber';
 import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
 import { buildTranslatePageUrl } from '@/browser/services/translate-page';
+import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
 import { extractPageHostname, isValidBrowserPageUrl } from '@/browser/utils';
 import {
   navigation,
@@ -21,6 +23,7 @@ import {
 import { useTranslation } from '@/localization';
 import { useBookmarksStore } from '@/store/bookmarks';
 import { normalizeUrl } from '@/storage/utils';
+import { batchAddPrefill } from '@/screens/batch-add/batch-add-prefill';
 import { buildFaviconUrl } from '@/screens/bookmarks/utils/bookmark-format';
 
 import type { BrowserMenuFeedback, BrowserMenuItemModel } from './types';
@@ -225,6 +228,25 @@ export function useBrowserMenuActions({
     navigation.navigate(routePaths.downloads);
   }, [onClose]);
 
+  // Page Link Grabber (#484): the page's video file links go to Batch Add, where the user starts the checks.
+  const handleGrabLinks = useCallback(async () => {
+    if (!hasValidPage) {
+      return;
+    }
+    const activeTabId = useBrowserStore.getState().activeTabId;
+    const webView = tabControllerRegistry.getActive(activeTabId)?.webViewRef.current;
+    onClose();
+    const links = await grabPageLinks(webView);
+    if (links == null || links.length === 0) {
+      const message = links == null ? t('browser.grabLinksFailed') : t('browser.grabLinksNone');
+      onFeedback?.({ message, tone: 'neutral' });
+      AccessibilityInfo.announceForAccessibility(message);
+      return;
+    }
+    batchAddPrefill.set(links.join('\n'));
+    navigation.push(routePaths.batchAdd);
+  }, [hasValidPage, onClose, onFeedback, t]);
+
   const handleContinueWatching = useCallback(() => {
     onClose();
     requestSecondaryDestination(SECONDARY_DESTINATIONS.continueWatching);
@@ -256,6 +278,9 @@ export function useBrowserMenuActions({
           break;
         case 'recent_downloads':
           handleRecentDownloads();
+          break;
+        case 'grab_links':
+          void handleGrabLinks();
           break;
         case 'continue_watching':
           handleContinueWatching();
@@ -304,6 +329,7 @@ export function useBrowserMenuActions({
       handleContinueWatching,
       handleCopyLink,
       handleDownloads,
+      handleGrabLinks,
       handleHistory,
       handleNewTab,
       handleOpenExternal,
@@ -336,6 +362,14 @@ export function useBrowserMenuActions({
         accessibilityLabel: t('browser.recentDownloadsA11y'),
         kind: 'action',
         enabled: true,
+      },
+      {
+        id: 'grab_links',
+        icon: 'link-variant',
+        label: t('browser.grabLinks'),
+        accessibilityLabel: t('browser.grabLinksA11y'),
+        kind: 'action',
+        enabled: hasValidPage,
       },
       {
         id: 'continue_watching',
