@@ -56,6 +56,11 @@ export function useBatchAdd() {
       } catch {
         result = { url: queue[index]!, outcome: 'needs-review', detail: 'ERROR', title: null, downloadId: null };
       }
+      // Stop while this link was being checked: it was never decided, so it waits like the links after it.
+      if (controller.signal.aborted && result.outcome === 'needs-review') {
+        setRows((current) => current.map((row, i) => (i === index ? { ...row, status: 'pending', result: null } : row)));
+        break;
+      }
       setRows((current) => current.map((row, i) => (i === index ? { ...row, status: 'done', result } : row)));
     }
     runningRef.current = false;
