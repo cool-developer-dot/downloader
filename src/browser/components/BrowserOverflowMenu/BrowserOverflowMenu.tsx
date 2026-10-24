@@ -13,6 +13,7 @@ import { Divider } from '@/components/common/Divider';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { withAlpha } from '@/theme';
+import { useTourBlocker } from '@/tour/tour-store';
 
 import { BrowserMenuItem } from './BrowserMenuItem';
 import type { BrowserMenuItemModel, BrowserOverflowAnchor } from './types';
@@ -79,6 +80,8 @@ export const BrowserOverflowMenu = memo(function BrowserOverflowMenu({
   }, [anchor, insets.bottom, insets.top, windowHeight, windowWidth]);
 
   const surfaceBorder = withAlpha(theme.colors.textPrimary, 0.08);
+
+  useTourBlocker(visible);
 
   // Unmount when dismissed — Android transparent Modal can intercept touches
   // after visible=false, leaving the Browser chrome unresponsive.

@@ -38,6 +38,7 @@ import { BrowserMediaDownloadBar, browserMediaActionService } from '@/browser/me
 import { MediaDetectionHost } from '@/media-detection';
 import { logPageFlow, safePageHostname } from '@/media-detection/services/page-flow-diagnostics.service';
 import { isSameDocumentUrl } from '@/media-detection/utils';
+import { useTourTargetRef } from '@/tour/tour-targets';
 
 /**
  * BrowserScreen orchestrates only:
@@ -150,6 +151,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   const [tabSwitcherVisible, setTabSwitcherVisible] = useState(false);
   useWebFullscreenLifecycle(tabSwitcherVisible);
   const webFullscreenActive = useIsWebFullscreen();
+  // The page area: the tour shows where "Video available" appears (its bottom edge, above the toolbar).
+  const pageAreaRef = useTourTargetRef('pageArea');
 
   useEffect(() => registerBrowserLoadUrl(loadUrl), [loadUrl]);
 
@@ -201,7 +204,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
         trailingSlot={<BrowserOverflowControls />}
       />
       <BrowserProgressBar />
-      <Box flex={1} style={{ position: 'relative' }}>
+      <Box ref={pageAreaRef} collapsable={false} flex={1} style={{ position: 'relative' }}>
         <BrowserContainer />
         <BrowserMediaDownloadBar
           overlayBlocking={tabSwitcherVisible || webFullscreenActive}

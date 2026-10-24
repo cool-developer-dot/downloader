@@ -8,6 +8,7 @@ import { START_PAGE_QUICK_SITES } from '@/browser/config/quick-sites';
 import { useBrowserHome } from '@/browser/hooks/useBrowserHome';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import { useTourTargetRef } from '@/tour/tour-targets';
 
 import { browserHomeTokens } from './browser-home-tokens';
 
@@ -25,6 +26,7 @@ export const BrowserHomeView = memo(function BrowserHomeView({
   const theme = useTheme();
   const { t } = useTranslation();
   const { openUrl } = useBrowserHome();
+  const quickAccessRef = useTourTargetRef('startPage');
 
   return (
     <ScrollView
@@ -59,6 +61,8 @@ export const BrowserHomeView = memo(function BrowserHomeView({
       </Box>
 
       <Box
+        ref={quickAccessRef}
+        collapsable={false}
         gap={browserHomeTokens.quickAccessHeadingGap}
         accessibilityLabel={t('home.quickAccessA11y')}>
         <Text

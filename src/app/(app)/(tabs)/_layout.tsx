@@ -11,6 +11,14 @@ import { useTabExitBackHandler } from '@/navigation/hooks';
 import { PasteLinkRequestHandler } from '@/screens/paste-link/PasteLinkRequestHandler';
 import { QualitySelectionProvider } from '@/screens/downloads/quality';
 import { renderMiniPlayerTabBar } from '@/screens/player/mini';
+import { tourTabBarButton } from '@/tour';
+
+/** The tabs the first-launch tour points at (`src/tour`): the real buttons, measured where they are. */
+const tourTabButtons = {
+  downloads: tourTabBarButton('downloadsTab'),
+  library: tourTabBarButton('playerTab'),
+  settings: tourTabBarButton('settingsTab'),
+};
 
 function createTabIcon(icon: string, iconFocused: string) {
   return function TabIcon({
@@ -76,6 +84,7 @@ export default function TabsLayout() {
             tabBarLabel: t('nav.downloads'),
             tabBarAccessibilityLabel: t('nav.downloadsTab'),
             tabBarIcon: tabIcons.downloads,
+            tabBarButton: tourTabButtons.downloads,
           }}
         />
         <Tabs.Screen
@@ -85,6 +94,7 @@ export default function TabsLayout() {
             tabBarLabel: t('nav.library'),
             tabBarAccessibilityLabel: t('nav.libraryTab'),
             tabBarIcon: tabIcons.library,
+            tabBarButton: tourTabButtons.library,
           }}
         />
         <Tabs.Screen
@@ -94,6 +104,7 @@ export default function TabsLayout() {
             tabBarLabel: t('nav.settings'),
             tabBarAccessibilityLabel: t('nav.settingsTab'),
             tabBarIcon: tabIcons.settings,
+            tabBarButton: tourTabButtons.settings,
           }}
         />
         {/* Legacy Home route — hidden; index.tsx redirects to Browser. */}

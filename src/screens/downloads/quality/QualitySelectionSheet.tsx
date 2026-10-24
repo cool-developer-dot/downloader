@@ -24,6 +24,7 @@ import { isPlayableOffer, playsChosenQuality } from '@/player/remote-stream';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { primaryAlphas } from '@/theme';
+import { useTourBlocker } from '@/tour/tour-store';
 
 import { AnalysisLoadingState } from './AnalysisLoadingState';
 import { AnalyzeFallbackState } from './AnalyzeFallbackState';
@@ -242,6 +243,8 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
 
     return null;
   })();
+
+  useTourBlocker(visible);
 
   // Unmount when dismissed. This sheet is mounted at the tab-root provider;
   // a leftover Android Dialog would intercept every tab's buttons.
