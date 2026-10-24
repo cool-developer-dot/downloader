@@ -1297,7 +1297,7 @@ export const en = {
     listSection: 'Downloads list',
     listSectionDescription: 'What tapping a download in the list does',
     tapToToggle: 'Tap to pause or resume',
-    tapToToggleHint: 'Tapping a downloading or paused item pauses or resumes it instead of opening its details',
+    tapToToggleHint: 'Tapping a downloading or paused item pauses or resumes it instead of opening its details. Touch and hold an item to open its details.',
   },
   library: {
     title: 'Player',

@@ -319,6 +319,7 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
           onRefresh={handleRefresh}
           onEndReached={handleEndReached}
           onPressItem={handlePressItem}
+          onLongPressItem={openDetails}
           onPause={handlePause}
           onResume={handleResume}
           onCancel={handleCancel}

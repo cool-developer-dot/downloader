@@ -26,6 +26,8 @@ export type DownloadsListProps = {
   onRefresh: () => void;
   onEndReached: () => void;
   onPressItem: (id: string) => void;
+  /** Touch and hold a row: its details, whatever a tap does. */
+  onLongPressItem?: (id: string) => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onCancel: (id: string) => void;
@@ -46,6 +48,7 @@ export const DownloadsList = memo(function DownloadsList({
   onRefresh,
   onEndReached,
   onPressItem,
+  onLongPressItem,
   onPause,
   onResume,
   onCancel,
@@ -61,6 +64,7 @@ export const DownloadsList = memo(function DownloadsList({
       <DownloadCard
         id={id}
         onPress={onPressItem}
+        onLongPress={onLongPressItem}
         onPause={onPause}
         onResume={onResume}
         onCancel={onCancel}
@@ -71,7 +75,7 @@ export const DownloadsList = memo(function DownloadsList({
         testID={`download-card-${id}`}
       />
     ),
-    [onCancel, onOpen, onPause, onPressItem, onRemove, onResume, onRetry, onShare],
+    [onCancel, onLongPressItem, onOpen, onPause, onPressItem, onRemove, onResume, onRetry, onShare],
   );
 
   const renderFlatItem: ListRenderItem<string> = useCallback(

@@ -27,6 +27,8 @@ import { DownloadLinkMenu } from './DownloadLinkMenu';
 export type DownloadCardProps = {
   id: string;
   onPress?: (id: string) => void;
+  /** Always opens the details — with "Tap to pause or resume" on, a tap on an active row toggles it instead. */
+  onLongPress?: (id: string) => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onCancel: (id: string) => void;
@@ -135,6 +137,7 @@ const ActionButton = memo(function ActionButton({
 export const DownloadCard = memo(function DownloadCard({
   id,
   onPress,
+  onLongPress,
   onPause,
   onResume,
   onCancel,
@@ -152,6 +155,7 @@ export const DownloadCard = memo(function DownloadCard({
   const [thumbFailed, setThumbFailed] = useState(false);
 
   const handleOpenDetails = useCallback(() => onPress?.(id), [id, onPress]);
+  const handleLongPress = useCallback(() => onLongPress?.(id), [id, onLongPress]);
   const handlePause = useCallback(() => onPause(id), [id, onPause]);
   const handleResume = useCallback(() => onResume(id), [id, onResume]);
   const handleCancel = useCallback(() => onCancel(id), [id, onCancel]);
@@ -255,6 +259,7 @@ export const DownloadCard = memo(function DownloadCard({
       style={{ alignItems: 'flex-start', gap: 4 }}>
       <Pressable
         onPress={onPress ? handleOpenDetails : undefined}
+        onLongPress={onLongPress ? handleLongPress : undefined}
         disabled={!onPress}
         accessibilityRole={onPress ? 'button' : undefined}
         accessibilityLabel={accessibilityParts.join('. ')}
