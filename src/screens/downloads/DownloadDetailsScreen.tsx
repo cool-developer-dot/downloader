@@ -379,9 +379,10 @@ const DetailsBody = memo(function DetailsBody({
               {totalSize}
             </Text>
           ) : null}
-          {speedLabel || etaLabel ? (
+          {speedLabel || etaLabel || item.status === 'DOWNLOADING' ? (
+            // Kept while downloading even when a tick has no speed yet, so the controls below never jump a line.
             <Text variant="bodySmall" color="textSecondary">
-              {[speedLabel, etaLabel].filter(Boolean).join(' · ')}
+              {[speedLabel, etaLabel].filter(Boolean).join(' · ') || '\u00A0'}
             </Text>
           ) : null}
           {waitingLabel ? (

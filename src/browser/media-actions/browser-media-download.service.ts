@@ -19,7 +19,7 @@ import { normalizeMediaUrl } from '@/media-detection/utils';
 import { useBrowserStore } from '@/browser/stores/browserStore';
 import { useDownloadsStore } from '@/store/downloads';
 
-import { pickDownloadTitle } from './download-title';
+import { directMediaFileTitle, pickDownloadTitle } from './download-title';
 import { refreshStaleDirectSource } from './direct-analysis.service';
 import { lookupLiveMediaTitle } from './live-media-title';
 
@@ -228,11 +228,14 @@ export async function enqueueVerifiedBrowserVariant(
 
   // Detection may have built the offer before the page's title arrived; the tab showing the page knows it.
   const liveTitle = lookupLiveMediaTitle({ pageUrl, sourceUrl: input.option.sourceUrl });
-  const title = pickDownloadTitle({
-    resolved: liveTitle ? resolveDownloadTitle({ title: liveTitle, pageTitle: payload.title }) : payload.title,
-    pageUrl,
-    tabs: useBrowserStore.getState().tabs,
-  });
+  // A video file opened directly is named by its file: its tab may still carry the previous page's title.
+  const title =
+    directMediaFileTitle(pageUrl) ??
+    pickDownloadTitle({
+      resolved: liveTitle ? resolveDownloadTitle({ title: liveTitle, pageTitle: payload.title }) : payload.title,
+      pageUrl,
+      tabs: useBrowserStore.getState().tabs,
+    });
 
   const result = await handOffVerifiedVariant(
     {

@@ -1,3 +1,5 @@
+import { classifyMediaUrl } from '@/media-detection/direct-analyzer/media-url';
+
 /** The generic title `resolveDownloadTitle` falls back to when detection knew no name for the video. */
 export const GENERIC_DOWNLOAD_TITLE = 'Download';
 
@@ -44,4 +46,42 @@ export function pickDownloadTitle(input: {
     return title.slice(0, 255);
   }
   return input.resolved;
+}
+
+/** Manifest and file names that say nothing about the video: the folder holding them names it instead. */
+const GENERIC_FILE_STEMS = new Set(['', 'master', 'index', 'playlist', 'manifest', 'prog_index', 'stream', 'video', 'media', 'main']);
+
+function stemOf(segment: string): string {
+  let name = segment;
+  try {
+    name = decodeURIComponent(segment);
+  } catch {
+    // keep the raw segment
+  }
+  return name.replace(/\.[a-z0-9]{1,5}$/i, '').trim();
+}
+
+/**
+ * A page that is itself a video file or stream (a link typed, pasted or opened directly — Chromium's own media view):
+ * its file name, or its folder's for a generic manifest name (`…/bbb_30fps/master.mpd` → "bbb_30fps"). Null for any
+ * other page. Such a page has no title of its own, and the tab can still carry the previous page's title (or "Home"
+ * after leaving it), so the file name wins over both.
+ */
+export function directMediaFileTitle(pageUrl: string | null | undefined): string | null {
+  if (!pageUrl || classifyMediaUrl(pageUrl)?.strength !== 'strong') {
+    return null;
+  }
+  let segments: string[];
+  try {
+    segments = new URL(pageUrl).pathname.split('/').filter(Boolean);
+  } catch {
+    return null;
+  }
+  for (let index = segments.length - 1; index >= 0; index -= 1) {
+    const stem = stemOf(segments[index]!);
+    if (!GENERIC_FILE_STEMS.has(stem.toLowerCase())) {
+      return stem.slice(0, 255);
+    }
+  }
+  return null;
 }
