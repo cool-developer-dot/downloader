@@ -9,6 +9,8 @@ import { settingsResetEntries } from '@/store/settings/reset';
 import { initialSettingsState } from '@/store/settings/state';
 import { exportFileName, exportTextFile, importTextFile } from '@/utils/text-file-export';
 
+import { applySettings, resetDownloaderStores } from './apply-settings';
+
 function announce(message: string): void {
   if (Platform.OS === 'android') {
     ToastAndroid.show(message, ToastAndroid.SHORT);
@@ -25,7 +27,7 @@ function currentSettings(): SettingsState {
   return values as unknown as SettingsState;
 }
 
-/** Default Tab (#474), Reset Settings (#470) and Settings Backup (#471). Only `SettingsState` is ever touched. */
+/** Default Tab (#474), Reset Settings (#470) and Settings Backup (#471). */
 export function useSettingsBackupReset() {
   const { t } = useTranslation();
   const defaultTab = useSettingsStore(selectDefaultTab);
@@ -92,15 +94,16 @@ export function useSettingsBackupReset() {
       const current = currentSettings();
       const merge = useSettingsStore.persist.getOptions().merge;
       const merged = (merge ? merge(parsed.values, store) : { ...store, ...parsed.values }) as unknown as Record<string, unknown>;
-      let applied = 0;
+      const changes: [SettingsKey, unknown][] = [];
       for (const key of Object.keys(parsed.values) as SettingsKey[]) {
         const next = merged[key];
         if (next !== (current as unknown as Record<string, unknown>)[key]) {
-          // Through updateSetting, so the preference mirrors and the download engine follow as for a manual change.
-          store.updateSetting(key, next as never);
-          applied += 1;
+          changes.push([key, next]);
         }
       }
+      // As a manual change would: the preference mirrors and the download engine follow.
+      applySettings(changes);
+      const applied = changes.length;
       announce(
         parsed.ignored.length > 0
           ? t('settingsBackup.importedSome', { applied, ignored: parsed.ignored.length })
@@ -113,12 +116,13 @@ export function useSettingsBackupReset() {
   const cancelReset = useCallback(() => setResetConfirmVisible(false), []);
   const confirmReset = useCallback(() => {
     setResetConfirmVisible(false);
-    // Every setting back to its default except the language (and so the RTL layout). Through updateSetting, so the
-    // preference mirrors and the download engine follow; nothing outside SettingsState is touched.
-    const store = useSettingsStore.getState();
-    for (const [key, value] of settingsResetEntries(initialSettingsState as unknown as Record<string, unknown>)) {
-      store.updateSetting(key as SettingsKey, value as never);
-    }
+    // Every setting back to its default except the language (and so the RTL layout), as a manual change would — the
+    // preference mirrors and the download engine follow — and the downloader settings kept in their own stores.
+    // App Lock and everything the user saved are not touched.
+    applySettings(
+      settingsResetEntries(initialSettingsState as unknown as Record<string, unknown>) as [SettingsKey, unknown][],
+    );
+    resetDownloaderStores();
     announce(t('settingsBackup.resetDone'));
   }, [t]);
 
