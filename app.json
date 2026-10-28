@@ -2,7 +2,7 @@
   "expo": {
     "name": "VidoraX",
     "slug": "vidorax",
-    "version": "1.0.2",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/logos/icon.png",
     "scheme": "vidorax",
@@ -20,7 +20,7 @@
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.vidorax.fast.videodownloader",
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "android.permission.INTERNET",
         "android.permission.POST_NOTIFICATIONS"
