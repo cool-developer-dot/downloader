@@ -23,7 +23,8 @@ export type QuickSite = {
  * Every promoted site must be fully usable while logged out. Play review rejected 1.0.2 because a reviewer opened
  * the Facebook tile, landed on Facebook's own login page and reported VidoraX as needing sign-in details. Sites that
  * open on a login, sign-up or phone-number wall (Facebook, Instagram, Telegram Web, X, Pinterest, Snapchat Web,
- * TikTok) stay reachable by typing or pasting a link, but are never promoted here.
+ * TikTok, and Dailymotion, which shows "Join Dailymotion" to new visitors in the WebView) stay reachable by typing
+ * or pasting a link, but are never promoted here. Check a new tile on a fresh emulator install before adding it.
  */
 export const QUICK_SITES: readonly QuickSite[] = [
   {
@@ -36,15 +37,6 @@ export const QUICK_SITES: readonly QuickSite[] = [
     accent: 'info',
   },
   {
-    id: 'dailymotion',
-    name: 'Dailymotion',
-    url: 'https://www.dailymotion.com/',
-    hostname: 'dailymotion.com',
-    category: 'video',
-    icon: 'play-circle-outline',
-    accent: 'primary',
-  },
-  {
     id: 'ted',
     name: 'TED Talks',
     url: 'https://www.ted.com/talks',
@@ -52,15 +44,6 @@ export const QUICK_SITES: readonly QuickSite[] = [
     category: 'video',
     icon: 'microphone-outline',
     accent: 'error',
-  },
-  {
-    id: 'internet-archive',
-    name: 'Internet Archive',
-    url: 'https://archive.org/details/movies',
-    hostname: 'archive.org',
-    category: 'video',
-    icon: 'archive-outline',
-    accent: 'warning',
   },
   {
     id: 'wikimedia-commons',
@@ -83,16 +66,9 @@ export const QUICK_SITES: readonly QuickSite[] = [
 ] as const;
 
 /**
- * Visible Browser start-page Quick Access — six login-free shortcuts (3×2).
+ * Visible Browser start-page Quick Access — login-free shortcuts only.
  */
-export const START_PAGE_QUICK_SITE_IDS = [
-  'vimeo',
-  'dailymotion',
-  'ted',
-  'internet-archive',
-  'wikimedia-commons',
-  'mixkit',
-] as const;
+export const START_PAGE_QUICK_SITE_IDS = ['vimeo', 'ted', 'wikimedia-commons', 'mixkit'] as const;
 
 const quickSiteById = new Map(QUICK_SITES.map((site) => [site.id, site]));
 
@@ -109,7 +85,7 @@ export const START_PAGE_QUICK_SITES: readonly QuickSite[] = START_PAGE_QUICK_SIT
 /** Quick Access always uses three columns on phones and tablets. */
 export const QUICK_ACCESS_COLUMNS = 3 as const;
 
-/** Start-page grid size (3 columns, so 6 tiles fill two rows). */
+/** Start-page Quick Access tile count (laid out in QUICK_ACCESS_COLUMNS columns). */
 export const START_PAGE_QUICK_ACCESS_COUNT = START_PAGE_QUICK_SITE_IDS.length;
 
 /** @deprecated Use QUICK_ACCESS_COLUMNS — kept for bookmark grid compatibility. */
