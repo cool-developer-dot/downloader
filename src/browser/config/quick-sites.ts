@@ -19,123 +19,56 @@ export type QuickSite = {
  * Unsupported video hosts are omitted from promotion (generic browsing still allowed).
  * Tiles show a generic glyph (`icon`) and the site name only: no brand logos or favicons (store-review and
  * trademark safety, and no favicon request leaves the device from the start page).
+ *
+ * Every promoted site must be fully usable while logged out. Play review rejected 1.0.2 because a reviewer opened
+ * the Facebook tile, landed on Facebook's own login page and reported VidoraX as needing sign-in details. Sites that
+ * open on a login, sign-up or phone-number wall (Facebook, Instagram, Telegram Web, X, Pinterest, Snapchat Web,
+ * TikTok, and Dailymotion, which shows "Join Dailymotion" to new visitors in the WebView) stay reachable by typing
+ * or pasting a link, but are never promoted here. Check a new tile on a fresh emulator install before adding it.
  */
 export const QUICK_SITES: readonly QuickSite[] = [
   {
-    id: 'instagram',
-    name: 'Instagram',
-    url: 'https://www.instagram.com/',
-    hostname: 'instagram.com',
-    category: 'social',
-    icon: 'account-group-outline',
-    accent: 'primary',
-  },
-  {
-    id: 'tiktok',
-    name: 'TikTok',
-    url: 'https://www.tiktok.com/',
-    hostname: 'tiktok.com',
-    category: 'video',
-    icon: 'video-outline',
-    accent: 'textPrimary',
-  },
-  {
-    id: 'facebook',
-    name: 'Facebook',
-    url: 'https://www.facebook.com/',
-    hostname: 'facebook.com',
-    category: 'social',
-    icon: 'forum-outline',
-    accent: 'info',
-  },
-  {
     id: 'vimeo',
     name: 'Vimeo',
-    url: 'https://vimeo.com/',
+    url: 'https://vimeo.com/watch',
     hostname: 'vimeo.com',
     category: 'video',
     icon: 'filmstrip',
     accent: 'info',
   },
   {
-    id: 'dailymotion',
-    name: 'Dailymotion',
-    url: 'https://www.dailymotion.com/',
-    hostname: 'dailymotion.com',
+    id: 'ted',
+    name: 'TED Talks',
+    url: 'https://www.ted.com/talks',
+    hostname: 'ted.com',
     category: 'video',
-    icon: 'play-circle-outline',
-    accent: 'primary',
-  },
-  {
-    id: 'reddit',
-    name: 'Reddit',
-    url: 'https://www.reddit.com/',
-    hostname: 'reddit.com',
-    category: 'social',
-    icon: 'message-outline',
-    accent: 'warning',
-  },
-  {
-    id: 'pinterest',
-    name: 'Pinterest',
-    url: 'https://www.pinterest.com/',
-    hostname: 'pinterest.com',
-    category: 'social',
-    icon: 'image-multiple-outline',
+    icon: 'microphone-outline',
     accent: 'error',
   },
   {
-    id: 'telegram',
-    name: 'Telegram',
-    url: 'https://web.telegram.org/',
-    hostname: 'web.telegram.org',
-    category: 'social',
-    icon: 'compass-outline',
-    accent: 'info',
-  },
-  {
-    id: 'x',
-    name: 'X',
-    url: 'https://x.com/',
-    hostname: 'x.com',
-    category: 'social',
-    icon: 'web',
+    id: 'wikimedia-commons',
+    name: 'Wikimedia Commons',
+    url: 'https://commons.wikimedia.org/wiki/Category:Videos',
+    hostname: 'commons.wikimedia.org',
+    category: 'video',
+    icon: 'earth',
     accent: 'textPrimary',
   },
   {
-    id: 'twitch',
-    name: 'Twitch',
-    url: 'https://www.twitch.tv/',
-    hostname: 'twitch.tv',
+    id: 'mixkit',
+    name: 'Mixkit',
+    url: 'https://mixkit.co/free-stock-video/',
+    hostname: 'mixkit.co',
     category: 'video',
     icon: 'movie-open-outline',
     accent: 'primary',
   },
-  {
-    id: 'snapchat',
-    name: 'Snapchat',
-    url: 'https://web.snapchat.com/',
-    hostname: 'web.snapchat.com',
-    category: 'social',
-    icon: 'account-group-outline',
-    accent: 'warning',
-  },
 ] as const;
 
 /**
- * Visible Browser start-page Quick Access — exactly 9 promoted shortcuts (3×3).
+ * Visible Browser start-page Quick Access — login-free shortcuts only.
  */
-export const START_PAGE_QUICK_SITE_IDS = [
-  'instagram',
-  'tiktok',
-  'facebook',
-  'vimeo',
-  'dailymotion',
-  'reddit',
-  'pinterest',
-  'telegram',
-  'x',
-] as const;
+export const START_PAGE_QUICK_SITE_IDS = ['vimeo', 'ted', 'wikimedia-commons', 'mixkit'] as const;
 
 const quickSiteById = new Map(QUICK_SITES.map((site) => [site.id, site]));
 
@@ -152,7 +85,7 @@ export const START_PAGE_QUICK_SITES: readonly QuickSite[] = START_PAGE_QUICK_SIT
 /** Quick Access always uses three columns on phones and tablets. */
 export const QUICK_ACCESS_COLUMNS = 3 as const;
 
-/** Start-page grid is a fixed 3×3 (9 tiles). */
+/** Start-page Quick Access tile count (laid out in QUICK_ACCESS_COLUMNS columns). */
 export const START_PAGE_QUICK_ACCESS_COUNT = START_PAGE_QUICK_SITE_IDS.length;
 
 /** @deprecated Use QUICK_ACCESS_COLUMNS — kept for bookmark grid compatibility. */
