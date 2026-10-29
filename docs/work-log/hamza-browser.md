@@ -234,6 +234,107 @@ Regression: quick check; full R1–R16 at §7. Release `eefc63f` (arm64) over th
 open, w3schools "Video available" → download completed (HTML Video 770 KB, 176p), no crash or ANR (`logcat -b
 crash`, `ANR in` empty), `apkanalyzer` permissions identical to 1.1.0 (37). APK 50,002,358 bytes (B1: 49,967,014).
 
+## B4 — Address bar (#24, #28, #29, #36, #37, #33, #268)
+
+### Design and decisions
+
+| # | What the user sees | Where it lives | Notes / decisions |
+| --- | --- | --- | --- |
+| #24 Inline autocomplete | Typing `wik` shows `wik`**`ipedia.org`** with the added part selected; Enter (or → / a tap at the end) accepts, Backspace removes only the completion | `address-bar/inline-autocomplete.ts` (pure), sources `SuggestionService.getAutocompleteSources()` (history, frequent, bookmarks — the same local index as the rows), loaded once per editing session | A single word only (no space, no path yet); never in the middle of a word or with the caret moved into the text; `www.` and `https://` kept as typed; candidates are hosts without `www.` plus their registrable domains (`en.wikipedia.org` also offers `wikipedia.org`), scored by visits + 2 per bookmark **summed over the site's pages**, then shorter. Off with the B5 suggestions switch. The field is controlled (`value` + `selection`); a deletion that removes only the completion keeps the typed text |
+| #28 Position | Browser settings → Address bar → Address bar position: Top (default) / Bottom | setting `addressBarPosition`; `BrowserScreen` puts the header and progress bar above the toolbar dock at the bottom | At the bottom the editing field sits right above the keyboard (keyboard top measured from `screenY`: the reported height leaves out the navigation bar) and the list opens upward with the best match next to the field (`inverted`). The browser menu opens upward when its button is in the lower half |
+| #29 Auto-hide | Browser settings → Address bar → Hide while scrolling (default off) | `address-bar/auto-hide.ts` (pure state machine), `address-bar-visibility.ts`, `BrowserHeader/AutoHideHeader.tsx` | Fed by the page's existing `scroll` bridge message (already throttled to 200 ms), so no new injected code. Hides after 72 px down, shows after 36 px up, always shown within 32 px of the top, while loading, while editing and while "Video available" is offered (verified / preparing). The header slides (reanimated, 160 ms) and the page is resized once per hide or show, not per frame. The download bar is not part of the header, so it never hides |
+| #36 Engine icon | The engine's letter badge in the empty bar, in the editing field and on search rows | `components/EngineBadge.tsx` (moved from the settings screen), `hooks/useSearchEngineDefinition.ts` | A search row shows the badge of the engine its results host belongs to (so `d cats` shows DuckDuckGo); a shortcut to another site shows the search icon. **Found while testing:** the badge stayed on the old engine after a change in Browser settings — the React Compiler keeps a render-time `getSearchEngine()` call (no inputs) for the component's life; components now read the setting through `useSearchEngineDefinition()` |
+| #37 Domain highlight | When not editing, the registrable domain in full colour and the rest dimmed (`www.`**`google.com`**`/search…`); an `xn--` host in the warning colour with a ⚠ icon | `address-bar/domain.ts`: `registrableDomain` (`tldts` `getDomain`, private suffixes on, so `user.github.io` stays whole), `splitForDomainHighlight`, RFC 3492 punycode encoder | Drawn as a Text over the field (the TextInput is invisible but still the touch target: Android ignores a transparent text colour). IDN: the host is shown in its `xn--` form, the domain in the warning colour, a ⚠ icon with a spoken warning, and the field's accessibility label says "Check the address". IPs and `localhost` have no registrable domain → no highlight |
+| #33 Search shortcuts | `w Lahore` → Wikipedia; Browser settings → Search → Search shortcuts: list, add, edit, delete, restore defaults | `search/search-shortcuts.ts` (pure), setting `searchShortcuts` (JSON list), `SearchShortcutsSheet.tsx`, `classifyNavigationInput` | Defaults `g` Google, `b` Bing, `d` DuckDuckGo (engine shortcuts: their URL comes from `getSearchEngine()` with the user's Safe Search / language / region) and `w` Wikipedia (`https://en.wikipedia.org/w/index.php?search=%s`). Keyword: 1–16 letters, digits, `_` or `-` (any script), unique; name ≤ 40; template `http(s)://` with `%s`, ≤ 300. The query is URI-encoded into `%s`. An engine shortcut can change its keyword and name only. Delete has no confirmation (Restore default shortcuts brings the defaults back). The search row reads "Search Wikipedia for “Lahore”" |
+| #268 Calculator | `12*(3+4)/2` → first row "= 42"; a tap copies the result ("Copied 42") | `address-bar/calculator.ts` (pure recursive-descent parser, **never `eval`**), `SuggestionService.collectCalculator` | `+ − * × / ÷ ^ ** % ( )`, `of` (`15% of 2000` = 300), unary minus, right-associative powers, Eastern digits (۰–۹, ٠–٩) and `٫`/`,` handled; at least two numbers and one operator; division by zero, unfinished or invalid input → no row; results to 12 significant digits, exponent form outside 1e-9…1e15. The calculator row stays when local suggestions are off (it reads no history) |
+
+- Also localized here (they were English in Urdu): every suggestion badge and meta line, the empty / loading states, the
+  security indicator's labels ("Secure HTTPS connection"…), Reload / Stop and the "Loading page" announcement. In the
+  Urdu search row the typed query is wrapped in a first-strong isolate (`⁨…⁩`), so `2^10` no longer shows as
+  `10^2` inside the right-to-left sentence (same for "No tabs match" and the shortcut example).
+- Sort by "Site" (B1) now groups on the registrable domain.
+- `useKeyboardHeight` (`src/hooks`) replaces the overlay's own keyboard listener and lifts the shortcut editor above
+  the keyboard; the editor scrolls at font scale 1.3.
+- The shortcut editor's examples were "yt" / "YouTube" in the first draft; changed to "dict" / "Dictionary" (a video
+  downloader's UI should not suggest YouTube).
+
+### Files
+
+New: `src/browser/address-bar/{auto-hide,address-bar-settings,address-bar-visibility,calculator,domain,inline-autocomplete}.ts`
+(+ `address-bar-logic`, `calculator`, `domain` tests), `src/browser/search/search-shortcuts.ts` (+ test),
+`components/BrowserHeader/AutoHideHeader.tsx`, `hooks/useSearchEngineDefinition.ts`, `src/hooks/use-keyboard-height.ts`,
+`screens/settings/browser-settings/{AddressBarSettingsSection,SearchShortcutsSheet}.tsx`,
+`localization/catalogs/browserAddress.{en,ur}.ts`, `components/BrowserTabSwitcher/tab-display.test.ts`; moved
+`EngineBadge.tsx` to `src/browser/components/`.
+Changed: `AddressBar`, `BrowserHeader`, `SuggestionOverlay`, `SuggestionItem`, `SecurityIndicator`,
+`ReloadStopButton`, `BrowserScreen`, `BrowserOverflowMenu`, `useAddressBar`, `useBrowserChromeBridge`,
+`suggestions/{types,constants,ranking.engine,suggestion.service}` (+ test), `types/navigation.types.ts`,
+`utils/url.ts`, `tab-display.ts`, settings store (`types/state/index`, `backup.ts`), `browser-setting-{choices,keys}.ts`
+(+ audit test), `SearchSettingsSection`, `BrowserSettingsScreen`, `en.ts`/`ur.ts`, Urdu catalogs of B1/B5 (isolates),
+`package.json` / `package-lock.json` (`tldts`).
+
+### Automated tests
+
+`calculator.test.ts` (9: precedence and parentheses, right-associative powers, percent and `of`, Eastern digits and
+symbols `۱۲+۳`, decimals and thousands separators, division by zero → none, unfinished / invalid / plain input → none,
+never evaluates code, formatting), `domain.test.ts` (9: `co.uk` / `com.pk` suffixes, private suffixes, IDN in
+punycode, IPs / localhost / bare suffixes → none, RFC 3492 sample strings, label-by-label conversion, highlight split,
+IDN warning, no registrable domain → whole host), `address-bar-logic.test.ts` (15: completion prefix / `www.` / scheme
+/ case / mid-word / path / caret, ranking incl. "used often beats bookmarked once", caret / selection moves (keep,
+accept incl. Select all, drop), auto-hide state machine: hide distance, show distance, top, holds, direction changes,
+garbage input), `search-shortcuts.test.ts` (8: `w Lahore`, engine shortcuts follow Safe Search and language, Urdu
+encoding, what is not a shortcut, templates need `%s` and http(s), validation, stored list round-trips with broken
+entries and duplicates dropped, unreadable storage → defaults while an empty list stays empty),
+`suggestion.service.test.ts` (+3: calculator first / none for unfinished, calculator with suggestions off,
+autocomplete sources per switch), `tab-display.test.ts` (1), `browser-settings.audit.test.ts` (3 new keys persisted,
+backed up, reset; list setting refused over its size limit).
+Gate on the B4 code commit: `npm test` **1510 / 1510**, typecheck 0 errors, lint **0 errors / 82 warnings**, `git diff
+--check` clean. No native change (Kotlin suites unchanged since B1); no WebView code change (the patch test is not
+affected).
+
+### Manual cases (AVD `VidoraX_Browser_H`)
+
+Screenshots: `.claude/pr-evidence/hamza-browser/B4-*.png`.
+
+| # | Case | Build | Result | Note / screenshot |
+| --- | --- | --- | --- | --- |
+| 1 | "wik" completes `wikipedia.org`, Backspace removes the completion | debug, release | PASS | `B4-auto-combo`; on release over the seeded 1.1.0 it first picked `wikimedia.org` (one bookmark beat many Wikipedia pages: per-row maximum, alphabetical tie) → scores now add up per site (`B4-rel-auto`, re-checked on the final APK) |
+| 2 | Enter accepts the completion | debug | PASS | opens `wikipedia.org` (`B4-auto-enter`) |
+| 3 | Suggestions off → no inline completion | debug | PASS | only the search row (`B4-suggest-off-noauto`) |
+| 4 | Domain highlight | debug, release | PASS | `example.com`, `en.wikipedia.org/wiki/…` (`B4-highlight-crop`), `www.google.com/search…` after the upgrade (`B4-up-01`) |
+| 5 | An `xn--` domain | debug | PASS | `www.xn--80ak6aa92e.com` in the warning colour with ⚠ (`B4-idn-engine`); spoken: "This address uses non-Latin letters…" |
+| 6 | The icon follows the B5 engine | debug | PASS after fix | first run: still "G" after choosing DuckDuckGo (React Compiler caching, see #36) → fixed; D → G live without a reload (`B4-engine-follow`) |
+| 7 | Calculator `12*(3+4)/2`, tap copies | debug | PASS | "= 42" first, toast "Copied 42" (`B4-calc-combo`, `B4-calc-copy`) |
+| 8 | Calculator with Eastern digits | debug | PASS | `۱۲+۳×۲` pasted from a local page → "= 18" (`B4-calc-eastern`) |
+| 9 | Calculator `2^10` on release | release | PASS | "= 1024" (`B4-rel-combo`) |
+| 10 | `w Lahore` shortcut | debug, release | PASS | Wikipedia "Lahore" (`B4-short-02`, `B4-rel-combo`) |
+| 11 | Shortcut editor: add `wt` Wiktionary, use it, edit to `wk`, taken keyword `g` refused, delete, restore defaults | debug | PASS | `B4-shortcut-use` (row + en.wiktionary.org/wiki/cat), `B4-shortcut-taken`, `B4-shortcut-deleted`, `B4-shortcut-reset`; **found:** the editor sat behind the keyboard → fixed (`B4-hook`); closing the sheet mid-edit reopened a stale editor → fixed |
+| 12 | Bottom position with the keyboard open, in Urdu | debug | PASS | field above the keyboard, suggestions upward, menu opens upward (`B4-bottom`) |
+| 13 | Auto-hide on a long article | debug | PASS | hides scrolling down, shows scrolling up and at the top (`B4-autohide`) |
+| 14 | Force-stop → settings kept | debug | PASS | 3 shortcuts (Bing deleted), Bottom, Hide while scrolling on, after `am force-stop` (`B4-persist-shortcuts`, values read back from the screen) |
+| 15 | Dark theme, Urdu | debug | PASS | calculator row, bar highlight, shortcut sheet (`B4-dark-calc`, `B4-dark`) |
+| 16 | Font scale 1.3 | debug | PASS | sheet and editor (Save reachable by scrolling) (`B4-font13`, `B4-font13-editor-scrolled`) |
+| 17 | TalkBack | debug | BLOCKED (as B1) | TalkBack can't be driven through adb on this AVD; labels read from the accessibility tree instead: "Search engine: Google", the IDN warning, the calculator row ("2^10 = 1024. Result 1024. Double-tap to copy"), localized security / reload labels in Urdu |
+| 18 | Upgrade 1.1.0 → B4 release (snapshot `seeded110`) | release | PASS | PIN, Urdu, 6 tabs; new settings start at Top / Hide while scrolling off / 4 default shortcuts (`B4-up-02`, `-03`) |
+| 19 | Select all + Delete while a completion shows | release | PASS after fix | first run left `wik` (the controlled selection was put back after Select all, so Delete removed only the completion) → `completionOnSelection`; now the field empties (`B4-final-combo`) |
+| 20 | Urdu search row with `2^10` | release | PASS after fix | showed “10^2” (the `^` reordered inside the right-to-left sentence) → isolate; now “2^10” (`B4-final-combo`) |
+| 21 | Exact address row in Urdu | release | PASS after fix | "Go to website" was English → "ویب سائٹ کھولیں" |
+| 22 | Settings Backup on device | release | PASS | Export (Documents) holds `addressBarPosition`, `addressBarAutoHide`, `searchShortcuts` (36 keys); importing a file with Bottom / Hide while scrolling on / 30 shortcuts applies all three |
+| 23 | 30-shortcut limit | release | PASS after fix | a 31st used to be dropped silently on save → Add turns off with "Up to 30 shortcuts. Delete one to add another." (`B4-limit`) |
+| 24 | Settings Reset | release | PASS | back to Top / off / 4 defaults, language kept (`B4-after-reset`) |
+| 25 | Fresh release install | release | PASS | onboarding → tour step 1 spotlights the bar with its badge (`B4-fresh-02`); auto-hide on a long article: shown while loading and at the top, hidden scrolling down, back scrolling up (`B4-fresh-autohide`) |
+
+### Quick release check
+
+Regression: quick check; full R1–R16 at §7. Final release APK (arm64) over the seeded 1.1.0: starts, PIN, pages
+open, w3schools "Video available" → download completed (HTML Video, 770 KB, 176p) (`B4-rel-01`, `B4-rel-03`), no
+crash or ANR (`logcat -b crash`, `ANR in` empty, also after the fresh install), `apkanalyzer manifest permissions`
+identical to 1.1.0 (37). APK 50,293,690 bytes (B5: 50,002,358; +291 KB, mostly `tldts`'s suffix list).
+
+Device notes: in debug, typing fast through adb with the focus outside a text field sends "R R" → React Native's dev
+reload (seen twice) — type slowly; App Lock asks for the PIN again after the system file picker (existing behaviour).
+
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -244,7 +345,9 @@ crash`, `ANR in` empty), `apkanalyzer` permissions identical to 1.1.0 (37). APK 
 
 ### New dependencies
 
-(none yet)
+| Package | Dependency | Licence | Size | Why |
+| --- | --- | --- | --- | --- |
+| B4 | `tldts` 7.4.18 (+ `tldts-core` 7.4.18, pinned with `overrides` so both are the same release) | MIT | 128 KB minified (`dist/index.cjs.min.js`, the Public Suffix List included); release APK +~0.4 MB with everything else in B4 | Registrable domain (eTLD+1) for the domain highlight, autocomplete and Sort by Site; bundled, no network |
 
 ### New settings and defaults
 
@@ -256,6 +359,9 @@ crash`, `ANR in` empty), `apkanalyzer` permissions identical to 1.1.0 (37). APK 
 | `searchLanguage` | B5 | `default` (engine decides = today's) | `default`, `app`, `en`, `ur`, `ar`, `hi`, `fa`, `bn`, `tr`, `fr`, `de`, `es`, `zh` |
 | `searchRegion` | B5 | `auto` (engine decides = today's) | `auto`, `pk`, `in`, `ae`, `sa`, `bd`, `gb`, `us`, `ca`, `au`, `de`, `tr` |
 | `searchSuggestions` | B5 | `true` (today's) | on / off |
+| `addressBarPosition` | B4 | `top` (today's) | `top`, `bottom` |
+| `addressBarAutoHide` | B4 | `false` (today's) | on / off |
+| `searchShortcuts` | B4 | `g` Google, `b` Bing, `d` DuckDuckGo, `w` Wikipedia | JSON list of `{ keyword, name, engine }` or `{ keyword, name, template }` (≤ 30 entries — Add turns off at 30 and says so; Backup refuses more than 16,000 characters) |
 
 ### Found, not fixed
 
@@ -263,11 +369,19 @@ crash`, `ANR in` empty), `apkanalyzer` permissions identical to 1.1.0 (37). APK 
 | --- | --- |
 | Browser tabs | A tab left while its page is still loading keeps the WebView's interim title (the URL) until it is shown again (seen after reopening several closed tabs in a row) |
 | Browser, Back | Back on a tab's first page goes to the start page in that tab (so a restored tab can become a start page) — existing behaviour, noted because it changes what the switcher shows |
-| Address bar suggestions | Badges and lines are English in Urdu: "Bookmark", "History", "Frequent", "Recent", "Search", "Site", "N visits", "Recent search", "Suggested site", "Go to website. Go" (to be localized in B4/B5, which change these rows) |
+| ~~Address bar suggestions~~ | ~~Badges and lines are English in Urdu~~ — **fixed in B4** (with the security indicator, Reload / Stop and "Loading page") |
 | History / Bookmarks screens | Relative times "6m ago" / "1h ago" are English in Urdu (B9/B10 change these screens) |
-| Address bar (all packages) | The suggestion list is drawn under the keyboard: rows behind the keyboard can't be tapped (the list doesn't shrink to the space above it). B4 changes this overlay and fixes it |
+| ~~Address bar (all packages)~~ | ~~The suggestion list is drawn under the keyboard~~ — **fixed in B4** (the list is sized to the space above the keyboard) |
+| Downloads card | "770.0 KB saved" and "100 percent complete" (accessibility) are English in Urdu (download screens are not in Hamza's packages) |
 | Dev only | After a JS reload (debug), expo-image can fail to create its view ("The current activity is no longer available"); a cold start clears it. Not seen on release |
 
 ### Decisions (all packages)
 
 - Regression: per package only the quick release check (§3 step 6); the full R1–R16 runs once at §7.
+- B4: components never call `getSearchEngine()` (or any other module-level getter) while rendering — the React
+  Compiler keeps the first result; they subscribe to the setting (`useSearchEngineDefinition`).
+- B4: the calculator row stays when "Address bar suggestions" is off (it reads no history); inline autocomplete is off
+  with it.
+- B4: deleting a search shortcut has no confirmation; "Restore default shortcuts" brings the defaults back.
+- B4: user text inside Urdu sentences is wrapped in a first-strong isolate (`\u2068…\u2069`, as escapes, never raw
+  characters), like the e-mail isolates already in `ur.ts`.

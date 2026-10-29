@@ -730,6 +730,17 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   only builder of search URLs (address bar via `buildSearchUrl`, suggestions, later selected text, shortcuts and the
   widget). The settings store binds the user's choices with `bindSearchSettingsReader`. Engines that cannot take a
   setting from the link are marked `support: 'nearest' | 'none'` and the settings screen says so.
+- **Address bar (B4).** The rules are pure modules in `src/browser/address-bar/`: `inline-autocomplete.ts` (which
+  host to complete; sources from `SuggestionService.getAutocompleteSources`), `auto-hide.ts` (state machine over the
+  page's existing `scroll` bridge reports, ≤ 5/s), `calculator.ts` (recursive-descent parser, never `eval`),
+  `domain.ts` (registrable domain via `tldts` with private suffixes, RFC 3492 punycode encoding, highlight split).
+  `address-bar-visibility.ts` keeps the auto-hide state and its holds (loading, editing, "Video available", the
+  setting); `AutoHideHeader` slides the header and resizes the page once per hide / show. Search shortcuts
+  (`src/browser/search/search-shortcuts.ts`) are a JSON list in the `searchShortcuts` setting, read through
+  `bindSearchShortcutsReader`; `classifyNavigationInput` resolves `keyword query` before the search fallback, and
+  engine shortcuts build their URL with `getSearchEngine()`. Components read the engine with
+  `useSearchEngineDefinition()` (never `getSearchEngine()` during render: the React Compiler would keep the first
+  result). Overlays and sheets inside a Modal lift above the keyboard with `useKeyboardHeight` (`src/hooks`).
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab

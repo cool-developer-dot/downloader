@@ -2115,6 +2115,10 @@ Based on the local `integration/final-check` (not pushed). One line per package:
 - **B5 Search settings.** Browser settings screen (Settings → Browser, `/browser-settings`); search engine Google
   (default) / Bing / DuckDuckGo / Yahoo / Ecosia / Brave with their own Safe Search, language and region parameters;
   Search this site; suggestions switch. `getSearchEngine()` builds every search URL; defaults keep the old URL.
+- **B4 Address bar.** Inline autocomplete of visited / bookmarked sites, position Top / Bottom, hide while scrolling,
+  engine badge, registrable domain highlighted (`tldts`, `xn--` hosts with a warning), search shortcuts (`g`, `b`,
+  `d`, `w` + own ones in Browser settings → Search), calculator row (own parser, Eastern digits). New dependency
+  `tldts` 7.4.18 (MIT).
 
 ## 5. How to resume
 
