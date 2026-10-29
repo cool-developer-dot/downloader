@@ -19,10 +19,14 @@ import com.reactnativecommunity.webview.RNCWebViewWrapper
 import com.vidorax.web.network.NetworkMediaObserver
 import com.vidorax.web.network.ServiceWorkerRequests
 import com.vidorax.web.network.WebDownloadRoute
+import com.vidorax.web.snapshot.WebViewSnapshots
+import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 
 private const val ON_NETWORK_MEDIA = "onNetworkMedia"
@@ -44,6 +48,9 @@ class VidoraWebModule : Module() {
 
   // A link shared while JS was not listening, handed out by consumeSharedText.
   private val unclaimedSharedText = AtomicReference<String?>(null)
+
+  // B1: JPEG encoding of tab previews, off the main thread; one at a time is plenty (≤ 1 per tab switch).
+  private val snapshotEncoder: ExecutorService by lazy { Executors.newSingleThreadExecutor() }
 
   private val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
@@ -120,6 +127,10 @@ class VidoraWebModule : Module() {
       setWebViewActive(viewTag, active)
     }.runOnQueue(Queues.MAIN)
 
+    AsyncFunction("snapshotWebView") { viewTag: Int, maxWidth: Int, key: String, promise: Promise ->
+      snapshotWebView(viewTag, maxWidth, key, promise)
+    }.runOnQueue(Queues.MAIN)
+
     AsyncFunction("flushCookies") {
       CookieManager.getInstance().flush()
     }
@@ -183,6 +194,38 @@ class VidoraWebModule : Module() {
     val webView = wrapper?.webView ?: return false
     if (active) webView.onResume() else webView.onPause()
     return true
+  }
+
+  /**
+   * B1 #14: draws the tab's WebView now (main thread, where views may be drawn) and encodes the JPEG on
+   * [snapshotEncoder]; resolves `{ uri, width, height }` or null. See WebViewSnapshots.
+   */
+  private fun snapshotWebView(viewTag: Int, maxWidth: Int, key: String, promise: Promise) {
+    if (!WebViewSnapshots.isSafeKey(key)) {
+      promise.resolve(null)
+      return
+    }
+    val webView = try {
+      appContext.findView<RNCWebViewWrapper>(viewTag)?.webView
+    } catch (_: RuntimeException) {
+      null
+    }
+    val bitmap = webView?.let { WebViewSnapshots.capture(it, maxWidth) }
+    if (bitmap == null) {
+      promise.resolve(null)
+      return
+    }
+    val target = WebViewSnapshots.fileFor(context.cacheDir, key)
+    snapshotEncoder.execute {
+      val written = WebViewSnapshots.writeJpeg(bitmap, target)
+      val result = if (written) {
+        mapOf("uri" to android.net.Uri.fromFile(target).toString(), "width" to bitmap.width, "height" to bitmap.height)
+      } else {
+        null
+      }
+      bitmap.recycle()
+      promise.resolve(result)
+    }
   }
 
   /**

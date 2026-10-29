@@ -64,6 +64,14 @@ export interface SharedTextEvent {
   text: string;
 }
 
+/** B1 #14: a JPEG of what a tab's WebView showed, in the app's cache directory. */
+export interface WebViewSnapshot {
+  /** `file://` URI of `<cacheDir>/tab-previews/<key>.jpg`. */
+  uri: string;
+  width: number;
+  height: number;
+}
+
 export type VidoraWebEvents = {
   onNetworkMedia: (event: NetworkMediaBatchEvent) => void;
   onWebDownload: (event: WebDownloadEvent) => void;
@@ -79,6 +87,14 @@ export interface VidoraWebModuleApi {
    * requests are no longer reported. Resolves false when no such WebView exists.
    */
   setWebViewActive(viewTag: number, active: boolean): Promise<boolean>;
+  /**
+   * B1 #14 Tab preview: draws the visible part of the page in the WebView whose RNCWebViewWrapper has this view tag
+   * into a JPEG at most `maxWidth` pixels wide (aspect ratio kept, never scaled up; `maxWidth` is clamped to
+   * 64–1080), written atomically to `<cacheDir>/tab-previews/<key>.jpg` (`key`: 1–64 of `A–Z a–z 0–9 _ -`, else the
+   * call resolves null). Drawing runs on the main thread, JPEG encoding off it. Resolves null when there is no such
+   * WebView or it has no size yet. Missing on older native builds.
+   */
+  snapshotWebView?(viewTag: number, maxWidth: number, key: string): Promise<WebViewSnapshot | null>;
   /**
    * Settings → Theme for Android itself: kept natively and applied before the first activity frame on every start,
    * and on Android 12+ given to the system (`UiModeManager.setApplicationNightMode`) so its splash follows the app's
