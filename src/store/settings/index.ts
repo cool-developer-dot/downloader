@@ -13,6 +13,8 @@ import { createPersistStorage } from '@/store/shared/persist-storage';
 import { normalizeDefaultTab } from '@/navigation/helpers/default-tab';
 import { normalizeTabSortOrder } from '@/browser/tabs/tab-list-ops';
 import { normalizeAddressBarPosition } from '@/browser/address-bar/address-bar-settings';
+import { normalizeScrollSpeed } from '@/browser/scroll/scroll-speed';
+import { normalizePreloadPages } from '@/browser/preload/preload-policy';
 import {
   bindSearchShortcutsReader,
   parseSearchShortcuts,
@@ -121,6 +123,10 @@ export const useSettingsStore = createStore<SettingsStore>()(
         addressBarPosition: state.addressBarPosition,
         addressBarAutoHide: state.addressBarAutoHide,
         searchShortcuts: state.searchShortcuts,
+        swipeNavigation: state.swipeNavigation,
+        scrollSpeed: state.scrollSpeed,
+        volumeKeyScroll: state.volumeKeyScroll,
+        preloadPages: state.preloadPages,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -221,6 +227,12 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.searchShortcuts === 'string'
               ? serializeSearchShortcuts(parseSearchShortcuts(raw.searchShortcuts))
               : current.searchShortcuts,
+          swipeNavigation:
+            typeof raw.swipeNavigation === 'boolean' ? raw.swipeNavigation : current.swipeNavigation,
+          scrollSpeed: raw.scrollSpeed === undefined ? current.scrollSpeed : normalizeScrollSpeed(raw.scrollSpeed),
+          volumeKeyScroll:
+            typeof raw.volumeKeyScroll === 'boolean' ? raw.volumeKeyScroll : current.volumeKeyScroll,
+          preloadPages: raw.preloadPages === undefined ? current.preloadPages : normalizePreloadPages(raw.preloadPages),
         };
       },
     },

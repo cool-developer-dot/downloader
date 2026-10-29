@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import type { OrderableTab } from './tab-list-ops.ts';
-import { planCloseMany, planDuplicate, planRestore } from './tab-management-plans.ts';
+import { planBackgroundTab, planCloseMany, planDuplicate, planRestore } from './tab-management-plans.ts';
 
 const HOME = 'vidorax://home';
 type Tab = OrderableTab & { title?: string };
@@ -34,6 +34,40 @@ describe('Duplicate tab (#7)', () => {
 
   test('an unknown tab is reported', () => {
     assert.deepEqual(planDuplicate([tab('a')], 'zz', 10, () => tab('x')), { status: 'NOT_FOUND' });
+  });
+});
+
+describe('Open in background tab (B6 #51)', () => {
+  const limits = { maxTabs: 10, mountedCount: 1, maxMounted: 2 };
+
+  test('goes right after the tab in front, which stays in front; loads now when a slot is free', () => {
+    const plan = planBackgroundTab([tab('a'), tab('b'), tab('c')], 'b', limits, () => tab('n'));
+    assert.equal(plan.status, 'CREATED');
+    if (plan.status === 'CREATED') {
+      assert.equal(ids(plan.tabs), 'a,b,n,c');
+      assert.equal(plan.mountNow, true);
+    }
+  });
+
+  test('both WebView slots in use: it loads when first shown', () => {
+    const plan = planBackgroundTab([tab('a'), tab('b')], 'a', { ...limits, mountedCount: 2 }, () => tab('n'));
+    assert.equal(plan.status === 'CREATED' && plan.mountNow, false);
+  });
+
+  test('from a pinned tab it goes after the pinned block, unpinned', () => {
+    const plan = planBackgroundTab(
+      [tab('p', { pinned: true }), tab('q', { pinned: true }), tab('a')],
+      'p',
+      limits,
+      () => tab('n', { pinned: true }),
+    );
+    assert.equal(plan.status === 'CREATED' && ids(plan.tabs), 'p,q,n,a');
+    assert.equal(plan.status === 'CREATED' && plan.tab.pinned, false);
+  });
+
+  test('refused at the 10-tab limit', () => {
+    const full = Array.from({ length: 10 }, (_, i) => tab(`t${i}`));
+    assert.deepEqual(planBackgroundTab(full, 't0', limits, () => tab('x')), { status: 'LIMIT_REACHED' });
   });
 });
 

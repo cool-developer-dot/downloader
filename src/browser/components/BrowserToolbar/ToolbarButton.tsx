@@ -9,6 +9,9 @@ export type ToolbarButtonProps = {
   icon: IconName;
   accessibilityLabel: string;
   onPress: () => void;
+  /** B6 #44: Back lists the tab's earlier pages on a long press (and as an accessibility action). */
+  onLongPress?: () => void;
+  longPressLabel?: string;
   disabled?: boolean;
   testID?: string;
 };
@@ -21,6 +24,8 @@ export const ToolbarButton = memo(function ToolbarButton({
   icon,
   accessibilityLabel,
   onPress,
+  onLongPress,
+  longPressLabel,
   disabled = false,
   testID,
 }: ToolbarButtonProps) {
@@ -31,6 +36,16 @@ export const ToolbarButton = memo(function ToolbarButton({
     <Pressable
       testID={testID}
       onPress={onPress}
+      onLongPress={onLongPress}
+      delayLongPress={400}
+      accessibilityActions={onLongPress && longPressLabel ? [{ name: 'longpress', label: longPressLabel }] : undefined}
+      onAccessibilityAction={
+        onLongPress
+          ? (event) => {
+              if (event.nativeEvent.actionName === 'longpress') onLongPress();
+            }
+          : undefined
+      }
       disabled={disabled}
       disabledOpacity={1}
       pressedOpacity={1}

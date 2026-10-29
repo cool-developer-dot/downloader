@@ -24,7 +24,18 @@ export type ParsedBrowserChromeMessage =
       payload: {
         scrollY: number;
         pageUrl: string;
+        /** B6: page and window heights (0 when the page did not send them). */
+        height: number;
+        viewHeight: number;
       };
+    }
+  | {
+      type: 'auto_scroll';
+      payload: { event: 'bottom' | 'touched' };
+    }
+  | {
+      type: 'media_state';
+      payload: { playing: boolean };
     }
   | {
       type: 'pull_to_refresh';
@@ -67,6 +78,8 @@ const MESSAGE_TYPES = new Set<BrowserChromeMessageType>([
   'spa_navigation',
   'fullscreen',
   'page_links',
+  'auto_scroll',
+  'media_state',
   'ready',
 ]);
 
@@ -140,10 +153,30 @@ export function parseBrowserChromeMessage(
       }
       // pageUrl is optional — RN handler prefers browserStore.currentUrl.
       const pageUrl = optionalString(payload.pageUrl, 8_192) ?? '';
+      const height = finiteNumber(payload.height);
+      const viewHeight = finiteNumber(payload.viewHeight);
       return {
         type: 'scroll',
-        payload: { scrollY: Math.round(scrollY), pageUrl },
+        payload: {
+          scrollY: Math.round(scrollY),
+          pageUrl,
+          height: height != null && height > 0 ? Math.round(height) : 0,
+          viewHeight: viewHeight != null && viewHeight > 0 ? Math.round(viewHeight) : 0,
+        },
       };
+    }
+    case 'auto_scroll': {
+      const event = payload.event;
+      if (event !== 'bottom' && event !== 'touched') {
+        return null;
+      }
+      return { type: 'auto_scroll', payload: { event } };
+    }
+    case 'media_state': {
+      if (typeof payload.playing !== 'boolean') {
+        return null;
+      }
+      return { type: 'media_state', payload: { playing: payload.playing } };
     }
     case 'link_long_press': {
       const href = optionalString(payload.href, 8_192);

@@ -10,6 +10,7 @@ import { webFullscreen } from '@/browser/fullscreen/web-fullscreen.runtime';
 import { browserSyncService } from '@/browser/services/browser-sync.service';
 import { receivePageLinks } from '@/browser/services/page-link-grabber';
 import { addressBarVisibility } from '@/browser/address-bar/address-bar-visibility';
+import { pageActivity } from '@/browser/scroll/page-activity';
 import { useBrowserStore } from '@/browser/stores';
 import { isBrowserHomeUrl } from '@/browser/utils';
 
@@ -64,6 +65,12 @@ export function useBrowserChromeBridge(
           }
           // B4 #29: Auto-hide follows the active page's scrolling (it ignores everything while the setting is off).
           addressBarVisibility.onPageScroll(message.payload.scrollY);
+          // B6 #46 / #47: a fast scroll on a long page offers the ↑ / ↓ jump button.
+          pageActivity.onScroll({
+            y: message.payload.scrollY,
+            height: message.payload.height,
+            viewHeight: message.payload.viewHeight,
+          });
           const state = useBrowserStore.getState();
           const url = tabId
             ? state.tabs.find((t) => t.id === tabId)?.url ?? state.currentUrl
@@ -72,6 +79,19 @@ export function useBrowserChromeBridge(
             return true;
           }
           browserSyncService.onScroll(url, message.payload.scrollY);
+          return true;
+        }
+        case 'auto_scroll': {
+          // B6 #54: the page's loop reached the bottom or a touch paused it.
+          if (isActive) {
+            pageActivity.onAutoScrollEvent(message.payload.event);
+          }
+          return true;
+        }
+        case 'media_state': {
+          // B6 #240: volume keys keep their job while the page plays audible media.
+          const owner = tabId ?? useBrowserStore.getState().activeTabId;
+          pageActivity.setMediaPlaying(owner, message.payload.playing);
           return true;
         }
         case 'link_long_press': {

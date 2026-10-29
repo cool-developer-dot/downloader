@@ -5,6 +5,8 @@ import { useFocusEffect } from 'expo-router';
 
 import { addressBarVisibility } from '@/browser/address-bar/address-bar-visibility';
 import { registrableDomain } from '@/browser/address-bar/domain';
+import { pagePreload } from '@/browser/preload/page-preload.service';
+import { prefetchHostFor } from '@/browser/preload/preload-policy';
 import {
   completionOnSelection,
   inlineCompletion,
@@ -86,6 +88,15 @@ export function useAddressBar() {
       cancelled = true;
     };
   }, [isFocused, localSuggestions]);
+
+  // B6 #55 Preload pages: the top suggestion's site is looked up while the user is still typing.
+  useEffect(() => {
+    if (!isFocused) return undefined;
+    const host = prefetchHostFor(suggestions[0]);
+    if (!host) return undefined;
+    const timer = setTimeout(() => pagePreload.prefetchHost(host), 250);
+    return () => clearTimeout(timer);
+  }, [isFocused, suggestions]);
 
   // Discard unfinished draft when switching tabs: the editing state is reset while rendering the new tab
   // (React's "adjust state when a prop changes"), the keyboard and suggestions below.

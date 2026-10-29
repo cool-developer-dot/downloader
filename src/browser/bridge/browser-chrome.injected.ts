@@ -140,19 +140,50 @@ export function buildBrowserChromeInjectedScript(): string {
     (document.head || document.documentElement).appendChild(style);
   } catch (e) {}
 
+  // The last position of a scroll is always reported (≤ 210 ms after it stops), not dropped by the throttle: the
+  // address bar's auto-hide (B4) and the jump button (B6) need where the page came to rest.
+  var scrollTrailTimer = null;
   function onScroll() {
     var now = Date.now();
-    if (now - lastScrollPost < SCROLL_THROTTLE_MS) return;
+    if (now - lastScrollPost < SCROLL_THROTTLE_MS) {
+      if (!scrollTrailTimer) {
+        scrollTrailTimer = setTimeout(function () {
+          scrollTrailTimer = null;
+          onScroll();
+        }, SCROLL_THROTTLE_MS - (now - lastScrollPost) + 10);
+      }
+      return;
+    }
     lastScrollPost = now;
     var y = window.scrollY || window.pageYOffset ||
       (document.documentElement && document.documentElement.scrollTop) || 0;
     var pageUrl = location.href;
-    var payload = { scrollY: y };
+    var root = document.scrollingElement || document.documentElement;
+    var payload = { scrollY: y, height: (root && root.scrollHeight) || 0, viewHeight: window.innerHeight || 0 };
     if (pageUrl !== lastPostedPageUrl) {
       lastPostedPageUrl = pageUrl;
       payload.pageUrl = pageUrl;
     }
     post('scroll', payload);
+  }
+
+  // B6 #240: is the page playing something audible? Volume keys keep their job then (muted autoplay loops don't count).
+  var mediaPlaying = false;
+  function audibleMediaPlaying() {
+    try {
+      var media = document.querySelectorAll('video, audio');
+      for (var i = 0; i < media.length; i++) {
+        var m = media[i];
+        if (!m.paused && !m.ended && !m.muted && m.volume > 0) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function onMediaEvent() {
+    var playing = audibleMediaPlaying();
+    if (playing === mediaPlaying) return;
+    mediaPlaying = playing;
+    post('media_state', { playing: playing });
   }
 
   function pageScrollY() {
@@ -251,7 +282,13 @@ export function buildBrowserChromeInjectedScript(): string {
       window.removeEventListener('touchmove', onPullTouchMoveHandled, false);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('pagehide', cleanup);
+      document.removeEventListener('playing', onMediaEvent, true);
+      document.removeEventListener('pause', onMediaEvent, true);
+      document.removeEventListener('ended', onMediaEvent, true);
+      document.removeEventListener('emptied', onMediaEvent, true);
+      document.removeEventListener('volumechange', onMediaEvent, true);
       if (routeTitleTimer) { clearTimeout(routeTitleTimer); routeTitleTimer = null; }
+      if (scrollTrailTimer) { clearTimeout(scrollTrailTimer); scrollTrailTimer = null; }
       window.__VIDORAX_BROWSER_CHROME__ = false;
     } catch (e) {}
   }
@@ -268,6 +305,12 @@ export function buildBrowserChromeInjectedScript(): string {
   window.addEventListener('touchmove', onPullTouchMoveHandled, { capture: false, passive: true });
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('pagehide', cleanup);
+  // Media events don't bubble; capture on the document sees every video and audio element.
+  document.addEventListener('playing', onMediaEvent, true);
+  document.addEventListener('pause', onMediaEvent, true);
+  document.addEventListener('ended', onMediaEvent, true);
+  document.addEventListener('emptied', onMediaEvent, true);
+  document.addEventListener('volumechange', onMediaEvent, true);
 
   // An SPA names its new route after pushState returns (after rendering, often after a fetch): the title read at the
   // route change is still the previous route's. Look again for a few seconds and report the name once it changes.

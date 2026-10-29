@@ -71,6 +71,14 @@ export interface SettingsState {
   addressBarAutoHide: boolean;
   /** B4 #33: search shortcuts (`w Lahore`), as JSON (`search-shortcuts.ts`); default g / b / d / w. */
   searchShortcuts: string;
+  /** B6 #45: swipe on the toolbar (and the page edges with button navigation) goes back / forward (default on). */
+  swipeNavigation: boolean;
+  /** B6 #53: Auto scroll speed and the Volume-key step (default 'normal'). */
+  scrollSpeed: import('@/browser/scroll/scroll-speed').ScrollSpeed;
+  /** B6 #240: Volume Down / Up scroll a page (default off — today's). */
+  volumeKeyScroll: boolean;
+  /** B6 #55: Preload pages 'off' / 'wifi' (default) / 'always'. */
+  preloadPages: import('@/browser/preload/preload-policy').PreloadPages;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

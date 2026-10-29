@@ -13,6 +13,10 @@ export const BROWSER_SETTING_KEYS = [
   'addressBarPosition',
   'addressBarAutoHide',
   'searchShortcuts',
+  'swipeNavigation',
+  'scrollSpeed',
+  'volumeKeyScroll',
+  'preloadPages',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

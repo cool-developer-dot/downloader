@@ -45,6 +45,8 @@ import { useBrowserEngineContext } from '@/browser/engine';
 import { webFullscreen } from '@/browser/fullscreen/web-fullscreen.runtime';
 import { useBrowserEngineEvents } from '@/browser/hooks';
 import { useBrowserStore } from '@/browser/stores';
+import { hardReloadRequests } from '@/browser/services/hard-reload';
+import { pagePreload } from '@/browser/preload/page-preload.service';
 import { isBrowserHomeUrl } from '@/browser/utils';
 import {
   BROWSER_WEBVIEW_CACHE_MODE_DEFAULT,
@@ -99,6 +101,7 @@ export const BrowserWebView = memo(function BrowserWebView({
     webViewRef,
     sourceUri,
     reload,
+    stopLoading,
     loadUrl,
     navigationEpochRef,
     webViewInstanceGenerationRef,
@@ -127,6 +130,30 @@ export const BrowserWebView = memo(function BrowserWebView({
   const [cacheMode, setCacheMode] = useState<BrowserWebViewCacheMode>(
     BROWSER_WEBVIEW_CACHE_MODE_DEFAULT,
   );
+  // B6 #42 Hard reload: one reload without the HTTP cache (the desktop-mode switch's LOAD_NO_CACHE path);
+  // finalizeLoadEnd puts the cache mode back. The counter re-runs it while the cache mode is already off.
+  const [hardReloadSeq, setHardReloadSeq] = useState(0);
+  const handledHardReloadRef = useRef(0);
+
+  useEffect(() => {
+    if (!tabId) return undefined;
+    return hardReloadRequests.subscribe((requested) => {
+      if (requested !== tabId) return;
+      const tab = useBrowserStore.getState().tabs.find((t) => t.id === tabId);
+      if (!tab || isBrowserHomeUrl(tab.url)) return;
+      if (tab.loading) stopLoading();
+      setCacheMode(BROWSER_WEBVIEW_CACHE_MODE_UA_RELOAD);
+      setHardReloadSeq((seq) => seq + 1);
+    });
+  }, [stopLoading, tabId]);
+
+  useEffect(() => {
+    if (hardReloadSeq === handledHardReloadRef.current || cacheMode !== BROWSER_WEBVIEW_CACHE_MODE_UA_RELOAD) {
+      return;
+    }
+    handledHardReloadRef.current = hardReloadSeq;
+    reload();
+  }, [cacheMode, hardReloadSeq, reload]);
 
   useEffect(() => {
     return useBrowserStore.subscribe((state) => {
@@ -513,8 +540,12 @@ export const BrowserWebView = memo(function BrowserWebView({
         });
       }
       onLoadEnd(url);
+      // B6 #55: the page in front names its next page → fetch it ahead (Preload pages).
+      if (isActive && !isBrowserHomeUrl(url)) {
+        pagePreload.afterPageLoad((script) => webViewRef.current?.injectJavaScript(script));
+      }
     },
-    [appliedDesktopMode, cacheMode, isActive, onLoadEnd, tabId],
+    [appliedDesktopMode, cacheMode, isActive, onLoadEnd, tabId, webViewRef],
   );
 
   useEffect(() => {

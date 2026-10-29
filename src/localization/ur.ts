@@ -1,3 +1,4 @@
+import { browserNavUr } from './catalogs/browserNav.ur';
 import { browserAddressUr } from './catalogs/browserAddress.ur';
 import { browserSettingsUr } from './catalogs/browserSettings.ur';
 import { browserTabsUr } from './catalogs/browserTabs.ur';
@@ -2787,4 +2788,5 @@ export const ur: CatalogStrings<typeof en> = {
   browserTabs: browserTabsUr,
   browserSettings: browserSettingsUr,
   browserAddress: browserAddressUr,
+  browserNav: browserNavUr,
 };

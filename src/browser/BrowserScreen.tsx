@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useState } from 'react';
 import { AccessibilityInfo } from 'react-native';
 import { useFocusEffect } from 'expo-router';
+import type { PanGesture } from 'react-native-gesture-handler';
 
 import { Box } from '@/components/base/Box';
 import { EmptyState } from '@/components/common/EmptyState';
@@ -26,6 +27,13 @@ import { AutoHideHeader } from '@/browser/components/BrowserHeader/AutoHideHeade
 import { normalizeAddressBarPosition } from '@/browser/address-bar/address-bar-settings';
 import { useSettingsStore } from '@/store/settings';
 import { TabUndoSnackbar } from '@/browser/components/TabUndoSnackbar/TabUndoSnackbar';
+import { BackgroundTabSnackbar } from '@/browser/components/BackgroundTabSnackbar/BackgroundTabSnackbar';
+import { AutoScrollControl } from '@/browser/components/PageScrollControls/AutoScrollControl';
+import { ScrollJumpButton } from '@/browser/components/PageScrollControls/ScrollJumpButton';
+import { PageEdgeSwipe } from '@/browser/components/SwipeNavigation/PageEdgeSwipe';
+import { SwipeArrow } from '@/browser/components/SwipeNavigation/SwipeArrow';
+import { useSwipeNavigation } from '@/browser/components/SwipeNavigation/useSwipeNavigation';
+import { useVolumeKeyScroll } from '@/browser/hooks/useVolumeKeyScroll';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
 import { useIsWebFullscreen, useWebFullscreenLifecycle } from '@/browser/fullscreen';
 import {
@@ -155,6 +163,10 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   const [tabSwitcherVisible, setTabSwitcherVisible] = useState(false);
   useWebFullscreenLifecycle(tabSwitcherVisible);
   const webFullscreenActive = useIsWebFullscreen();
+  // B6: Volume keys scroll the page (setting); swipes on the toolbar / page edges go back and forward.
+  useVolumeKeyScroll({ overlayOpen: tabSwitcherVisible || webFullscreenActive });
+  const swipe = useSwipeNavigation();
+  const pageControlsVisible = !tabSwitcherVisible && !webFullscreenActive;
   // The page area: the tour shows where "Video available" appears (its bottom edge, above the toolbar).
   const pageAreaRef = useTourTargetRef('pageArea');
 
@@ -215,12 +227,18 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
       ) : null}
       {addressBarPosition === 'top' ? <BrowserProgressBar /> : null}
       <Box ref={pageAreaRef} collapsable={false} flex={1} style={{ position: 'relative' }}>
-        <BrowserContainer />
+        <PageEdgeSwipe leftEdge={swipe.leftEdge} rightEdge={swipe.rightEdge}>
+          <BrowserContainer />
+        </PageEdgeSwipe>
         <BrowserMediaDownloadBar
           overlayBlocking={tabSwitcherVisible || webFullscreenActive}
           onRequestDownload={handleRequestDownload}
         />
-        <TabUndoSnackbar visible={!tabSwitcherVisible && !webFullscreenActive} bottom={12} />
+        <TabUndoSnackbar visible={pageControlsVisible} bottom={12} />
+        <BackgroundTabSnackbar visible={pageControlsVisible} bottom={12} />
+        <ScrollJumpButton visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
+        <AutoScrollControl visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
+        <SwipeArrow shared={swipe.shared} bottom={24} />
       </Box>
       {addressBarPosition === 'bottom' ? <BrowserProgressBar /> : null}
       {addressBarPosition === 'bottom' ? (
@@ -232,7 +250,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
           />
         </AutoHideHeader>
       ) : null}
-      <BrowserToolbarDock />
+      <BrowserToolbarDock swipeGesture={swipe.toolbar} />
       <BrowserTabSwitcher
         visible={tabSwitcherVisible}
         onClose={closeTabSwitcher}
@@ -245,16 +263,19 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
 /** Thin page-coloured gap between the browser toolbar and the tab bar, so the two bars read as separate. */
 const TOOLBAR_DOCK_GAP = 6;
 
+/** B6: the floating scroll controls sit above the "Video available" bar. */
+const PAGE_CONTROLS_BOTTOM = 84;
+
 /**
  * The tab bar below already pads for the bottom safe area, so the dock adds none of that — only a thin gap
  * (TOOLBAR_DOCK_GAP) that keeps the toolbar and the tab bar from merging into one block.
  */
-const BrowserToolbarDock = memo(function BrowserToolbarDock() {
+const BrowserToolbarDock = memo(function BrowserToolbarDock({ swipeGesture }: { swipeGesture: PanGesture }) {
   const theme = useTheme();
 
   return (
     <Box style={{ paddingBottom: TOOLBAR_DOCK_GAP, backgroundColor: theme.colors.background }}>
-      <BrowserToolbar />
+      <BrowserToolbar swipeGesture={swipeGesture} />
     </Box>
   );
 });

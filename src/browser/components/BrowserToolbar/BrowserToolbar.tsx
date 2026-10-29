@@ -1,7 +1,12 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
+import { AccessibilityInfo, ToastAndroid } from 'react-native';
+import { GestureDetector, type PanGesture } from 'react-native-gesture-handler';
 
 import { Box } from '@/components/base/Box';
 import { useTheme } from '@/hooks/use-theme';
+import { BackHistorySheet } from '@/browser/components/BackHistorySheet/BackHistorySheet';
+import type { BackHistoryEntry } from '@/browser/navigation/back-history';
+import { goBackInActiveTab, loadActiveTabBackHistory } from '@/browser/navigation/back-history.service';
 
 import { BROWSER_TOOLBAR_HEIGHT, BROWSER_TOUCH_TARGET } from '@/browser/constants';
 import { useBrowserNavigation } from '@/browser/hooks';
@@ -11,6 +16,8 @@ import { getBrowserToolbarItems, type BrowserToolbarItemId } from './toolbar-con
 import { ToolbarButton } from './ToolbarButton';
 
 export type BrowserToolbarProps = {
+  /** B6 #45: the sideways swipe that goes back / forward (owned by the browser screen). */
+  swipeGesture: PanGesture;
   testID?: string;
 };
 
@@ -20,6 +27,7 @@ export type BrowserToolbarProps = {
  * Future actions flip `enabled` in toolbar-config — no layout changes required.
  */
 export const BrowserToolbar = memo(function BrowserToolbar({
+  swipeGesture,
   testID = 'browser-toolbar',
 }: BrowserToolbarProps) {
   const theme = useTheme();
@@ -32,6 +40,25 @@ export const BrowserToolbar = memo(function BrowserToolbar({
     handleForward,
     handleHome,
   } = useBrowserNavigation();
+  // B6 #44: a long press on Back lists the tab's earlier pages.
+  const [backHistory, setBackHistory] = useState<BackHistoryEntry[] | null>(null);
+
+  const showBackHistory = useCallback(async () => {
+    const entries = await loadActiveTabBackHistory();
+    if (entries.length === 0) {
+      ToastAndroid.show(t('browserNav.backHistoryEmpty'), ToastAndroid.SHORT);
+      AccessibilityInfo.announceForAccessibility(t('browserNav.backHistoryEmpty'));
+      return;
+    }
+    setBackHistory(entries);
+  }, [t]);
+
+  const closeBackHistory = useCallback(() => setBackHistory(null), []);
+
+  const goBackTo = useCallback((entry: BackHistoryEntry) => {
+    setBackHistory(null);
+    void goBackInActiveTab(entry.steps);
+  }, []);
 
   const visibleItems = useMemo(
     () =>
@@ -81,36 +108,46 @@ export const BrowserToolbar = memo(function BrowserToolbar({
   );
 
   return (
-    <Box
-      testID={testID}
-      row
-      px={8}
-      style={{
-        minHeight: BROWSER_TOOLBAR_HEIGHT,
-        height: BROWSER_TOOLBAR_HEIGHT,
-        alignItems: 'center',
-        justifyContent: 'space-around',
-        backgroundColor: theme.colors.bottomNavBackground,
-        borderTopWidth: 1,
-        borderTopColor: theme.colors.bottomNavBorder,
-        width: '100%',
-      }}
-      accessibilityRole="toolbar">
-      {visibleItems.map((item) => (
-        <Box
-          key={item.id}
-          flex={1}
-          center
-          style={{ minWidth: BROWSER_TOUCH_TARGET, minHeight: BROWSER_TOUCH_TARGET }}>
-          <ToolbarButton
-            icon={item.icon}
-            accessibilityLabel={item.accessibilityLabel}
-            disabled={resolveDisabled(item.id)}
-            onPress={resolvePress(item.id)}
-            testID={`${testID}-${item.id}`}
-          />
-        </Box>
-      ))}
-    </Box>
+    <GestureDetector gesture={swipeGesture}>
+      <Box
+        testID={testID}
+        row
+        px={8}
+        style={{
+          minHeight: BROWSER_TOOLBAR_HEIGHT,
+          height: BROWSER_TOOLBAR_HEIGHT,
+          alignItems: 'center',
+          justifyContent: 'space-around',
+          backgroundColor: theme.colors.bottomNavBackground,
+          borderTopWidth: 1,
+          borderTopColor: theme.colors.bottomNavBorder,
+          width: '100%',
+        }}
+        accessibilityRole="toolbar">
+        {visibleItems.map((item) => (
+          <Box
+            key={item.id}
+            flex={1}
+            center
+            style={{ minWidth: BROWSER_TOUCH_TARGET, minHeight: BROWSER_TOUCH_TARGET }}>
+            <ToolbarButton
+              icon={item.icon}
+              accessibilityLabel={item.accessibilityLabel}
+              disabled={resolveDisabled(item.id)}
+              onPress={resolvePress(item.id)}
+              onLongPress={item.id === 'back' ? () => void showBackHistory() : undefined}
+              longPressLabel={item.id === 'back' ? t('browserNav.showBackHistory') : undefined}
+              testID={`${testID}-${item.id}`}
+            />
+          </Box>
+        ))}
+        <BackHistorySheet
+          visible={backHistory != null}
+          entries={backHistory ?? []}
+          onSelect={goBackTo}
+          onClose={closeBackHistory}
+        />
+      </Box>
+    </GestureDetector>
   );
 });

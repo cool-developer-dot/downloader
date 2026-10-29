@@ -8,6 +8,7 @@ import { navigation } from '@/navigation';
 
 import { useSettingsTokens } from '../theme/settings-tokens';
 import { AddressBarSettingsSection } from './AddressBarSettingsSection';
+import { NavigationSettingsSection } from './NavigationSettingsSection';
 import { SearchSettingsSection } from './SearchSettingsSection';
 
 /**
@@ -37,6 +38,7 @@ export const BrowserSettingsScreen = memo(function BrowserSettingsScreen() {
       <View style={{ gap: settingsTokens.spacing.sectionGap }}>
         <SearchSettingsSection />
         <AddressBarSettingsSection />
+        <NavigationSettingsSection />
       </View>
     </SafeAreaScreen>
   );

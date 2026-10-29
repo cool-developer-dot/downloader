@@ -1,3 +1,4 @@
+import { browserNavEn } from './catalogs/browserNav.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
 import { browserSettingsEn } from './catalogs/browserSettings.en';
 import { browserTabsEn } from './catalogs/browserTabs.en';
@@ -2785,4 +2786,5 @@ export const en = {
   browserTabs: browserTabsEn,
   browserSettings: browserSettingsEn,
   browserAddress: browserAddressEn,
+  browserNav: browserNavEn,
 } as const;

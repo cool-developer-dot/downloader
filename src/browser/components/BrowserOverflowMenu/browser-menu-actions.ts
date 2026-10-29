@@ -14,6 +14,9 @@ import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
 import { buildTranslatePageUrl } from '@/browser/services/translate-page';
 import { requestAddressBarFocus } from '@/browser/services/address-bar-focus';
 import { closedTabsService } from '@/browser/tabs/closed-tabs.service';
+import { hardReloadRequests } from '@/browser/services/hard-reload';
+import { pageActivity } from '@/browser/scroll/page-activity';
+import { scrollActivePageToEdge } from '@/browser/scroll/page-scroll.service';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
 import { extractPageHostname, isValidBrowserPageUrl } from '@/browser/utils';
 import {
@@ -73,6 +76,10 @@ export function useBrowserMenuActions({
     [currentUrl],
   );
   const hasClosedTabs = useSyncExternalStore(closedTabsService.subscribe, closedTabsService.hasAny);
+  const autoScrollOn = useSyncExternalStore(
+    pageActivity.subscribe,
+    () => pageActivity.getSnapshot().autoScroll.status !== 'off',
+  );
 
   const announce = useCallback((message: string) => {
     onFeedback?.({ message, tone: 'success' });
@@ -207,6 +214,28 @@ export function useBrowserMenuActions({
       announceTabsLimitReached();
     }
   }, [onClose, translateUrl]);
+
+  // B6 #42: reload once without the browser cache.
+  const handleHardReload = useCallback(() => {
+    onClose();
+    hardReloadRequests.request(useBrowserStore.getState().activeTabId);
+  }, [onClose]);
+
+  // B6 #46 / #47.
+  const handleScrollEdge = useCallback(
+    (edge: 'top' | 'bottom') => {
+      onClose();
+      scrollActivePageToEdge(edge);
+    },
+    [onClose],
+  );
+
+  // B6 #54: start, or stop while it runs.
+  const handleAutoScroll = useCallback(() => {
+    onClose();
+    if (pageActivity.getSnapshot().autoScroll.status === 'off') pageActivity.startAutoScroll();
+    else pageActivity.autoScroll({ type: 'stop' });
+  }, [onClose]);
 
   const handleHistory = useCallback(() => {
     onClose();
@@ -348,6 +377,18 @@ export function useBrowserMenuActions({
         case 'translate':
           handleTranslate();
           break;
+        case 'hard_reload':
+          handleHardReload();
+          break;
+        case 'scroll_top':
+          handleScrollEdge('top');
+          break;
+        case 'scroll_bottom':
+          handleScrollEdge('bottom');
+          break;
+        case 'auto_scroll':
+          handleAutoScroll();
+          break;
         case 'history':
           handleHistory();
           break;
@@ -367,6 +408,9 @@ export function useBrowserMenuActions({
     [
       handleActiveDownloads,
       handleAddBookmark,
+      handleAutoScroll,
+      handleHardReload,
+      handleScrollEdge,
       handleBookmarks,
       handleContinueWatching,
       handleCopyLink,
@@ -519,6 +563,39 @@ export function useBrowserMenuActions({
         enabled: translateUrl != null,
       },
       {
+        id: 'hard_reload',
+        icon: 'refresh-circle',
+        label: t('browserNav.hardReload'),
+        accessibilityLabel: t('browserNav.hardReloadA11y'),
+        kind: 'action',
+        enabled: hasValidPage,
+        showDividerBefore: true,
+      },
+      {
+        id: 'scroll_top',
+        icon: 'format-vertical-align-top',
+        label: t('browserNav.scrollTop'),
+        accessibilityLabel: t('browserNav.scrollTop'),
+        kind: 'action',
+        enabled: hasValidPage,
+      },
+      {
+        id: 'scroll_bottom',
+        icon: 'format-vertical-align-bottom',
+        label: t('browserNav.scrollBottom'),
+        accessibilityLabel: t('browserNav.scrollBottom'),
+        kind: 'action',
+        enabled: hasValidPage,
+      },
+      {
+        id: 'auto_scroll',
+        icon: autoScrollOn ? 'stop' : 'play-speed',
+        label: autoScrollOn ? t('browserNav.autoScrollStop') : t('browserNav.autoScroll'),
+        accessibilityLabel: autoScrollOn ? t('browserNav.autoScrollStop') : t('browserNav.autoScroll'),
+        kind: 'action',
+        enabled: hasValidPage,
+      },
+      {
         id: 'desktop_site',
         icon: 'monitor',
         label: t('browser.desktopSite'),
@@ -546,6 +623,7 @@ export function useBrowserMenuActions({
       },
     ];
   }, [
+    autoScrollOn,
     bookmarkPending,
     bookmarked,
     desktopMode,

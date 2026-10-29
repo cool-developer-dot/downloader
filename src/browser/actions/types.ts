@@ -12,12 +12,15 @@ export type BrowserActionContext = {
   pageUrl?: string;
   /** Opens `url` in a new tab and switches to it (or reports the tab limit). */
   openInNewTab?: (url: string) => void;
+  /** B6 #51: opens `url` in a new tab behind the current one (or reports the tab limit); `title` names it. */
+  openInBackground?: (url: string, title?: string) => void;
 };
 
 export type BrowserActionId =
   | 'copy_link'
   | 'share_link'
   | 'open_in_new_tab'
+  | 'open_in_background'
   | 'open_external'
   | (string & {});
 

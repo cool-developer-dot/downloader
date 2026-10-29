@@ -8,9 +8,10 @@ import {
   type BrowserActionContext,
   type BrowserLinkLongPressPayload,
 } from '@/browser/actions';
-import { openLinkInNewTab } from '@/browser/actions/open-link-in-new-tab';
+import { canOpenInNewTab, openLinkInNewTab } from '@/browser/actions/open-link-in-new-tab';
 import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
 import { useBrowserStore } from '@/browser/stores';
+import { backgroundTabNotice } from '@/browser/tabs/background-tab-notice';
 import { useTranslation } from '@/localization';
 
 function isActionableLink(url: string): boolean {
@@ -65,6 +66,15 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
           createTab: (options) => useBrowserStore.getState().createTab(options),
           onLimitReached: announceTabsLimitReached,
         });
+      },
+      openInBackground: (url: string, title?: string) => {
+        if (!canOpenInNewTab(url)) return;
+        const outcome = useBrowserStore.getState().openTabInBackground(url.trim(), { title });
+        if (outcome.status === 'LIMIT_REACHED') {
+          announceTabsLimitReached();
+          return;
+        }
+        backgroundTabNotice.offer(outcome.tabId);
       },
     };
   }, [payload]);

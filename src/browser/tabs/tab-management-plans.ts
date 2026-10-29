@@ -31,6 +31,32 @@ export function planDuplicate<T extends OrderableTab>(
   return { status: 'CREATED', tabs: insertTabAfter(tabs, source.id, { ...copy, pinned: source.pinned }), copy };
 }
 
+export type BackgroundTabPlan<T> =
+  | { status: 'CREATED'; tabs: T[]; tab: T; mountNow: boolean }
+  | { status: 'LIMIT_REACHED' };
+
+/**
+ * B6 #51 Open in background tab: the new tab goes right after the tab in front (after the pinned block when that one
+ * is pinned) and the tab in front stays in front. It loads now when a WebView slot is free (`mountedCount` <
+ * `maxMounted`), otherwise when it is first shown. Refused at `maxTabs`.
+ */
+export function planBackgroundTab<T extends OrderableTab>(
+  tabs: readonly T[],
+  activeTabId: string,
+  limits: { maxTabs: number; mountedCount: number; maxMounted: number },
+  makeTab: () => T,
+): BackgroundTabPlan<T> {
+  if (tabs.length >= limits.maxTabs) return { status: 'LIMIT_REACHED' };
+  const tab = { ...makeTab(), pinned: false };
+  const anchor = tabs.some((t) => t.id === activeTabId) ? activeTabId : null;
+  return {
+    status: 'CREATED',
+    tabs: insertTabAfter(tabs, anchor, tab),
+    tab,
+    mountNow: limits.mountedCount < limits.maxMounted,
+  };
+}
+
 export type CloseManyPlan<T> = {
   tabs: T[];
   activeTabId: string;

@@ -3,12 +3,12 @@ import type { StoreApi } from 'zustand';
 import { browserMediaActionService } from '@/browser/media-actions/browser-media-action.service';
 import { closedTabsService } from '@/browser/tabs/closed-tabs.service';
 import type { ClosedTabEntry } from '@/browser/tabs/closed-tabs';
-import { MAX_OPEN_TABS } from '@/browser/tabs/constants';
+import { MAX_MOUNTED_WEBVIEWS, MAX_OPEN_TABS } from '@/browser/tabs/constants';
 import { reconcileMountPool } from '@/browser/tabs/mount-pool';
 import { createHomeTab, createTabFromPersisted } from '@/browser/tabs/tab-factory';
 import { createTabId } from '@/browser/tabs/tab-id';
 import { moveTabBy, moveTabTo, setTabPinned, type ClosedTabSlot } from '@/browser/tabs/tab-list-ops';
-import { planCloseMany, planDuplicate, planRestore } from '@/browser/tabs/tab-management-plans';
+import { planBackgroundTab, planCloseMany, planDuplicate, planRestore } from '@/browser/tabs/tab-management-plans';
 import { shouldPersistForTab } from '@/browser/tabs/tab-privacy';
 import { tabSnapshots } from '@/browser/tabs/tab-snapshots';
 import { tabUndo } from '@/browser/tabs/tab-undo';
@@ -33,8 +33,18 @@ export type RestoreTabsOutcome = {
   dropped: number;
 };
 
+/** B6 #51: the tab opened behind the one in front; `loadsNow` when a WebView slot was free. */
+export type BackgroundTabOutcome =
+  | { status: 'CREATED'; tabId: string; loadsNow: boolean }
+  | { status: 'LIMIT_REACHED'; max: number };
+
 export interface TabManagementActions {
   duplicateTab: (tabId: string) => CreateTabResult;
+  /**
+   * B6 #51: opens `url` in a new tab behind the one in front (which stays in front). `title` (the link's text) names
+   * it in the tab switcher until its page reports its own title.
+   */
+  openTabInBackground: (url: string, options?: { title?: string }) => BackgroundTabOutcome;
   setTabPinned: (tabId: string, pinned: boolean) => void;
   moveTab: (tabId: string, toIndex: number) => void;
   moveTabBy: (tabId: string, delta: -1 | 1) => void;
@@ -225,6 +235,33 @@ export function createTabManagementActions(
       commit(plan.tabs, plan.copy.id);
       const tab = get().tabs.find((t) => t.id === plan.copy.id)!;
       return { status: 'CREATED', tab, evictedTabIds: [] };
+    },
+
+    openTabInBackground: (url, options) => {
+      const state = get();
+      const plan = planBackgroundTab(
+        state.tabs,
+        state.activeTabId,
+        { maxTabs: MAX_OPEN_TABS, mountedCount: state.mountedTabIds.length, maxMounted: MAX_MOUNTED_WEBVIEWS },
+        () => createHomeTab({ url, title: options?.title?.trim().slice(0, 120) ?? '', lastActiveAt: Date.now() }),
+      );
+      if (plan.status === 'LIMIT_REACHED') {
+        return { status: 'LIMIT_REACHED', max: MAX_OPEN_TABS };
+      }
+      // The tab in front keeps its place and chrome; the new one mounts now (parked) only when a slot is free.
+      const reconciled = reconcileMountPool({
+        tabs: plan.tabs,
+        activeTabId: state.activeTabId,
+        mountedTabIds: plan.mountNow ? [...state.mountedTabIds, plan.tab.id] : state.mountedTabIds,
+      });
+      suspendUnmountedTabs(reconciled.evictedTabIds);
+      set({ tabs: reconciled.tabs, mountedTabIds: reconciled.mountedTabIds });
+      persistTabs(get());
+      return {
+        status: 'CREATED',
+        tabId: plan.tab.id,
+        loadsNow: reconciled.mountedTabIds.includes(plan.tab.id),
+      };
     },
 
     setTabPinned: (tabId, pinned) => {
