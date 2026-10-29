@@ -39,6 +39,8 @@ export function useAddressBar() {
 
   const [isFocused, setIsFocused] = useState(false);
   const [draft, setDraft] = useState('');
+  /** B5 "Search this site": the prefilled text keeps the caret at its end instead of being selected. */
+  const [caretAtEnd, setCaretAtEnd] = useState(false);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
 
   const { suggestions, loading: suggestionsLoading, clearSuggestions } =
@@ -113,6 +115,7 @@ export function useAddressBar() {
   const onFocus = useCallback(() => {
     const seed = isBrowserHomeUrl(currentUrl) ? '' : currentUrl;
     setDraft(seed);
+    setCaretAtEnd(false);
     setValidationMessage(null);
     setIsFocused(true);
     submitLockRef.current = false;
@@ -134,6 +137,7 @@ export function useAddressBar() {
             onFocus();
             if (request.prefill != null) {
               setDraft(request.prefill);
+              setCaretAtEnd(true);
             }
           }, 300),
         );
@@ -142,6 +146,12 @@ export function useAddressBar() {
         // opens the keyboard; React Native ignores focus() on the field that already has focus, hence the blur.
         timers.push(setTimeout(() => inputRef.current?.blur(), 800));
         timers.push(setTimeout(() => inputRef.current?.focus(), 900));
+        // A prefill ("site:example.com ") keeps the caret at its end once the field has its final focus, so the next
+        // words are added to it rather than typed over it.
+        const prefill = request.prefill;
+        if (prefill != null) {
+          timers.push(setTimeout(() => inputRef.current?.setSelection(prefill.length, prefill.length), 1000));
+        }
       };
       focusIfRequested();
       const unsubscribe = subscribeAddressBarFocusRequest(focusIfRequested);
@@ -241,6 +251,7 @@ export function useAddressBar() {
     suggestions,
     suggestionsLoading,
     showSuggestions: isFocused,
+    caretAtEnd,
     onChangeText,
     onFocus,
     onBlur,

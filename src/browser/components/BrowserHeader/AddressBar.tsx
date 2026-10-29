@@ -61,6 +61,7 @@ export const AddressBar = memo(function AddressBar({
     suggestions,
     suggestionsLoading,
     showSuggestions,
+    caretAtEnd,
     onChangeText,
     onFocus,
     onBlur,
@@ -192,6 +193,7 @@ export const AddressBar = memo(function AddressBar({
         suggestions={suggestions}
         loading={suggestionsLoading}
         query={draft}
+        caretAtEnd={caretAtEnd}
         inputRef={inputRef}
         onChangeText={onChangeText}
         onSubmit={submit}

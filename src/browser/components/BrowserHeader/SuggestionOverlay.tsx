@@ -41,6 +41,8 @@ export type SuggestionOverlayProps = {
   suggestions: OmniboxSuggestion[];
   loading: boolean;
   query: string;
+  /** The field was prefilled (B5 Search this site): caret at the end, nothing selected. */
+  caretAtEnd?: boolean;
   inputRef: RefObject<TextInputType | null>;
   onChangeText: (text: string) => void;
   onSubmit: () => void;
@@ -58,6 +60,7 @@ export const SuggestionOverlay = memo(function SuggestionOverlay({
   suggestions,
   loading,
   query,
+  caretAtEnd = false,
   inputRef,
   onChangeText,
   onSubmit,
@@ -200,7 +203,7 @@ export const SuggestionOverlay = memo(function SuggestionOverlay({
               keyboardType="web-search"
               returnKeyType="go"
               enablesReturnKeyAutomatically
-              selectTextOnFocus
+              selectTextOnFocus={!caretAtEnd}
               placeholder={t('browser.addressPlaceholder')}
               placeholderTextColor={theme.colors.textDisabled}
               accessibilityLabel={t('browser.addressBar')}
