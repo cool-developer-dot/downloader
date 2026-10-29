@@ -8,7 +8,10 @@
  *   cut. The store's own validation then runs on top (the caller applies the values through it).
  */
 
-import { BROWSER_SETTING_CHOICES } from '@/browser/settings/browser-setting-choices';
+import {
+  BROWSER_SETTING_CHOICES,
+  BROWSER_SETTING_STRING_LIMITS,
+} from '@/browser/settings/browser-setting-choices';
 
 export const SETTINGS_BACKUP_FORMAT = 'vidorax.settings';
 export const SETTINGS_BACKUP_VERSION = 1;
@@ -105,7 +108,17 @@ export function parseSettingsBackup(text: string, defaults: Readonly<Record<stri
         ignored.push(key);
         continue;
       }
-      values[key] = raw.slice(0, MAX_STRING_CHARS);
+      const listLimit = BROWSER_SETTING_STRING_LIMITS[key];
+      if (listLimit != null) {
+        // A list stored as JSON: cut in the middle it would be broken, so a too-long one is refused instead.
+        if (raw.length > listLimit) {
+          ignored.push(key);
+          continue;
+        }
+        values[key] = raw;
+      } else {
+        values[key] = raw.slice(0, MAX_STRING_CHARS);
+      }
     } else {
       values[key] = raw;
     }

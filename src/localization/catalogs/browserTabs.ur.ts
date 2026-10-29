@@ -5,7 +5,7 @@ export const browserTabsUr: CatalogStrings<typeof browserTabsEn> = {
   searchPlaceholder: 'ٹیبز تلاش کریں',
   searchA11y: 'کھلے ٹیبز کو عنوان یا پتے سے تلاش کریں',
   clearSearchA11y: 'ٹیب کی تلاش صاف کریں',
-  noMatches: '“{query}” سے کوئی ٹیب نہیں ملا',
+  noMatches: '“\u2068{query}\u2069” سے کوئی ٹیب نہیں ملا',
   menuA11y: 'ٹیب کے اختیارات',
   sortBy: 'ترتیب',
   sortByValue: 'ترتیب: {order}',

@@ -11,6 +11,8 @@ export type SuggestionKind =
   | 'domain'
   | 'recent_search'
   | 'search'
+  /** B4 #268: the result of an expression typed in the bar; a tap copies it, never navigates. */
+  | 'calculator'
   /** Extension point — not used until a remote provider is wired. */
   | 'remote_suggest';
 
@@ -22,6 +24,7 @@ export type SuggestionSource =
   | 'domain'
   | 'recent_searches'
   | 'search'
+  | 'calculator'
   | 'remote';
 
 export interface OmniboxSuggestion {

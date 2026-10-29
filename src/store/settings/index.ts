@@ -12,6 +12,13 @@ import { normalizeAfterDownloadAction } from '@/downloads/v2/after-download';
 import { createPersistStorage } from '@/store/shared/persist-storage';
 import { normalizeDefaultTab } from '@/navigation/helpers/default-tab';
 import { normalizeTabSortOrder } from '@/browser/tabs/tab-list-ops';
+import { normalizeAddressBarPosition } from '@/browser/address-bar/address-bar-settings';
+import {
+  bindSearchShortcutsReader,
+  parseSearchShortcuts,
+  serializeSearchShortcuts,
+  type SearchShortcut,
+} from '@/browser/search/search-shortcuts';
 import {
   bindSearchSettingsReader,
   normalizeSafeSearch,
@@ -111,6 +118,9 @@ export const useSettingsStore = createStore<SettingsStore>()(
         searchLanguage: state.searchLanguage,
         searchRegion: state.searchRegion,
         searchSuggestions: state.searchSuggestions,
+        addressBarPosition: state.addressBarPosition,
+        addressBarAutoHide: state.addressBarAutoHide,
+        searchShortcuts: state.searchShortcuts,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -201,6 +211,16 @@ export const useSettingsStore = createStore<SettingsStore>()(
           searchRegion: raw.searchRegion === undefined ? current.searchRegion : normalizeSearchRegion(raw.searchRegion),
           searchSuggestions:
             typeof raw.searchSuggestions === 'boolean' ? raw.searchSuggestions : current.searchSuggestions,
+          addressBarPosition:
+            raw.addressBarPosition === undefined
+              ? current.addressBarPosition
+              : normalizeAddressBarPosition(raw.addressBarPosition),
+          addressBarAutoHide:
+            typeof raw.addressBarAutoHide === 'boolean' ? raw.addressBarAutoHide : current.addressBarAutoHide,
+          searchShortcuts:
+            typeof raw.searchShortcuts === 'string'
+              ? serializeSearchShortcuts(parseSearchShortcuts(raw.searchShortcuts))
+              : current.searchShortcuts,
         };
       },
     },
@@ -208,6 +228,16 @@ export const useSettingsStore = createStore<SettingsStore>()(
 );
 
 bindLanguageReader(() => useSettingsStore.getState().language);
+
+// Search shortcuts (B4): parsed once per stored value, not on every keystroke.
+let shortcutsCache: { raw: string; list: readonly SearchShortcut[] } | null = null;
+bindSearchShortcutsReader(() => {
+  const raw = useSettingsStore.getState().searchShortcuts;
+  if (!shortcutsCache || shortcutsCache.raw !== raw) {
+    shortcutsCache = { raw, list: parseSearchShortcuts(raw) };
+  }
+  return shortcutsCache.list;
+});
 
 // Every search URL reads the user's search settings at the moment it is built (B5).
 bindSearchSettingsReader(() => {

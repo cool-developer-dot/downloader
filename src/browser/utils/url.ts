@@ -7,6 +7,7 @@ import {
   isSocialNativeAppScheme as matchSocialNativeAppScheme,
 } from '@/browser/constants/browser.constants';
 import { getSearchEngine } from '@/browser/search/search-engines';
+import { getSearchShortcuts, matchSearchShortcut } from '@/browser/search/search-shortcuts';
 import type {
   BrowserSecurityLevel,
   NavigationIntent,
@@ -201,6 +202,12 @@ export function classifyNavigationInput(rawInput: string): NavigationIntent {
   if (SITE_OPERATOR.test(trimmed)) {
     const query = trimmed.replace(/\s+/g, ' ');
     return { kind: 'search', query, url: buildSearchUrl(query) };
+  }
+
+  // B4 #33: `keyword query` searches the shortcut's site.
+  const shortcut = matchSearchShortcut(trimmed, getSearchShortcuts());
+  if (shortcut) {
+    return { kind: 'search', query: shortcut.query, url: shortcut.url, provider: shortcut.shortcut.name };
   }
 
   if (isInvalidLiteral(trimmed)) {

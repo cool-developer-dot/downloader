@@ -10,6 +10,9 @@ export const BROWSER_SETTING_KEYS = [
   'searchLanguage',
   'searchRegion',
   'searchSuggestions',
+  'addressBarPosition',
+  'addressBarAutoHide',
+  'searchShortcuts',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

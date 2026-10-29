@@ -60,3 +60,23 @@ describe('browser settings: stored, backed up, reset (audit)', () => {
     assert.equal(bad.ok && bad.ignored.includes('tabSortOrder'), true);
   });
 });
+
+describe('browser list settings in Backup', () => {
+  test('a search-shortcut list longer than 500 characters is kept whole; an oversized one is refused', () => {
+    const long = JSON.stringify(
+      Array.from({ length: 20 }, (_, i) => ({ keyword: `k${i}`, name: `Site ${i}`, template: `https://site${i}.example/search?q=%s` })),
+    );
+    assert.ok(long.length > 500);
+    const ok = parseSettingsBackup(
+      JSON.stringify({ format: SETTINGS_BACKUP_FORMAT, version: 1, settings: { searchShortcuts: long } }),
+      defaults,
+    );
+    assert.equal(ok.ok && ok.values.searchShortcuts, long);
+    const huge = 'x'.repeat(20_000);
+    const refused = parseSettingsBackup(
+      JSON.stringify({ format: SETTINGS_BACKUP_FORMAT, version: 1, settings: { searchShortcuts: huge } }),
+      defaults,
+    );
+    assert.equal(refused.ok && 'searchShortcuts' in refused.values, false);
+  });
+});

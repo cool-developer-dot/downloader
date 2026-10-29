@@ -9,6 +9,7 @@ import type { BrowserLinkLongPressPayload } from '@/browser/actions';
 import { webFullscreen } from '@/browser/fullscreen/web-fullscreen.runtime';
 import { browserSyncService } from '@/browser/services/browser-sync.service';
 import { receivePageLinks } from '@/browser/services/page-link-grabber';
+import { addressBarVisibility } from '@/browser/address-bar/address-bar-visibility';
 import { useBrowserStore } from '@/browser/stores';
 import { isBrowserHomeUrl } from '@/browser/utils';
 
@@ -61,6 +62,8 @@ export function useBrowserChromeBridge(
           if (!isActive) {
             return true;
           }
+          // B4 #29: Auto-hide follows the active page's scrolling (it ignores everything while the setting is off).
+          addressBarVisibility.onPageScroll(message.payload.scrollY);
           const state = useBrowserStore.getState();
           const url = tabId
             ? state.tabs.find((t) => t.id === tabId)?.url ?? state.currentUrl

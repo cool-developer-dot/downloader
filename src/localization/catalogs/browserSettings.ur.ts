@@ -29,7 +29,7 @@ export const browserSettingsUr: CatalogStrings<typeof browserSettingsEn> = {
     notSupported: '{engine} محفوظ تلاش، زبان اور علاقہ اپنی سیٹنگز میں رکھتا ہے؛ VidoraX انہیں نہیں بدل سکتا۔',
     suggestions: 'ایڈریس بار کی تجاویز',
     suggestionsHint: 'ٹائپ کرتے وقت ملتی جلتی ہسٹری، بک مارکس اور حالیہ تلاشیں دکھائیں',
-    searchWithEngine: '{engine} پر “{query}” تلاش کریں',
+    searchWithEngine: '{engine} پر “\u2068{query}\u2069” تلاش کریں',
     recentSearch: 'حالیہ تلاش',
     searchThisSite: 'اس سائٹ میں تلاش کریں',
     searchThisSiteA11y: 'صرف اسی سائٹ میں تلاش کے لیے ایڈریس بار کھولتا ہے',

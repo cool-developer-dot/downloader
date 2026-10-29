@@ -7,6 +7,7 @@ import { useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
 
 import { useSettingsTokens } from '../theme/settings-tokens';
+import { AddressBarSettingsSection } from './AddressBarSettingsSection';
 import { SearchSettingsSection } from './SearchSettingsSection';
 
 /**
@@ -35,6 +36,7 @@ export const BrowserSettingsScreen = memo(function BrowserSettingsScreen() {
       <ScreenHeader title={t('browserSettings.title')} showBack onBackPress={goBack} testID="browser-settings-header" />
       <View style={{ gap: settingsTokens.spacing.sectionGap }}>
         <SearchSettingsSection />
+        <AddressBarSettingsSection />
       </View>
     </SafeAreaScreen>
   );

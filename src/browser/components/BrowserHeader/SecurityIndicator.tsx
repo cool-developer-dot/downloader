@@ -9,6 +9,7 @@ import Animated, {
 
 import { Icon } from '@/components/base/Icon';
 import { useTheme } from '@/hooks/use-theme';
+import { useTranslation } from '@/localization';
 
 import { BROWSER_OMNIBOX_FOCUS_DURATION_MS } from '@/browser/constants';
 import { selectSecurityLevel, useBrowserStore } from '@/browser/stores';
@@ -24,26 +25,26 @@ function resolveSecurityPresentation(level: BrowserSecurityLevel) {
     case 'secure':
       return {
         icon: 'lock' as const,
-        label: 'Secure HTTPS connection',
+        labelKey: 'browserAddress.security.secure' as const,
         colorToken: 'success' as const,
       };
     case 'insecure':
       return {
         icon: 'lock-open-variant' as const,
-        label: 'Not a secure connection',
+        labelKey: 'browserAddress.security.insecure' as const,
         colorToken: 'secondary' as const,
       };
     case 'warning':
       return {
         icon: 'shield-alert-outline' as const,
-        label: 'Connection security unknown',
+        labelKey: 'browserAddress.security.unknown' as const,
         colorToken: 'warning' as const,
       };
     case 'neutral':
     default:
       return {
         icon: 'earth' as const,
-        label: 'Browser home',
+        labelKey: 'browserAddress.security.home' as const,
         colorToken: 'secondary' as const,
       };
   }
@@ -54,6 +55,7 @@ export const SecurityIndicator = memo(function SecurityIndicator({
   testID = 'browser-security-indicator',
 }: SecurityIndicatorProps) {
   const theme = useTheme();
+  const { t } = useTranslation();
   const securityLevel = useBrowserStore(selectSecurityLevel);
   const presentation = resolveSecurityPresentation(securityLevel);
   const progress = useSharedValue(securityLevel === 'secure' ? 1 : 0);
@@ -95,7 +97,7 @@ export const SecurityIndicator = memo(function SecurityIndicator({
     <Animated.View
       testID={testID}
       accessibilityRole="image"
-      accessibilityLabel={presentation.label}
+      accessibilityLabel={t(presentation.labelKey)}
       style={[{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, animatedStyle]}>
       <Animated.View
         pointerEvents="none"

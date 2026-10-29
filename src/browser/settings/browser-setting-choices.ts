@@ -4,6 +4,7 @@ import {
   SEARCH_LANGUAGES,
   SEARCH_REGIONS,
 } from '@/browser/search/search-engines';
+import { ADDRESS_BAR_POSITIONS } from '@/browser/address-bar/address-bar-settings';
 import { TAB_SORT_ORDERS } from '@/browser/tabs/tab-list-ops';
 
 /**
@@ -17,4 +18,10 @@ export const BROWSER_SETTING_CHOICES: Readonly<Record<string, readonly string[]>
   safeSearch: SAFE_SEARCH_LEVELS,
   searchLanguage: SEARCH_LANGUAGES,
   searchRegion: SEARCH_REGIONS,
+  addressBarPosition: ADDRESS_BAR_POSITIONS,
+};
+
+/** String settings longer than Backup's usual 500-character cap (lists stored as JSON). */
+export const BROWSER_SETTING_STRING_LIMITS: Readonly<Record<string, number>> = {
+  searchShortcuts: 16_000,
 };

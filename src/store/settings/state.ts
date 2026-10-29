@@ -11,6 +11,8 @@ import {
   DEFAULT_SEARCH_LANGUAGE,
   DEFAULT_SEARCH_REGION,
 } from '@/browser/search/search-engines';
+import { DEFAULT_ADDRESS_BAR_POSITION } from '@/browser/address-bar/address-bar-settings';
+import { DEFAULT_SEARCH_SHORTCUTS_JSON } from '@/browser/search/search-shortcuts';
 import { DEFAULT_TAB_SORT_ORDER } from '@/browser/tabs/tab-list-ops';
 
 import type { SettingsState } from './types';
@@ -52,4 +54,7 @@ export const initialSettingsState: SettingsState = {
   searchLanguage: DEFAULT_SEARCH_LANGUAGE,
   searchRegion: DEFAULT_SEARCH_REGION,
   searchSuggestions: true,
+  addressBarPosition: DEFAULT_ADDRESS_BAR_POSITION,
+  addressBarAutoHide: false,
+  searchShortcuts: DEFAULT_SEARCH_SHORTCUTS_JSON,
 };

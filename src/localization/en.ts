@@ -1,3 +1,4 @@
+import { browserAddressEn } from './catalogs/browserAddress.en';
 import { browserSettingsEn } from './catalogs/browserSettings.en';
 import { browserTabsEn } from './catalogs/browserTabs.en';
 import { detectionEn } from './catalogs/detection.en';
@@ -2783,4 +2784,5 @@ export const en = {
   videoPlayer: videoPlayerEn,
   browserTabs: browserTabsEn,
   browserSettings: browserSettingsEn,
+  browserAddress: browserAddressEn,
 } as const;

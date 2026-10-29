@@ -25,7 +25,13 @@ export type NavigationIntent =
         'domain' | 'www_domain' | 'https_url' | 'http_url' | 'ip' | 'localhost'
       >;
     }
-  | { kind: 'search'; url: string; query: string }
+  | {
+      kind: 'search';
+      url: string;
+      query: string;
+      /** B4 #33: a search shortcut's site (`w Lahore` → "Wikipedia"); absent for the default engine. */
+      provider?: string;
+    }
   | { kind: 'invalid'; message: string; category: 'invalid' }
   | { kind: 'blocked'; message: string; category: 'blocked' };
 

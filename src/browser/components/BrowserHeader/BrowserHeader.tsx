@@ -11,6 +11,8 @@ export type BrowserHeaderProps = {
   leadingSlot?: ReactNode;
   /** Optional trailing slot for future controls (menu, share, AI). */
   trailingSlot?: ReactNode;
+  /** B4 #28: at the bottom the divider is on top. */
+  position?: 'top' | 'bottom';
   testID?: string;
 };
 
@@ -22,6 +24,7 @@ export type BrowserHeaderProps = {
 export const BrowserHeader = memo(function BrowserHeader({
   leadingSlot,
   trailingSlot,
+  position = 'top',
   testID = 'browser-header',
 }: BrowserHeaderProps) {
   const theme = useTheme();
@@ -36,8 +39,9 @@ export const BrowserHeader = memo(function BrowserHeader({
       style={{
         alignItems: 'flex-start',
         backgroundColor: theme.colors.headerBackground,
-        borderBottomWidth: 1,
-        borderBottomColor: theme.colors.headerBorder,
+        ...(position === 'bottom'
+          ? { borderTopWidth: 1, borderTopColor: theme.colors.headerBorder }
+          : { borderBottomWidth: 1, borderBottomColor: theme.colors.headerBorder }),
         zIndex: 2,
       }}
       accessibilityRole="header">

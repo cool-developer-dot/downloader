@@ -1,3 +1,5 @@
+import { evaluateCalculation } from '@/browser/address-bar/calculator';
+import type { AutocompleteSource } from '@/browser/address-bar/inline-autocomplete';
 import { getSearchEngine } from '@/browser/search/search-engines';
 import { classifyNavigationInput, buildSearchUrl } from '@/browser/utils';
 import { translate } from '@/localization/translate';
@@ -190,6 +192,7 @@ export class SuggestionService {
     };
 
     const candidates: RankableCandidate[] = [
+      ...this.collectCalculator(context),
       ...this.collectExactUrl(context),
       ...(include.bookmarks ? this.collectBookmarks(index.bookmarks, context) : []),
       ...(include.history ? this.collectHistory(index.history, context) : []),
@@ -226,7 +229,7 @@ export class SuggestionService {
             kind: 'frequent',
             source: 'frequent',
             title: entry.title || entry.hostname,
-            subtitle: `${entry.visitCount} visits · ${entry.hostname}`,
+            subtitle: translate('browserAddress.visitsWithHost', { count: entry.visitCount, host: entry.hostname }),
             url: entry.url,
             hostname: entry.hostname,
             faviconUrl: buildFaviconUrl(entry.hostname),
@@ -261,6 +264,47 @@ export class SuggestionService {
     return rankSuggestions(candidates, '', limit);
   }
 
+  /** B4 #268: `12*(3+4)/2` → "= 42" as the first row (copied on tap). */
+  private collectCalculator(context: SuggestionQueryContext): RankableCandidate[] {
+    const result = evaluateCalculation(context.query);
+    if (!result) {
+      return [];
+    }
+    return [
+      {
+        id: `calculator-${result.display}`,
+        kind: 'calculator',
+        source: 'calculator',
+        title: `= ${result.display}`,
+        subtitle: result.expression,
+        url: `calculator:${result.display}`,
+        hostname: '',
+        faviconUrl: null,
+      },
+    ];
+  }
+
+  /** B4 #24: the sites inline autocomplete may complete, from the same local index (visits, bookmarks). */
+  async getAutocompleteSources(include: Partial<SuggestionInclude> = {}): Promise<AutocompleteSource[]> {
+    const use: SuggestionInclude = { ...ALL_LOCAL_SUGGESTIONS, ...include };
+    const index = await this.loadIndex();
+    const sources: AutocompleteSource[] = [];
+    if (use.history) {
+      for (const entry of index.frequent) {
+        sources.push({ host: entry.hostname, visits: entry.visitCount, bookmarked: false });
+      }
+      for (const entry of index.history) {
+        sources.push({ host: entry.hostname, visits: 1, bookmarked: false });
+      }
+    }
+    if (use.bookmarks) {
+      for (const entry of index.bookmarks) {
+        sources.push({ host: entry.hostname, visits: 0, bookmarked: true });
+      }
+    }
+    return sources;
+  }
+
   private collectExactUrl(context: SuggestionQueryContext): RankableCandidate[] {
     const intent = classifyNavigationInput(context.query);
 
@@ -282,7 +326,7 @@ export class SuggestionService {
           kind: 'exact_url',
           source: 'navigation',
           title: intent.url,
-          subtitle: 'Go to website',
+          subtitle: translate('browser.goToWebsite'),
           url: intent.url,
           hostname,
           faviconUrl: buildFaviconUrl(hostname),
@@ -400,7 +444,7 @@ export class SuggestionService {
             kind: 'frequent',
             source: 'frequent',
             title: entry.title || entry.hostname,
-            subtitle: `${entry.visitCount} visits · ${entry.hostname}`,
+            subtitle: translate('browserAddress.visitsWithHost', { count: entry.visitCount, host: entry.hostname }),
             url: entry.url,
             hostname: entry.hostname,
             faviconUrl: buildFaviconUrl(entry.hostname),
@@ -457,7 +501,7 @@ export class SuggestionService {
           kind: 'domain',
           source: 'domain',
           title: domain.hostname,
-          subtitle: 'Suggested site',
+          subtitle: translate('browserAddress.suggestedSite'),
           url: domain.url,
           hostname: domain.hostname,
           faviconUrl: buildFaviconUrl(domain.hostname),
@@ -479,7 +523,8 @@ export class SuggestionService {
         continue;
       }
 
-      const url = buildSearchUrl(entry.query);
+      const recentIntent = classifyNavigationInput(entry.query);
+      const url = recentIntent.kind === 'search' ? recentIntent.url : buildSearchUrl(entry.query);
       const engineHost = new URL(url).hostname;
       results.push(
         applyMatchFlags(
@@ -528,8 +573,8 @@ export class SuggestionService {
           kind: 'search',
           source: 'search',
           title: translate('browserSettings.search.searchWithEngine', {
-            engine: engine.name,
-            query: context.query.trim(),
+            engine: intent.kind === 'search' && intent.provider ? intent.provider : engine.name,
+            query: intent.kind === 'search' ? intent.query : context.query.trim(),
           }),
           subtitle: engineHost,
           url: searchUrl,

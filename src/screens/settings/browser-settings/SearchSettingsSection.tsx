@@ -22,9 +22,11 @@ import { useSettingsStore } from '@/store/settings';
 
 import { SettingsRow, SettingsSection } from '../components';
 import { ChoiceSheet, type ChoiceOption } from './ChoiceSheet';
-import { EngineBadge } from './EngineBadge';
+import { SearchShortcutsSheet } from './SearchShortcutsSheet';
+import { parseSearchShortcuts } from '@/browser/search/search-shortcuts';
+import { EngineBadge } from '@/browser/components/EngineBadge';
 
-type Picker = 'engine' | 'safe' | 'language' | 'region' | null;
+type Picker = 'engine' | 'safe' | 'language' | 'region' | 'shortcuts' | null;
 
 const SAFE_LABEL_KEYS: Record<SafeSearchLevel, string> = {
   off: 'browserSettings.search.safeOff',
@@ -41,6 +43,7 @@ export const SearchSettingsSection = memo(function SearchSettingsSection() {
   const language = normalizeSearchLanguage(useSettingsStore((s) => s.searchLanguage));
   const region = normalizeSearchRegion(useSettingsStore((s) => s.searchRegion));
   const suggestions = useSettingsStore((s) => s.searchSuggestions !== false);
+  const shortcutCount = parseSearchShortcuts(useSettingsStore((s) => s.searchShortcuts)).length;
   const [picker, setPicker] = useState<Picker>(null);
   const engine = SEARCH_ENGINES[engineId];
 
@@ -136,6 +139,14 @@ export const SearchSettingsSection = memo(function SearchSettingsSection() {
         </Text>
       ) : null}
       <SettingsRow
+        title={t('browserAddress.shortcuts')}
+        description={t('browserAddress.shortcutsHint')}
+        icon="keyboard-outline"
+        value={t('browserAddress.shortcutsCount', { count: shortcutCount })}
+        onPress={() => setPicker('shortcuts')}
+        testID="browser-settings-search-shortcuts"
+      />
+      <SettingsRow
         title={t('browserSettings.search.suggestions')}
         description={t('browserSettings.search.suggestionsHint')}
         icon="lightbulb-outline"
@@ -151,6 +162,7 @@ export const SearchSettingsSection = memo(function SearchSettingsSection() {
         }
       />
 
+      <SearchShortcutsSheet visible={picker === 'shortcuts'} onClose={() => setPicker(null)} />
       <ChoiceSheet
         visible={picker === 'engine'}
         title={t('browserSettings.search.engine')}

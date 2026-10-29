@@ -22,6 +22,9 @@ import {
   BrowserToolbar,
 } from '@/browser/components';
 import { BrowserTabSwitcher } from '@/browser/components/BrowserTabSwitcher';
+import { AutoHideHeader } from '@/browser/components/BrowserHeader/AutoHideHeader';
+import { normalizeAddressBarPosition } from '@/browser/address-bar/address-bar-settings';
+import { useSettingsStore } from '@/store/settings';
 import { TabUndoSnackbar } from '@/browser/components/TabUndoSnackbar/TabUndoSnackbar';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
 import { useIsWebFullscreen, useWebFullscreenLifecycle } from '@/browser/fullscreen';
@@ -158,6 +161,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   useEffect(() => registerBrowserLoadUrl(loadUrl), [loadUrl]);
 
   const qualitySelection = useQualitySelectionContext();
+  // B4 #28: the address bar at the top (default) or at the bottom, just above the toolbar.
+  const addressBarPosition = normalizeAddressBarPosition(useSettingsStore((state) => state.addressBarPosition));
 
   const openWithUrl = qualitySelection.openWithUrl;
   const openWithAnalysis = qualitySelection.openWithAnalysis;
@@ -200,11 +205,15 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
       edges={['top', 'left', 'right']}
       testID="browser-screen">
       <MediaDetectionHost />
-      <BrowserHeader
-        leadingSlot={<BrowserTabBadge onPress={openTabSwitcher} />}
-        trailingSlot={<BrowserOverflowControls />}
-      />
-      <BrowserProgressBar />
+      {addressBarPosition === 'top' ? (
+        <AutoHideHeader position="top">
+          <BrowserHeader
+            leadingSlot={<BrowserTabBadge onPress={openTabSwitcher} />}
+            trailingSlot={<BrowserOverflowControls />}
+          />
+        </AutoHideHeader>
+      ) : null}
+      {addressBarPosition === 'top' ? <BrowserProgressBar /> : null}
       <Box ref={pageAreaRef} collapsable={false} flex={1} style={{ position: 'relative' }}>
         <BrowserContainer />
         <BrowserMediaDownloadBar
@@ -213,6 +222,16 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
         />
         <TabUndoSnackbar visible={!tabSwitcherVisible && !webFullscreenActive} bottom={12} />
       </Box>
+      {addressBarPosition === 'bottom' ? <BrowserProgressBar /> : null}
+      {addressBarPosition === 'bottom' ? (
+        <AutoHideHeader position="bottom">
+          <BrowserHeader
+            position="bottom"
+            leadingSlot={<BrowserTabBadge onPress={openTabSwitcher} />}
+            trailingSlot={<BrowserOverflowControls />}
+          />
+        </AutoHideHeader>
+      ) : null}
       <BrowserToolbarDock />
       <BrowserTabSwitcher
         visible={tabSwitcherVisible}

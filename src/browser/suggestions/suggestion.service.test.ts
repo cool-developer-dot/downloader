@@ -165,3 +165,58 @@ describe('address bar suggestions switch (B5 #61)', () => {
     assert.equal(search!.hostname, 'www.google.com');
   });
 });
+
+describe('address bar calculator and autocomplete sources (B4)', () => {
+  beforeEach(() => {
+    suggestionCache.invalidate();
+  });
+
+  it('an expression puts its result first; nothing for an unfinished one', async () => {
+    const service = new SuggestionService(createStores().sources);
+    for (const [query, title] of [
+      ['12*(3+4)/2', '= 42'],
+      ['15% of 2000', '= 300'],
+      ['2^10', '= 1024'],
+      ['۱۲+۳', '= 15'],
+    ] as const) {
+      const results = await service.getSuggestions(query);
+      assert.equal(results[0]?.kind, 'calculator', `${query}: ${JSON.stringify(kinds(results))}`);
+      assert.equal(results[0]?.title, title);
+    }
+    for (const query of ['12*', '5/0', '42', 'cats']) {
+      const results = await service.getSuggestions(query);
+      assert.ok(!results.some((r) => r.kind === 'calculator'), query);
+    }
+  });
+
+  it('the calculator stays when local suggestions are off (it reads no history)', async () => {
+    const service = new SuggestionService(createStores().sources);
+    const results = await service.getSuggestions('7*6', {
+      include: { history: false, bookmarks: false, recentSearches: false },
+    });
+    assert.deepEqual(kinds(results), ['calculator', 'search']);
+  });
+
+  it('autocomplete sources: history and frequent hosts, bookmarks flagged, each source switchable', async () => {
+    const stores = createStores();
+    const service = new SuggestionService({
+      ...stores.sources,
+      listBookmarks: async () => [
+        {
+          id: 'b1',
+          url: 'https://www.bbc.com/news',
+          title: 'BBC',
+          hostname: 'www.bbc.com',
+          faviconUrl: null,
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+      ],
+    });
+    const all = await service.getAutocompleteSources();
+    assert.ok(all.some((s) => s.host === 'www.catster.com' && !s.bookmarked));
+    assert.ok(all.some((s) => s.host === 'www.bbc.com' && s.bookmarked));
+    const noHistory = await service.getAutocompleteSources({ history: false });
+    assert.deepEqual(noHistory.map((s) => s.host), ['www.bbc.com']);
+  });
+});

@@ -9,6 +9,8 @@ export const SUGGESTION_RECENT_SEARCH_LIMIT = 20;
 
 /** Base scores — higher wins. Keep gaps for match bonuses. */
 export const SUGGESTION_BASE_SCORES = {
+  /** B4: an expression's result is always the first row. */
+  calculator: 20_000,
   exact_url: 10_000,
   bookmark_exact: 9_000,
   history_exact: 8_500,

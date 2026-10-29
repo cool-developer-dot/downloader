@@ -65,6 +65,12 @@ export interface SettingsState {
   searchRegion: import('@/browser/search/search-engines').SearchRegion;
   /** B5 #61: history, bookmark and recent-search suggestions in the address bar (default on — today's). */
   searchSuggestions: boolean;
+  /** B4 #28: address bar at the 'top' (default — today's) or the 'bottom', above the toolbar. */
+  addressBarPosition: import('@/browser/address-bar/address-bar-settings').AddressBarPosition;
+  /** B4 #29: hide the address bar while scrolling down a page (default off — today's). */
+  addressBarAutoHide: boolean;
+  /** B4 #33: search shortcuts (`w Lahore`), as JSON (`search-shortcuts.ts`); default g / b / d / w. */
+  searchShortcuts: string;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

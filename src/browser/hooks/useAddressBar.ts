@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Keyboard, type TextInput } from 'react-native';
+import { AccessibilityInfo, Keyboard, Platform, ToastAndroid, type TextInput } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from 'expo-router';
+
+import { addressBarVisibility } from '@/browser/address-bar/address-bar-visibility';
+import { registrableDomain } from '@/browser/address-bar/domain';
+import {
+  completionOnSelection,
+  inlineCompletion,
+  rankAutocompleteHosts,
+  type RankedHost,
+} from '@/browser/address-bar/inline-autocomplete';
+import { suggestionService } from '@/browser/suggestions';
 
 import { useOmniboxSuggestions } from '@/browser/hooks/useOmniboxSuggestions';
 import { loadUrlActiveTab, navigationService } from '@/browser/services';
@@ -21,6 +32,7 @@ import {
 import { formatDisplayUrl, isBrowserHomeUrl } from '@/browser/utils';
 import { translate } from '@/localization';
 import { useRecentSearchesStore } from '@/store/recent-searches';
+import { useSettingsStore } from '@/store/settings';
 
 /**
  * Premium omnibox controller.
@@ -42,6 +54,12 @@ export function useAddressBar() {
   /** B5 "Search this site": the prefilled text keeps the caret at its end instead of being selected. */
   const [caretAtEnd, setCaretAtEnd] = useState(false);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
+  /** B4 #24: the typed text plus the site completed inline (its added part shown selected); null when none. */
+  const [completion, setCompletion] = useState<string | null>(null);
+  const autocompleteHostsRef = useRef<readonly RankedHost[]>([]);
+  /** With the caret moved into the text nothing is completed (B4: never in the middle). */
+  const caretAtEndRef = useRef(true);
+  const localSuggestions = useSettingsStore((state) => state.searchSuggestions !== false);
 
   const { suggestions, loading: suggestionsLoading, clearSuggestions } =
     useOmniboxSuggestions({
@@ -49,12 +67,33 @@ export function useAddressBar() {
       query: draft,
     });
 
+  // The sites inline autocomplete may complete: loaded once per editing session from the local index.
+  useEffect(() => {
+    if (!isFocused || !localSuggestions) {
+      autocompleteHostsRef.current = [];
+      return;
+    }
+    let cancelled = false;
+    void suggestionService
+      .getAutocompleteSources()
+      .then((sources) => {
+        if (!cancelled) {
+          autocompleteHostsRef.current = rankAutocompleteHosts(sources, registrableDomain);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isFocused, localSuggestions]);
+
   // Discard unfinished draft when switching tabs: the editing state is reset while rendering the new tab
   // (React's "adjust state when a prop changes"), the keyboard and suggestions below.
   const [draftTabId, setDraftTabId] = useState(activeTabId);
   if (draftTabId !== activeTabId) {
     setDraftTabId(activeTabId);
     setDraft('');
+    setCompletion(null);
     setValidationMessage(null);
     setIsFocused(false);
   }
@@ -65,6 +104,11 @@ export function useAddressBar() {
     inputRef.current?.blur();
   }, [activeTabId, clearSuggestions]);
 
+  // B4 #29: an address bar being edited is never hidden.
+  useEffect(() => {
+    addressBarVisibility.setEditing(isFocused);
+  }, [isFocused]);
+
   const displayValue = isFocused
     ? draft
     : isHome
@@ -73,6 +117,7 @@ export function useAddressBar() {
 
   const dismissEditing = useCallback(() => {
     setIsFocused(false);
+    setCompletion(null);
     setValidationMessage(null);
     clearSuggestions();
     Keyboard.dismiss();
@@ -107,14 +152,48 @@ export function useAddressBar() {
     [clearSuggestions, dismissEditing, recordRecentSearch],
   );
 
-  const onChangeText = useCallback((text: string) => {
-    setDraft(text);
-    setValidationMessage(null);
-  }, []);
+  const onChangeText = useCallback(
+    (text: string) => {
+      setValidationMessage(null);
+      // Deleting (Backspace removes the selected completion first) never completes; typing forward does.
+      const shownBefore = completion ?? draft;
+      const deleting = text.length < shownBefore.length && (completion == null || text.length <= draft.length);
+      setDraft(text);
+      if (deleting || !localSuggestions) {
+        setCompletion(null);
+        return;
+      }
+      setCompletion(
+        inlineCompletion(text, autocompleteHostsRef.current, { caretAtEnd: caretAtEndRef.current }),
+      );
+    },
+    [completion, draft, localSuggestions],
+  );
+
+  /** The caret moved: the end of a completion or Select all accepts it; into what was typed stops it. */
+  const onSelectionChange = useCallback(
+    (selection: { start: number; end: number }) => {
+      if (completion != null) {
+        const move = completionOnSelection(draft, completion, selection);
+        if (move === 'accept') {
+          setDraft(completion);
+          setCompletion(null);
+        } else if (move === 'drop') {
+          setCompletion(null);
+          caretAtEndRef.current = false;
+        }
+        return;
+      }
+      caretAtEndRef.current = selection.end >= draft.length;
+    },
+    [completion, draft],
+  );
 
   const onFocus = useCallback(() => {
     const seed = isBrowserHomeUrl(currentUrl) ? '' : currentUrl;
     setDraft(seed);
+    setCompletion(null);
+    caretAtEndRef.current = true;
     setCaretAtEnd(false);
     setValidationMessage(null);
     setIsFocused(true);
@@ -168,6 +247,7 @@ export function useAddressBar() {
 
   const clear = useCallback(() => {
     setDraft('');
+    setCompletion(null);
     setValidationMessage(null);
     inputRef.current?.focus();
   }, []);
@@ -177,7 +257,9 @@ export function useAddressBar() {
       return;
     }
 
-    const result = navigationService.resolveSubmission(draft);
+    // Enter accepts an inline completion.
+    const text = completion ?? draft;
+    const result = navigationService.resolveSubmission(text);
 
     if (!result.ok) {
       if (result.intent.kind === 'empty') {
@@ -193,7 +275,7 @@ export function useAddressBar() {
     submitLockRef.current = true;
     const shouldRecordSearch = result.intent.kind === 'search';
     const ok = navigateTo(result.url, {
-      recordSearchQuery: shouldRecordSearch ? draft : undefined,
+      recordSearchQuery: shouldRecordSearch ? text : undefined,
       typedLink: result.intent.kind === 'navigate',
     });
     if (!ok) {
@@ -204,10 +286,21 @@ export function useAddressBar() {
     setTimeout(() => {
       submitLockRef.current = false;
     }, 500);
-  }, [draft, navigateTo]);
+  }, [completion, draft, navigateTo]);
 
   const selectSuggestion = useCallback(
     (item: OmniboxSuggestion) => {
+      // B4 #268: the calculator row copies its result; it never navigates.
+      if (item.kind === 'calculator') {
+        const result = item.title.replace(/^=\s*/, '');
+        void Clipboard.setStringAsync(result);
+        const message = translate('browserAddress.copiedResult', { result });
+        if (Platform.OS === 'android') {
+          ToastAndroid.show(message, ToastAndroid.SHORT);
+        }
+        AccessibilityInfo.announceForAccessibility(message);
+        return;
+      }
       if (submitLockRef.current) {
         return;
       }
@@ -252,6 +345,11 @@ export function useAddressBar() {
     suggestionsLoading,
     showSuggestions: isFocused,
     caretAtEnd,
+    /** What the focused field shows: the typed text, or typed + the inline completion. */
+    inputValue: completion ?? draft,
+    /** The completed part, selected — so typing on replaces it and Backspace removes it. */
+    inputSelection: completion != null ? { start: draft.length, end: completion.length } : undefined,
+    onSelectionChange,
     onChangeText,
     onFocus,
     onBlur,

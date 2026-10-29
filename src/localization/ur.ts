@@ -1,3 +1,4 @@
+import { browserAddressUr } from './catalogs/browserAddress.ur';
 import { browserSettingsUr } from './catalogs/browserSettings.ur';
 import { browserTabsUr } from './catalogs/browserTabs.ur';
 import { detectionUr } from './catalogs/detection.ur';
@@ -2785,4 +2786,5 @@ export const ur: CatalogStrings<typeof en> = {
   videoPlayer: videoPlayerUr,
   browserTabs: browserTabsUr,
   browserSettings: browserSettingsUr,
+  browserAddress: browserAddressUr,
 };
