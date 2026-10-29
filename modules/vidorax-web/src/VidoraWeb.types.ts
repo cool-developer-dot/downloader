@@ -72,11 +72,32 @@ export interface WebViewSnapshot {
   height: number;
 }
 
+/** B6 #44: a tab's back/forward list as its WebView keeps it, oldest first (≤ 50 entries around the current one). */
+export interface WebViewHistory {
+  /** Index of the page shown now in `entries`. */
+  currentIndex: number;
+  /** `url` is empty for an entry the WebView keeps no address for. */
+  entries: { url: string; title: string }[];
+}
+
+/** B6 #240 / B21: a key the app took from the system while `setKeyCapture` asked for it. */
+export interface CapturedKeyEvent {
+  /** `volumeUp`, `volumeDown`, or a shortcut combo such as `ctrl+t` / `ctrl+shift+tab` (B21). */
+  key: string;
+  /** True for the repeats of a held key. */
+  repeat: boolean;
+}
+
+/** B6 #45: how the system's navigation is shown (Settings.Secure `navigation_mode`). */
+export type NavigationMode = 'gesture' | 'twoButton' | 'threeButton' | 'unknown';
+
 export type VidoraWebEvents = {
   onNetworkMedia: (event: NetworkMediaBatchEvent) => void;
   onWebDownload: (event: WebDownloadEvent) => void;
   /** A link was shared to the app while it was running. */
   onSharedText: (event: SharedTextEvent) => void;
+  /** B6 #240 / B21: a captured key was pressed (sent on key down only; the key up is swallowed too). */
+  onCapturedKey: (event: CapturedKeyEvent) => void;
 };
 
 export interface VidoraWebModuleApi {
@@ -101,6 +122,31 @@ export interface VidoraWebModuleApi {
    * theme. `system` follows the device. Returns the mode applied. Missing on older native builds.
    */
   setAppNightMode?(mode: 'light' | 'dark' | 'system'): string;
+  /**
+   * B6 #44 Long-press Back: the back/forward list of the WebView whose RNCWebViewWrapper has this view tag
+   * (`WebView.copyBackForwardList()`, main thread). Resolves null when there is no such WebView. Missing on older
+   * native builds.
+   */
+  getWebViewHistory?(viewTag: number): Promise<WebViewHistory | null>;
+  /**
+   * B6 #44: moves `steps` entries through that WebView's history (negative = back), like pressing Back `-steps`
+   * times at once. Resolves false when there is no such WebView or no entry that far. Missing on older native builds.
+   */
+  goBackOrForward?(viewTag: number, steps: number): Promise<boolean>;
+  /**
+   * B6 #240 / B21: which keys the app takes from the system — Volume Up / Down when `volumeKeys`, and the shortcut
+   * combos listed in `combos` (B21; e.g. `ctrl+t`). A captured key is reported as `onCapturedKey` and does nothing
+   * else (no volume change). Every other key keeps its normal job, and so does every key while nothing listens to
+   * `onCapturedKey`. Keys pressed in a dialog or another window are never captured. Missing on older native builds.
+   */
+  setKeyCapture?(volumeKeys: boolean, combos: readonly string[]): void;
+  /** B6 #45: the system navigation mode, read now. Missing on older native builds. */
+  getNavigationMode?(): NavigationMode;
+  /**
+   * B6 #55 Page preloading: resolves `host` (a DNS name, not an IP) in the background, at most once a minute per
+   * host, so a following page load skips the lookup. Invalid hosts are ignored. Missing on older native builds.
+   */
+  prefetchDns?(host: string): void;
   /** Persist WebView cookies to disk (call when the app goes to background). */
   flushCookies(): Promise<void>;
   /**

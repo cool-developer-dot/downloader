@@ -4,6 +4,7 @@ import expo.modules.splashscreen.SplashScreenManager
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.view.KeyEvent
 
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
@@ -11,6 +12,8 @@ import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnable
 import com.facebook.react.defaults.DefaultReactActivityDelegate
 
 import expo.modules.ReactActivityDelegateWrapper
+
+import com.vidorax.web.keys.VidoraKeyChannel
 
 class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,6 +39,13 @@ class MainActivity : ReactActivity() {
     setIntent(intent)
     super.onNewIntent(intent)
   }
+
+  /**
+   * B6 #240 / B21: keys the browser asked for (Volume Up / Down to scroll a page, keyboard shortcuts) go to it instead
+   * of the system — only while JavaScript listens and asked for them; see VidoraKeyChannel.
+   */
+  override fun dispatchKeyEvent(event: KeyEvent): Boolean =
+    VidoraKeyChannel.dispatch(event) || super.dispatchKeyEvent(event)
 
   /**
    * Returns the name of the main component registered from JavaScript. This is used to schedule

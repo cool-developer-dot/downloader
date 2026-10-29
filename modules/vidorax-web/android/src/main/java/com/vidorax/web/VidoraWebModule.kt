@@ -16,6 +16,10 @@ import com.reactnativecommunity.webview.RNCWebView
 import com.reactnativecommunity.webview.RNCWebViewHooks
 import com.reactnativecommunity.webview.RNCWebViewModule
 import com.reactnativecommunity.webview.RNCWebViewWrapper
+import com.vidorax.web.keys.VidoraKeyChannel
+import com.vidorax.web.navigation.NavigationMode
+import com.vidorax.web.navigation.WebHistoryWindow
+import com.vidorax.web.network.DnsPrefetcher
 import com.vidorax.web.network.NetworkMediaObserver
 import com.vidorax.web.network.ServiceWorkerRequests
 import com.vidorax.web.network.WebDownloadRoute
@@ -32,6 +36,7 @@ import java.util.concurrent.atomic.AtomicReference
 private const val ON_NETWORK_MEDIA = "onNetworkMedia"
 private const val ON_WEB_DOWNLOAD = "onWebDownload"
 private const val ON_SHARED_TEXT = "onSharedText"
+private const val ON_CAPTURED_KEY = "onCapturedKey"
 
 // react-native-webview's own download defaults (RNCWebViewManagerImpl).
 private const val DOWNLOADING_MESSAGE = "Downloading"
@@ -51,6 +56,9 @@ class VidoraWebModule : Module() {
 
   // B1: JPEG encoding of tab previews, off the main thread; one at a time is plenty (≤ 1 per tab switch).
   private val snapshotEncoder: ExecutorService by lazy { Executors.newSingleThreadExecutor() }
+
+  // B6 #55: DNS lookups ahead of a likely page load.
+  private val dnsPrefetcher by lazy { DnsPrefetcher() }
 
   private val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
@@ -101,7 +109,7 @@ class VidoraWebModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("VidoraWeb")
 
-    Events(ON_NETWORK_MEDIA, ON_WEB_DOWNLOAD, ON_SHARED_TEXT)
+    Events(ON_NETWORK_MEDIA, ON_WEB_DOWNLOAD, ON_SHARED_TEXT, ON_CAPTURED_KEY)
 
     OnCreate {
       RNCWebViewHooks.setListener(webViewHooks)
@@ -110,6 +118,7 @@ class VidoraWebModule : Module() {
     OnDestroy {
       RNCWebViewHooks.removeListener(webViewHooks)
       networkObserver.setHasListeners(false)
+      VidoraKeyChannel.setListener(null)
     }
 
     OnStartObserving(ON_NETWORK_MEDIA) { networkObserver.setHasListeners(true) }
@@ -118,6 +127,13 @@ class VidoraWebModule : Module() {
     OnStopObserving(ON_WEB_DOWNLOAD) { hasWebDownloadListeners = false }
     OnStartObserving(ON_SHARED_TEXT) { hasSharedTextListeners = true }
     OnStopObserving(ON_SHARED_TEXT) { hasSharedTextListeners = false }
+    // B6 #240: keys are only ever taken while JS listens for them.
+    OnStartObserving(ON_CAPTURED_KEY) {
+      VidoraKeyChannel.setListener { key, repeat ->
+        sendEvent(ON_CAPTURED_KEY, mapOf("key" to key, "repeat" to repeat))
+      }
+    }
+    OnStopObserving(ON_CAPTURED_KEY) { VidoraKeyChannel.setListener(null) }
 
     Function("setNetworkObservationEnabled") { enabled: Boolean ->
       networkObserver.setEnabled(enabled)
@@ -130,6 +146,27 @@ class VidoraWebModule : Module() {
     AsyncFunction("snapshotWebView") { viewTag: Int, maxWidth: Int, key: String, promise: Promise ->
       snapshotWebView(viewTag, maxWidth, key, promise)
     }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("getWebViewHistory") { viewTag: Int ->
+      getWebViewHistory(viewTag)
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("goBackOrForward") { viewTag: Int, steps: Int ->
+      goBackOrForward(viewTag, steps)
+    }.runOnQueue(Queues.MAIN)
+
+    Function("setKeyCapture") { volumeKeys: Boolean, combos: List<String> ->
+      VidoraKeyChannel.configure(volumeKeys, combos)
+    }
+
+    Function("getNavigationMode") {
+      NavigationMode.read(context)
+    }
+
+    Function("prefetchDns") { host: String ->
+      dnsPrefetcher.prefetch(host)
+      Unit
+    }
 
     AsyncFunction("flushCookies") {
       CookieManager.getInstance().flush()
@@ -193,6 +230,34 @@ class VidoraWebModule : Module() {
     networkObserver.setViewSuspended(viewTag, !active && wrapper != null)
     val webView = wrapper?.webView ?: return false
     if (active) webView.onResume() else webView.onPause()
+    return true
+  }
+
+  private fun webViewFor(viewTag: Int): WebView? =
+    try {
+      appContext.findView<RNCWebViewWrapper>(viewTag)?.webView
+    } catch (_: RuntimeException) {
+      null
+    }
+
+  /** B6 #44: the WebView's own back/forward list around the current page; see WebHistoryWindow. */
+  private fun getWebViewHistory(viewTag: Int): Map<String, Any>? {
+    val list = webViewFor(viewTag)?.copyBackForwardList() ?: return null
+    val window = WebHistoryWindow.of(list.size, list.currentIndex) { index ->
+      val item = list.getItemAtIndex(index)
+      WebHistoryWindow.Entry(item?.url.orEmpty(), item?.title.orEmpty())
+    }
+    return mapOf(
+      "currentIndex" to window.currentIndex,
+      "entries" to window.entries.map { mapOf("url" to it.url, "title" to it.title) },
+    )
+  }
+
+  /** B6 #44: several history steps at once (negative = back). */
+  private fun goBackOrForward(viewTag: Int, steps: Int): Boolean {
+    val webView = webViewFor(viewTag) ?: return false
+    if (steps == 0 || !webView.canGoBackOrForward(steps)) return false
+    webView.goBackOrForward(steps)
     return true
   }
 
