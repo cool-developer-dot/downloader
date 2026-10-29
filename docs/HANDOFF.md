@@ -2112,6 +2112,9 @@ Based on the local `integration/final-check` (not pushed). One line per package:
 - **B1 Tab management.** Reopen closed tab (last 10, Undo after every close), pin, duplicate, close other / all (with
   "Also close pinned tabs"), drag to reorder, search tabs (Urdu-aware), tab previews (VidoraWeb `snapshotWebView`),
   Sort by Manual / Site / Last used / Opened. Tab envelope v2 read by fields.
+- **B5 Search settings.** Browser settings screen (Settings → Browser, `/browser-settings`); search engine Google
+  (default) / Bing / DuckDuckGo / Yahoo / Ecosia / Brave with their own Safe Search, language and region parameters;
+  Search this site; suggestions switch. `getSearchEngine()` builds every search URL; defaults keep the old URL.
 
 ## 5. How to resume
 

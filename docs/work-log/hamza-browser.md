@@ -143,6 +143,97 @@ Regression: quick check; full R1–R16 at §7. Release `e487d45` (arm64): cold s
 (`logcat -b crash` and `ANR in` empty), pages open, "Video available" on w3schools HTML5 video → download completed
 (HTML Video, 770 KB, 176p) (`b1-rel-03`…`-05`), `apkanalyzer manifest permissions` identical to 1.1.0 (37 lines).
 
+## B5 — Search settings (#56, #57, #61, #62, #63, #64) + the Browser settings screen
+
+### Design and decisions
+
+- **Browser settings screen**: route `src/app/(app)/browser-settings.tsx` → `src/screens/settings/browser-settings/`
+  (`BrowserSettingsScreen` + one section file per area; header inside the screen like Data usage, so the shared
+  stack layout is untouched). Entry: Settings → Browser → "Browser settings" (`components/BrowserSection.tsx`). Pickers
+  use a scrollable `ChoiceSheet` (rows ≥ 52 dp, radio semantics) instead of segmented controls (whose options are
+  44 dp).
+- **#56 Search engine** (`src/browser/search/search-engines.ts`, pure): Google (default), Bing, DuckDuckGo, Yahoo,
+  Ecosia, Brave Search, each a definition (origin, path, query parameter, Safe Search / language / region parameter
+  builders, `support` flags, letter badge colour). `getSearchEngine()` is the only search-URL builder; it reads the
+  settings through `bindSearchSettingsReader` (bound by the settings store, like `bindLanguageReader`) and takes an
+  optional override (Faran's private tabs). `buildSearchUrl` in `browser/utils/url.ts` calls it, so the address bar,
+  recent-search rows and the search row all follow the engine. Badges are bundled letters in the engine's colour
+  (`EngineBadge.tsx`) — no remote icon, no brand asset.
+- **Defaults keep today's URL**: Moderate adds no Google parameter, language "Engine default" and region
+  "Automatic" add none → `https://www.google.com/search?q=…`, byte for byte (tested).
+- **#62 Safe Search** Off / Moderate / Strict: Google `safe=off` / (none) / `safe=active` — Google has Off, Blur,
+  Filter, so Moderate = its default (nearest; the screen says so); Bing `adlt=off|moderate|strict`; DuckDuckGo
+  `kp=-2|-1|1`; Yahoo `vm=p|i|r`; Brave `safesearch=off|moderate|strict`; Ecosia keeps these in its own cookie settings
+  → not settable from a link (rows show "—" and the screen says so).
+- **#63 Language** (Engine default, App language, English, Urdu, Arabic, Hindi, Persian, Bengali, Turkish, French,
+  German, Spanish, Chinese): Google `hl`, Bing `setlang`, DuckDuckGo `kad` (`xx_YY`; no Urdu interface → English,
+  "nearest"), Yahoo `vl=lang_xx&fl=1` (results language; no interface parameter → "nearest"), Brave `ui_lang`.
+- **#64 Region** (Automatic, Pakistan, India, UAE, Saudi Arabia, Bangladesh, UK, US, Canada, Australia, Germany,
+  Türkiye): Google `gl`, Bing `cc`, DuckDuckGo `kl=<country>-<lang>` (e.g. `pk-en`; Bangladesh → `wt-wt`, nearest),
+  Yahoo country sites (in., uk., ca., au., de.; none for PK/AE/SA/BD → global, nearest), Brave `country`.
+- **#57 Site search**: menu → "Search this site" asks the address bar to open with `site:<host> ` (the existing
+  focus request now carries a prefill). `site:host` and `site:host words` are classified as searches (they used to
+  look like a `site:` scheme → invalid) and the operator goes to every engine as typed.
+- **#61 Suggestions** (default on): off → `SuggestionService.getSuggestions(query, { include })` skips history,
+  bookmark, frequent, site and recent-search rows, and the empty field suggests nothing; the typed-address and search
+  rows stay. The `include` flags are per source so B10's "History off" can keep bookmarks. The cache key includes
+  the sources and the engine.
+- The search row reads "Search {engine} for “…”" (localized; it said "Search Google for" in English in Urdu too).
+- **Found while testing and fixed here**: a single word in a non-Latin script (e.g. "بلی") was rejected as "invalid"
+  by the address bar (the "symbols only" check knew ASCII letters only) — now letters and digits of any script count.
+- Verification of the parameters on real results pages: curl from the Mac could not show the effect (the pages are
+  script apps; Ecosia answers 403 to non-browsers), so each is checked on the device (table below).
+
+### Files
+
+New: `src/browser/search/search-engines.ts` (+ test), `src/browser/utils/url-search.test.ts`,
+`src/app/(app)/browser-settings.tsx`, `src/screens/settings/browser-settings/{BrowserSettingsScreen,SearchSettingsSection,ChoiceSheet,EngineBadge,index}`,
+`src/screens/settings/components/BrowserSection.tsx`, `src/localization/catalogs/browserSettings.{en,ur}.ts`.
+Changed: `browser/utils/url.ts`, `suggestions/suggestion.service.ts` (+ test), `hooks/useOmniboxSuggestions.ts`,
+`hooks/useAddressBar.ts`, `services/address-bar-focus.ts` (+ test), overflow menu, settings store
+(`types/state/index`), `browser-setting-{choices,keys}.ts`, `SettingsScreen.tsx`, `route-paths.ts`, `en.ts`/`ur.ts`.
+
+### Automated tests
+
+`search-engines.test.ts` (16, incl. one table test per engine over every Safe Search × language × region = 468
+combinations each, default URL identity, Urdu encoding, DuckDuckGo/Yahoo specifics, app language, `site:` for every
+engine, `getSearchEngine()` binding and override, normalizing, results-page recognition), `url-search.test.ts` (5:
+engine from settings, any-script words, `site:`), `suggestion.service.test.ts` (+3: switch off, history-only off,
+engine name), `address-bar-focus.test.ts` (prefill), `browser-settings.audit.test.ts` (5 new keys persisted, backed
+up, reset). Gate on `76f215f`: `npm test` **1464 / 1464**, typecheck 0 errors, lint **0 / 82**, `git diff --check`
+clean; no native change (Kotlin suites unchanged since B1).
+
+### Manual cases (AVD `VidoraX_Browser_H`)
+
+Screenshots: `.claude/pr-evidence/hamza-browser/B5-*.png`.
+
+| # | Case | Build | Result | Note / screenshot (parameter seen in the page URL) |
+| --- | --- | --- | --- | --- |
+| 1 | Browser settings screen from Settings → Browser | debug | PASS | `B5-dbg-04`; engine picker with letter badges `B5-dbg-05` |
+| 2 | Google: "cats" and "بلی" | debug | PASS | `B5-google-strict-ur-pk` (`safe=active&hl=ur&gl=PK`: Urdu results page, footer "پاکستان"), `B5-google-billi` |
+| 3 | Bing: "cats" and "بلی" | debug | PASS | `adlt=moderate`, later `adlt=strict&setlang=ur&cc=PK` (Urdu interface) (`B5-bing-cats`, `B5-bing-yahoo`) |
+| 4 | DuckDuckGo: "cats" and "بلی" | debug | PASS | `kp=-1`; with Strict + Pakistan `kp=1&kl=pk-en` → DuckDuckGo's own bar shows "Pakistan (en)" and "Safe search: strict" (`B5-ddg-combo`, `B5-ddg-safe-menu`) |
+| 5 | Yahoo: "cats" and "بلی" | debug | PASS | `vm=r&vl=lang_ur&fl=1` (`B5-bing-yahoo`) |
+| 6 | Ecosia: "cats" and "بلی" | debug | PASS | Plain `?q=`; Ecosia's own "Search region" control shows its cookie setting, as the screen notes (`B5-ecosia`; the first load timed out on the emulator and loaded on retry) |
+| 7 | Brave Search: "cats" and "بلی" | debug | **BLOCKED** | URL built as designed (`safesearch=strict&ui_lang=ur&country=pk`, `B5-brave`), but Brave answered **HTTP 429** (rate limit) to the emulator for every query (logcat `[BrowserError] errorCode: 429`); curl from the Mac with the same URL gets 200. Not an app error |
+| 8 | Strict Safe Search visible on the results page | debug | PASS | DuckDuckGo "Safe search: strict" (`B5-ddg-safe-menu`); Google `safe=active` |
+| 9 | Language and region visible | debug | PASS | Google results page in Urdu with "پاکستان" in the footer (`B5-google-footer`); DuckDuckGo "Pakistan (en)" |
+| 10 | Suggestions off → only the typed search row | debug | PASS | `B5-suggestions-combo` |
+| 11 | Search this site → `site:en.wikipedia.org ` + "cats" | debug | PASS | Only Wikipedia results (`B5-site-search-combo`); first run found the prefill selected so typing replaced it → fixed in `eefc63f` |
+| 12 | Force-stop and emulator reboot → settings kept | debug | PASS | DuckDuckGo / Strict / Pakistan after a cold emulator boot (`B5-after-reboot`, values read back) |
+| 13 | Urdu screens (right-to-left) | debug | PASS | Mirrored rows, Urdu picker labels (`B5-ur-combo`) |
+| 14 | Themes Red / Dark | debug | PASS | `B5-dbg-04` (Red), `B5-dark-combo` (Dark + Urdu) |
+| 15 | Upgrade 1.1.0 → B5 release (snapshot `seeded110`) | release | PASS | PIN, Urdu, 6 tabs + desktop tab kept; new settings start at Google / Moderate / Engine default / Automatic / suggestions on (`B5-up-02`); a search is exactly `https://www.google.com/search?q=lahore` (`B5-rel-combo`) |
+
+Device notes: the Mac's load reached 160–235 during this package (other apps); the emulator's System UI and Gboard
+stopped responding twice and its network dropped once (fixed by an emulator cold boot). Recorded, not app issues.
+
+### Quick release check
+
+Regression: quick check; full R1–R16 at §7. Release `eefc63f` (arm64) over the seeded 1.1.0: starts, PIN, pages
+open, w3schools "Video available" → download completed (HTML Video 770 KB, 176p), no crash or ANR (`logcat -b
+crash`, `ANR in` empty), `apkanalyzer` permissions identical to 1.1.0 (37). APK 50,002,358 bytes (B1: 49,967,014).
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -160,6 +251,11 @@ Regression: quick check; full R1–R16 at §7. Release `e487d45` (arm64): cold s
 | Setting (`SettingsState`) | Package | Default | Values |
 | --- | --- | --- | --- |
 | `tabSortOrder` | B1 | `manual` (today's order) | `manual`, `site`, `lastUsed`, `opened` |
+| `searchEngine` | B5 | `google` | `google`, `bing`, `duckduckgo`, `yahoo`, `ecosia`, `brave` |
+| `safeSearch` | B5 | `moderate` (no Google parameter = today's URL) | `off`, `moderate`, `strict` |
+| `searchLanguage` | B5 | `default` (engine decides = today's) | `default`, `app`, `en`, `ur`, `ar`, `hi`, `fa`, `bn`, `tr`, `fr`, `de`, `es`, `zh` |
+| `searchRegion` | B5 | `auto` (engine decides = today's) | `auto`, `pk`, `in`, `ae`, `sa`, `bd`, `gb`, `us`, `ca`, `au`, `de`, `tr` |
+| `searchSuggestions` | B5 | `true` (today's) | on / off |
 
 ### Found, not fixed
 
@@ -169,6 +265,7 @@ Regression: quick check; full R1–R16 at §7. Release `e487d45` (arm64): cold s
 | Browser, Back | Back on a tab's first page goes to the start page in that tab (so a restored tab can become a start page) — existing behaviour, noted because it changes what the switcher shows |
 | Address bar suggestions | Badges and lines are English in Urdu: "Bookmark", "History", "Frequent", "Recent", "Search", "Site", "N visits", "Recent search", "Suggested site", "Go to website. Go" (to be localized in B4/B5, which change these rows) |
 | History / Bookmarks screens | Relative times "6m ago" / "1h ago" are English in Urdu (B9/B10 change these screens) |
+| Address bar (all packages) | The suggestion list is drawn under the keyboard: rows behind the keyboard can't be tapped (the list doesn't shrink to the space above it). B4 changes this overlay and fixes it |
 | Dev only | After a JS reload (debug), expo-image can fail to create its view ("The current activity is no longer available"); a cold start clears it. Not seen on release |
 
 ### Decisions (all packages)

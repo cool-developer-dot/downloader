@@ -726,6 +726,12 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   own `GestureHandlerRootView`; drag to reorder is a gesture-handler Pan with `activateAfterLongPress` driving
   reanimated shared values (rows of fixed height, positions as index × row height, auto-scroll by `scrollTo` in a
   frame callback); Sort by is a view over the manual order (setting `tabSortOrder`).
+- **Search (B5).** `src/browser/search/search-engines.ts` holds the engine definitions and `getSearchEngine()`, the
+  only builder of search URLs (address bar via `buildSearchUrl`, suggestions, later selected text, shortcuts and the
+  widget). The settings store binds the user's choices with `bindSearchSettingsReader`. Engines that cannot take a
+  setting from the link are marked `support: 'nearest' | 'none'` and the settings screen says so.
+- **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
+  component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab
   today), so Faran's private tabs can opt out in one place.
 - **Browser settings** live in `SettingsState` as primitives (so Settings Backup carries them and Reset restores them);
