@@ -390,6 +390,14 @@ B1 adds `snapshotWebView(viewTag, maxWidth, key)`: the WebView behind a view tag
 thread (scroll offset applied) and saved as a JPEG in `cacheDir/tab-previews/<key>.jpg` on a background executor
 (`snapshot/WebViewSnapshots.kt`); the key is restricted to `[A-Za-z0-9_-]{1,64}`.
 
+B6 adds: `getWebViewHistory(viewTag)` / `goBackOrForward(viewTag, steps)` (the WebView's own back/forward list,
+≤ 40 entries back and 9 forward around the current one, `navigation/WebHistoryWindow.kt`); `setKeyCapture(volumeKeys,
+combos)` with the `onCapturedKey` event — the app's one key channel (`keys/VidoraKeyChannel.kt`), asked first by
+`MainActivity.dispatchKeyEvent`; it takes a key only while JS listens and asked for it (Volume Up / Down; shortcut
+combos named `ctrl+alt+shift+meta+<key>` for B21), reports it on key down and swallows down and up;
+`getNavigationMode()` (`Settings.Secure navigation_mode`, `navigation/NavigationMode.kt`); `prefetchDns(host)` (a
+background `InetAddress` lookup, once a minute per host, DNS names only, `network/DnsPrefetcher.kt`).
+
 The module depends on the Gradle project `:react-native-webview`; there is no reflection on the request path.
 
 ## 5. Detection: `src/media-detection` + `src/browser/media-actions`
@@ -741,6 +749,18 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   engine shortcuts build their URL with `getSearchEngine()`. Components read the engine with
   `useSearchEngineDefinition()` (never `getSearchEngine()` during render: the React Compiler would keep the first
   result). Overlays and sheets inside a Modal lift above the keyboard with `useKeyboardHeight` (`src/hooks`).
+- **Navigation and scrolling (B6).** The rules are pure: `navigation/back-history.ts` (the Long-press Back list from
+  the WebView's own history), `navigation/swipe-navigation.ts`, `scroll/fast-scroll.ts` (the ↑ / ↓ jump button),
+  `scroll/auto-scroll.ts`, `scroll/volume-keys.ts`, `scroll/scroll-speed.ts`, `preload/preload-policy.ts` and
+  `tabs/tab-management-plans.ts` `planBackgroundTab`. `scroll/page-activity.ts` keeps the page in front's live state
+  (jump button, Auto scroll, audible media per tab) from the browser-chrome bridge (`scroll` reports now carry the page
+  and window heights and always report where a scroll came to rest; new `auto_scroll` and `media_state` messages) and
+  stops Auto scroll on navigation and in the background. Scrolling runs scripts from `scroll/page-scroll-script.ts` in
+  the page (numbers and fixed words only; the document or the biggest scrolling element). `useSwipeNavigation` (owned
+  by the browser screen) builds the toolbar and page-edge Pans and the shared values the arrow reads.
+  `services/key-capture.service.ts` is the JS side of the key channel (B21 adds combos through `setCombos`).
+  `services/hard-reload.ts` asks a tab's `BrowserWebView` for one `LOAD_NO_CACHE` reload. `preload/browser-savers.ts`
+  is the seam B18 binds (Data saver / Battery saver turn preloading off).
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab

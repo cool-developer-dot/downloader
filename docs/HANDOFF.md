@@ -2119,6 +2119,12 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   engine badge, registrable domain highlighted (`tldts`, `xn--` hosts with a warning), search shortcuts (`g`, `b`,
   `d`, `w` + own ones in Browser settings → Search), calculator row (own parser, Eastern digits). New dependency
   `tldts` 7.4.18 (MIT).
+- **B6 Navigation and scrolling.** Hard reload (long-press Reload / menu), Long-press Back list from the WebView's own
+  history, swipe on the toolbar (and page edges with button navigation), Scroll to top / bottom (menu + a ↑ / ↓ button
+  after fast scrolling), Auto scroll with a floating control, Scroll speed, Volume keys scroll pages (default off; one
+  native key channel shared with B21), Open in background tab, Preload pages (DNS ahead for the top suggestion, prefetch
+  of a page's `rel="next"`; Wi-Fi only by default). Native: `getWebViewHistory`, `goBackOrForward`, `setKeyCapture` +
+  `onCapturedKey` (+ `MainActivity.dispatchKeyEvent`), `getNavigationMode`, `prefetchDns`.
 
 ## 5. How to resume
 

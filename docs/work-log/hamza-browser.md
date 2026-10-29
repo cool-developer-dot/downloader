@@ -335,6 +335,108 @@ Device notes: in debug, typing fast through adb with the focus outside a text fi
 reload (seen twice) — type slowly; App Lock asks for the PIN again after the system file picker (existing behaviour).
 
 
+## B6 — Navigation and scrolling (#42, #44, #45, #46, #47, #53, #54, #240, #51, #55)
+
+### Design and decisions
+
+| # | What the user sees | Where it lives | Notes / decisions |
+| --- | --- | --- | --- |
+| #42 Hard reload | Long-press Reload, or Menu → Hard reload | `services/hard-reload.ts` → `BrowserWebView` | Reuses the desktop-mode switch's path: cache mode `LOAD_NO_CACHE`, `reload()` after that prop commits, the default cache mode back at the load's end. While loading, the load is stopped first. A counter lets a second hard reload run while the cache mode is still off |
+| #44 Long-press Back | A sheet "Earlier pages" (title + address, newest first); a row goes back that many pages at once | native `VidoraWeb.getWebViewHistory` / `goBackOrForward`; `navigation/back-history.ts` (pure) | **Decision:** built from the WebView's own back/forward list (`copyBackForwardList`), not recorded from navigation events: the listed pages and what Back walks are then the same list (a recording drifts on `history.back()`, `replaceState`, frames). Redirects replace their entry and reloads add none in that list; each `pushState` is an entry. The blank page a tab starts on and the start page are skipped (their steps still count); the same address twice in a row is listed once; at most 20. **A parked tab** (WebView unmounted by the 2-WebView pool) has no list until it is shown again ("No earlier pages in this tab") |
+| #45 Swipe navigation | Swipe sideways on the bottom toolbar: Back / Forward, with an arrow that grows and fills past the trigger; with 2- / 3-button navigation also from the page's left / right 24 dp | `components/SwipeNavigation/` (`useSwipeNavigation`, `SwipeArrow`, `PageEdgeSwipe`), `navigation/swipe-navigation.ts` (pure); native `getNavigationMode` | **Design (as the prompt asks):** with gesture navigation Android owns both screen edges and its Back gesture already goes back a page, so the swipe lives on the toolbar; page edges only with button navigation (`Settings.Secure navigation_mode`, re-read when the app comes back). Trigger 80 dp, or a fling over 900 dp/s past half of it. Right-to-left mirrors it (the finger toward the reading start = Back). Vertical movement fails the gesture, so taps and page scrolling are untouched; edge gestures only start inside the edge (`hitSlop`), nothing covers the page. Setting "Swipe to go back or forward", default on |
+| #46 / #47 Scroll to top / bottom | Menu items, and a small ↑ / ↓ button (end side) after a fast scroll on a long page, fading 2.5 s after fast scrolling stops | `scroll/fast-scroll.ts` (pure), `page-activity.ts`, `PageScrollControls/ScrollJumpButton.tsx`, `page-scroll-script.ts` | Fast = 2 000 px/s between the page's scroll reports; long = ≥ 3 screens (the `scroll` bridge report now carries the page and window heights). ↑ when flinging up, ↓ when flinging down; none once the page is at that end. Scrolling targets the document, or the biggest scrolling element for web apps that scroll a container |
+| #54 Auto scroll | Menu → Auto scroll; a floating control: pause / resume, slower, speed level, faster, stop | `scroll/auto-scroll.ts` (pure), `page-activity.ts`, `AutoScrollControl.tsx`, `autoScrollScript` | 7 levels 15–200 px/s, started at Scroll speed's level. The loop runs in the page on animation frames (smooth, no bridge traffic); the page reports `bottom` (then it ends) and `touched` (a touch or wheel pauses it). It stops on navigation (another page or tab in front) and when the app leaves the foreground. **Noted:** a page that rewrites its URL while scrolling (some news sites) counts as navigation and stops it |
+| #53 Scroll speed | Browser settings → Navigation and scrolling → Scroll speed: Slow / Normal (default) / Fast | `scroll/scroll-speed.ts` | **Recorded:** Android sets the touch-fling speed itself (the WebView's scroller), so this controls what the app scrolls: Auto scroll's starting level (2 / 3 / 5 of 7) and one Volume-key step (½, 0.85, 0.95 of a screen) |
+| #240 Volume keys | Setting "Volume keys scroll pages" (default off): Volume Down / Up scroll one step | native `VidoraKeyChannel` (+ `MainActivity.dispatchKeyEvent`), `services/key-capture.service.ts`, `scroll/volume-keys.ts` (pure), `hooks/useVolumeKeyScroll.ts` | The keys are taken only while JS asks (`setKeyCapture`) **and** listens; JS asks only while the setting is on, the Browser tab is in front with the app in the foreground, a web page shows (not the start page, no tab switcher / fullscreen video), no keyboard, and nothing audible plays in the page (new `media_state` bridge report: an unmuted playing `<video>`/`<audio>`) or in the app's player (also the mini player / background). Keys pressed in a dialog or sheet go to its own window and are never taken. **One key channel** for B21: shortcut combos (`ctrl+t`, `ctrl+shift+tab`, …) go through the same `setKeyCapture(volumeKeys, combos)` and `onCapturedKey` |
+| #51 Open in background | Link long-press → "Open in background tab"; a bar "Opened in background · Switch" | `tab-management-plans.ts` `planBackgroundTab`, store `openTabInBackground`, `background-tab-notice.ts`, `BackgroundTabSnackbar.tsx`, `open-in-background.action.ts` | The new tab goes right after the tab in front (after the pinned block when that tab is pinned); the tab in front stays. It mounts (and loads, parked) now when one of the two WebView slots is free, otherwise it loads when first shown. Refused at the 10-tab limit with the usual notice. The newer of the Undo bar and this bar wins |
+| #55 Page preloading | Browser settings → Preload pages: Off / Wi-Fi only (default) / Always | `preload/preload-policy.ts` (pure), `page-preload.service.ts`, `browser-savers.ts`; native `prefetchDns` | Two cheap preloads, never a hidden page: the top address-bar suggestion's host is looked up ahead (native DNS lookup, ≤ 1 / min / host; nothing goes to the page), and after the page in front loads, a `<link rel="next">` / `<a rel="next">` to the same site gets a `<link rel="prefetch">`. Wi-Fi only = Wi-Fi or Ethernet and not metered (NetInfo). Off while Data saver or Battery saver is on — **seam for B18**: `bindBrowserSaversReader` (nothing saves until B18) |
+
+- **Found while testing and fixed here:** (1) the page's scroll reports are throttled to 200 ms and the last one was
+  dropped, so the app never knew where a fling came to rest (the ↓ button stayed at the bottom of a page; B4's
+  auto-hide had the same blind spot) → the page script now always reports the resting position (≤ 210 ms later);
+  (2) a long press on Reload started the hard reload, the button turned into Stop and — with its long-press handler
+  gone while loading — the release counted as a tap on Stop → the handler stays (a no-op while loading); (3) a tab
+  opened in the background showed its address in the tab switcher (a parked WebView reports its title only when shown)
+  → it starts with the link's text as its title.
+
+### Files
+
+New: `src/browser/navigation/{back-history,back-history.service,swipe-navigation}.ts` (+ tests),
+`src/browser/scroll/{auto-scroll,fast-scroll,page-activity,page-scroll-script,page-scroll.service,scroll-speed,volume-keys}.ts`
+(+ `scroll-features`, `page-scroll-script` tests), `src/browser/preload/{preload-policy,page-preload.service,browser-savers}.ts`,
+`src/browser/services/{hard-reload,key-capture.service}.ts`, `src/browser/tabs/background-tab-notice.ts`,
+`src/browser/hooks/useVolumeKeyScroll.ts`, components `BackHistorySheet`, `BackgroundTabSnackbar`,
+`PageScrollControls/{ScrollJumpButton,AutoScrollControl}`, `SwipeNavigation/{useSwipeNavigation,SwipeArrow,PageEdgeSwipe}`,
+`actions/builtins/open-in-background.action.ts`, `screens/settings/browser-settings/NavigationSettingsSection.tsx`,
+`localization/catalogs/browserNav.{en,ur}.ts`; native `keys/VidoraKeyChannel.kt`,
+`navigation/{WebHistoryWindow,NavigationMode}.kt`, `network/DnsPrefetcher.kt` (+ 4 Kotlin tests).
+Changed: `BrowserScreen`, `BrowserToolbar`, `ToolbarButton`, `ReloadStopButton`, `IconButton` (optional long press +
+accessibility action), `BrowserWebView` (hard reload, next-page prefetch), overflow menu (4 items), `useAddressBar`
+(DNS ahead), `useBrowserChromeBridge`, `useBrowserLongPressActions`, bridge channel / parser / page script,
+`tab-management-actions.ts`, `tab-management-plans.ts` (+ test), settings store, `browser-setting-{choices,keys}.ts`,
+`BrowserSettingsScreen`, `en.ts`/`ur.ts`, `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `MainActivity.kt`.
+
+### Automated tests
+
+`back-history.test.ts` (6: newest first with steps, blank / start page skipped but counted, `pushState` entries and
+doubles, redirects / reloads add nothing, empty / parked / limit, web pages only), `swipe-navigation.test.ts` (4: RTL
+mirroring, trigger and fling, nowhere to go, progress and nav modes), `scroll-features.test.ts` (11: scroll speed,
+jump button: fling direction, short page / at the end, fade, garbage; Auto scroll: start levels, pause / speed, touch /
+bottom / navigation / background / stop, nothing while off; volume-key decision table and directions),
+`page-scroll-script.test.ts` (8: the injected scripts run in a `node:vm` page — smooth top / bottom, step size,
+numbers only, Auto scroll to the bottom with the `bottom` report, touch pause and one loop, preload policy, prefetch
+host, same-site next page prefetched once, other site / scheme / same page / none), `tab-management-plans.test.ts` (+4:
+after the tab in front, slot free / full, from a pinned tab, limit), `browser-chrome.bridge.test.ts` (+3: heights,
+`auto_scroll`, `media_state`), settings audit (4 new keys persisted, backed up, reset). Kotlin: `KeyCaptureTest` (4),
+`WebHistoryWindowTest` (3), `NavigationModeTest` (1), `DnsPrefetcherTest` (2). Gate on the B6 code: `npm test`
+**1546 / 1546**, typecheck 0 errors, lint **0 errors / 82 warnings**, vidorax-media **971 / 0**, vidorax-web **52 / 0**
+(`--rerun`), `scripts/patch-react-native-webview.test.mjs` **5 / 5** (the page script changed), `git diff --check`
+clean.
+
+### Manual cases (AVD `VidoraX_Browser_H`)
+
+Screenshots: `.claude/pr-evidence/hamza-browser/B6-*.png`. Debug first; most cases were repeated on release because
+the Mac's load (15–30, other apps) made the debug build's Metro connection drop.
+
+| # | Case | Build | Result | Note / screenshot |
+| --- | --- | --- | --- | --- |
+| 1 | Browser settings → Navigation and scrolling, defaults | debug | PASS | swipe on, Normal, volume keys off, Wi-Fi only (`B6-settings`) |
+| 2 | Hard reload (long-press Reload) | release | PASS after fix | httpbin `/headers`: hard reload sends `Cache-Control: no-cache` + `Pragma: no-cache`, the next normal reload `max-age=0` again (`B6-hard-reload`); first run: the release counted as Stop (fixed) |
+| 3 | Menu → Hard reload | release | PASS | `no-cache` in the echoed headers |
+| 4 | Long-press Back | release | PASS | "Earlier pages": Punjab, Lahore, …; the httpbin redirect hop is not listed (`B6-back-history`); a row goes back two steps at once and Forward lights up (`B6-back-jumped`) |
+| 5 | Swipe on the toolbar | release | PASS | Forward / Back with the arrow filling past 80 dp (`B6-swipe`, `B6-swipe-back-combo`); a 76 dp swipe does nothing (by design) |
+| 6 | 3-button navigation: page-edge swipe | release | PASS | from the left edge → Back (`B6-edge-combo`); gesture navigation restored after |
+| 7 | Swipe setting off | release | PASS | the page does not change (`B6-swipe-off`) |
+| 8 | Urdu: swipe mirrored | release | PASS | finger to the left = Back, arrow on the right (`B6-ur-swipe`) |
+| 9 | Scroll to top / bottom, jump button | debug | PASS after fix | menu items; ↑ after a fling up, fades after ~2.5 s, a tap goes to the top; none at the end of the page once the resting position is reported (`B6-jump-combo`, `B6-jump`) |
+| 10 | Auto scroll | debug | PASS | Menu → Auto scroll; + to level 5; a touch pauses; resume; reaches the bottom → ends; leaving the app ends it (`B6-auto`, `B6-auto-bottom`) |
+| 11 | Volume keys scroll; normal job when they should | debug, release | PASS | Down / Up ≈ 0.85 screen, volume stays (`B6-vol`); with the keyboard up the volume panel shows; while the page's video plays the volume changes, after it ends the keys scroll (`B6-vol-media`); while the app's mini player plays the volume changes 4 → 3 (`B6-vol-player`) |
+| 12 | Open in background tab | release | PASS after fix | link menu item; "Opened in background · Switch"; new tab right after, loads now (shown fully at once, `B6-bg-shown`); named by the link's text (`B6-bg-title`) (`B6-background-tab`) |
+| 13 | Preload pages timing | release (trace) | PASS | see the table below |
+| 14 | Settings kept, backed up, reset | release | PASS | after force-stop: swipe off / Fast / volume keys on / Always (`B6-persist`); the exported file holds the 4 keys (40 keys); Reset → defaults (`B6-after-reset`) |
+| 15 | Urdu screens | release | PASS | settings section, Earlier pages sheet, Auto scroll control mirrored (`B6-ur-settings`, `B6-ur-sheets`, `B6-ur-autoscroll`) |
+| 16 | Dark theme + font scale 1.3 | release | PASS | Auto scroll control (`B6-dark-font13`) |
+| 17 | TalkBack | — | BLOCKED (as B1) | not drivable through adb; Back has the action "Show earlier pages", Reload "Hard reload", every control a label (read from the accessibility tree) |
+
+**Preload pages, measured** (release with `EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE=1` for WebView debugging; Hacker News,
+tapping "More" (`rel="next"`) and reading the next page's Navigation Timing over the DevTools socket):
+
+| Preload pages | Next-page load (`loadEventEnd`) | First byte | Transferred |
+| --- | --- | --- | --- |
+| Off — run 1 / 2 / 3 | 735 ms / 453 ms / 436 ms | 565 / 387 / 391 ms | 6 KB each |
+| Wi-Fi only — run 1 / 2 / 3 | 76 ms / 83 ms / 52 ms | 9 / 13 / 6 ms | 0 (from the prefetch) |
+
+The DNS lookup ahead for the top suggestion was not timed (the emulator's resolver cache cannot be flushed without
+root); it is covered by the Kotlin test and the call wiring.
+
+### Quick release check
+
+Regression: quick check; full R1–R16 at §7. Release (arm64) on a fresh install: starts, pages open, w3schools "Video
+available" → download completed (HTML Video, 770 KB, 176p) (`B6-rel-01`, `B6-rel-03`), no crash or ANR,
+`apkanalyzer manifest permissions` identical to 1.1.0 (37). APK 50,418,610 bytes (B4: 50,293,690). B6 changes no
+stored data, so no upgrade run (its 4 settings start at their defaults through the store's merge, as the audit test
+checks).
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -342,6 +444,7 @@ reload (seen twice) — type slowly; App Lock asks for the PIN again after the s
 | Package | Change | Files |
 | --- | --- | --- |
 | B1 | `snapshotWebView(viewTag, maxWidth, key)`: finds the WebView by view tag (like `setWebViewActive`), draws it into a bitmap on the main thread (scroll offset applied), encodes JPEG q72 on a single background executor, writes `<cacheDir>/tab-previews/<key>.jpg` atomically (temp + rename). `key` must match `[A-Za-z0-9_-]{1,64}`. Kotlin test `WebViewSnapshotsTest` (Robolectric NATIVE graphics, added as a test-only dependency of vidorax-web, same 4.16.1 as vidorax-media) | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `snapshot/WebViewSnapshots.kt`, `build.gradle` |
+| B6 | `getWebViewHistory(viewTag)` / `goBackOrForward(viewTag, steps)` (WebView back/forward list window, main thread); `setKeyCapture(volumeKeys, combos)` + event `onCapturedKey` — `VidoraKeyChannel`, asked first by **`MainActivity.dispatchKeyEvent`** (app module), takes keys only while JS listens and asked; `getNavigationMode()` (`Settings.Secure navigation_mode`); `prefetchDns(host)` (background `InetAddress`, ≤ 1 / min / host). Kotlin tests `KeyCaptureTest`, `WebHistoryWindowTest`, `NavigationModeTest`, `DnsPrefetcherTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `keys/VidoraKeyChannel.kt`, `navigation/WebHistoryWindow.kt`, `navigation/NavigationMode.kt`, `network/DnsPrefetcher.kt`, `android/app/.../MainActivity.kt` |
 
 ### New dependencies
 
@@ -362,6 +465,10 @@ reload (seen twice) — type slowly; App Lock asks for the PIN again after the s
 | `addressBarPosition` | B4 | `top` (today's) | `top`, `bottom` |
 | `addressBarAutoHide` | B4 | `false` (today's) | on / off |
 | `searchShortcuts` | B4 | `g` Google, `b` Bing, `d` DuckDuckGo, `w` Wikipedia | JSON list of `{ keyword, name, engine }` or `{ keyword, name, template }` (≤ 30 entries — Add turns off at 30 and says so; Backup refuses more than 16,000 characters) |
+| `swipeNavigation` | B6 | `true` | on / off |
+| `scrollSpeed` | B6 | `normal` | `slow`, `normal`, `fast` |
+| `volumeKeyScroll` | B6 | `false` (today's) | on / off |
+| `preloadPages` | B6 | `wifi` | `off`, `wifi`, `always` |
 
 ### Found, not fixed
 
@@ -373,6 +480,8 @@ reload (seen twice) — type slowly; App Lock asks for the PIN again after the s
 | History / Bookmarks screens | Relative times "6m ago" / "1h ago" are English in Urdu (B9/B10 change these screens) |
 | ~~Address bar (all packages)~~ | ~~The suggestion list is drawn under the keyboard~~ — **fixed in B4** (the list is sized to the space above the keyboard) |
 | Downloads card | "770.0 KB saved" and "100 percent complete" (accessibility) are English in Urdu (download screens are not in Hamza's packages) |
+| Long-press Back (B6) | An entry whose load failed is listed with Chromium's own English error title ("Webpage not available") — it is a real history entry |
+| Release builds | `http://` pages are refused (the app's network security config) — local `http` test fixtures need the debug build |
 | Dev only | After a JS reload (debug), expo-image can fail to create its view ("The current activity is no longer available"); a cold start clears it. Not seen on release |
 
 ### Decisions (all packages)
@@ -383,5 +492,10 @@ reload (seen twice) — type slowly; App Lock asks for the PIN again after the s
 - B4: the calculator row stays when "Address bar suggestions" is off (it reads no history); inline autocomplete is off
   with it.
 - B4: deleting a search shortcut has no confirmation; "Restore default shortcuts" brings the defaults back.
+- B6: the Long-press Back list comes from the WebView's own back/forward list (native), not a recording of events.
+- B6: swipe navigation lives on the toolbar (gesture navigation owns the screen edges); page edges only with button
+  navigation. Scroll speed controls Auto scroll and the Volume-key step (Android owns fling speed).
+- B6: Volume keys are taken only while JS listens and asks; one key channel for B21's shortcuts.
+- B6: Preload pages = DNS ahead + `rel="next"` prefetch, never a hidden page load; savers seam for B18.
 - B4: user text inside Urdu sentences is wrapped in a first-strong isolate (`\u2068…\u2069`, as escapes, never raw
   characters), like the e-mail isolates already in `ur.ts`.
