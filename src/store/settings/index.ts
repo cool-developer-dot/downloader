@@ -12,6 +12,13 @@ import { normalizeAfterDownloadAction } from '@/downloads/v2/after-download';
 import { createPersistStorage } from '@/store/shared/persist-storage';
 import { normalizeDefaultTab } from '@/navigation/helpers/default-tab';
 import { normalizeTabSortOrder } from '@/browser/tabs/tab-list-ops';
+import {
+  bindSearchSettingsReader,
+  normalizeSafeSearch,
+  normalizeSearchEngineId,
+  normalizeSearchLanguage,
+  normalizeSearchRegion,
+} from '@/browser/search/search-engines';
 
 import { createSettingsActions } from './actions';
 import { initialSettingsState } from './state';
@@ -99,6 +106,11 @@ export const useSettingsStore = createStore<SettingsStore>()(
         liveRecordingMaxMinutes: state.liveRecordingMaxMinutes,
         tapToToggle: state.tapToToggle,
         tabSortOrder: state.tabSortOrder,
+        searchEngine: state.searchEngine,
+        safeSearch: state.safeSearch,
+        searchLanguage: state.searchLanguage,
+        searchRegion: state.searchRegion,
+        searchSuggestions: state.searchSuggestions,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -182,6 +194,13 @@ export const useSettingsStore = createStore<SettingsStore>()(
           clipboardMonitor:
             typeof raw.clipboardMonitor === 'boolean' ? raw.clipboardMonitor : current.clipboardMonitor,
           tabSortOrder: raw.tabSortOrder === undefined ? current.tabSortOrder : normalizeTabSortOrder(raw.tabSortOrder),
+          searchEngine: raw.searchEngine === undefined ? current.searchEngine : normalizeSearchEngineId(raw.searchEngine),
+          safeSearch: raw.safeSearch === undefined ? current.safeSearch : normalizeSafeSearch(raw.safeSearch),
+          searchLanguage:
+            raw.searchLanguage === undefined ? current.searchLanguage : normalizeSearchLanguage(raw.searchLanguage),
+          searchRegion: raw.searchRegion === undefined ? current.searchRegion : normalizeSearchRegion(raw.searchRegion),
+          searchSuggestions:
+            typeof raw.searchSuggestions === 'boolean' ? raw.searchSuggestions : current.searchSuggestions,
         };
       },
     },
@@ -189,6 +208,18 @@ export const useSettingsStore = createStore<SettingsStore>()(
 );
 
 bindLanguageReader(() => useSettingsStore.getState().language);
+
+// Every search URL reads the user's search settings at the moment it is built (B5).
+bindSearchSettingsReader(() => {
+  const state = useSettingsStore.getState();
+  return {
+    engine: normalizeSearchEngineId(state.searchEngine),
+    safeSearch: normalizeSafeSearch(state.safeSearch),
+    language: normalizeSearchLanguage(state.searchLanguage),
+    region: normalizeSearchRegion(state.searchRegion),
+    appLanguage: state.language,
+  };
+});
 
 export * from './selectors';
 export type { SettingsActions, SettingsKey, SettingsState, SettingsStore } from './types';

@@ -1,3 +1,9 @@
+import {
+  SAFE_SEARCH_LEVELS,
+  SEARCH_ENGINE_IDS,
+  SEARCH_LANGUAGES,
+  SEARCH_REGIONS,
+} from '@/browser/search/search-engines';
 import { TAB_SORT_ORDERS } from '@/browser/tabs/tab-list-ops';
 
 /**
@@ -7,4 +13,8 @@ import { TAB_SORT_ORDERS } from '@/browser/tabs/tab-list-ops';
  */
 export const BROWSER_SETTING_CHOICES: Readonly<Record<string, readonly string[]>> = {
   tabSortOrder: TAB_SORT_ORDERS,
+  searchEngine: SEARCH_ENGINE_IDS,
+  safeSearch: SAFE_SEARCH_LEVELS,
+  searchLanguage: SEARCH_LANGUAGES,
+  searchRegion: SEARCH_REGIONS,
 };

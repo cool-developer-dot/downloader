@@ -124,11 +124,19 @@ export function useAddressBar() {
     useCallback(() => {
       const timers: ReturnType<typeof setTimeout>[] = [];
       const focusIfRequested = () => {
-        if (!takeAddressBarFocusRequest()) {
+        const request = takeAddressBarFocusRequest();
+        if (!request) {
           return;
         }
         // After the tab transition, so the keyboard opens over the Browser, not the screen it came from.
-        timers.push(setTimeout(onFocus, 300));
+        timers.push(
+          setTimeout(() => {
+            onFocus();
+            if (request.prefill != null) {
+              setDraft(request.prefill);
+            }
+          }, 300),
+        );
         // The overlay focuses its field as it appears, before Android serves that field to the keyboard, so that
         // first request for the keyboard is dropped (a tap does not hit this). Focusing it again once it is served
         // opens the keyboard; React Native ignores focus() on the field that already has focus, hence the blur.

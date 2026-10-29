@@ -7,6 +7,7 @@ import { languageNameKey, useTranslation } from '@/localization';
 
 import {
   AppearanceSection,
+  BrowserSection,
   DownloadsSection,
   GeneralSection,
   HowToUseSection,
@@ -83,6 +84,10 @@ export const SettingsScreen = memo(function SettingsScreen() {
               onSelectLanguage={setLanguage}
               disabled={saving}
             />
+          </SettingsStaggerItem>
+
+          <SettingsStaggerItem index={3}>
+            <BrowserSection />
           </SettingsStaggerItem>
 
           <SettingsStaggerItem index={3}>

@@ -1,5 +1,6 @@
-import { BROWSER_SEARCH_BASE_URL } from '@/browser/constants';
+import { getSearchEngine } from '@/browser/search/search-engines';
 import { classifyNavigationInput, buildSearchUrl } from '@/browser/utils';
+import { translate } from '@/localization/translate';
 import type { BookmarkEntry, BrowserHistoryEntry } from '@/storage/types';
 
 import {
@@ -67,6 +68,15 @@ export type SuggestionSources = {
   listFrequentlyVisited(limit: number): Promise<(BrowserHistoryEntry & { visitCount: number })[]>;
   listRecentSearches(limit: number): Promise<RecentSearchSnapshot[]>;
 };
+
+/** Which local sources the address bar may suggest from (B5 #61 turns all off; B10 #101 turns history off). */
+export type SuggestionInclude = { history: boolean; bookmarks: boolean; recentSearches: boolean };
+
+const ALL_LOCAL_SUGGESTIONS: SuggestionInclude = { history: true, bookmarks: true, recentSearches: true };
+
+function includeKey(include: SuggestionInclude): string {
+  return `${include.history ? 'h' : '-'}${include.bookmarks ? 'b' : '-'}${include.recentSearches ? 'r' : '-'}`;
+}
 
 interface SuggestionIndex {
   history: BrowserHistoryEntry[];
@@ -154,17 +164,20 @@ export class SuggestionService {
 
   async getSuggestions(
     rawQuery: string,
-    options?: { limit?: number },
+    options?: { limit?: number; include?: Partial<SuggestionInclude> },
   ): Promise<OmniboxSuggestion[]> {
     const query = rawQuery.trim();
     const normalizedQuery = normalizeQuery(query);
     const limit = options?.limit ?? SUGGESTION_LIMIT;
+    const include: SuggestionInclude = { ...ALL_LOCAL_SUGGESTIONS, ...options?.include };
+    // The cache is per query and per set of sources (B5 #61, B10 #101), and per search engine (B5 #56).
+    const cacheKey = `${includeKey(include)}|${getSearchEngine().id}|${normalizedQuery}`;
 
     if (!normalizedQuery) {
-      return this.getEmptyQuerySuggestions(limit);
+      return this.getEmptyQuerySuggestions(limit, include);
     }
 
-    const cached = suggestionCache.get(normalizedQuery);
+    const cached = suggestionCache.get(cacheKey);
     if (cached) {
       return cached.slice(0, limit);
     }
@@ -178,11 +191,11 @@ export class SuggestionService {
 
     const candidates: RankableCandidate[] = [
       ...this.collectExactUrl(context),
-      ...this.collectBookmarks(index.bookmarks, context),
-      ...this.collectHistory(index.history, context),
-      ...this.collectFrequent(index.frequent, context),
-      ...this.collectDomains(index, context),
-      ...this.collectRecentSearches(index.recentSearches, context),
+      ...(include.bookmarks ? this.collectBookmarks(index.bookmarks, context) : []),
+      ...(include.history ? this.collectHistory(index.history, context) : []),
+      ...(include.history ? this.collectFrequent(index.frequent, context) : []),
+      ...(include.history || include.bookmarks ? this.collectDomains(index, context, include) : []),
+      ...(include.recentSearches ? this.collectRecentSearches(index.recentSearches, context) : []),
       ...this.collectSearchPlaceholder(context),
     ];
 
@@ -197,15 +210,15 @@ export class SuggestionService {
     }
 
     const ranked = rankSuggestions(candidates, query, limit);
-    suggestionCache.set(normalizedQuery, ranked);
+    suggestionCache.set(cacheKey, ranked);
     return ranked;
   }
 
-  private async getEmptyQuerySuggestions(limit: number): Promise<OmniboxSuggestion[]> {
+  private async getEmptyQuerySuggestions(limit: number, include: SuggestionInclude): Promise<OmniboxSuggestion[]> {
     const index = await this.loadIndex();
     const candidates: RankableCandidate[] = [];
 
-    for (const entry of index.frequent.slice(0, 6)) {
+    for (const entry of include.history ? index.frequent.slice(0, 6) : []) {
       candidates.push(
         applyMatchFlags(
           {
@@ -225,7 +238,7 @@ export class SuggestionService {
       );
     }
 
-    for (const entry of index.bookmarks.slice(0, 4)) {
+    for (const entry of include.bookmarks ? index.bookmarks.slice(0, 4) : []) {
       candidates.push(
         applyMatchFlags(
           {
@@ -405,6 +418,7 @@ export class SuggestionService {
   private collectDomains(
     index: SuggestionIndex,
     context: SuggestionQueryContext,
+    include: SuggestionInclude,
   ): RankableCandidate[] {
     const q = context.normalizedQuery;
     if (!q || q.includes(' ') || q.includes('://')) {
@@ -426,13 +440,13 @@ export class SuggestionService {
       }
     };
 
-    for (const entry of index.bookmarks) {
+    for (const entry of include.bookmarks ? index.bookmarks : []) {
       consider(entry.hostname, entry.url, entry.title);
     }
-    for (const entry of index.history) {
+    for (const entry of include.history ? index.history : []) {
       consider(entry.hostname, entry.url, entry.title);
     }
-    for (const entry of index.frequent) {
+    for (const entry of include.history ? index.frequent : []) {
       consider(entry.hostname, entry.url, entry.title);
     }
 
@@ -466,6 +480,7 @@ export class SuggestionService {
       }
 
       const url = buildSearchUrl(entry.query);
+      const engineHost = new URL(url).hostname;
       results.push(
         applyMatchFlags(
           {
@@ -473,10 +488,10 @@ export class SuggestionService {
             kind: 'recent_search',
             source: 'recent_searches',
             title: entry.query,
-            subtitle: 'Recent search',
+            subtitle: translate('browserSettings.search.recentSearch'),
             url,
-            hostname: 'www.google.com',
-            faviconUrl: buildFaviconUrl('www.google.com'),
+            hostname: engineHost,
+            faviconUrl: null,
             visitedAt: entry.searchedAt,
           },
           q,
@@ -503,6 +518,8 @@ export class SuggestionService {
 
     const searchUrl =
       intent.kind === 'search' ? intent.url : buildSearchUrl(context.query);
+    const engine = getSearchEngine();
+    const engineHost = new URL(searchUrl).hostname;
 
     return [
       applyMatchFlags(
@@ -510,11 +527,14 @@ export class SuggestionService {
           id: `search-${context.normalizedQuery}`,
           kind: 'search',
           source: 'search',
-          title: `Search Google for “${context.query.trim()}”`,
-          subtitle: BROWSER_SEARCH_BASE_URL.replace('https://', ''),
+          title: translate('browserSettings.search.searchWithEngine', {
+            engine: engine.name,
+            query: context.query.trim(),
+          }),
+          subtitle: engineHost,
           url: searchUrl,
-          hostname: 'www.google.com',
-          faviconUrl: buildFaviconUrl('www.google.com'),
+          hostname: engineHost,
+          faviconUrl: null,
         },
         context.normalizedQuery,
       ),

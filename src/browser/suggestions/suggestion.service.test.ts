@@ -111,3 +111,57 @@ describe('clearing recent searches', () => {
     assert.ok(results.some((result) => result.kind === 'recent_search'));
   });
 });
+
+describe('address bar suggestions switch (B5 #61)', () => {
+  beforeEach(() => {
+    suggestionCache.invalidate();
+  });
+
+  it('off: no history, bookmark, frequent, site or recent-search rows; the typed search stays', async () => {
+    const stores = createStores();
+    const service = new SuggestionService(stores.sources);
+    const on = await service.getSuggestions('cat');
+    assert.ok(on.some((r) => r.kind === 'recent_search' || r.kind === 'history' || r.kind === 'frequent'));
+    const off = await service.getSuggestions('cat', {
+      include: { history: false, bookmarks: false, recentSearches: false },
+    });
+    assert.deepEqual(kinds(off), ['search']);
+    // The empty field shows nothing at all.
+    assert.deepEqual(
+      await service.getSuggestions('', { include: { history: false, bookmarks: false, recentSearches: false } }),
+      [],
+    );
+  });
+
+  it('history off alone keeps bookmarks (B10 #101 uses this)', async () => {
+    const stores = createStores();
+    const bookmarkSources: SuggestionSources = {
+      ...stores.sources,
+      listBookmarks: async () => [
+        {
+          id: 'b1',
+          url: 'https://cats.example/',
+          title: 'Cat bookmark',
+          hostname: 'cats.example',
+          faviconUrl: null,
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+      ],
+    };
+    const service = new SuggestionService(bookmarkSources);
+    const results = await service.getSuggestions('cat', { include: { history: false } });
+    assert.ok(results.some((r) => r.kind === 'bookmark'));
+    assert.ok(!results.some((r) => r.kind === 'history' || r.kind === 'frequent'));
+  });
+
+  it('the search row names the chosen engine', async () => {
+    const stores = createStores();
+    const service = new SuggestionService(stores.sources);
+    const results = await service.getSuggestions('lahore');
+    const search = results.find((r) => r.kind === 'search');
+    assert.ok(search);
+    assert.match(search!.title, /Google/);
+    assert.equal(search!.hostname, 'www.google.com');
+  });
+});

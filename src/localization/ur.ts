@@ -1,3 +1,4 @@
+import { browserSettingsUr } from './catalogs/browserSettings.ur';
 import { browserTabsUr } from './catalogs/browserTabs.ur';
 import { detectionUr } from './catalogs/detection.ur';
 import { shellUr } from './catalogs/shell.ur';
@@ -2783,4 +2784,5 @@ export const ur: CatalogStrings<typeof en> = {
   detection: detectionUr,
   videoPlayer: videoPlayerUr,
   browserTabs: browserTabsUr,
+  browserSettings: browserSettingsUr,
 };

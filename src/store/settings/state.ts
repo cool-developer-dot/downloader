@@ -5,6 +5,12 @@ import { DEFAULT_SPEED_LIMIT } from '@/downloads/v2/speed-limit';
 import { DEFAULT_FILE_EXTENSION } from '@/downloads/v2/file-extension';
 import { DEFAULT_FILENAME_TEMPLATE } from '@/downloads/v2/filename-template';
 
+import {
+  DEFAULT_SAFE_SEARCH,
+  DEFAULT_SEARCH_ENGINE,
+  DEFAULT_SEARCH_LANGUAGE,
+  DEFAULT_SEARCH_REGION,
+} from '@/browser/search/search-engines';
 import { DEFAULT_TAB_SORT_ORDER } from '@/browser/tabs/tab-list-ops';
 
 import type { SettingsState } from './types';
@@ -41,4 +47,9 @@ export const initialSettingsState: SettingsState = {
   liveRecordingMaxMinutes: DEFAULT_LIVE_RECORDING_MAX_MINUTES,
   tapToToggle: false,
   tabSortOrder: DEFAULT_TAB_SORT_ORDER,
+  searchEngine: DEFAULT_SEARCH_ENGINE,
+  safeSearch: DEFAULT_SAFE_SEARCH,
+  searchLanguage: DEFAULT_SEARCH_LANGUAGE,
+  searchRegion: DEFAULT_SEARCH_REGION,
+  searchSuggestions: true,
 };

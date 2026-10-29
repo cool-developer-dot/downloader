@@ -4,9 +4,9 @@ import {
   BROWSER_EXTERNAL_SCHEMES,
   BROWSER_HOMEPAGE,
   BROWSER_INVALID_INPUT_PATTERNS,
-  BROWSER_SEARCH_BASE_URL,
   isSocialNativeAppScheme as matchSocialNativeAppScheme,
 } from '@/browser/constants/browser.constants';
+import { getSearchEngine } from '@/browser/search/search-engines';
 import type {
   BrowserSecurityLevel,
   NavigationIntent,
@@ -175,12 +175,13 @@ export function normalizeBrowserUrl(input: string): string {
   return input.trim();
 }
 
+/** A search on the user's search engine (B5: engine, Safe Search, language, region). */
 export function buildSearchUrl(query: string): string {
-  const normalized = query.trim().replace(/\s+/g, ' ');
-  const url = new URL(BROWSER_SEARCH_BASE_URL);
-  url.searchParams.set('q', normalized);
-  return url.toString();
+  return getSearchEngine().buildSearchUrl(query);
 }
+
+/** B5 #57: `site:example.com` (with or without more words) is a search, not an address with a `site:` scheme. */
+const SITE_OPERATOR = /^site:[^\s/]+(?:\s|$)/i;
 
 /**
  * Classifies omnibox input into a navigation intent.
@@ -195,6 +196,11 @@ export function classifyNavigationInput(rawInput: string): NavigationIntent {
 
   if (isBrowserHomeUrl(trimmed)) {
     return { kind: 'home' };
+  }
+
+  if (SITE_OPERATOR.test(trimmed)) {
+    const query = trimmed.replace(/\s+/g, ' ');
+    return { kind: 'search', query, url: buildSearchUrl(query) };
   }
 
   if (isInvalidLiteral(trimmed)) {
@@ -291,8 +297,8 @@ export function classifyNavigationInput(rawInput: string): NavigationIntent {
     return { kind: 'search', query: trimmed, url: buildSearchUrl(trimmed) };
   }
 
-  // Symbols-only junk
-  if (/^[^a-zA-Z0-9]+$/.test(trimmed)) {
+  // Symbols-only junk — letters and digits of any script count (a single Urdu word is a search, B5).
+  if (/^[^\p{L}\p{N}]+$/u.test(trimmed)) {
     return { kind: 'invalid', category: 'invalid', message: INVALID_MESSAGES.invalid };
   }
 

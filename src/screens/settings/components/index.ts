@@ -1,6 +1,7 @@
 export { AboutSection, SupportSection } from './AboutSection';
 export type { AboutSectionProps, SupportSectionProps } from './AboutSection';
 export { AppearanceSection } from './AppearanceSection';
+export { BrowserSection } from './BrowserSection';
 export { DownloadsSection } from './DownloadsSection';
 export { GeneralSection } from './GeneralSection';
 export { HowToUseSection } from './HowToUseSection';

@@ -55,6 +55,16 @@ export interface SettingsState {
   tapToToggle: boolean;
   /** B1 #17: tab switcher order — 'manual' (default: the drag order), 'site', 'lastUsed' or 'opened'. */
   tabSortOrder: import('@/browser/tabs/tab-list-ops').TabSortOrder;
+  /** B5 #56: the search engine every search uses (default 'google' — today's). */
+  searchEngine: import('@/browser/search/search-engines').SearchEngineId;
+  /** B5 #62: Safe Search level (default 'moderate': no parameter on Google — today's URL). */
+  safeSearch: import('@/browser/search/search-engines').SafeSearchLevel;
+  /** B5 #63: results/interface language (default 'default': the engine decides — today's). */
+  searchLanguage: import('@/browser/search/search-engines').SearchLanguage;
+  /** B5 #64: region (default 'auto': the engine decides — today's). */
+  searchRegion: import('@/browser/search/search-engines').SearchRegion;
+  /** B5 #61: history, bookmark and recent-search suggestions in the address bar (default on — today's). */
+  searchSuggestions: boolean;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

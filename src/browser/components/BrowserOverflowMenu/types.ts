@@ -9,6 +9,7 @@ export type BrowserMenuActionId =
   | 'new_tab'
   | 'reopen_closed_tab'
   | 'duplicate_tab'
+  | 'search_site'
   | 'add_bookmark'
   | 'bookmarks'
   | 'copy_link'

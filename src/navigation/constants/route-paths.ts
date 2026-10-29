@@ -18,6 +18,8 @@ export const routePaths = {
   /** Batch Add (#292): several links at once, also opened by the Page Link Grabber (#484). */
   batchAdd: '/batch-add',
   downloadSettings: '/download-settings',
+  /** Browser settings (Hamza's browser packages, B5 onward). */
+  browserSettings: '/browser-settings',
   appLockSetup: '/app-lock-setup',
   appLockDisable: '/app-lock-disable',
   appLockChangePin: '/app-lock-change-pin',

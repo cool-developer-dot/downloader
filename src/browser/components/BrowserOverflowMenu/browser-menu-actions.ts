@@ -12,6 +12,7 @@ import { navigationService } from '@/browser/services';
 import { grabPageLinks } from '@/browser/services/page-link-grabber';
 import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
 import { buildTranslatePageUrl } from '@/browser/services/translate-page';
+import { requestAddressBarFocus } from '@/browser/services/address-bar-focus';
 import { closedTabsService } from '@/browser/tabs/closed-tabs.service';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
 import { extractPageHostname, isValidBrowserPageUrl } from '@/browser/utils';
@@ -110,6 +111,15 @@ export function useBrowserMenuActions({
       announceTabsLimitReached();
     }
   }, [onClose]);
+
+  // B5 #57: the address bar opens with `site:<host> ` so the next words search only this site.
+  const handleSearchSite = useCallback(() => {
+    const host = extractPageHostname(currentUrl);
+    onClose();
+    if (host) {
+      requestAddressBarFocus({ prefill: `site:${host} ` });
+    }
+  }, [currentUrl, onClose]);
 
   const handleAddBookmark = useCallback(async () => {
     if (!hasValidPage || bookmarked || bookmarkPending) {
@@ -320,6 +330,9 @@ export function useBrowserMenuActions({
         case 'duplicate_tab':
           handleDuplicateTab();
           break;
+        case 'search_site':
+          handleSearchSite();
+          break;
         case 'add_bookmark':
           void handleAddBookmark();
           break;
@@ -366,6 +379,7 @@ export function useBrowserMenuActions({
       handleRecentDownloads,
       handleRecentlyWatched,
       handleReopenClosedTab,
+      handleSearchSite,
       handleSettings,
       handleShare,
       handleTranslate,
@@ -485,6 +499,14 @@ export function useBrowserMenuActions({
         icon: 'share-variant',
         label: t('browser.sharePage'),
         accessibilityLabel: t('browser.sharePageA11y'),
+        kind: 'action',
+        enabled: hasValidPage,
+      },
+      {
+        id: 'search_site',
+        icon: 'text-search',
+        label: t('browserSettings.search.searchThisSite'),
+        accessibilityLabel: t('browserSettings.search.searchThisSiteA11y'),
         kind: 'action',
         enabled: hasValidPage,
       },

@@ -7,20 +7,25 @@
 const REQUEST_TTL_MS = 5_000;
 
 let requestedAt: number | null = null;
+let requestedPrefill: string | null = null;
 const listeners = new Set<() => void>();
 
-export function requestAddressBarFocus(): void {
+/** `prefill` (B5 "Search this site": `site:example.com `) is put in the field, caret at the end. */
+export function requestAddressBarFocus(options?: { prefill?: string }): void {
   requestedAt = Date.now();
+  requestedPrefill = options?.prefill ?? null;
   for (const listener of listeners) {
     listener();
   }
 }
 
-/** True once per live request. */
-export function takeAddressBarFocusRequest(): boolean {
+/** The live request (once), with its prefill; null when there is none. */
+export function takeAddressBarFocusRequest(): { prefill: string | null } | null {
   const at = requestedAt;
+  const prefill = requestedPrefill;
   requestedAt = null;
-  return at != null && Date.now() - at <= REQUEST_TTL_MS;
+  requestedPrefill = null;
+  return at != null && Date.now() - at <= REQUEST_TTL_MS ? { prefill } : null;
 }
 
 export function subscribeAddressBarFocusRequest(listener: () => void): () => void {

@@ -3,6 +3,13 @@
  * each one is a primitive with a default (so Settings Backup carries it and Reset restores it) and is persisted by
  * the settings store. Add a key here whenever a browser package adds a setting.
  */
-export const BROWSER_SETTING_KEYS = ['tabSortOrder'] as const;
+export const BROWSER_SETTING_KEYS = [
+  'tabSortOrder',
+  'searchEngine',
+  'safeSearch',
+  'searchLanguage',
+  'searchRegion',
+  'searchSuggestions',
+] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];
