@@ -5,81 +5,30 @@ import { resolveEffectiveDesktopMode } from '@/browser/session/desktop-mode.serv
 import {
   closeTabOperation,
   createTabOperation,
-  persistTabEngineState,
   reconcileMountPool,
   switchTabOperation,
   updateTabOperation,
   type BrowserTab,
 } from '@/browser/tabs';
 import { MAX_MOUNTED_WEBVIEWS } from '@/browser/tabs/constants';
-import { scrollPositionService } from '@/browser/scroll';
-import { getSecurityLevel, isBrowserHomeUrl, isSecureUrl } from '@/browser/utils';
+import { tabSnapshots } from '@/browser/tabs/tab-snapshots';
+import { isBrowserHomeUrl } from '@/browser/utils';
 import { normalizeLoadProgress } from '@/browser/utils/progress';
 import { browserMediaActionService } from '@/browser/media-actions/browser-media-action.service';
-import { clearIntentLoopGuardForTab } from '@/browser/navigation/intent-loop-guard';
-import { socialPageContextStore } from '@/media-detection/social';
-import { generalPageMediaContextStore } from '@/media-detection/general-media';
-import { clearSocialSourceRefreshAttempts } from '@/media-detection/social-source/social-source-provider';
-import { mediaDetectionEngine } from '@/media-detection/engine';
-import { clearVerificationForTab } from '@/media-detection/social-source/verification-session';
 
 import { initialBrowserState } from './state';
+import {
+  chromeFromTab,
+  cleanupClosedTab,
+  persistTabs,
+  securityFields,
+  suspendUnmountedTabs,
+} from './store-helpers';
+import { recordClosedTabs } from './tab-management-actions';
 import type { BrowserActions, BrowserStore } from './types';
-
-type SecurityFields = {
-  isSecure: boolean;
-  securityLevel: ReturnType<typeof getSecurityLevel>;
-};
-
-/**
- * Security fields are two `new URL()` parses, and chromeFromTab recomputed them
- * on every progress tick (~20/s while a page loads). The active tab's URL is
- * constant across all of those ticks, so memoize per URL. Bounded well above
- * MAX_OPEN_TABS — this only ever holds tab URLs.
- */
-const SECURITY_FIELDS_CACHE_MAX = 16;
-const securityFieldsCache = new Map<string, SecurityFields>();
-
-function securityFields(url: string): SecurityFields {
-  const cached = securityFieldsCache.get(url);
-  if (cached) {
-    return cached;
-  }
-  const fields: SecurityFields = {
-    isSecure: isSecureUrl(url),
-    securityLevel: getSecurityLevel(url),
-  };
-  if (securityFieldsCache.size >= SECURITY_FIELDS_CACHE_MAX) {
-    const oldest = securityFieldsCache.keys().next().value;
-    if (oldest !== undefined) {
-      securityFieldsCache.delete(oldest);
-    }
-  }
-  securityFieldsCache.set(url, fields);
-  return fields;
-}
 
 function activeTab(state: BrowserStore): BrowserTab | undefined {
   return state.tabs.find((t) => t.id === state.activeTabId);
-}
-
-function persistTabs(state: Pick<BrowserStore, 'tabs' | 'activeTabId'>): void {
-  persistTabEngineState({ tabs: state.tabs, activeTabId: state.activeTabId });
-}
-
-function chromeFromTab(tab: BrowserTab) {
-  return {
-    currentUrl: tab.url,
-    pageTitle: tab.title,
-    canGoBack: tab.canGoBack,
-    canGoForward: tab.canGoForward,
-    isLoading: tab.loading,
-    progress: tab.progress,
-    error: tab.error,
-    desktopMode: tab.desktopMode,
-    desktopModeUserExplicit: tab.desktopModeSource === 'user',
-    ...securityFields(tab.url),
-  };
 }
 
 function patchActiveTab(
@@ -124,27 +73,6 @@ function patchTab(
 }
 
 /**
- * A tab whose WebView is being unmounted (mount-pool eviction / blur budget).
- * The tab itself survives, so page context is kept — only work that would
- * outlive the WebView is cancelled: in-flight media verification and the
- * pending scroll-restore inject for a view that is about to disappear.
- */
-function suspendUnmountedTabs(tabIds: readonly string[]): void {
-  for (const tabId of tabIds) {
-    try {
-      browserMediaActionService.suspendTab(tabId);
-    } catch {
-      // CTA seam may not be ready in early boot
-    }
-    try {
-      scrollPositionService.cancelRestore(tabId);
-    } catch {
-      // Scroll seam optional during early boot
-    }
-  }
-}
-
-/**
  * One state object that updates the active tab and its chrome mirror together.
  * Used by the high-frequency loading/progress writers so a single `set()` does
  * the work that two nested writes used to do.
@@ -168,43 +96,6 @@ function mergeActiveTabPatch(
     tabs: next.tabs,
     ...(tab ? chromeFromTab(tab) : null),
   };
-}
-
-function cleanupClosedTab(tabId: string): void {
-  try {
-    browserMediaActionService.clearTab(tabId);
-  } catch {
-    // CTA seam may not be ready in early boot
-  }
-  try {
-    clearIntentLoopGuardForTab(tabId);
-  } catch {
-    // Intent seam optional during early boot
-  }
-  try {
-    // Phase 4A — drop ephemeral social correlation state for closed tab.
-    socialPageContextStore.clearTab(tabId);
-  } catch {
-    // Social correlation optional during early boot
-  }
-  try {
-    // Phase 5A — drop ephemeral general media ownership state for closed tab.
-    generalPageMediaContextStore.clearTab(tabId);
-  } catch {
-    // General media optional during early boot
-  }
-  try {
-    mediaDetectionEngine.clearTab(tabId);
-  } catch {
-    // Detection engine optional during early boot
-  }
-  try {
-    // Phase 4B — drop verification cache / refresh budget for closed tab.
-    clearVerificationForTab(tabId);
-    clearSocialSourceRefreshAttempts(tabId);
-  } catch {
-    // Social source optional during early boot
-  }
 }
 
 export function createBrowserActions(
@@ -437,6 +328,10 @@ export function createBrowserActions(
 
       // Creating a tab can evict a mounted one — cancel its work like a switch does.
       suspendUnmountedTabs(result.evictedTabIds);
+      const leaving = state.tabs.find((t) => t.id === state.activeTabId);
+      if (leaving) {
+        void tabSnapshots.capture(leaving);
+      }
 
       const tab = next.tabs.find((t) => t.id === next.activeTabId)!;
       set({
@@ -452,6 +347,8 @@ export function createBrowserActions(
 
     closeTab: (tabId) => {
       const state = get();
+      const closing = state.tabs.find((t) => t.id === tabId);
+      const closingIndex = state.tabs.findIndex((t) => t.id === tabId);
       const { result, next } = closeTabOperation(
         {
           tabs: state.tabs,
@@ -477,6 +374,14 @@ export function createBrowserActions(
       });
       persistTabs(get());
       browserMediaActionService.setActiveTab(next.activeTabId);
+      // B1 #3: remember it for Reopen closed tab, and offer Undo.
+      if (closing) {
+        recordClosedTabs([{ tab: closing, index: closingIndex }], {
+          replacementHomeTabId: result.status === 'REPLACED_HOME' ? result.tab.id : null,
+          activeTabId: state.activeTabId,
+          openTabs: get().tabs,
+        });
+      }
       return result;
     },
 
@@ -501,6 +406,11 @@ export function createBrowserActions(
 
       if (result.status === 'SWITCHED') {
         suspendUnmountedTabs(result.evictedTabIds);
+      }
+      // B1 #14: the tab being left gets a fresh preview.
+      const leaving = state.tabs.find((t) => t.id === state.activeTabId);
+      if (leaving) {
+        void tabSnapshots.capture(leaving);
       }
 
       const tab = next.tabs.find((t) => t.id === next.activeTabId)!;

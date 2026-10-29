@@ -1,3 +1,4 @@
+import { browserTabsEn } from './catalogs/browserTabs.en';
 import { detectionEn } from './catalogs/detection.en';
 import { shellEn } from './catalogs/shell.en';
 import { videoPlayerEn } from './catalogs/videoPlayer.en';
@@ -2779,4 +2780,5 @@ export const en = {
   shell: shellEn,
   detection: detectionEn,
   videoPlayer: videoPlayerEn,
+  browserTabs: browserTabsEn,
 } as const;

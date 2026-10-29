@@ -11,6 +11,7 @@ import { createStore } from '@/store/shared/create-store';
 import { normalizeAfterDownloadAction } from '@/downloads/v2/after-download';
 import { createPersistStorage } from '@/store/shared/persist-storage';
 import { normalizeDefaultTab } from '@/navigation/helpers/default-tab';
+import { normalizeTabSortOrder } from '@/browser/tabs/tab-list-ops';
 
 import { createSettingsActions } from './actions';
 import { initialSettingsState } from './state';
@@ -97,6 +98,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         liveRecording: state.liveRecording,
         liveRecordingMaxMinutes: state.liveRecordingMaxMinutes,
         tapToToggle: state.tapToToggle,
+        tabSortOrder: state.tabSortOrder,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -179,6 +181,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
               : current.downloadDirectory,
           clipboardMonitor:
             typeof raw.clipboardMonitor === 'boolean' ? raw.clipboardMonitor : current.clipboardMonitor,
+          tabSortOrder: raw.tabSortOrder === undefined ? current.tabSortOrder : normalizeTabSortOrder(raw.tabSortOrder),
         };
       },
     },

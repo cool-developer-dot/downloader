@@ -5,6 +5,8 @@ import { DEFAULT_SPEED_LIMIT } from '@/downloads/v2/speed-limit';
 import { DEFAULT_FILE_EXTENSION } from '@/downloads/v2/file-extension';
 import { DEFAULT_FILENAME_TEMPLATE } from '@/downloads/v2/filename-template';
 
+import { DEFAULT_TAB_SORT_ORDER } from '@/browser/tabs/tab-list-ops';
+
 import type { SettingsState } from './types';
 import { DEFAULT_AFTER_DOWNLOAD_ACTION } from '@/downloads/v2/after-download';
 
@@ -38,4 +40,5 @@ export const initialSettingsState: SettingsState = {
   liveRecording: false,
   liveRecordingMaxMinutes: DEFAULT_LIVE_RECORDING_MAX_MINUTES,
   tapToToggle: false,
+  tabSortOrder: DEFAULT_TAB_SORT_ORDER,
 };

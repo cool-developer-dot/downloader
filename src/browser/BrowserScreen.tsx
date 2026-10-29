@@ -22,6 +22,7 @@ import {
   BrowserToolbar,
 } from '@/browser/components';
 import { BrowserTabSwitcher } from '@/browser/components/BrowserTabSwitcher';
+import { TabUndoSnackbar } from '@/browser/components/TabUndoSnackbar/TabUndoSnackbar';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
 import { useIsWebFullscreen, useWebFullscreenLifecycle } from '@/browser/fullscreen';
 import {
@@ -210,6 +211,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
           overlayBlocking={tabSwitcherVisible || webFullscreenActive}
           onRequestDownload={handleRequestDownload}
         />
+        <TabUndoSnackbar visible={!tabSwitcherVisible && !webFullscreenActive} bottom={12} />
       </Box>
       <BrowserToolbarDock />
       <BrowserTabSwitcher

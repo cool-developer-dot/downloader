@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 import { AccessibilityInfo, Share } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 
@@ -12,6 +12,7 @@ import { navigationService } from '@/browser/services';
 import { grabPageLinks } from '@/browser/services/page-link-grabber';
 import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
 import { buildTranslatePageUrl } from '@/browser/services/translate-page';
+import { closedTabsService } from '@/browser/tabs/closed-tabs.service';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
 import { extractPageHostname, isValidBrowserPageUrl } from '@/browser/utils';
 import {
@@ -70,6 +71,7 @@ export function useBrowserMenuActions({
     () => isValidBrowserPageUrl(currentUrl),
     [currentUrl],
   );
+  const hasClosedTabs = useSyncExternalStore(closedTabsService.subscribe, closedTabsService.hasAny);
 
   const announce = useCallback((message: string) => {
     onFeedback?.({ message, tone: 'success' });
@@ -87,6 +89,27 @@ export function useBrowserMenuActions({
       AccessibilityInfo.announceForAccessibility(t('browser.tabsLimitReached'));
     }
   }, [onClose, onFeedback, t]);
+
+  // B1 #3: the last closed tab comes back at its old place, in front.
+  const handleReopenClosedTab = useCallback(() => {
+    onClose();
+    const outcome = useBrowserStore.getState().reopenClosedTab();
+    if (outcome.status === 'LIMIT_REACHED') {
+      announceTabsLimitReached();
+    } else if (outcome.status === 'RESTORED') {
+      AccessibilityInfo.announceForAccessibility(t('browserTabs.reopened'));
+    }
+  }, [onClose, t]);
+
+  // B1 #7: the same page in a new tab right after this one.
+  const handleDuplicateTab = useCallback(() => {
+    onClose();
+    const store = useBrowserStore.getState();
+    const result = store.duplicateTab(store.activeTabId);
+    if (result.status === 'LIMIT_REACHED') {
+      announceTabsLimitReached();
+    }
+  }, [onClose]);
 
   const handleAddBookmark = useCallback(async () => {
     if (!hasValidPage || bookmarked || bookmarkPending) {
@@ -291,6 +314,12 @@ export function useBrowserMenuActions({
         case 'new_tab':
           handleNewTab();
           break;
+        case 'reopen_closed_tab':
+          handleReopenClosedTab();
+          break;
+        case 'duplicate_tab':
+          handleDuplicateTab();
+          break;
         case 'add_bookmark':
           void handleAddBookmark();
           break;
@@ -329,12 +358,14 @@ export function useBrowserMenuActions({
       handleContinueWatching,
       handleCopyLink,
       handleDownloads,
+      handleDuplicateTab,
       handleGrabLinks,
       handleHistory,
       handleNewTab,
       handleOpenExternal,
       handleRecentDownloads,
       handleRecentlyWatched,
+      handleReopenClosedTab,
       handleSettings,
       handleShare,
       handleTranslate,
@@ -415,6 +446,22 @@ export function useBrowserMenuActions({
         showDividerBefore: true,
       },
       {
+        id: 'reopen_closed_tab',
+        icon: 'restore',
+        label: t('browserTabs.reopenClosed'),
+        accessibilityLabel: hasClosedTabs ? t('browserTabs.reopenClosedA11y') : t('browserTabs.noClosedTabs'),
+        kind: 'action',
+        enabled: hasClosedTabs,
+      },
+      {
+        id: 'duplicate_tab',
+        icon: 'content-duplicate',
+        label: t('browserTabs.duplicate'),
+        accessibilityLabel: t('browserTabs.duplicate'),
+        kind: 'action',
+        enabled: hasValidPage,
+      },
+      {
         id: 'add_bookmark',
         icon: bookmarked ? 'bookmark' : 'bookmark-outline',
         label: addBookmarkLabel,
@@ -480,6 +527,7 @@ export function useBrowserMenuActions({
     bookmarkPending,
     bookmarked,
     desktopMode,
+    hasClosedTabs,
     hasValidPage,
     t,
     translateUrl,

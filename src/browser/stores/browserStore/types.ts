@@ -3,6 +3,7 @@ import type {
   BrowserNavigationSnapshot,
   BrowserState,
 } from '@/browser/types';
+import type { TabManagementActions } from './tab-management-actions';
 import type {
   BrowserTab,
   CloseTabResult,
@@ -38,4 +39,4 @@ export interface BrowserActions {
   syncChromeFromActiveTab: () => void;
 }
 
-export type BrowserStore = BrowserState & BrowserActions;
+export type BrowserStore = BrowserState & BrowserActions & TabManagementActions;

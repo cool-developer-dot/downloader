@@ -59,6 +59,7 @@ import {
   isBrowserRouteVisible,
   subscribeBrowserRouteVisible,
 } from '@/browser/webview/webview-activity';
+import { clearTabWebViewTag, setTabWebViewTag } from '@/browser/webview/webview-view-tags';
 
 /**
  * Page DevTools in a pipeline-trace build (EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE=1, inlined at bundle time) — a device-test
@@ -169,6 +170,7 @@ export const BrowserWebView = memo(function BrowserWebView({
       forgetNativeWebViewActivity(nativeViewTagRef.current);
     }
     nativeViewTagRef.current = tag;
+    setTabWebViewTag(tabId, tag);
     applyNativeWebViewActivity(tag, runsPage);
     const previousCleanup = nativeScopeCleanupRef.current;
     nativeScopeCleanupRef.current = registerNativeObservationScope(tag, {
@@ -194,6 +196,9 @@ export const BrowserWebView = memo(function BrowserWebView({
       nativeScopeCleanupRef.current = null;
       if (nativeViewTagRef.current != null) {
         forgetNativeWebViewActivity(nativeViewTagRef.current);
+      }
+      if (tabId) {
+        clearTabWebViewTag(tabId, nativeViewTagRef.current);
       }
       // A queued scroll inject must never reach a WebView that is going away.
       scrollPositionService.cancelRestore(tabId);

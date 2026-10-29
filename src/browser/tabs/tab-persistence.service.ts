@@ -14,132 +14,34 @@ import {
   MAX_OPEN_TABS,
   TAB_PERSIST_DEBOUNCE_MS,
 } from './constants';
-import { createHomeTab, createTabFromPersisted, toPersistedTabMetadata } from './tab-factory';
-import type {
-  BrowserTab,
-  DesktopModeSource,
-  PersistedBrowserTabsEnvelope,
-  PersistedTabMetadata,
-} from './types';
+import { envelopeTabsForWrite, parseTabsEnvelope } from './tab-envelope';
+import {
+  createHomeTab,
+  createTabFromPersisted,
+  readNewTabDesktopDefault,
+  toPersistedTabMetadata,
+} from './tab-factory';
+import { normalizePinnedOrder } from './tab-list-ops';
+import type { BrowserTab, PersistedBrowserTabsEnvelope } from './types';
 import { coldStartMountPool } from './mount-pool';
-import { readNewTabDesktopDefault } from './tab-factory';
-
-function isHttpUrl(url: string): boolean {
-  try {
-    const protocol = new URL(url).protocol.toLowerCase();
-    return protocol === 'http:' || protocol === 'https:';
-  } catch {
-    return false;
-  }
-}
-
-function isValidPersistedUrl(url: string): boolean {
-  const trimmed = url.trim();
-  if (!trimmed) {
-    return false;
-  }
-  if (isBrowserHomeUrl(trimmed)) {
-    return true;
-  }
-  return isHttpUrl(trimmed);
-}
-
-function sanitizeDesktopSource(raw: unknown): DesktopModeSource {
-  if (raw === 'user' || raw === 'platform' || raw === 'default') {
-    return raw;
-  }
-  return 'default';
-}
-
-function sanitizePersistedTab(raw: unknown): PersistedTabMetadata | null {
-  if (!raw || typeof raw !== 'object') {
-    return null;
-  }
-  const obj = raw as Partial<PersistedTabMetadata>;
-  const id = typeof obj.id === 'string' ? obj.id.trim() : '';
-  const url = typeof obj.url === 'string' ? obj.url.trim() : '';
-  if (!id || !isValidPersistedUrl(url)) {
-    return null;
-  }
-  const createdAt =
-    typeof obj.createdAt === 'number' && Number.isFinite(obj.createdAt)
-      ? obj.createdAt
-      : Date.now();
-  const lastActiveAt =
-    typeof obj.lastActiveAt === 'number' && Number.isFinite(obj.lastActiveAt)
-      ? obj.lastActiveAt
-      : createdAt;
-  const safeUrl = isBrowserHomeUrl(url)
-    ? BROWSER_HOMEPAGE
-    : stripSensitiveAuthQueryParams(url);
-  return {
-    id,
-    url: safeUrl,
-    title: typeof obj.title === 'string' ? obj.title.slice(0, 255) : '',
-    createdAt,
-    lastActiveAt,
-    desktopMode: Boolean(obj.desktopMode),
-    desktopModeSource: sanitizeDesktopSource(obj.desktopModeSource),
-  };
-}
+import { shouldPersistForTab } from './tab-privacy';
 
 function sanitizeEnvelope(raw: unknown): PersistedBrowserTabsEnvelope | null {
-  if (!raw || typeof raw !== 'object') {
+  const parsed = parseTabsEnvelope(raw, {
+    homeUrl: BROWSER_HOMEPAGE,
+    isHomeUrl: isBrowserHomeUrl,
+    sanitizeUrl: stripSensitiveAuthQueryParams,
+    maxTabs: MAX_OPEN_TABS,
+    now: Date.now(),
+  });
+  if (!parsed) {
     return null;
   }
-  const obj = raw as Partial<PersistedBrowserTabsEnvelope>;
-  const schemaVersion =
-    typeof obj.schemaVersion === 'number' && Number.isFinite(obj.schemaVersion)
-      ? obj.schemaVersion
-      : 0;
-  if (schemaVersion > BROWSER_TABS_SCHEMA_VERSION) {
-    // Future schema — refuse rather than corrupt.
-    return null;
-  }
-
-  const list = Array.isArray(obj.tabs) ? obj.tabs : [];
-  const seen = new Set<string>();
-  const tabs: PersistedTabMetadata[] = [];
-  for (const entry of list) {
-    const tab = sanitizePersistedTab(entry);
-    if (!tab || seen.has(tab.id)) {
-      continue;
-    }
-    seen.add(tab.id);
-    tabs.push(tab);
-  }
-
-  if (tabs.length === 0) {
-    return null;
-  }
-
-  // Prefer active + most recent when trimming > max
-  tabs.sort((a, b) => b.lastActiveAt - a.lastActiveAt);
-  let activeTabId =
-    typeof obj.activeTabId === 'string' && obj.activeTabId.trim()
-      ? obj.activeTabId.trim()
-      : tabs[0]!.id;
-
-  if (!tabs.some((t) => t.id === activeTabId)) {
-    activeTabId = tabs[0]!.id;
-  }
-
-  const active = tabs.find((t) => t.id === activeTabId)!;
-  const others = tabs.filter((t) => t.id !== activeTabId);
-  const trimmed = [active, ...others].slice(0, MAX_OPEN_TABS);
-
-  // Restore original relative order by lastActiveAt desc for UI (active first among equals ok)
-  const orderIds = new Set(trimmed.map((t) => t.id));
-  const ordered = tabs.filter((t) => orderIds.has(t.id)).slice(0, MAX_OPEN_TABS);
-
   return {
     schemaVersion: BROWSER_TABS_SCHEMA_VERSION,
-    activeTabId,
-    tabs: ordered.length ? ordered : trimmed,
-    updatedAt:
-      typeof obj.updatedAt === 'number' && Number.isFinite(obj.updatedAt)
-        ? obj.updatedAt
-        : Date.now(),
+    activeTabId: parsed.activeTabId,
+    tabs: envelopeTabsForWrite(parsed.tabs),
+    updatedAt: parsed.updatedAt,
   };
 }
 
@@ -254,7 +156,9 @@ export function persistTabEngineState(input: {
   const envelope: PersistedBrowserTabsEnvelope = {
     schemaVersion: BROWSER_TABS_SCHEMA_VERSION,
     activeTabId: input.activeTabId,
-    tabs: input.tabs.map(toPersistedTabMetadata),
+    tabs: envelopeTabsForWrite(
+      normalizePinnedOrder(input.tabs.filter(shouldPersistForTab)).map(toPersistedTabMetadata),
+    ),
     updatedAt: Date.now(),
   };
   scheduleWrite(envelope);

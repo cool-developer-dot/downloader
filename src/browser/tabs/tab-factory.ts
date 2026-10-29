@@ -41,6 +41,7 @@ export function createHomeTab(overrides?: Partial<BrowserTab>): BrowserTab {
     navigationEpoch: 0,
     mountState: 'EVICTED',
     lastMountedAt: null,
+    pinned: false,
     ...overrides,
   };
 }
@@ -62,6 +63,7 @@ export function createTabFromPersisted(meta: PersistedTabMetadata): BrowserTab {
     navigationEpoch: 0,
     mountState: 'EVICTED',
     lastMountedAt: null,
+    pinned: meta.pinned === true,
   };
 }
 
@@ -77,5 +79,6 @@ export function toPersistedTabMetadata(tab: BrowserTab): PersistedTabMetadata {
     lastActiveAt: tab.lastActiveAt,
     desktopMode: tab.desktopMode,
     desktopModeSource: tab.desktopModeSource,
+    pinned: tab.pinned,
   };
 }

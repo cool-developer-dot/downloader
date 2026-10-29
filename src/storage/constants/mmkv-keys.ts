@@ -23,6 +23,8 @@ export const mmkvKeys = {
   browserSession: 'vidorax.mmkv.browser.session',
   /** Phase 3B — open browser tabs metadata (local only). */
   browserTabs: 'vidorax.mmkv.browser.tabs.v1',
+  /** B1 — the last 10 closed tabs (URL, title, position, pinned), for Reopen closed tab and Undo (local only). */
+  browserClosedTabs: 'vidorax.mmkv.browser.closedTabs.v1',
   browserDesktopMode: 'vidorax.mmkv.browser.desktopMode',
   /** True when the user explicitly toggled Desktop Site (overrides platform recommendation). */
   browserDesktopModeUserExplicit: 'vidorax.mmkv.browser.desktopModeUserExplicit',

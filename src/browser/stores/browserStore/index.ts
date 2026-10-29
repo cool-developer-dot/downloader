@@ -3,12 +3,14 @@ import { bindDesktopModeSnapshotReader } from '@/browser/session/desktop-mode-sn
 import { createStore } from '@/store/shared/create-store';
 
 import { createBrowserActions } from './actions';
+import { createTabManagementActions } from './tab-management-actions';
 import { initialBrowserState } from './state';
 import type { BrowserStore } from './types';
 
 export const useBrowserStore = createStore<BrowserStore>((set, get) => ({
   ...initialBrowserState,
   ...createBrowserActions(set, get),
+  ...createTabManagementActions(set, get),
 }));
 
 browserMediaActionService.setActiveTab(initialBrowserState.activeTabId);
@@ -27,3 +29,4 @@ bindDesktopModeSnapshotReader(() => {
 export * from './selectors';
 export { initialBrowserState, initialBrowserSessionState } from './state';
 export type { BrowserActions, BrowserStore } from './types';
+export type { CloseTabsOutcome, RestoreTabsOutcome, TabManagementActions } from './tab-management-actions';

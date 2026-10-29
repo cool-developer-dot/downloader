@@ -53,6 +53,8 @@ export interface SettingsState {
   liveRecordingMaxMinutes: number;
   /** Tapping a running/paused download row pauses/resumes it instead of opening details (default off). */
   tapToToggle: boolean;
+  /** B1 #17: tab switcher order — 'manual' (default: the drag order), 'site', 'lastUsed' or 'opened'. */
+  tabSortOrder: import('@/browser/tabs/tab-list-ops').TabSortOrder;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

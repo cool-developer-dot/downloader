@@ -8,6 +8,8 @@
  *   cut. The store's own validation then runs on top (the caller applies the values through it).
  */
 
+import { BROWSER_SETTING_CHOICES } from '@/browser/settings/browser-setting-choices';
+
 export const SETTINGS_BACKUP_FORMAT = 'vidorax.settings';
 export const SETTINGS_BACKUP_VERSION = 1;
 
@@ -20,6 +22,11 @@ export const NUMBER_RANGES: Readonly<Record<string, readonly [number, number]>> 
 };
 
 const MAX_STRING_CHARS = 500;
+
+/** String settings that are a fixed choice: any other value in a file is ignored, never applied. */
+export const STRING_CHOICES: Readonly<Record<string, readonly string[]>> = {
+  ...BROWSER_SETTING_CHOICES,
+};
 
 type Primitive = string | number | boolean;
 
@@ -93,6 +100,11 @@ export function parseSettingsBackup(text: string, defaults: Readonly<Record<stri
       const whole = Math.round(raw);
       values[key] = range ? Math.min(range[1], Math.max(range[0], whole)) : whole;
     } else if (typeof raw === 'string') {
+      const choices = STRING_CHOICES[key];
+      if (choices && !choices.includes(raw)) {
+        ignored.push(key);
+        continue;
+      }
       values[key] = raw.slice(0, MAX_STRING_CHARS);
     } else {
       values[key] = raw;

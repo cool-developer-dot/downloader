@@ -7,6 +7,8 @@ export type BrowserMenuActionId =
   | 'continue_watching'
   | 'recently_watched'
   | 'new_tab'
+  | 'reopen_closed_tab'
+  | 'duplicate_tab'
   | 'add_bookmark'
   | 'bookmarks'
   | 'copy_link'
