@@ -386,6 +386,10 @@ It also carries the app's light/dark choice to Android (`setAppNightMode('light'
 kept in SharedPreferences for `MainApplication`, and on Android 12+ handed to `UiModeManager.setApplicationNightMode` so
 the system splash follows Settings → Theme (§8).
 
+B1 adds `snapshotWebView(viewTag, maxWidth, key)`: the WebView behind a view tag is drawn into a bitmap on the main
+thread (scroll offset applied) and saved as a JPEG in `cacheDir/tab-previews/<key>.jpg` on a background executor
+(`snapshot/WebViewSnapshots.kt`); the key is restricted to `[A-Za-z0-9_-]{1,64}`.
+
 The module depends on the Gradle project `:react-native-webview`; there is no reflection on the request path.
 
 ## 5. Detection: `src/media-detection` + `src/browser/media-actions`
@@ -705,6 +709,29 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
   from the native completion outbox (§3.4) at startup, on every foreground and after each live completion — each
   download once, including downloads that finished while no JavaScript ran (background runner, boot job).
 
+### 8.1 Browser features (Hamza's packages B1–B24, `hamza/browser`)
+
+Each package is described in `docs/work-log/hamza-browser.md`; this is the shape of what they add.
+
+- **Tabs (B1).** The tab list keeps pinned tabs as one leading block (`src/browser/tabs/tab-list-ops.ts`, pure). The
+  store's tab management (`stores/browserStore/tab-management-actions.ts`) applies pure plans
+  (`tabs/tab-management-plans.ts`: duplicate, close other / all, restore) and reconciles the WebView mount pool like
+  create/switch/close. Every close is recorded in the closed-tab stack (`tabs/closed-tabs.ts`, last 10, MMKV
+  `vidorax.mmkv.browser.closedTabs.v1`, one `batchId` per close) and offered for Undo (`tabs/tab-undo.ts`,
+  `components/TabUndoSnackbar`). The tab envelope (MMKV `vidorax.mmkv.browser.tabs.v1`, schema 2) adds `pinned` and
+  `position` and is read by its fields, never refused by version (`tabs/tab-envelope.ts`). Tab previews: VidoraWeb
+  `snapshotWebView` (§4) writes `<cache>/tab-previews/<tabId>.jpg` when a tab is left or the switcher opens; the
+  view tag per tab comes from `webview/webview-view-tags.ts` (set by `BrowserWebView`); `tabs/tab-snapshots.ts`
+  keeps previews of open and reopenable tabs only. The switcher (`components/BrowserTabSwitcher`) is a Modal with its
+  own `GestureHandlerRootView`; drag to reorder is a gesture-handler Pan with `activateAfterLongPress` driving
+  reanimated shared values (rows of fixed height, positions as index × row height, auto-scroll by `scrollTo` in a
+  frame callback); Sort by is a view over the manual order (setting `tabSortOrder`).
+- **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab
+  today), so Faran's private tabs can opt out in one place.
+- **Browser settings** live in `SettingsState` as primitives (so Settings Backup carries them and Reset restores them);
+  `browser/settings/browser-setting-keys.ts` lists them and `browser-settings.audit.test.ts` checks persistence,
+  backup and reset; `browser-setting-choices.ts` gives Backup the allowed values of each choice setting.
+
 ## 9. Data ownership
 
 There is no backend: everything below lives only on the user's device.
@@ -716,6 +743,8 @@ There is no backend: everything below lives only on the user's device.
 | Media files, thumbnails | `vidorax-media` | `filesDir/library`, `filesDir/thumbs` (+ optional gallery copy) |
 | Playback progress | JS | MMKV (`vidorax.playback.v1:local:<id>`) |
 | Browser tabs and session | JS | MMKV |
+| Recently closed tabs (B1) | JS | MMKV `vidorax.mmkv.browser.closedTabs.v1` |
+| Tab previews (B1) | JS (VidoraWeb writes the files) | `cacheDir/tab-previews/*.jpg` |
 | History, bookmarks, recent searches | JS | expo-sqlite `vidorax.db` |
 | Settings, theme, App Lock | JS | MMKV / SecureStore |
 | In-app review eligibility (successful-download count, last request) | JS | MMKV |

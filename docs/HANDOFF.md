@@ -2104,6 +2104,15 @@ Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-pl
   Device: Unified Streaming live → 2:16 MP4 plays; force-stop at 0:53 → 53.76 s MP4 plays; background, Urdu, dark OK;
   turning the setting off withdraws a standing offer (found and fixed). Real phone BLOCKED.
 
+### 4.34 Browser — Hamza packages (branch `hamza/browser`, from 2026-10-29)
+
+Full log with test evidence: `docs/work-log/hamza-browser.md`; prompt `docs/work-plans/hamza-browser-prompt.md`.
+Based on the local `integration/final-check` (not pushed). One line per package:
+
+- **B1 Tab management.** Reopen closed tab (last 10, Undo after every close), pin, duplicate, close other / all (with
+  "Also close pinned tabs"), drag to reorder, search tabs (Urdu-aware), tab previews (VidoraWeb `snapshotWebView`),
+  Sort by Manual / Site / Last used / Opened. Tab envelope v2 read by fields.
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.
