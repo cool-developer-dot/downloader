@@ -769,6 +769,36 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   `browser/settings/browser-setting-keys.ts` lists them and `browser-settings.audit.test.ts` checks persistence,
   backup and reset; `browser-setting-choices.ts` gives Backup the allowed values of each choice setting.
 
+### 8.2 Browser features (Faran's packages B20, B12, `faran/browser`)
+
+Each package is described in `docs/work-log/faran-browser.md`.
+
+- **Profiles and guest mode (B20).** `src/storage/profile/active-profile.ts` says which browser profile is in use and
+  scopes storage: the default profile keeps today's data where it was (`vidorax.db`, plain MMKV keys); another
+  profile has `vidorax-profile-<id>.db` (browser tables only, `sqlite/browser-database.ts`, used by the history,
+  bookmark, recent-search and recent-url repositories through `getBrowserDatabase()`), MMKV keys `<key>@<id>` (tabs,
+  closed tabs, session) and tab previews `pf-<id>-<tabId>.jpg`. Modules with caches reset them through
+  `subscribeActiveProfile`; a debounced write keeps the key it was scheduled for. The browser tables are created by
+  `applyBrowserTables`, shared by both kinds of database: browser-table changes go there, idempotent.
+  `src/browser/profiles/profile-service.ts` owns the list (`profile-registry.ts`, pure rules) and every change of
+  profile (save tabs, session and browser settings → native profile → active id → load settings → hydrate tabs →
+  reload history, bookmarks, searches). Browser settings (`BROWSER_SETTING_KEYS`) are per profile, saved in Settings
+  Backup's format (`profile-settings-format.ts`). Cookies, site storage, cache and service workers are per profile
+  through WebView profiles (`modules/vidorax-web` `profiles/WebProfiles.kt`, set in the patch's new
+  `RNCWebViewHooks.beforeWebViewSetup`, the only point where a WebView's profile can still be chosen); downloads read
+  the active profile's jar (`vidorax-media` `net/ActiveWebCookies.kt`). Guest mode is profile `guest` with a new
+  WebView profile per session (`vidorax-guest<session>`); leaving it, or the next cold start, wipes it.
+- **Backup, restore, export (B20).** Pure formats in `src/browser/data/` (`data-backup.ts`: parse, never evaluate;
+  `netscape-bookmarks.ts`; `history-csv.ts`); `browser-profile-data.repository.ts` reads and merges any profile's
+  data; `profiles/data-transfer.service.ts` writes and reads the files through the system pickers
+  (`utils/text-file-export.ts`, `exportTextFiles` for several files in one folder). Settings go through Settings
+  Backup's validation (`importSettingsValues`).
+- **Tab windows (B20).** `modules/vidorax-web` `window/BrowserWindowActivity.kt`: one tab in its own task (not
+  exported), a plain WebView with the browser's safety settings in the tab's profile; links it doesn't show
+  (`WindowUrlPolicy`) and downloads go to the main window. Events (`onBrowserWindow`: visit / closed / returned /
+  openInApp, kept while JS isn't listening) are handled by `src/browser/profiles/browser-window.service.ts` for the
+  window's own profile.
+
 ## 9. Data ownership
 
 There is no backend: everything below lives only on the user's device.
@@ -782,7 +812,9 @@ There is no backend: everything below lives only on the user's device.
 | Browser tabs and session | JS | MMKV |
 | Recently closed tabs (B1) | JS | MMKV `vidorax.mmkv.browser.closedTabs.v1` |
 | Tab previews (B1) | JS (VidoraWeb writes the files) | `cacheDir/tab-previews/*.jpg` |
-| History, bookmarks, recent searches | JS | expo-sqlite `vidorax.db` |
+| History, bookmarks, recent searches | JS | expo-sqlite `vidorax.db` (default browser profile); `vidorax-profile-<id>.db` (other profiles, B20) |
+| Browser profiles, per-profile browser settings, guest session (B20) | JS | MMKV `vidorax.mmkv.browser.profiles.*` |
+| Per-profile cookies, site storage, cache (B20) | WebView | WebView profiles `Default` / `vidorax-<id>` |
 | Settings, theme, App Lock | JS | MMKV / SecureStore |
 | In-app review eligibility (successful-download count, last request) | JS | MMKV |
 | One-time migration flags (e.g. favorites per item) | JS | MMKV |

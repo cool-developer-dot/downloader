@@ -2126,6 +2126,21 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   of a page's `rel="next"`; Wi-Fi only by default). Native: `getWebViewHistory`, `goBackOrForward`, `setKeyCapture` +
   `onCapturedKey` (+ `MainActivity.dispatchKeyEvent`), `getNavigationMode`, `prefetchDns`.
 
+### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
+
+Full log with test evidence: `docs/work-log/faran-browser.md`. Branched from `0e188aa` (B6 on `hamza/browser`); local
+only. Hamza's unfinished B8 start is parked on `hamza/b8-wip`.
+
+- **B20 Profiles, guest mode, backup and restore, export, tab windows.** Up to 5 browser profiles (Browser settings →
+  Profiles and guest mode; Browser menu → Profile), each with its own tabs, bookmarks, history, searches, browser
+  settings and — through WebView profiles — cookies and site data; the default profile is today's data unchanged.
+  Guest mode starts empty and is wiped when it ends (App Lock asks for the PIN). Backup: one JSON file of every
+  profile (no tabs, downloads, App Lock or logins); Restore merges it after a summary. Export: bookmark file for other
+  browsers + history CSV. Move tab to new window: a native window next to the app. Native: patch hook
+  `beforeWebViewSetup`; VidoraWeb `isWebProfileSupported`, `setWebProfile`, `deleteWebProfile`,
+  `getWebProfileNames`, `openBrowserWindow`, `closeBrowserWindows`, `onBrowserWindow`; VidoraMedia
+  `setCookieProfile`. No new permission or library.
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.
