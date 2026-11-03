@@ -798,6 +798,16 @@ Each package is described in `docs/work-log/faran-browser.md`.
   (`WindowUrlPolicy`) and downloads go to the main window. Events (`onBrowserWindow`: visit / closed / returned /
   openInApp, kept while JS isn't listening) are handled by `src/browser/profiles/browser-window.service.ts` for the
   window's own profile.
+- **Privacy controls (B12).** Settings rules are pure (`src/browser/privacy/privacy-settings.ts`, `https-upgrade.ts`)
+  and per profile (six `BROWSER_SETTING_KEYS`); `privacy.service.ts` applies them: the active profile's cookie jar on
+  or off (`VidoraWeb.setCookiesEnabled`, re-applied at start and after every switch), the https upgrades in flight (so
+  a failure reads "no secure version", redirect loops stop) and the hosts let through over http for this app run.
+  Third-party cookies and JavaScript per site are WebView props in `BrowserWebView.tsx`; the navigation guard in
+  `useBrowserEngineEvents.ts` upgrades http and reloads through the browser when the next site's JavaScript setting
+  differs. A build without cleartext (release) is always HTTPS-only (`isCleartextAllowed`). Native
+  `privacy/SitePrivacy.kt`: certificate (SHA-256 on API 29+), the profile's site storage list / clear
+  (`WebStorageCompat.deleteBrowsingData(ForSite)` where WebView has it), cookie count. The site sheet
+  (`components/SiteInfo/`) opens from the lock. `getPageCertificate` and `clearAllSiteData` are there for B19 / B11.
 
 ## 9. Data ownership
 
@@ -815,6 +825,7 @@ There is no backend: everything below lives only on the user's device.
 | History, bookmarks, recent searches | JS | expo-sqlite `vidorax.db` (default browser profile); `vidorax-profile-<id>.db` (other profiles, B20) |
 | Browser profiles, per-profile browser settings, guest session (B20) | JS | MMKV `vidorax.mmkv.browser.profiles.*` |
 | Per-profile cookies, site storage, cache (B20) | WebView | WebView profiles `Default` / `vidorax-<id>` |
+| Privacy settings and JavaScript site exceptions (B12, per profile) | JS | settings store (MMKV); hosts opened over http "this once": memory only |
 | Settings, theme, App Lock | JS | MMKV / SecureStore |
 | In-app review eligibility (successful-download count, last request) | JS | MMKV |
 | One-time migration flags (e.g. favorites per item) | JS | MMKV |

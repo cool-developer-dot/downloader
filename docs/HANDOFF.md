@@ -2140,6 +2140,14 @@ only. Hamza's unfinished B8 start is parked on `hamza/b8-wip`.
   `beforeWebViewSetup`; VidoraWeb `isWebProfileSupported`, `setWebProfile`, `deleteWebProfile`,
   `getWebProfileNames`, `openBrowserWindow`, `closeBrowserWindows`, `onBrowserWindow`; VidoraMedia
   `setCookieProfile`. No new permission or library.
+- **B12 Privacy controls.** Browser settings → Privacy and security: cookies (Allow all / Block third-party, the
+  default / Block all), Do Not Track + Global Privacy Control, HTTPS-only mode (always on in release builds, which
+  can't open http; the failure page says "No secure version of this site"), the insecure page warning (cleartext
+  builds only), JavaScript with per-site exceptions, and Site data (list, clear one, clear all). The lock in the
+  address bar opens the site sheet: connection, certificate with SHA-256, cookies, storage, JavaScript for the site,
+  Clear site data. All per profile. Native VidoraWeb `setCookiesEnabled`, `getCertificate`, `listSiteData`,
+  `clearSiteData`, `clearAllSiteData`, `getCookieCount`, `isCleartextAllowed`. Known WebView limits (cookies kept while
+  blocked, Cache Storage on WebView without `DELETE_BROWSING_DATA`) are in the work log. No new permission or library.
 
 ## 5. How to resume
 

@@ -164,3 +164,116 @@ Gate on the final head: `npm test` 1,574 / 1,574, `npm run typecheck` clean, `np
 - A restore that changes the language shows its result in the language it started in.
 - A download still running when the user switches profiles uses the new profile's cookie jar for its later requests (rare; documented in `ActiveWebCookies`).
 - The window has no video detection, file upload or fullscreen video; those stay in the main window.
+
+## B12 — Privacy controls (#112, #113, #115, #124, #125, #126, #130, #135)
+
+### Design and decisions
+
+| # | Feature | What the user gets | Where |
+| --- | --- | --- | --- |
+| #112 / #113 | Cookies | Browser settings → Privacy and security → Cookies: Allow all / **Block third-party cookies** (default) / Block all. Third-party is the WebView prop (`thirdPartyCookiesEnabled` only for Allow all); Block all turns the profile's jar off natively (`setCookiesEnabled`, re-applied at start, on change and after every profile switch — WebView keeps it only while the app runs) | `src/browser/privacy/privacy-settings.ts`, `privacy.service.ts`, native `privacy/SitePrivacy.kt` |
+| #115 | Do Not Track | Off by default. On: `DNT: 1` and `Sec-GPC: 1` on the pages the browser opens itself, and `navigator.doNotTrack` / `globalPrivacyControl` for the page (a script that defines two read-only values and nothing else) | `privacy-page-script.ts`, `BrowserWebView.tsx` |
+| #124 | HTTPS-only mode | With the switch on, an http page opens over https (typed, restored, reloaded and links); a site with no secure version gets "No secure version of this site" with **Open unsecured this once** (that host stays allowed until the app closes). Local and intranet hosts are left alone. A **release build can't open http at all** (no cleartext in the manifest — a product decision, HANDOFF §4.17): there the switch shows "Always on", every http address is tried over https, and a failure says so without an unsecured button | `https-upgrade.ts` (pure), `privacy.service.ts`, `useTabScopedBrowserEngine.ts`, `useBrowserEngineEvents.ts`, `BrowserErrorView.tsx` |
+| #125 | Certificate / site information | Tapping the lock opens the site sheet: secure or not, the certificate (issued to, issued by, valid from–until, SHA-256 fingerprint in byte groups), cookies, stored data, JavaScript for this site, Clear site data, Privacy settings. A page whose certificate failed, or that has no secure version, shows the open lock and "Connection isn't secure" | `components/SiteInfo/SiteInfoHost.tsx`, `SecurityIndicator.tsx`, native `SitePrivacy.certificate` |
+| #126 | Insecure page warning | On a page opened over plain http: a notice at the top ("Anything you type or send here can be seen by others"), dismissed per site until the app closes. Setting on by default; hidden in a release build, where no http page can open | `components/SiteInfo/InsecurePageBar.tsx` |
+| #130 | Site data | Browser settings → Site data: the sites that keep storage in this profile, largest first, with size; clear one or all (all also removes every cookie). The site sheet clears one site (both schemes) | `PrivacySettingsSection.tsx`, native `listOrigins` / `clearOrigin` / `clearAll` |
+| #135 | JavaScript per site | A global switch plus per-site exceptions (from the site sheet; listed and removable in Browser settings). The WebView prop follows the tab's site; when the next page's site has the other setting, the navigation guard cancels it and loads it again after the WebView switched | `privacy-settings.ts`, `BrowserWebView.tsx`, `useBrowserEngineEvents.ts` |
+
+Settings: six new `BROWSER_SETTING_KEYS` (`cookiePolicy`, `doNotTrack`, `httpsOnly`, `insecurePageWarning`,
+`javaScript`, `javaScriptExceptions`), so each profile (B20) keeps its own and Settings Backup validates them
+(`cookiePolicy` choices; the exception list up to 200 hosts / 16,000 characters). The settings store merge accepts only
+the right types, so 1.1.0 data starts from the defaults.
+
+How HTTPS upgrades are told apart from other failures (`privacy.service.ts`): every upgrade is noted per host (where it
+came from, when, how many in a row). A failure of that https page within 90 s is "no secure version". The note is
+cleared 1.5 s after the page's load end, because react-native-webview on Android reports a failed load's end *just
+before* its error (`RNCWebViewClient` "simulates" the iOS order) — clearing at once made every failure look generic.
+An https page that sends the browser straight back to the http address it came from, or upgrades of one host three times
+without a page loading, is a loop: "no secure version" instead of upgrading again. An http link to another page of the
+same host is simply upgraded.
+
+Not changed: `webview-configuration.ts` (mixed content, file access, incognito), the download rules, the cleartext
+policy. No new permission. The injected DNT script gives the page two constants and reads nothing.
+
+### Files
+
+Native (`B12: native …` commit): `modules/vidorax-web/android/src/main/java/com/vidorax/web/privacy/
+{SiteDataRules,SitePrivacy}.kt` (cookies on/off, certificate with SHA-256, site storage list / clear with
+`WebStorageCompat.deleteBrowsingData(ForSite)` where WebView has `DELETE_BROWSING_DATA`, cookie count),
+`VidoraWebModule.kt` (`setCookiesEnabled`, `getCertificate`, `listSiteData`, `clearSiteData`, `clearAllSiteData`,
+`getCookieCount`, `isCleartextAllowed`), contract `VidoraWeb.types.ts` (`PageCertificate`, `SiteDataEntry`); Kotlin
+test `SiteDataRulesTest`.
+
+JS: `src/browser/privacy/{privacy-settings,https-upgrade,privacy-page-script,privacy.service,format-bytes}.ts`;
+`src/store/settings/{types,state,index}.ts`, `src/browser/settings/{browser-setting-keys,browser-setting-choices}.ts`;
+`src/browser/hooks/{useTabScopedBrowserEngine,useBrowserEngineEvents}.ts`, `src/browser/types/navigation.types.ts`
+(`https_unavailable`, `https_required`), `src/browser/utils/errors.ts`; `src/browser/components/BrowserContainer/
+BrowserWebView.tsx`, `BrowserErrorView/BrowserErrorView.tsx`, `BrowserHeader/SecurityIndicator.tsx` (a button now),
+`SiteInfo/{site-info-requests,SiteInfoHost,InsecurePageBar}.tsx`, `BrowserScreen.tsx`;
+`src/screens/settings/browser-settings/{PrivacySettingsSection,BrowserSettingsScreen}.tsx`;
+`src/bootstrap/app-initializer.ts` (`ensurePrivacyControls`); catalogs `browserPrivacy.{en,ur}.ts`, `en.ts` / `ur.ts`
+(`browser.errors.https_unavailable`, `https_required`; the certificate error page now says what happened).
+
+For Hamza: B11 (incognito) can call `clearAllSiteData()` and B19 (security panel) `getPageCertificate(tabId)` from
+`privacy.service.ts`.
+
+### Automated tests
+
+| Suite | What it proves |
+| --- | --- |
+| `browser/privacy/privacy.test.ts` (14) | Cookie policy default and fallback; site keys (no `www`, web pages only); exceptions flip the default, add / remove relative to it, parsed defensively (bad hosts, duplicates, over-long, more than 200); HTTPS upgrade (port 80 dropped, other ports kept), what is left alone (allowed, local, intranet, IP, `[::1]`); the policy (secure-only without cleartext, else the switch); secure-only upgrades local and let-through hosts too; redirect back to the same address and 3 in a row → no secure version, another page of the host → upgrade; which errors count as security failures; the DNT script defines exactly two values, works without `Navigator`, contains no bridge / network call; storage sizes |
+| Kotlin `SiteDataRulesTest` (4) | Web origins only (WebStorage's trailing `/` accepted, then removed); cookie names parsed, invalid skipped; expiry headers for the host and each parent domain; numeric hosts |
+
+### Manual cases (AVD `VidoraX_Browser_F`, API 35, WebView 124; release builds signed as for Play unless noted)
+
+| # | Case | Build | Result | Evidence |
+| --- | --- | --- | --- | --- |
+| 1 | Privacy section, Urdu RTL dark | release r5 | PASS | Cookies row with the choice, Do Not Track, HTTPS-only, warning, JavaScript, exceptions ("کوئی نہیں…"), Site data; above Profiles |
+| 2 | Do Not Track | release r5 | PASS | httpbin `/headers`: `Dnt: 1`, `Sec-Gpc: 1` |
+| 3 | Block third-party cookies (default) | release r6 | PASS | `tp` (SameSite=None) set on httpbin first-party; iframetester.com framing `httpbin.org/cookies`: `{}` |
+| 4 | Allow all cookies | release r6 | PASS | Same frame after reload: `{"tp": "1"}` |
+| 5 | Block all cookies | release r6 | PASS (see found-not-fixed) | httpbin receives no `Cookie` header and `/cookies` is `{}`; back on Block third-party, the earlier cookies are sent again |
+| 6 | Each profile keeps its own privacy settings | release r6 | PASS | Work → Block third-party while Personal stayed on Block all; Personal's jar started without Work's httpbin cookies |
+| 7 | Site sheet on an https page (Urdu) | release r5 → r8 | PASS after fixes | Issued to / by, validity, SHA-256, cookies, storage, JS switch, two buttons. Fixed: the validity range read in the wrong order in Urdu (now "… سے … تک") and the fingerprint wrapped mid-group (now byte groups) |
+| 8 | Clear site data from the sheet | release r5 | PASS | httpbin cookie count 1 → 0 after the confirmation; reload shows `{}` |
+| 9 | Release: http address typed | release r6 → r7 | PASS after fix | `http://example.com` opens `https://example.com`; neverssl.com, an http-only local server and `http://expired.badssl.com` show "اس سائٹ کا محفوظ ورژن نہیں" with Home only. r6 showed the generic or certificate page (the load-end-before-error order, fixed in r7) |
+| 10 | Release: restored http tab | release r6 | PASS | A tab left on an http address reopens on "No secure version" instead of "Something went wrong" |
+| 11 | Release: HTTPS-only row | release r6 | PASS | Shown on and locked, "Always on: …"; the insecure warning row hidden |
+| 12 | https page redirecting to http on the same host | release r8 | PASS | `httpbin.org/redirect-to?url=http://httpbin.org/get` ends on `https://httpbin.org/get` (r7 wrongly stopped it) |
+| 13 | Redirect loop (three https → http hops) | release r8 | PASS | Stops on "No secure version", lock open |
+| 14 | Certificate error page | release r7 | PASS | `self-signed.badssl.com`: "کنکشن محفوظ نہیں" page, the lock reads "not secure" (it said "secure HTTPS" before), the sheet says "Connection isn't secure" |
+| 15 | JavaScript per site | release r6 | PASS | whatismybrowser "Is JavaScript enabled?": Yes → switch off in the sheet → page reloads → No; listed in Browser settings as "JavaScript off", removed with ✕ |
+| 16 | Video detection with third-party cookies blocked | release r7 | PASS | w3schools HTML5 video → "ویڈیو دستیاب" |
+| 17 | Site data list and clear | release r9 → r10 | PASS after fix (see found-not-fixed) | r8 listed nothing (WebStorage reports `https://host/`, the filter wanted no slash). r10: squoosh.app 485 KB first; clearing a site / all removes cookies, localStorage and IndexedDB; empty origins hidden |
+| 18 | English | release r10 | PASS | Site sheet, Privacy section, error pages read naturally |
+| 19 | Font scale 1.3, dark | release r10 | PASS | Site sheet and Privacy rows wrap, nothing cut off |
+| 20 | Block all in the site sheet | release r10 | PASS | "Blocked: none are sent (1 kept)" instead of "In use: 1" |
+| 21 | Debug build (cleartext allowed): http page | debug | PASS after fix | Opens over http with the warning bar; Dismiss hides it at once (it first stayed until the next page: React Compiler kept the old render — the dismissed state is now read in render) and it stays hidden for that host |
+| 22 | Debug: HTTPS-only on | debug | PASS | A normal switch with its own hint; the http-only fixture → "No secure version" + Go home + **Open unsecured this once** → the plain page with the bar; `http://example.com` still upgraded |
+| 23 | Accessibility labels | release | PASS | Lock "Secure HTTPS connection. Site information" / "Not a secure connection…"; switches named; "Clear <site>'s data", "Remove <site> from the list"; the bar's Dismiss; targets ≥ 48 dp (checked in the accessibility tree) |
+| 24 | Permissions and size | release r10 | PASS | 37 permissions, identical to 1.1.0 vc4; APK 50,658,051 bytes (B20 r4: 50,605,263; +53 KB) |
+| 25 | Upgrade 1.1.0 → B12 (`adb install -r` over snapshot `seeded110f`) | release r11 | PASS | PIN 1357, Urdu, 6 tabs (archive.org); Privacy starts at the defaults: Block third-party, Do Not Track off, HTTPS-only locked on, JavaScript on; the site sheet shows archive.org's certificate; no crash or ANR in the log |
+
+Also found while testing (fixed): the Urdu catalog's raw direction marks (now `\u` escapes, checked); the site data
+list was empty (trailing `/`); every upgrade failure looked generic (load end before error); a same-host http link was
+treated as a loop; the lock said "secure" on a certificate error page; the warning bar stayed after Dismiss.
+
+### Quick release check
+
+Gate on the final head: `npm test` 1,588 / 1,588, `npm run typecheck` clean, `npm run lint` 0 errors (82 warnings,
+unchanged), vidorax-media 971 / 0, vidorax-web 68 / 0 (SiteDataRulesTest new), patch test 5 / 5, `git diff --check`
+clean. Release r11 installed over
+1.1.0 and r5–r10 over each other; debug build for the cleartext paths. Full regression R1–R16 stays with the final
+testing before a release.
+
+### Found, not fixed
+
+- **WebView keeps cookies while all are blocked.** With `setAcceptCookie(false)` WebView 124 sends none, but still stores
+  what sites set (seen in the default and a WebView profile). They are sent once cookies are allowed again. The site
+  sheet says "Blocked: none are sent (N kept)", and Clear site data removes them.
+- **Cache Storage and service workers on older WebView.** Without `DELETE_BROWSING_DATA` (WebView 124 on the AVD),
+  clearing removes cookies, localStorage and IndexedDB but not a PWA's Cache Storage (squoosh.app kept 485 KB). Where
+  WebView has the feature, the code uses `deleteBrowsingData(ForSite)`, which clears everything — **not device-tested
+  here** (no newer WebView on this machine); final testing on a phone with a current WebView should check case 17.
+- Typing the address a tab already shows on an error page does nothing (the same-document check; older navigation code).
+- The insecure warning and "Open unsecured" can only appear in a build that allows cleartext (debug today).
