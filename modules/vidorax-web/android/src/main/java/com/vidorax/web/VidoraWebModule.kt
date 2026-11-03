@@ -5,6 +5,7 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.security.NetworkSecurityPolicy
 import android.os.Environment
 import android.webkit.CookieManager
 import android.webkit.URLUtil
@@ -23,6 +24,7 @@ import com.vidorax.web.network.DnsPrefetcher
 import com.vidorax.web.network.NetworkMediaObserver
 import com.vidorax.web.network.ServiceWorkerRequests
 import com.vidorax.web.network.WebDownloadRoute
+import com.vidorax.web.privacy.SitePrivacy
 import com.vidorax.web.profiles.WebProfiles
 import com.vidorax.web.window.BrowserWindowRecord
 import com.vidorax.web.window.BrowserWindows
@@ -205,6 +207,36 @@ class VidoraWebModule : Module() {
     AsyncFunction("getWebProfileNames") {
       WebProfiles.names()
     }.runOnQueue(Queues.MAIN)
+
+    // B12 privacy controls, for the active browser profile (see SitePrivacy).
+    AsyncFunction("setCookiesEnabled") { enabled: Boolean ->
+      SitePrivacy.setCookiesEnabled(enabled)
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("getCertificate") { viewTag: Int ->
+      SitePrivacy.certificate(webViewFor(viewTag))
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("listSiteData") { promise: Promise ->
+      SitePrivacy.listOrigins { promise.resolve(it) }
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("clearSiteData") { origin: String, promise: Promise ->
+      SitePrivacy.clearOrigin(origin) { promise.resolve(it) }
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("clearAllSiteData") { promise: Promise ->
+      SitePrivacy.clearAll { promise.resolve(true) }
+    }.runOnQueue(Queues.MAIN)
+
+    Function("getCookieCount") { url: String ->
+      SitePrivacy.cookieCount(url)
+    }
+
+    // B12 #124: whether this build may open plain http at all (release builds don't: no cleartext in the manifest).
+    Function("isCleartextAllowed") {
+      NetworkSecurityPolicy.getInstance().isCleartextTrafficPermitted
+    }
 
     // B20 #16 Move tab to new window.
     AsyncFunction("openBrowserWindow") { record: BrowserWindowRecord ->

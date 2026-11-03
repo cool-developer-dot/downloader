@@ -91,6 +91,25 @@ export interface CapturedKeyEvent {
 /** B6 #45: how the system's navigation is shown (Settings.Secure `navigation_mode`). */
 export type NavigationMode = 'gesture' | 'twoButton' | 'threeButton' | 'unknown';
 
+/** B12 #125: a page's certificate (`getCertificate`). Times are milliseconds since 1970. */
+export interface PageCertificate {
+  issuedToName: string | null;
+  issuedToOrganization: string | null;
+  issuedByName: string | null;
+  issuedByOrganization: string | null;
+  validFrom: number | null;
+  validUntil: number | null;
+  /** SHA-256 of the certificate, `AA:BB:…` (Android 10+). */
+  sha256: string | null;
+}
+
+/** B12 #130: one site with stored data (`listSiteData`). Bytes. */
+export interface SiteDataEntry {
+  origin: string;
+  usage: number;
+  quota: number;
+}
+
 /** B20 #16: a tab moved into its own window (`openBrowserWindow`). */
 export interface BrowserWindowRequest {
   /** 1–64 of `A–Z a–z 0–9 _ -`; comes back on every event of this window. */
@@ -185,6 +204,26 @@ export interface VidoraWebModuleApi {
    * host, so a following page load skips the lookup. Invalid hosts are ignored. Missing on older native builds.
    */
   prefetchDns?(host: string): void;
+  /**
+   * B12 #112: all cookies on or off for the active browser profile (WebView keeps it only while the app runs: apply it
+   * at start and after every profile switch). Missing on older native builds.
+   */
+  setCookiesEnabled?(enabled: boolean): Promise<void>;
+  /** B12 #125: the certificate of the page in the WebView with this view tag; null when there is none (no HTTPS). */
+  getCertificate?(viewTag: number): Promise<PageCertificate | null>;
+  /** B12 #130: the sites with stored data (localStorage, IndexedDB, caches…) in the active profile. */
+  listSiteData?(): Promise<SiteDataEntry[]>;
+  /**
+   * B12 #130: deletes one site's storage and the cookies WebView reports for it (host and parent domains, path `/`).
+   * `origin` is `http(s)://host[:port]`; anything else resolves false.
+   */
+  clearSiteData?(origin: string): Promise<boolean>;
+  /** B12 #130: every site's cookies and storage in the active profile. */
+  clearAllSiteData?(): Promise<boolean>;
+  /** B12: how many cookies WebView would send to this address (active profile). */
+  getCookieCount?(url: string): number;
+  /** B12 #124: whether this build may open plain http pages (release builds may not: no cleartext). */
+  isCleartextAllowed?(): boolean;
   /** Persist WebView cookies to disk (call when the app goes to background), the active profile's too (B20). */
   flushCookies(): Promise<void>;
   /**
