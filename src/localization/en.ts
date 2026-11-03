@@ -1,5 +1,6 @@
 import { browserNavEn } from './catalogs/browserNav.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
+import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
 import { browserSettingsEn } from './catalogs/browserSettings.en';
 import { browserTabsEn } from './catalogs/browserTabs.en';
@@ -978,8 +979,16 @@ export const en = {
         message: 'The website could not be loaded.',
       },
       ssl_error: {
-        title: 'Unable to open this page',
-        message: 'The website could not be loaded.',
+        title: 'This connection isn’t secure',
+        message: 'This site’s security certificate couldn’t be verified. Going home is the safe choice.',
+      },
+      https_unavailable: {
+        title: 'No secure version of this site',
+        message: 'HTTPS-only mode opens pages over a secure connection, and this site didn’t answer on one. You can open it unsecured this once.',
+      },
+      https_required: {
+        title: 'No secure version of this site',
+        message: 'VidoraX opens websites only over a secure connection (https), and this site didn’t answer on one, so it can’t be opened.',
       },
       http_error: {
         title: 'Unable to open this page',
@@ -2789,4 +2798,5 @@ export const en = {
   browserAddress: browserAddressEn,
   browserNav: browserNavEn,
   browserProfiles: browserProfilesEn,
+  browserPrivacy: browserPrivacyEn,
 } as const;

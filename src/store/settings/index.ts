@@ -29,6 +29,12 @@ import {
   normalizeSearchRegion,
 } from '@/browser/search/search-engines';
 
+import {
+  normalizeCookiePolicy,
+  parseJavaScriptExceptions,
+  serializeJavaScriptExceptions,
+} from '@/browser/privacy/privacy-settings';
+
 import { createSettingsActions } from './actions';
 import { initialSettingsState } from './state';
 import type { SettingsState, SettingsStore } from './types';
@@ -127,6 +133,12 @@ export const useSettingsStore = createStore<SettingsStore>()(
         scrollSpeed: state.scrollSpeed,
         volumeKeyScroll: state.volumeKeyScroll,
         preloadPages: state.preloadPages,
+        cookiePolicy: state.cookiePolicy,
+        doNotTrack: state.doNotTrack,
+        httpsOnly: state.httpsOnly,
+        insecurePageWarning: state.insecurePageWarning,
+        javaScript: state.javaScript,
+        javaScriptExceptions: state.javaScriptExceptions,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -233,6 +245,16 @@ export const useSettingsStore = createStore<SettingsStore>()(
           volumeKeyScroll:
             typeof raw.volumeKeyScroll === 'boolean' ? raw.volumeKeyScroll : current.volumeKeyScroll,
           preloadPages: raw.preloadPages === undefined ? current.preloadPages : normalizePreloadPages(raw.preloadPages),
+          cookiePolicy: raw.cookiePolicy === undefined ? current.cookiePolicy : normalizeCookiePolicy(raw.cookiePolicy),
+          doNotTrack: typeof raw.doNotTrack === 'boolean' ? raw.doNotTrack : current.doNotTrack,
+          httpsOnly: typeof raw.httpsOnly === 'boolean' ? raw.httpsOnly : current.httpsOnly,
+          insecurePageWarning:
+            typeof raw.insecurePageWarning === 'boolean' ? raw.insecurePageWarning : current.insecurePageWarning,
+          javaScript: typeof raw.javaScript === 'boolean' ? raw.javaScript : current.javaScript,
+          javaScriptExceptions:
+            typeof raw.javaScriptExceptions === 'string'
+              ? serializeJavaScriptExceptions(parseJavaScriptExceptions(raw.javaScriptExceptions))
+              : current.javaScriptExceptions,
         };
       },
     },

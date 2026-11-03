@@ -42,6 +42,20 @@ import type { IntentNavigationContext } from '@/browser/navigation/external-navi
 import { classifyBrowserNavigation } from '@/browser/navigation/browser-navigation-policy';
 import { mediaDetectionEngine } from '@/media-detection';
 import { useHistoryStore } from '@/store/history';
+import { useSettingsStore } from '@/store/settings';
+import { createBrowserError } from '@/browser/utils/errors';
+import { decideHttpNavigation, httpsUpgradeFor } from '@/browser/privacy/https-upgrade';
+import { isJavaScriptAllowed, parseJavaScriptExceptions } from '@/browser/privacy/privacy-settings';
+import {
+  currentHttpPolicy,
+  httpAllowedHosts,
+  noSecureVersionCode,
+  noteHttpsUpgrade,
+  settleUpgrade,
+  takeFailedUpgrade,
+  UPGRADE_SETTLE_DELAY_MS,
+  upgradingHosts,
+} from '@/browser/privacy/privacy.service';
 
 /** Compare main-document URLs ignoring hash (subresource errors use different paths). */
 function isSameDocumentNavigationUrl(a: string, b: string): boolean {
@@ -501,6 +515,9 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
 
   const onLoadEnd = useCallback(
     (url: string) => {
+      // react-native-webview sends a failed load's end right before its error; the error must still see the upgrade.
+      const endedAt = Date.now();
+      setTimeout(() => settleUpgrade(url, endedAt), UPGRADE_SETTLE_DELAY_MS);
       const owning = getOwningTabChrome();
       const state = useBrowserStore.getState();
 
@@ -722,6 +739,18 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
           }),
         ),
       });
+
+      // B12 #124: an upgraded page that didn't answer over https has no secure version; the user decides where the
+      // build can open http. A plain http page the build refused (a restored tab, say) says the same.
+      const upgradedFrom = takeFailedUpgrade(failingUrl);
+      const refusedHttp = /ERR_CLEARTEXT_NOT_PERMITTED/i.test(safeDescription) ? failingUrl : null;
+      if (upgradedFrom || refusedHttp) {
+        setError(createBrowserError(upgradedFrom ? noSecureVersionCode() : 'https_required', { retryUrl: upgradedFrom ?? refusedHttp }));
+        if (!tabId || tabId === useBrowserStore.getState().activeTabId) {
+          browserSyncService.onError();
+        }
+        return;
+      }
 
       if (classification === 'ssl') {
         logBrowserSsl(navId, {
@@ -975,9 +1004,39 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
       return false;
     }
 
+    if (isMainFrame) {
+      const settings = useSettingsStore.getState();
+      // B12 #124: with HTTPS-only on, or in a build that can't open http, a page asked for over http opens over https.
+      const http = decideHttpNavigation(url, currentHttpPolicy(), httpAllowedHosts(), upgradingHosts());
+      if (http.kind === 'upgrade') {
+        noteHttpsUpgrade(http.url, url);
+        logBrowserNav(navId, 'block', { decision: false, decisionReason: 'https_only_upgrade', safeHost: urlMeta.safeHost });
+        setTimeout(() => loadUrl(http.url), 0);
+        return false;
+      }
+      if (http.kind === 'no-secure-version') {
+        // The secure page sent the browser back to http: upgrading again would loop.
+        logBrowserNav(navId, 'block', { decision: false, decisionReason: 'https_redirected_back', safeHost: urlMeta.safeHost });
+        settleUpgrade(httpsUpgradeFor(url, new Set(), 'secure-only'));
+        setError(createBrowserError(noSecureVersionCode(), { retryUrl: url }));
+        if (!tabId || tabId === useBrowserStore.getState().activeTabId) {
+          browserSyncService.onError();
+        }
+        return false;
+      }
+      // B12 #135: a site with the other JavaScript setting reloads through the browser, after the WebView switched.
+      const exceptions = parseJavaScriptExceptions(settings.javaScriptExceptions);
+      const runningNow = isJavaScriptAllowed(getOwningTabChrome().url, settings.javaScript, exceptions);
+      if (isJavaScriptAllowed(url, settings.javaScript, exceptions) !== runningNow) {
+        logBrowserNav(navId, 'block', { decision: false, decisionReason: 'javascript_site_setting', safeHost: urlMeta.safeHost });
+        setTimeout(() => loadUrl(url), 0);
+        return false;
+      }
+    }
+
     logBrowserNav(navId, 'allow', { decision: true, decisionReason: 'http_https' });
     return true;
-  }, [getOwningTabChrome, navigationEpochRef, tabId, webViewInstanceGenerationRef]);
+  }, [getOwningTabChrome, loadUrl, navigationEpochRef, setError, tabId, webViewInstanceGenerationRef]);
 
   return useMemo(
     () => ({

@@ -1,5 +1,6 @@
 import { browserNavUr } from './catalogs/browserNav.ur';
 import { browserProfilesUr } from './catalogs/browserProfiles.ur';
+import { browserPrivacyUr } from './catalogs/browserPrivacy.ur';
 import { browserAddressUr } from './catalogs/browserAddress.ur';
 import { browserSettingsUr } from './catalogs/browserSettings.ur';
 import { browserTabsUr } from './catalogs/browserTabs.ur';
@@ -982,6 +983,16 @@ export const ur: CatalogStrings<typeof en> = {
         title: 'کنکشن محفوظ نہیں',
         message:
           'اس سائٹ کا سیکیورٹی سرٹیفکیٹ تصدیق نہیں ہو سکا۔ ہوم پر جانا محفوظ انتخاب ہے۔',
+      },
+      https_unavailable: {
+        title: 'اس سائٹ کا محفوظ ورژن نہیں',
+        message:
+          'صرف HTTPS موڈ صفحات محفوظ کنکشن پر کھولتا ہے، اور اس سائٹ نے محفوظ کنکشن پر جواب نہیں دیا۔ آپ اسے اس بار غیر محفوظ کھول سکتے ہیں۔',
+      },
+      https_required: {
+        title: 'اس سائٹ کا محفوظ ورژن نہیں',
+        message:
+          'VidoraX ویب سائٹس صرف محفوظ کنکشن (https) پر کھولتا ہے، اور اس سائٹ نے محفوظ کنکشن پر جواب نہیں دیا، اس لیے یہ نہیں کھل سکتی۔',
       },
       http_error: {
         title: 'صفحہ دستیاب نہیں',
@@ -2791,4 +2802,5 @@ export const ur: CatalogStrings<typeof en> = {
   browserAddress: browserAddressUr,
   browserNav: browserNavUr,
   browserProfiles: browserProfilesUr,
+  browserPrivacy: browserPrivacyUr,
 };

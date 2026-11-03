@@ -79,6 +79,18 @@ export interface SettingsState {
   volumeKeyScroll: boolean;
   /** B6 #55: Preload pages 'off' / 'wifi' (default) / 'always'. */
   preloadPages: import('@/browser/preload/preload-policy').PreloadPages;
+  /** B12 #112/#113: 'allow-all' / 'block-third-party' (default) / 'block-all'. */
+  cookiePolicy: import('@/browser/privacy/privacy-settings').CookiePolicy;
+  /** B12 #115: send Do Not Track and Global Privacy Control (default off). */
+  doNotTrack: boolean;
+  /** B12 #124: open http:// pages over https:// (default off). */
+  httpsOnly: boolean;
+  /** B12 #126: warn on a page that isn't secure (default on). */
+  insecurePageWarning: boolean;
+  /** B12 #135: JavaScript for every site (default on)… */
+  javaScript: boolean;
+  /** …except these sites (JSON array of hosts), which are the other way round. */
+  javaScriptExceptions: string;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

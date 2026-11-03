@@ -79,6 +79,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       // B20: WebView and downloads follow the browser profile in use before any page loads; guest data left by an
       // app closed in guest mode is deleted.
       await ensureBrowserProfiles();
+      const { ensurePrivacyControls } = await import('@/browser/privacy/privacy.service');
+      // B12: the profile's cookie jar follows Browser settings → Privacy (WebView keeps it only while the app runs).
+      ensurePrivacyControls();
     } catch (error) {
       if (__DEV__) {
         console.warn('[bootstrap] browser profiles failed', error);

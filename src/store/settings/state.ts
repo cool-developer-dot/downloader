@@ -16,6 +16,7 @@ import { DEFAULT_SEARCH_SHORTCUTS_JSON } from '@/browser/search/search-shortcuts
 import { DEFAULT_TAB_SORT_ORDER } from '@/browser/tabs/tab-list-ops';
 import { DEFAULT_SCROLL_SPEED } from '@/browser/scroll/scroll-speed';
 import { DEFAULT_PRELOAD_PAGES } from '@/browser/preload/preload-policy';
+import { DEFAULT_COOKIE_POLICY, DEFAULT_JAVASCRIPT_EXCEPTIONS_JSON } from '@/browser/privacy/privacy-settings';
 
 import type { SettingsState } from './types';
 import { DEFAULT_AFTER_DOWNLOAD_ACTION } from '@/downloads/v2/after-download';
@@ -63,4 +64,10 @@ export const initialSettingsState: SettingsState = {
   scrollSpeed: DEFAULT_SCROLL_SPEED,
   volumeKeyScroll: false,
   preloadPages: DEFAULT_PRELOAD_PAGES,
+  cookiePolicy: DEFAULT_COOKIE_POLICY,
+  doNotTrack: false,
+  httpsOnly: false,
+  insecurePageWarning: true,
+  javaScript: true,
+  javaScriptExceptions: DEFAULT_JAVASCRIPT_EXCEPTIONS_JSON,
 };

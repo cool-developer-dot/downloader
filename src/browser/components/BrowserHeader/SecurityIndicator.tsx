@@ -8,10 +8,13 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Icon } from '@/components/base/Icon';
+import { Pressable } from '@/components/base/Pressable';
+import { siteInfoRequests } from '@/browser/components/SiteInfo/site-info-requests';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 
 import { BROWSER_OMNIBOX_FOCUS_DURATION_MS } from '@/browser/constants';
+import { isSecurityFailure } from '@/browser/privacy/https-upgrade';
 import { selectSecurityLevel, useBrowserStore } from '@/browser/stores';
 import type { BrowserSecurityLevel } from '@/browser/types';
 
@@ -56,7 +59,10 @@ export const SecurityIndicator = memo(function SecurityIndicator({
 }: SecurityIndicatorProps) {
   const theme = useTheme();
   const { t } = useTranslation();
-  const securityLevel = useBrowserStore(selectSecurityLevel);
+  // B12: an https address whose page failed a security check (certificate, no secure version) isn't secure.
+  const securityFailed = useBrowserStore((s) => isSecurityFailure(s.error?.code));
+  const storedLevel = useBrowserStore(selectSecurityLevel);
+  const securityLevel: BrowserSecurityLevel = securityFailed && storedLevel === 'secure' ? 'insecure' : storedLevel;
   const presentation = resolveSecurityPresentation(securityLevel);
   const progress = useSharedValue(securityLevel === 'secure' ? 1 : 0);
   const opacity = useSharedValue(visible ? 1 : 0);
@@ -93,11 +99,14 @@ export const SecurityIndicator = memo(function SecurityIndicator({
     return null;
   }
 
-  return (
+  // B12: on a web page the lock opens the site information sheet (certificate, cookies, site settings).
+  const interactive = securityLevel !== 'neutral';
+  const indicator = (
     <Animated.View
       testID={testID}
-      accessibilityRole="image"
-      accessibilityLabel={t(presentation.labelKey)}
+      accessibilityRole={interactive ? undefined : 'image'}
+      accessibilityLabel={interactive ? undefined : t(presentation.labelKey)}
+      importantForAccessibility={interactive ? 'no-hide-descendants' : 'auto'}
       style={[{ width: 28, height: 28, alignItems: 'center', justifyContent: 'center' }, animatedStyle]}>
       <Animated.View
         pointerEvents="none"
@@ -113,5 +122,20 @@ export const SecurityIndicator = memo(function SecurityIndicator({
       />
       <Icon name={presentation.icon} size="sm" color={presentation.colorToken} />
     </Animated.View>
+  );
+
+  if (!interactive) {
+    return indicator;
+  }
+  return (
+    <Pressable
+      onPress={() => siteInfoRequests.open()}
+      accessibilityRole="button"
+      accessibilityLabel={`${t(presentation.labelKey)}. ${t('browserPrivacy.siteInfoA11y')}`}
+      accessibilityHint={t('browserPrivacy.siteInfoHint')}
+      hitSlop={10}
+      testID={`${testID}-button`}>
+      {indicator}
+    </Pressable>
   );
 });

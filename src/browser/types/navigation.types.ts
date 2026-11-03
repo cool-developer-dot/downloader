@@ -45,6 +45,10 @@ export type BrowserErrorCode =
   | 'connection_interrupted'
   | 'timeout'
   | 'ssl_error'
+  /** B12 #124: HTTPS-only opened an http page over https and the site didn't answer securely. */
+  | 'https_unavailable'
+  /** B12 #124: the same in a build that can't open plain http at all (release): nothing to fall back to. */
+  | 'https_required'
   | 'http_error'
   | 'unsupported'
   | 'process_terminated'

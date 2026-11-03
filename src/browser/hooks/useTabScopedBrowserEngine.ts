@@ -23,6 +23,8 @@ import {
 import { describePlatformPage } from '@/media-detection/platform';
 import { isSameDocumentUrl } from '@/media-detection/utils';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
+import { httpsUpgradeFor } from '@/browser/privacy/https-upgrade';
+import { currentHttpPolicy, httpAllowedHosts, noteHttpsUpgrade } from '@/browser/privacy/privacy.service';
 
 type WebViewWithHistory = WebView & {
   clearHistory?: () => void;
@@ -180,9 +182,16 @@ export function useTabScopedBrowserEngine(tabId: string): BrowserEngineContextVa
 
   const loadUrl = useCallback(
     (url: string) => {
-      const trimmed = url.trim();
+      let trimmed = url.trim();
       if (!trimmed) {
         return;
+      }
+      // B12 #124: the browser's own loads (typed, restored, reloaded) go over https too, with HTTPS-only on or in a
+      // build that can't open http.
+      const upgraded = httpsUpgradeFor(trimmed, httpAllowedHosts(), currentHttpPolicy());
+      if (upgraded) {
+        noteHttpsUpgrade(upgraded, trimmed);
+        trimmed = upgraded;
       }
 
       pendingNativeBackRef.current = false;

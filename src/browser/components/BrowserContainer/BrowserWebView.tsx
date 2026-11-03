@@ -62,6 +62,13 @@ import {
   subscribeBrowserRouteVisible,
 } from '@/browser/webview/webview-activity';
 import { clearTabWebViewTag, setTabWebViewTag } from '@/browser/webview/webview-view-tags';
+import { DO_NOT_TRACK_HEADERS, DO_NOT_TRACK_PAGE_SCRIPT } from '@/browser/privacy/privacy-page-script';
+import {
+  isJavaScriptAllowed,
+  normalizeCookiePolicy,
+  parseJavaScriptExceptions,
+} from '@/browser/privacy/privacy-settings';
+import { useSettingsStore } from '@/store/settings';
 
 /**
  * Page DevTools in a pipeline-trace build (EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE=1, inlined at bundle time) — a device-test
@@ -122,6 +129,21 @@ export const BrowserWebView = memo(function BrowserWebView({
     injectedJavaScriptBeforeContentLoaded: mediaBeforeContent,
     onMessage: onMediaDetectionMessage,
   } = useMediaDetectionBridge();
+
+  // B12: the privacy settings that are WebView props (per profile, B20).
+  const cookiePolicy = useSettingsStore((s) => normalizeCookiePolicy(s.cookiePolicy));
+  const doNotTrack = useSettingsStore((s) => s.doNotTrack === true);
+  const javaScriptDefault = useSettingsStore((s) => s.javaScript !== false);
+  const javaScriptExceptionsRaw = useSettingsStore((s) => s.javaScriptExceptions);
+  const javaScriptExceptions = useMemo(
+    () => parseJavaScriptExceptions(javaScriptExceptionsRaw),
+    [javaScriptExceptionsRaw],
+  );
+  const owningTabUrl = useBrowserStore((s) =>
+    tabId ? (s.tabs.find((tab) => tab.id === tabId)?.url ?? '') : s.currentUrl,
+  );
+  // #135: the site this tab is on decides; the navigation guard reloads through the browser when the next site differs.
+  const javaScriptEnabled = isJavaScriptAllowed(owningTabUrl, javaScriptDefault, javaScriptExceptions);
 
   const [pullToRefreshEnabled, setPullToRefreshEnabled] = useState(() =>
     computePullToRefreshEnabled(useBrowserStore.getState()),
@@ -509,7 +531,11 @@ export const BrowserWebView = memo(function BrowserWebView({
     });
   }, [appliedDesktopMode, isActive, scalesPageToFit, tabId, userAgent]);
 
-  const webViewSource = useMemo(() => ({ uri: sourceUri }), [sourceUri]);
+  // #115: the pages the browser opens itself carry the Do Not Track headers.
+  const webViewSource = useMemo(
+    () => (doNotTrack ? { uri: sourceUri, headers: { ...DO_NOT_TRACK_HEADERS } } : { uri: sourceUri }),
+    [doNotTrack, sourceUri],
+  );
 
   const injectedJavaScript = useMemo(
     () => `${chromeBridge.injectedJavaScript}\n${mediaInjected}`,
@@ -518,8 +544,10 @@ export const BrowserWebView = memo(function BrowserWebView({
 
   const injectedJavaScriptBeforeContentLoaded = useMemo(
     () =>
-      `${chromeBridge.injectedJavaScriptBeforeContentLoaded}\n${mediaBeforeContent}`,
-    [chromeBridge.injectedJavaScriptBeforeContentLoaded, mediaBeforeContent],
+      `${chromeBridge.injectedJavaScriptBeforeContentLoaded}\n${mediaBeforeContent}${
+        doNotTrack ? `\n${DO_NOT_TRACK_PAGE_SCRIPT}` : ''
+      }`,
+    [chromeBridge.injectedJavaScriptBeforeContentLoaded, doNotTrack, mediaBeforeContent],
   );
 
   const finalizeLoadEnd = useCallback(
@@ -711,9 +739,10 @@ export const BrowserWebView = memo(function BrowserWebView({
       source={webViewSource}
       style={[styles.webview, { backgroundColor: theme.colors.background }]}
       {...(userAgent ? { userAgent } : {})}
-      javaScriptEnabled={config.javaScriptEnabled}
+      javaScriptEnabled={config.javaScriptEnabled && javaScriptEnabled}
       domStorageEnabled={config.domStorageEnabled}
-      thirdPartyCookiesEnabled={config.thirdPartyCookiesEnabled}
+      // B12 #113: third-party cookies only with "Allow all cookies" (#112 "Block all" turns the jar off natively).
+      thirdPartyCookiesEnabled={config.thirdPartyCookiesEnabled && cookiePolicy === 'allow-all'}
       sharedCookiesEnabled={config.sharedCookiesEnabled}
       cacheEnabled={config.cacheEnabled}
       cacheMode={cacheMode}

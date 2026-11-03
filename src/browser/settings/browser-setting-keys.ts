@@ -17,6 +17,12 @@ export const BROWSER_SETTING_KEYS = [
   'scrollSpeed',
   'volumeKeyScroll',
   'preloadPages',
+  'cookiePolicy',
+  'doNotTrack',
+  'httpsOnly',
+  'insecurePageWarning',
+  'javaScript',
+  'javaScriptExceptions',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

@@ -49,6 +49,8 @@ import { isBrowserHomeUrl } from '@/browser/utils';
 import { BrowserMediaDownloadBar, browserMediaActionService } from '@/browser/media-actions';
 import { MediaDetectionHost } from '@/media-detection';
 import { ProfileSwitcherHost } from '@/browser/components/ProfileSwitcher/ProfileSwitcherHost';
+import { InsecurePageBar } from '@/browser/components/SiteInfo/InsecurePageBar';
+import { SiteInfoHost } from '@/browser/components/SiteInfo/SiteInfoHost';
 import { logPageFlow, safePageHostname } from '@/media-detection/services/page-flow-diagnostics.service';
 import { isSameDocumentUrl } from '@/media-detection/utils';
 import { useTourTargetRef } from '@/tour/tour-targets';
@@ -219,6 +221,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
       testID="browser-screen">
       <MediaDetectionHost />
       <ProfileSwitcherHost />
+      <SiteInfoHost />
       {addressBarPosition === 'top' ? (
         <AutoHideHeader position="top">
           <BrowserHeader
@@ -236,6 +239,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
           overlayBlocking={tabSwitcherVisible || webFullscreenActive}
           onRequestDownload={handleRequestDownload}
         />
+        <InsecurePageBar visible={pageControlsVisible && !tabSwitcherVisible} />
         <TabUndoSnackbar visible={pageControlsVisible} bottom={12} />
         <BackgroundTabSnackbar visible={pageControlsVisible} bottom={12} />
         <ScrollJumpButton visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
