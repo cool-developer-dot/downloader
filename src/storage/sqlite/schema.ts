@@ -13,6 +13,18 @@ export async function configureDatabasePragmas(db: SQLiteDatabase): Promise<void
 }
 
 export async function applySchema(db: SQLiteDatabase): Promise<void> {
+  await applyBrowserTables(db);
+  await applyCatalogSchema(db);
+  await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+}
+
+/**
+ * The browser's own tables: history, bookmarks, recent searches, recent URLs (idempotent CREATE IF NOT EXISTS).
+ * B20: the app database holds the default browser profile's; every other profile's database (browser-database.ts)
+ * has only these. A package that changes them adds the change here, checking the real schema (IF NOT EXISTS,
+ * PRAGMA table_info before ALTER TABLE), so it runs safely on both kinds of database and twice.
+ */
+export async function applyBrowserTables(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS ${TABLE_NAMES.browserHistory} (
       id TEXT PRIMARY KEY NOT NULL,
@@ -79,9 +91,6 @@ export async function applySchema(db: SQLiteDatabase): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_recent_urls_hostname
       ON ${TABLE_NAMES.recentUrls}(hostname);
   `);
-
-  await applyCatalogSchema(db);
-  await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 
 /**

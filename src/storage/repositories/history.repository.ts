@@ -14,7 +14,11 @@ import {
 } from '@/storage/types';
 import { createId, extractHostname, normalizeUrl, nowIso } from '@/storage/utils';
 
-import { getDatabase, withDatabaseTransaction } from '../sqlite/client';
+// B20: the active browser profile's database (the app database for the default profile).
+import {
+  getBrowserDatabase as getDatabase,
+  withBrowserDatabaseTransaction as withDatabaseTransaction,
+} from '../sqlite/browser-database';
 
 /** Coalesce rapid revisits of the same URL into a single local row. */
 export const LOCAL_HISTORY_DEDUP_WINDOW_MS = 5 * 60 * 1000;

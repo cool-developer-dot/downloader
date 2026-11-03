@@ -48,6 +48,7 @@ import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
 import { isBrowserHomeUrl } from '@/browser/utils';
 import { BrowserMediaDownloadBar, browserMediaActionService } from '@/browser/media-actions';
 import { MediaDetectionHost } from '@/media-detection';
+import { ProfileSwitcherHost } from '@/browser/components/ProfileSwitcher/ProfileSwitcherHost';
 import { logPageFlow, safePageHostname } from '@/media-detection/services/page-flow-diagnostics.service';
 import { isSameDocumentUrl } from '@/media-detection/utils';
 import { useTourTargetRef } from '@/tour/tour-targets';
@@ -217,6 +218,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
       edges={['top', 'left', 'right']}
       testID="browser-screen">
       <MediaDetectionHost />
+      <ProfileSwitcherHost />
       {addressBarPosition === 'top' ? (
         <AutoHideHeader position="top">
           <BrowserHeader

@@ -74,6 +74,17 @@ export async function runAppInitializer(): Promise<RoutePath> {
 
     syncMmkvFromStores();
 
+    try {
+      const { ensureBrowserProfiles } = await import('@/browser/profiles/profile-service');
+      // B20: WebView and downloads follow the browser profile in use before any page loads; guest data left by an
+      // app closed in guest mode is deleted.
+      await ensureBrowserProfiles();
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[bootstrap] browser profiles failed', error);
+      }
+    }
+
     await Promise.all([
       (async () => {
         try {
@@ -184,6 +195,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureIncomingLinkHandling } = await import('@/browser/services/incoming-link.service');
       // A link shared to VidoraX, or opened through it as the device's browser, lands in the browser tab.
       ensureIncomingLinkHandling();
+      const { ensureBrowserWindowEvents } = await import('@/browser/profiles/browser-window.service');
+      // B20 #16: tabs moved to their own window come back, and their visits reach history.
+      ensureBrowserWindowEvents();
       const { ensureIncomingMediaHandling } = await import('@/player/incoming-media.runtime');
       // A video or audio file opened with VidoraX from another app plays as an external source (IncomingMediaHost).
       ensureIncomingMediaHandling();

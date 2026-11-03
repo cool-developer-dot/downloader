@@ -1,6 +1,7 @@
 import { BROWSER_HOMEPAGE } from '@/browser/constants';
 import { mmkvKeys } from '@/storage/constants';
 import { mmkvGetObject, mmkvRemove, mmkvSetObject } from '@/storage/mmkv';
+import { profileScopedKey, subscribeActiveProfile } from '@/storage/profile/active-profile';
 
 import {
   pushClosedTabs,
@@ -23,10 +24,32 @@ let stack: ClosedTabEntry[] | null = null;
 const memoryOnlyIds = new Set<string>();
 const listeners = new Set<Listener>();
 
+/** B20: each browser profile has its own closed tabs. */
+function closedTabsKey(): string {
+  return profileScopedKey(mmkvKeys.browserClosedTabs);
+}
+
+function notify(): void {
+  for (const listener of listeners) {
+    try {
+      listener();
+    } catch {
+      // ignore
+    }
+  }
+}
+
+// B20: another profile's closed tabs are read fresh; the in-memory-only ones (private tabs) end with the profile.
+subscribeActiveProfile(() => {
+  stack = null;
+  memoryOnlyIds.clear();
+  notify();
+});
+
 function load(): ClosedTabEntry[] {
   if (stack == null) {
     try {
-      stack = sanitizeClosedTabs(mmkvGetObject<unknown>(mmkvKeys.browserClosedTabs), BROWSER_HOMEPAGE);
+      stack = sanitizeClosedTabs(mmkvGetObject<unknown>(closedTabsKey()), BROWSER_HOMEPAGE);
     } catch {
       stack = [];
     }
@@ -42,21 +65,15 @@ function save(next: ClosedTabEntry[]): void {
   try {
     const entries = next.filter((e) => !memoryOnlyIds.has(e.id));
     if (entries.length === 0) {
-      mmkvRemove(mmkvKeys.browserClosedTabs);
+      mmkvRemove(closedTabsKey());
     } else {
       const envelope: ClosedTabsEnvelope = { version: 1, entries };
-      mmkvSetObject(mmkvKeys.browserClosedTabs, envelope);
+      mmkvSetObject(closedTabsKey(), envelope);
     }
   } catch {
     // Storage unavailable: the in-memory stack still serves this session.
   }
-  for (const listener of listeners) {
-    try {
-      listener();
-    } catch {
-      // ignore
-    }
-  }
+  notify();
 }
 
 export const closedTabsService = {

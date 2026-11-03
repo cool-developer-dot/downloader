@@ -25,6 +25,18 @@ export const mmkvKeys = {
   browserTabs: 'vidorax.mmkv.browser.tabs.v1',
   /** B1 — the last 10 closed tabs (URL, title, position, pinned), for Reopen closed tab and Undo (local only). */
   browserClosedTabs: 'vidorax.mmkv.browser.closedTabs.v1',
+  /** B20 — the browser profiles (id, name, colour) and which one is in use; see src/storage/profile. */
+  browserProfiles: 'vidorax.mmkv.browser.profiles.v1',
+  browserProfileActive: 'vidorax.mmkv.browser.profiles.active.v1',
+  /** B20 — the profile guest mode returns to, and guest data still to wipe (the app closed during guest mode). */
+  browserProfileGuestReturn: 'vidorax.mmkv.browser.profiles.guestReturn.v1',
+  browserProfileGuestCleanup: 'vidorax.mmkv.browser.profiles.guestCleanup.v1',
+  /** B20 — WebView profiles of deleted profiles (and ended guest sessions) not removed yet (a WebView still used them). */
+  browserProfilePendingDeletes: 'vidorax.mmkv.browser.profiles.pendingDeletes.v2',
+  /** B20 — the current guest session's WebView profile suffix: every guest session starts with a new, empty one. */
+  browserProfileGuestSession: 'vidorax.mmkv.browser.profiles.guestSession.v1',
+  /** B20 — each profile's browser settings while another profile is in use (`@<id>`). */
+  browserProfileSettings: 'vidorax.mmkv.browser.profiles.settings.v1',
   browserDesktopMode: 'vidorax.mmkv.browser.desktopMode',
   /** True when the user explicitly toggled Desktop Site (overrides platform recommendation). */
   browserDesktopModeUserExplicit: 'vidorax.mmkv.browser.desktopModeUserExplicit',

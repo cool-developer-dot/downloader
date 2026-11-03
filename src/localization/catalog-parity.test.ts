@@ -41,4 +41,14 @@ describe('English / Urdu catalog parity', () => {
 
     assert.deepEqual(mismatched, []);
   });
+
+  // translate() replaces `{name}`; `{{name}}` would show the user stray braces around the value.
+  it('writes placeholders with single braces', () => {
+    const doubled = [...Object.entries(enStrings), ...Object.entries(urStrings)]
+      .filter(([, value]) => /\{\{\w+\}\}/.test(value))
+      .map(([key]) => key)
+      .sort();
+
+    assert.deepEqual(doubled, []);
+  });
 });

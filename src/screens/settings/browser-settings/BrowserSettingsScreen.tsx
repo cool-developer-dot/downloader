@@ -8,13 +8,15 @@ import { navigation } from '@/navigation';
 
 import { useSettingsTokens } from '../theme/settings-tokens';
 import { AddressBarSettingsSection } from './AddressBarSettingsSection';
+import { BrowserDataSection } from './BrowserDataSection';
 import { NavigationSettingsSection } from './NavigationSettingsSection';
+import { ProfilesSettingsSection } from './ProfilesSettingsSection';
 import { SearchSettingsSection } from './SearchSettingsSection';
 
 /**
  * Browser settings (route `/browser-settings`). One section component per area, each added by the package that
  * needs it: Search (B5), Address bar (B4), Tabs, Page display (B16), Data saver (B18), Startup (B21), Developer (B19).
- * Faran's privacy and permission sections are his own files.
+ * Faran's: Profiles and guest mode, Back up and export (B20), Privacy (B12).
  */
 export const BrowserSettingsScreen = memo(function BrowserSettingsScreen() {
   const settingsTokens = useSettingsTokens();
@@ -39,6 +41,8 @@ export const BrowserSettingsScreen = memo(function BrowserSettingsScreen() {
         <SearchSettingsSection />
         <AddressBarSettingsSection />
         <NavigationSettingsSection />
+        <ProfilesSettingsSection />
+        <BrowserDataSection />
       </View>
     </SafeAreaScreen>
   );

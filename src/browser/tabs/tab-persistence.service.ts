@@ -8,6 +8,7 @@ import {
 import { isBrowserHomeUrl, isSecureUrl } from '@/browser/utils';
 import { mmkvKeys } from '@/storage/constants';
 import { mmkvGetObject, mmkvRemove, mmkvSetObject } from '@/storage/mmkv';
+import { profileScopedKey, subscribeActiveProfile } from '@/storage/profile/active-profile';
 
 import {
   BROWSER_TABS_SCHEMA_VERSION,
@@ -55,12 +56,19 @@ let memoryCache: PersistedBrowserTabsEnvelope | null = null;
 let writeTimer: ReturnType<typeof setTimeout> | null = null;
 let pendingWrite: PersistedBrowserTabsEnvelope | null = null;
 
+/** B20: each browser profile has its own open tabs. */
+function tabsKey(): string {
+  return profileScopedKey(mmkvKeys.browserTabs);
+}
+
 function scheduleWrite(envelope: PersistedBrowserTabsEnvelope): void {
   memoryCache = envelope;
   pendingWrite = envelope;
   if (writeTimer) {
     clearTimeout(writeTimer);
   }
+  // The profile these tabs belong to, even if the write lands after a profile switch.
+  const key = tabsKey();
   writeTimer = setTimeout(() => {
     writeTimer = null;
     const next = pendingWrite;
@@ -68,7 +76,7 @@ function scheduleWrite(envelope: PersistedBrowserTabsEnvelope): void {
     if (!next) {
       return;
     }
-    mmkvSetObject(mmkvKeys.browserTabs, next);
+    mmkvSetObject(key, next);
   }, TAB_PERSIST_DEBOUNCE_MS);
 }
 
@@ -116,7 +124,7 @@ export function buildFreshTabEngineState(): HydratedTabEngineState {
  */
 export function hydrateTabEngineState(): HydratedTabEngineState {
   try {
-    const raw = memoryCache ?? mmkvGetObject<PersistedBrowserTabsEnvelope>(mmkvKeys.browserTabs);
+    const raw = memoryCache ?? mmkvGetObject<PersistedBrowserTabsEnvelope>(tabsKey());
     const envelope = sanitizeEnvelope(raw);
     if (!envelope) {
       return buildFreshTabEngineState();
@@ -170,10 +178,10 @@ export function flushTabEnginePersistence(): void {
     writeTimer = null;
   }
   if (pendingWrite) {
-    mmkvSetObject(mmkvKeys.browserTabs, pendingWrite);
+    mmkvSetObject(tabsKey(), pendingWrite);
     pendingWrite = null;
   } else if (memoryCache) {
-    mmkvSetObject(mmkvKeys.browserTabs, memoryCache);
+    mmkvSetObject(tabsKey(), memoryCache);
   }
 }
 
@@ -184,7 +192,7 @@ export function clearPersistedTabEngine(): void {
     clearTimeout(writeTimer);
     writeTimer = null;
   }
-  mmkvRemove(mmkvKeys.browserTabs);
+  mmkvRemove(tabsKey());
 }
 
 /** Test helper — inject envelope without debounce. */
@@ -192,7 +200,7 @@ export function __dangerouslyWriteTabEnvelopeForTests(
   envelope: PersistedBrowserTabsEnvelope,
 ): void {
   memoryCache = envelope;
-  mmkvSetObject(mmkvKeys.browserTabs, envelope);
+  mmkvSetObject(tabsKey(), envelope);
 }
 
 export function __resetTabPersistenceForTests(): void {
@@ -216,3 +224,13 @@ export function resolveActiveChromeSeed(state: HydratedTabEngineState): {
     isSecure: isSecureUrl(active.url),
   };
 }
+
+// B20: another profile's tabs are read fresh (the profile switch flushes these first).
+subscribeActiveProfile(() => {
+  memoryCache = null;
+  pendingWrite = null;
+  if (writeTimer) {
+    clearTimeout(writeTimer);
+    writeTimer = null;
+  }
+});

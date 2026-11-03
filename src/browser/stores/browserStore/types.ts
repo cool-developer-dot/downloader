@@ -27,7 +27,8 @@ export interface BrowserActions {
 
   /** Phase 3B tab engine */
   createTab: (options?: { url?: string; title?: string }) => CreateTabResult;
-  closeTab: (tabId: string) => CloseTabResult;
+  /** `record: false` (B20 #16, a tab moved to its own window): not kept for Reopen closed tab, no Undo. */
+  closeTab: (tabId: string, options?: { record?: boolean }) => CloseTabResult;
   switchTab: (tabId: string) => SwitchTabResult;
   updateTab: (tabId: string, patch: Partial<BrowserTab>) => void;
   /**

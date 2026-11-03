@@ -3,6 +3,11 @@ import { Directory, File, Paths } from 'expo-file-system';
 import { getVidoraWeb, isVidoraWebAvailable } from '@modules/vidorax-web';
 import { isBrowserHomeUrl } from '@/browser/utils';
 import { getTabWebViewTag } from '@/browser/webview/webview-view-tags';
+import {
+  DEFAULT_PROFILE_ID,
+  getActiveProfileId,
+  subscribeActiveProfile,
+} from '@/storage/profile/active-profile';
 
 import { shouldPersistForTab } from './tab-privacy';
 
@@ -11,6 +16,9 @@ import { shouldPersistForTab } from './tab-privacy';
  * `snapshotWebView`), taken when the user leaves a tab and when the tab switcher opens. A snapshot is kept while its
  * tab is open or can still be reopened from the closed-tab stack, and deleted with it (`prune`). Start-page tabs and
  * tabs `shouldPersistForTab` refuses get none.
+ *
+ * B20: a browser profile other than the default names its files `pf-<profileId>-<tabId>.jpg`, so each profile only
+ * sees, prunes and clears its own previews.
  */
 
 export const TAB_SNAPSHOT_MAX_WIDTH = 540;
@@ -48,6 +56,20 @@ function snapshotDirectory(): Directory {
   return new Directory(Paths.cache, DIRECTORY);
 }
 
+/** The file name (without `.jpg`) of a tab's preview in a profile; at most 64 characters (VidoraWeb's key rule). */
+function fileKey(tabId: string, profileId: string = getActiveProfileId()): string {
+  return profileId === DEFAULT_PROFILE_ID ? tabId : `pf-${profileId}-${tabId}`;
+}
+
+/** The tab a preview file belongs to in this profile, or null for another profile's file. */
+function tabIdOfFile(fileName: string, profileId: string): string | null {
+  if (!fileName.endsWith('.jpg')) return null;
+  const base = fileName.slice(0, -'.jpg'.length);
+  if (profileId === DEFAULT_PROFILE_ID) return base.startsWith('pf-') ? null : base;
+  const prefix = `pf-${profileId}-`;
+  return base.startsWith(prefix) ? base.slice(prefix.length) : null;
+}
+
 /** After a restart the files are still there: learn them once, lazily. */
 function scanOnce(): void {
   if (scanned) return;
@@ -55,9 +77,10 @@ function scanOnce(): void {
   try {
     const dir = snapshotDirectory();
     if (!dir.exists) return;
+    const profileId = getActiveProfileId();
     for (const entry of dir.list()) {
-      if (entry instanceof File && entry.name.endsWith('.jpg')) {
-        const id = entry.name.slice(0, -'.jpg'.length);
+      const id = entry instanceof File ? tabIdOfFile(entry.name, profileId) : null;
+      if (entry instanceof File && id) {
         if (!snapshots.has(id)) {
           snapshots.set(id, { uri: entry.uri, aspect: null, takenAt: entry.modificationTime ?? 0 });
         }
@@ -70,7 +93,7 @@ function scanOnce(): void {
 
 function deleteFile(tabId: string): void {
   try {
-    const file = new File(Paths.cache, DIRECTORY, `${tabId}.jpg`);
+    const file = new File(Paths.cache, DIRECTORY, `${fileKey(tabId)}.jpg`);
     if (file.exists) file.delete();
   } catch {
     // Best effort; the cache is the system's to clear anyway.
@@ -107,7 +130,10 @@ export const tabSnapshots = {
     if (typeof web.snapshotWebView !== 'function') return;
     inFlight.add(tab.id);
     try {
-      const shot = await web.snapshotWebView(viewTag, TAB_SNAPSHOT_MAX_WIDTH, tab.id);
+      const profileId = getActiveProfileId();
+      const shot = await web.snapshotWebView(viewTag, TAB_SNAPSHOT_MAX_WIDTH, fileKey(tab.id, profileId));
+      // The user switched profiles while it was taken: the file belongs to the old profile, which scans it later.
+      if (profileId !== getActiveProfileId()) return;
       if (shot && shot.width > 0 && shot.height > 0) {
         scanOnce();
         snapshots.set(tab.id, { uri: shot.uri, aspect: shot.width / shot.height, takenAt: Date.now() });
@@ -141,17 +167,31 @@ export const tabSnapshots = {
     deleteFile(tabId);
   },
 
-  /** Clear browsing data (B10): every snapshot, open tabs included. */
+  /** Clear browsing data (B10): every snapshot of this profile, open tabs included. */
   clearAll(): void {
     scanOnce();
     for (const id of [...snapshots.keys()]) deleteFile(id);
     snapshots.clear();
-    try {
-      const dir = snapshotDirectory();
-      if (dir.exists) dir.delete();
-    } catch {
-      // ignore
-    }
     emit();
   },
+
+  /** B20: every preview of a profile being deleted (or of guest mode when it ends). */
+  deleteProfile(profileId: string): void {
+    try {
+      const dir = snapshotDirectory();
+      if (!dir.exists) return;
+      for (const entry of dir.list()) {
+        if (entry instanceof File && tabIdOfFile(entry.name, profileId)) entry.delete();
+      }
+    } catch {
+      // Best effort; the cache is the system's to clear anyway.
+    }
+  },
 };
+
+// B20: another profile's previews are learnt fresh.
+subscribeActiveProfile(() => {
+  snapshots.clear();
+  scanned = false;
+  emit();
+});

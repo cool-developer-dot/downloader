@@ -13,7 +13,11 @@ import {
 } from '@/storage/types';
 import { createId, normalizeSearchQuery, nowIso } from '@/storage/utils';
 
-import { getDatabase, withDatabaseTransaction } from '../sqlite/client';
+// B20: the active browser profile's database (the app database for the default profile).
+import {
+  getBrowserDatabase as getDatabase,
+  withBrowserDatabaseTransaction as withDatabaseTransaction,
+} from '../sqlite/browser-database';
 
 interface RecentSearchRow {
   id: string;

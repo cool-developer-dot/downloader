@@ -27,6 +27,11 @@ import {
 } from '@/navigation';
 import { useTranslation } from '@/localization';
 import { useBookmarksStore } from '@/store/bookmarks';
+import { profileSwitcherRequests } from '@/browser/components/ProfileSwitcher/profile-switcher-requests';
+import { canMoveTabToWindow, moveTabToWindow } from '@/browser/profiles/browser-window.service';
+import { GUEST_PROFILE, profileDisplayName } from '@/browser/profiles/profile-registry';
+import { useProfilesStore } from '@/browser/profiles/profile-service';
+import { useTheme } from '@/hooks/use-theme';
 import { normalizeUrl } from '@/storage/utils';
 import { batchAddPrefill } from '@/screens/batch-add/batch-add-prefill';
 import { buildFaviconUrl } from '@/screens/bookmarks/utils/bookmark-format';
@@ -48,7 +53,8 @@ export function useBrowserMenuActions({
   onClose,
   onFeedback,
 }: UseBrowserMenuActionsOptions): UseBrowserMenuActionsResult {
-  const { t, language } = useTranslation();
+  const { t, language, rtl } = useTranslation();
+  const theme = useTheme();
 
   const currentUrl = useBrowserStore(selectCurrentUrl);
   const pageTitle = useBrowserStore(selectPageTitle);
@@ -108,6 +114,49 @@ export function useBrowserMenuActions({
       AccessibilityInfo.announceForAccessibility(t('browserTabs.reopened'));
     }
   }, [onClose, t]);
+
+  // B20 #207: the profile switcher.
+  const profileLabel = useProfilesStore((state) => {
+    if (state.activeId === GUEST_PROFILE) return null;
+    const profile = state.profiles.find((p) => p.id === state.activeId);
+    return profile ? profileDisplayName(profile, t('browserProfiles.defaultName')) : null;
+  });
+  const handleProfile = useCallback(() => {
+    onClose();
+    profileSwitcherRequests.open();
+  }, [onClose]);
+
+  // B20 #16: this tab in a window of its own.
+  const activeTab = useBrowserStore((state) => state.tabs.find((tab) => tab.id === state.activeTabId) ?? null);
+  const canMoveToWindow = canMoveTabToWindow(activeTab);
+  const handleMoveToWindow = useCallback(async () => {
+    onClose();
+    const tabId = useBrowserStore.getState().activeTabId;
+    const outcome = await moveTabToWindow(tabId, {
+      rtl: rtl.isRtl,
+      dark: theme.mode === 'dark',
+      colors: {
+        background: theme.colors.background,
+        surface: theme.colors.surface,
+        text: theme.colors.textPrimary,
+        textSecondary: theme.colors.textSecondary,
+        accent: theme.colors.primary,
+      },
+      labels: {
+        back: t('browserProfiles.windowBack'),
+        forward: t('browserProfiles.windowForward'),
+        reload: t('browserProfiles.windowReload'),
+        stop: t('browserProfiles.windowStop'),
+        moveBack: t('browserProfiles.windowMoveBack'),
+        close: t('browserProfiles.windowClose'),
+      },
+    });
+    if (outcome === 'moved') {
+      AccessibilityInfo.announceForAccessibility(t('browserProfiles.moved'));
+    } else if (outcome === 'failed') {
+      onFeedback?.({ message: t('browserProfiles.moveFailed'), tone: 'neutral' });
+    }
+  }, [onClose, onFeedback, rtl.isRtl, t, theme]);
 
   // B1 #7: the same page in a new tab right after this one.
   const handleDuplicateTab = useCallback(() => {
@@ -359,6 +408,12 @@ export function useBrowserMenuActions({
         case 'duplicate_tab':
           handleDuplicateTab();
           break;
+        case 'move_to_window':
+          void handleMoveToWindow();
+          break;
+        case 'profile':
+          handleProfile();
+          break;
         case 'search_site':
           handleSearchSite();
           break;
@@ -427,6 +482,8 @@ export function useBrowserMenuActions({
       handleSettings,
       handleShare,
       handleTranslate,
+      handleMoveToWindow,
+      handleProfile,
     ],
   );
 
@@ -436,6 +493,16 @@ export function useBrowserMenuActions({
       : t('browser.addBookmark');
 
     return [
+      {
+        id: 'profile',
+        icon: profileLabel ? 'account-circle-outline' : 'account-question-outline',
+        label: profileLabel ? t('browserProfiles.menuProfile', { name: profileLabel }) : t('browserProfiles.menuGuest'),
+        accessibilityLabel: profileLabel
+          ? t('browserProfiles.menuProfileA11y', { name: profileLabel })
+          : t('browserProfiles.leaveGuest'),
+        kind: 'action',
+        enabled: true,
+      },
       {
         id: 'active_downloads',
         icon: 'download-outline',
@@ -518,6 +585,14 @@ export function useBrowserMenuActions({
         accessibilityLabel: t('browserTabs.duplicate'),
         kind: 'action',
         enabled: hasValidPage,
+      },
+      {
+        id: 'move_to_window',
+        icon: 'dock-window',
+        label: t('browserProfiles.moveToWindow'),
+        accessibilityLabel: t('browserProfiles.moveToWindowA11y'),
+        kind: 'action',
+        enabled: canMoveToWindow,
       },
       {
         id: 'add_bookmark',
@@ -626,9 +701,11 @@ export function useBrowserMenuActions({
     autoScrollOn,
     bookmarkPending,
     bookmarked,
+    canMoveToWindow,
     desktopMode,
     hasClosedTabs,
     hasValidPage,
+    profileLabel,
     t,
     translateUrl,
   ]);

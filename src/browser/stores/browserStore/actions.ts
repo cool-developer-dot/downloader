@@ -345,7 +345,7 @@ export function createBrowserActions(
       return result;
     },
 
-    closeTab: (tabId) => {
+    closeTab: (tabId, options) => {
       const state = get();
       const closing = state.tabs.find((t) => t.id === tabId);
       const closingIndex = state.tabs.findIndex((t) => t.id === tabId);
@@ -375,7 +375,7 @@ export function createBrowserActions(
       persistTabs(get());
       browserMediaActionService.setActiveTab(next.activeTabId);
       // B1 #3: remember it for Reopen closed tab, and offer Undo.
-      if (closing) {
+      if (closing && options?.record !== false) {
         recordClosedTabs([{ tab: closing, index: closingIndex }], {
           replacementHomeTabId: result.status === 'REPLACED_HOME' ? result.tab.id : null,
           activeTabId: state.activeTabId,

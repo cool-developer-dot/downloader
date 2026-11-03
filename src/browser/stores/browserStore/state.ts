@@ -19,7 +19,8 @@ export const initialBrowserSessionState = {
   error: null,
 };
 
-function resolveHydratedBrowserState(): BrowserState {
+/** The browser state from the active profile's saved tabs (B20: also used when the profile changes). */
+export function hydrateBrowserState(): BrowserState {
   const tabState = hydrateTabEngineState();
   const seed = resolveActiveChromeSeed(tabState);
 
@@ -42,4 +43,4 @@ function resolveHydratedBrowserState(): BrowserState {
   };
 }
 
-export const initialBrowserState: BrowserState = resolveHydratedBrowserState();
+export const initialBrowserState: BrowserState = hydrateBrowserState();

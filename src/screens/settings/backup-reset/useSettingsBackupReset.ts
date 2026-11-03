@@ -27,6 +27,27 @@ function currentSettings(): SettingsState {
   return values as unknown as SettingsState;
 }
 
+/**
+ * Applies settings read from a file (Settings Backup #471, and B20's browser backup), already checked by
+ * `parseSettingsBackup`. The store's own validation (its persist merge) decides every value, exactly as when settings
+ * load, and the preference mirrors and the download engine follow as for a manual change. Returns how many changed.
+ */
+export function importSettingsValues(values: Record<string, unknown>): number {
+  const store = useSettingsStore.getState();
+  const current = currentSettings();
+  const merge = useSettingsStore.persist.getOptions().merge;
+  const merged = (merge ? merge(values, store) : { ...store, ...values }) as unknown as Record<string, unknown>;
+  const changes: [SettingsKey, unknown][] = [];
+  for (const key of Object.keys(values) as SettingsKey[]) {
+    const next = merged[key];
+    if (next !== (current as unknown as Record<string, unknown>)[key]) {
+      changes.push([key, next]);
+    }
+  }
+  applySettings(changes);
+  return changes.length;
+}
+
 /** Default Tab (#474), Reset Settings (#470) and Settings Backup (#471). */
 export function useSettingsBackupReset() {
   const { t } = useTranslation();
@@ -89,21 +110,7 @@ export function useSettingsBackupReset() {
         announce(parsed.reason === 'unsupported-version' ? t('settingsBackup.newerVersion') : t('settingsBackup.notBackup'));
         return;
       }
-      // The store's own validation (its persist merge) decides every value, exactly as when settings load.
-      const store = useSettingsStore.getState();
-      const current = currentSettings();
-      const merge = useSettingsStore.persist.getOptions().merge;
-      const merged = (merge ? merge(parsed.values, store) : { ...store, ...parsed.values }) as unknown as Record<string, unknown>;
-      const changes: [SettingsKey, unknown][] = [];
-      for (const key of Object.keys(parsed.values) as SettingsKey[]) {
-        const next = merged[key];
-        if (next !== (current as unknown as Record<string, unknown>)[key]) {
-          changes.push([key, next]);
-        }
-      }
-      // As a manual change would: the preference mirrors and the download engine follow.
-      applySettings(changes);
-      const applied = changes.length;
+      const applied = importSettingsValues(parsed.values);
       announce(
         parsed.ignored.length > 0
           ? t('settingsBackup.importedSome', { applied, ignored: parsed.ignored.length })

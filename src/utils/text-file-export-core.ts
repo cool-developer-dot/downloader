@@ -66,6 +66,42 @@ export async function exportTextFileWith(deps: TextExportDeps, input: TextExport
   }
 }
 
+export type TextFile = { fileName: string; mimeType: string; content: string };
+
+/**
+ * B20 #210: several files into one folder the user picks once. Without a folder (picker unavailable) a single file
+ * goes to the share sheet as above; several can't, so that is `failed`.
+ */
+export async function exportTextFilesWith(
+  deps: TextExportDeps,
+  files: readonly TextFile[],
+  shareTitle: string,
+): Promise<TextExportResult> {
+  if (files.length === 1) {
+    return exportTextFileWith(deps, { ...files[0], shareTitle });
+  }
+  let directory: unknown = null;
+  try {
+    directory = await deps.pickDirectory();
+  } catch (error) {
+    if (isCancelError(error)) {
+      return 'cancelled';
+    }
+    return 'failed';
+  }
+  if (directory == null) {
+    return 'failed';
+  }
+  try {
+    for (const file of files) {
+      await deps.writeFile(directory, file.fileName, file.mimeType, file.content);
+    }
+    return 'saved';
+  } catch {
+    return 'failed';
+  }
+}
+
 /** `vidorax-<what>-YYYY-MM-DD.<ext>` in local time. */
 export function exportFileName(what: string, extension: string, now: Date): string {
   const pad = (value: number) => String(value).padStart(2, '0');
@@ -87,17 +123,21 @@ export type TextImportDeps = {
   pickFile: () => Promise<{ size: number | null; read: () => Promise<string> } | null>;
 };
 
-export async function importTextFileWith(deps: TextImportDeps): Promise<TextImportResult> {
+/** `maxBytes`: a larger file is refused unread (B20's browser backup allows more than the default). */
+export async function importTextFileWith(
+  deps: TextImportDeps,
+  maxBytes: number = MAX_IMPORT_BYTES,
+): Promise<TextImportResult> {
   try {
     const picked = await deps.pickFile();
     if (!picked) {
       return { status: 'cancelled' };
     }
-    if (typeof picked.size === 'number' && picked.size > MAX_IMPORT_BYTES) {
+    if (typeof picked.size === 'number' && picked.size > maxBytes) {
       return { status: 'too-large' };
     }
     const text = await picked.read();
-    if (text.length > MAX_IMPORT_BYTES) {
+    if (text.length > maxBytes) {
       return { status: 'too-large' };
     }
     return { status: 'picked', text };

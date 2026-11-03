@@ -4,6 +4,7 @@ import { ScrollView } from 'react-native';
 import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
 import { QuickAccessGrid } from '@/browser/components/QuickAccess';
+import { GuestModeCard } from '@/browser/components/ProfileSwitcher/GuestModeCard';
 import { START_PAGE_QUICK_SITES } from '@/browser/config/quick-sites';
 import { useBrowserHome } from '@/browser/hooks/useBrowserHome';
 import { useTheme } from '@/hooks/use-theme';
@@ -39,6 +40,7 @@ export const BrowserHomeView = memo(function BrowserHomeView({
       }}
       style={{ flex: 1, backgroundColor: theme.colors.background }}
       accessibilityLabel={t('browser.home.startPageA11y')}>
+      <GuestModeCard />
       <Box
         testID="browser-start-intro"
         style={{
