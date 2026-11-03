@@ -179,6 +179,11 @@ class VidoraMediaModule : Module() {
       com.vidorax.media.runner.DownloadNotificationsToggle.setEnabled(context, enabled)
     }
 
+    // B20: downloads carry the cookies of the browser profile being browsed (see ActiveWebCookies).
+    AsyncFunction("setCookieProfile") { name: String ->
+      com.vidorax.media.net.ActiveWebCookies.use(name)
+    }.runOnQueue(expo.modules.kotlin.functions.Queues.MAIN)
+
     AsyncFunction("pause") Coroutine { id: String -> engine.pause(id) }
 
     AsyncFunction("resume") Coroutine { id: String -> engine.resume(id) }

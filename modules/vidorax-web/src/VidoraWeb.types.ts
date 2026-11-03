@@ -91,6 +91,42 @@ export interface CapturedKeyEvent {
 /** B6 #45: how the system's navigation is shown (Settings.Secure `navigation_mode`). */
 export type NavigationMode = 'gesture' | 'twoButton' | 'threeButton' | 'unknown';
 
+/** B20 #16: a tab moved into its own window (`openBrowserWindow`). */
+export interface BrowserWindowRequest {
+  /** 1–64 of `A–Z a–z 0–9 _ -`; comes back on every event of this window. */
+  windowId: string;
+  /** http(s) only. */
+  url: string;
+  title: string;
+  /** The WebView profile (`Default` or `vidorax-<id>`), so the window keeps the tab's cookies and site data. */
+  profile: string;
+  /** The tab's User-Agent when it is in desktop mode; null for the default. */
+  userAgent: string | null;
+  /** App Lock is on: when the user leaves the window it closes, and its tab goes back into the main window. */
+  lockOnLeave: boolean;
+  rtl: boolean;
+  dark: boolean;
+  /** `#RRGGBB`: background, surface, text, textSecondary, accent. */
+  colors: Record<string, string>;
+  /** back, forward, reload, stop, moveBack, close (the app's language, not the phone's). */
+  labels: Record<string, string>;
+}
+
+/**
+ * B20 #16: what happened in a browser window. `visit`: a page finished loading. `closed`: the user closed it.
+ * `returned`: its tab goes back into the main window (`foreground`: in front). `openInApp`: a link or download it
+ * doesn't handle, for a new tab in the main window.
+ */
+export interface BrowserWindowEvent {
+  type: 'visit' | 'closed' | 'returned' | 'openInApp';
+  windowId: string;
+  /** The window's WebView profile (its tab's browser profile). */
+  profile: string;
+  url: string;
+  title: string;
+  foreground: boolean;
+}
+
 export type VidoraWebEvents = {
   onNetworkMedia: (event: NetworkMediaBatchEvent) => void;
   onWebDownload: (event: WebDownloadEvent) => void;
@@ -98,6 +134,8 @@ export type VidoraWebEvents = {
   onSharedText: (event: SharedTextEvent) => void;
   /** B6 #240 / B21: a captured key was pressed (sent on key down only; the key up is swallowed too). */
   onCapturedKey: (event: CapturedKeyEvent) => void;
+  /** B20 #16: see BrowserWindowEvent. Events from while nothing listened arrive when something does (at most 20). */
+  onBrowserWindow: (event: BrowserWindowEvent) => void;
 };
 
 export interface VidoraWebModuleApi {
@@ -147,8 +185,33 @@ export interface VidoraWebModuleApi {
    * host, so a following page load skips the lookup. Invalid hosts are ignored. Missing on older native builds.
    */
   prefetchDns?(host: string): void;
-  /** Persist WebView cookies to disk (call when the app goes to background). */
+  /** Persist WebView cookies to disk (call when the app goes to background), the active profile's too (B20). */
   flushCookies(): Promise<void>;
+  /**
+   * B20: true when this phone's WebView keeps each browser profile's cookies, site storage and cache apart
+   * (`WebViewFeature.MULTI_PROFILE`). Without it every profile shares WebView's default jar. Missing on older builds.
+   */
+  isWebProfileSupported?(): Promise<boolean>;
+  /**
+   * B20: the WebView profile new browser WebViews join (`Default`, or `vidorax-<id>`; anything else resolves false and
+   * changes nothing), and the cookies `startSystemDownload` sends. Call before the profile's WebViews are created: a
+   * WebView's profile is chosen at creation. Missing on older native builds.
+   */
+  setWebProfile?(name: string): Promise<boolean>;
+  /**
+   * B20: deletes a WebView profile with its cookies, storage and cache. Resolves false for `Default`, the active
+   * profile, or while a WebView of it still exists (try again later). Missing on older native builds.
+   */
+  deleteWebProfile?(name: string): Promise<boolean>;
+  /** B20: the WebView profiles that exist with a VidoraX name (`Default`, `vidorax-…`). Missing on older builds. */
+  getWebProfileNames?(): Promise<string[]>;
+  /**
+   * B20 #16 Move tab to new window: opens the page in a window of its own (a new task, next to the app in split
+   * screen). Resolves false when the request is invalid or Android can't open it. Missing on older native builds.
+   */
+  openBrowserWindow?(request: BrowserWindowRequest): Promise<boolean>;
+  /** B20 #16: closes every browser window of a WebView profile (no events); resolves how many. */
+  closeBrowserWindows?(profile: string): Promise<number>;
   /**
    * Safe intent:// handoff: strips component/selector, blocks file/content/javascript targets.
    * Resolves false when no activity can handle it.

@@ -1,0 +1,16 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!--
+      B20 #16 Move tab to new window: one tab in a task of its own (next to the app in split screen). Not exported:
+      only VidoraX opens it. No permission.
+    -->
+    <activity
+      android:name="com.vidorax.web.window.BrowserWindowActivity"
+      android:exported="false"
+      android:resizeableActivity="true"
+      android:autoRemoveFromRecents="true"
+      android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density"
+      android:windowSoftInputMode="adjustResize"
+      android:theme="@android:style/Theme.Material.NoActionBar" />
+  </application>
+</manifest>

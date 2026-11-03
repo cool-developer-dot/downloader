@@ -4,7 +4,8 @@
  * needs no reflection. It also keeps app schemes (snssdk://, intent:) contained when JS does not answer
  * onShouldStartLoadWithRequest in time, and runs injectedJavaScriptBeforeContentLoaded at document start (the stock
  * Android code evaluates it from onPageStarted, after the page's own scripts may already have run — too late for the
- * media-detection hooks a player's MediaSource must be created under).
+ * media-detection hooks a player's MediaSource must be created under). B20: a new WebView reaches the hook before
+ * react-native-webview sets it up, so it can still be put in the active browser profile (its own cookies and storage).
  *
  * Runs at postinstall and is idempotent. Every edit is an exact text replacement: when an anchor is missing, for example
  * after upgrading react-native-webview, it exits non-zero rather than shipping a browser without media detection.
@@ -47,6 +48,12 @@ import java.util.WeakHashMap;
  */
 public final class RNCWebViewHooks {
     public interface Listener {
+        /**
+         * Main thread, right after the WebView is constructed and before react-native-webview touches it (settings,
+         * clients), which is when a WebView profile may still be chosen. B20.
+         */
+        void beforeWebViewSetup(@NonNull RNCWebView webView);
+
         /** Main thread, before the WebView loads anything. */
         void onWebViewCreated(@NonNull RNCWebView webView);
 
@@ -85,6 +92,18 @@ public final class RNCWebViewHooks {
     public static synchronized void removeListener(@NonNull Listener value) {
         if (listener == value) {
             listener = null;
+        }
+    }
+
+    public static void beforeWebViewSetup(@NonNull RNCWebView webView) {
+        Listener current = listener;
+        if (current == null) {
+            return;
+        }
+        try {
+            current.beforeWebViewSetup(webView);
+        } catch (RuntimeException e) {
+            logFailure("beforeWebViewSetup", e);
         }
     }
 
@@ -297,6 +316,14 @@ const EDITS = {
                 return@DownloadListener
             }
             val module =`,
+    },
+    {
+      name: 'let the hook set up a new WebView first (B20: its profile)',
+      from: `    fun createViewInstance(context: ThemedReactContext, webView: RNCWebView): RNCWebViewWrapper {
+        setupWebChromeClient(webView)`,
+      to: `    fun createViewInstance(context: ThemedReactContext, webView: RNCWebView): RNCWebViewWrapper {
+        RNCWebViewHooks.beforeWebViewSetup(webView)
+        setupWebChromeClient(webView)`,
     },
     {
       name: 'report WebView creation before any load',

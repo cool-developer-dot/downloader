@@ -23,6 +23,9 @@ import com.vidorax.web.network.DnsPrefetcher
 import com.vidorax.web.network.NetworkMediaObserver
 import com.vidorax.web.network.ServiceWorkerRequests
 import com.vidorax.web.network.WebDownloadRoute
+import com.vidorax.web.profiles.WebProfiles
+import com.vidorax.web.window.BrowserWindowRecord
+import com.vidorax.web.window.BrowserWindows
 import com.vidorax.web.snapshot.WebViewSnapshots
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.exception.Exceptions
@@ -37,6 +40,7 @@ private const val ON_NETWORK_MEDIA = "onNetworkMedia"
 private const val ON_WEB_DOWNLOAD = "onWebDownload"
 private const val ON_SHARED_TEXT = "onSharedText"
 private const val ON_CAPTURED_KEY = "onCapturedKey"
+private const val ON_BROWSER_WINDOW = "onBrowserWindow"
 
 // react-native-webview's own download defaults (RNCWebViewManagerImpl).
 private const val DOWNLOADING_MESSAGE = "Downloading"
@@ -64,6 +68,11 @@ class VidoraWebModule : Module() {
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
 
   private val webViewHooks = object : RNCWebViewHooks.Listener {
+    // B20: a new WebView joins the active browser profile before react-native-webview sets it up.
+    override fun beforeWebViewSetup(webView: RNCWebView) {
+      WebProfiles.apply(webView)
+    }
+
     override fun onWebViewCreated(webView: RNCWebView) {
       ServiceWorkerRequests.install()
     }
@@ -109,7 +118,7 @@ class VidoraWebModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("VidoraWeb")
 
-    Events(ON_NETWORK_MEDIA, ON_WEB_DOWNLOAD, ON_SHARED_TEXT, ON_CAPTURED_KEY)
+    Events(ON_NETWORK_MEDIA, ON_WEB_DOWNLOAD, ON_SHARED_TEXT, ON_CAPTURED_KEY, ON_BROWSER_WINDOW)
 
     OnCreate {
       RNCWebViewHooks.setListener(webViewHooks)
@@ -119,6 +128,7 @@ class VidoraWebModule : Module() {
       RNCWebViewHooks.removeListener(webViewHooks)
       networkObserver.setHasListeners(false)
       VidoraKeyChannel.setListener(null)
+      BrowserWindows.setListener(null)
     }
 
     OnStartObserving(ON_NETWORK_MEDIA) { networkObserver.setHasListeners(true) }
@@ -134,6 +144,11 @@ class VidoraWebModule : Module() {
       }
     }
     OnStopObserving(ON_CAPTURED_KEY) { VidoraKeyChannel.setListener(null) }
+    // B20 #16: what happens in separate browser windows (see BrowserWindows).
+    OnStartObserving(ON_BROWSER_WINDOW) {
+      BrowserWindows.setListener { event -> sendEvent(ON_BROWSER_WINDOW, event) }
+    }
+    OnStopObserving(ON_BROWSER_WINDOW) { BrowserWindows.setListener(null) }
 
     Function("setNetworkObservationEnabled") { enabled: Boolean ->
       networkObserver.setEnabled(enabled)
@@ -170,7 +185,36 @@ class VidoraWebModule : Module() {
 
     AsyncFunction("flushCookies") {
       CookieManager.getInstance().flush()
+      WebProfiles.cookies().flush()
     }
+
+    // B20: browser profiles. See WebProfiles.
+    // Main thread: asking loads the WebView provider, which belongs there.
+    AsyncFunction("isWebProfileSupported") {
+      WebProfiles.isSupported()
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("setWebProfile") { name: String ->
+      WebProfiles.setActive(name)
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("deleteWebProfile") { name: String ->
+      WebProfiles.delete(name)
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("getWebProfileNames") {
+      WebProfiles.names()
+    }.runOnQueue(Queues.MAIN)
+
+    // B20 #16 Move tab to new window.
+    AsyncFunction("openBrowserWindow") { record: BrowserWindowRecord ->
+      val request = record.toRequest() ?: return@AsyncFunction false
+      BrowserWindows.open(context, appContext.currentActivity, request)
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("closeBrowserWindows") { profile: String ->
+      BrowserWindows.closeProfile(profile)
+    }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("launchIntentUri") { uri: String ->
       launchIntentUri(uri)
@@ -307,7 +351,7 @@ class VidoraWebModule : Module() {
       return false
     }
     val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType).replace(INVALID_FILE_NAME_CHARS, "_")
-    CookieManager.getInstance().getCookie(url)?.let { request.addRequestHeader("Cookie", it) }
+    WebProfiles.cookies().getCookie(url)?.let { request.addRequestHeader("Cookie", it) }
     request.addRequestHeader("User-Agent", userAgent ?: WebSettings.getDefaultUserAgent(context))
     request.setTitle(fileName)
     request.setDescription("$DOWNLOADING_MESSAGE $fileName")

@@ -812,6 +812,11 @@ export interface VidoraMediaModuleApi {
   probe(request: ProbeRequest): Promise<ProbeResult>;
   /** Reads a pasted/shared link's page for the direct analyzer; see `PageFetchRequest`. */
   fetchPage(request: PageFetchRequest): Promise<PageFetchResult>;
+  /**
+   * B20: the browser profile whose cookies downloads (and fetchPage) use — VidoraWeb's WebView profile name
+   * (`Default` or `vidorax-<id>`; anything else resolves false and changes nothing). Missing on older native builds.
+   */
+  setCookieProfile?(name: string): Promise<boolean>;
 
   // Downloads
   /** Rejects with ERR_ALREADY_DOWNLOADED for a video already saved; see `enqueueUnique`. */

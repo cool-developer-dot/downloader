@@ -1,6 +1,5 @@
 package com.vidorax.media.net
 
-import android.webkit.CookieManager
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -16,10 +15,13 @@ internal fun interface CookieSource {
   fun cookiesFor(url: String): String?
 }
 
-/** The real source. `VidoraWeb` flushes the WebView jar, so this reads what the browsing session holds. */
+/**
+ * The real source. `VidoraWeb` flushes the WebView jar, so this reads what the browsing session holds: the active
+ * browser profile's jar (B20, [ActiveWebCookies]).
+ */
 internal object WebViewCookieSource : CookieSource {
   override fun cookiesFor(url: String): String? =
-    runCatching { CookieManager.getInstance().getCookie(url) }.getOrNull()?.ifBlank { null }
+    runCatching { ActiveWebCookies.current().getCookie(url) }.getOrNull()?.ifBlank { null }
 }
 
 /**

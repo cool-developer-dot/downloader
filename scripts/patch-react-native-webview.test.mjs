@@ -190,6 +190,12 @@ test('patches a pristine install', (t) => {
     /DownloadListener \{[^\n]*\n\s+if \(RNCWebViewHooks\.onDownloadStart\(webView, url, userAgent, contentDisposition, mimetype, contentLength\)\) \{\n\s+return@DownloadListener\n\s+\}\n\s+val module =/,
   );
   assert.match(manager, /RNCWebViewHooks\.onWebViewCreated\(webView\)\n\s+return RNCWebViewWrapper\(context, webView\)/);
+  // B20: the hook sees a new WebView before anything else touches it (a profile can only be set then).
+  assert.match(
+    manager,
+    /RNCWebViewWrapper \{\n\s+RNCWebViewHooks\.beforeWebViewSetup\(webView\)\n\s+setupWebChromeClient\(webView\)/,
+  );
+  assert.match(hooks, /void beforeWebViewSetup\(@NonNull RNCWebView webView\);/);
   assert.match(hooks, /public final class RNCWebViewHooks/);
   assert.match(hooks, /private static volatile Listener listener;/);
   // The before-content-loaded script runs at document start (main frame only) instead of from onPageStarted.

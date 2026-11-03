@@ -18,6 +18,9 @@ dependencies {
   implementation 'com.facebook.react:react-android'
   // RNCWebViewHooks is added to react-native-webview by scripts/patch-react-native-webview.js.
   implementation project(':react-native-webview')
+  // B20: WebView profiles (ProfileStore). The same version react-native-webview uses (its gradle.properties), so the
+  // APK still has one androidx.webkit.
+  implementation "androidx.webkit:webkit:1.14.0"
 
   testImplementation "junit:junit:4.13.2"
   // B1: real android.graphics Bitmap/JPEG for the tab-preview snapshot test (same version as vidorax-media).

@@ -1,6 +1,6 @@
 package com.vidorax.media.analyze
 
-import android.webkit.CookieManager
+import com.vidorax.media.net.ActiveWebCookies
 import com.vidorax.media.net.CookieSource
 import com.vidorax.media.net.SessionCookieInterceptor
 import com.vidorax.media.net.UrlPolicy
@@ -307,14 +307,14 @@ internal interface CookieSink {
   fun flush() {}
 }
 
-/** The WebView's own jar — the browsing session the tab uses. */
+/** The WebView's own jar — the browsing session the tab uses (the active browser profile's, B20). */
 internal object WebViewCookieSink : CookieSink {
   override fun store(url: String, setCookieHeader: String) {
-    CookieManager.getInstance().setCookie(url, setCookieHeader)
+    ActiveWebCookies.current().setCookie(url, setCookieHeader)
   }
 
   override fun flush() {
-    CookieManager.getInstance().flush()
+    ActiveWebCookies.current().flush()
   }
 }
 
