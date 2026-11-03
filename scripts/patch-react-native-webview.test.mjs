@@ -141,7 +141,17 @@ const MANAGER_SOURCE = `    fun createViewInstance(context: ThemedReactContext, 
     fun setInjectedJavaScriptForMainFrameOnly(viewWrapper: RNCWebViewWrapper, value: Boolean) {
 `;
 
-const VIEW_SOURCE = `    public void callInjectedJavaScriptBeforeContentLoaded() {
+const VIEW_SOURCE = `    @Override
+    public ActionMode startActionMode(ActionMode.Callback callback, int type) {
+      if(menuCustomItems == null ){
+        return super.startActionMode(callback, type);
+      }
+
+      return super.startActionMode(new ActionMode.Callback2() {
+      // …
+    }
+
+    public void callInjectedJavaScriptBeforeContentLoaded() {
         if (getSettings().getJavaScriptEnabled() &&
                 injectedJSBeforeContentLoaded != null &&
                 !TextUtils.isEmpty(injectedJSBeforeContentLoaded)) {
@@ -208,6 +218,12 @@ test('patches a pristine install', (t) => {
     /callInjectedJavaScriptBeforeContentLoaded\(\) \{\n\s+if \(RNCWebViewHooks\.hasDocumentStartScript\(this\)\) \{\n\s+injectJavascriptObject\(\);\n\s+return;\n\s+\}/,
   );
   assert.match(hooks, /WebViewCompat\.addDocumentStartJavaScript\(webView, mainFrameOnly, ALL_ORIGINS\)/);
+  // B8: the selection menu goes through the hook (Android's own items kept); custom menuItems still replace it.
+  assert.match(
+    view,
+    /if\(menuCustomItems == null \)\{\n\s+return super\.startActionMode\(RNCWebViewHooks\.wrapSelectionMenu\(this, callback\), type\);\n\s+\}/,
+  );
+  assert.match(hooks, /default ActionMode\.Callback wrapSelectionMenu\(@NonNull RNCWebView webView, @NonNull ActionMode\.Callback callback\)/);
   assert.match(hooks, /if \(window !== window\.top\) \{ return; \}/);
   assert.match(hooks, /WebViewFeature\.isFeatureSupported\(WebViewFeature\.DOCUMENT_START_SCRIPT\)/);
 });

@@ -6,6 +6,8 @@
  * Android code evaluates it from onPageStarted, after the page's own scripts may already have run — too late for the
  * media-detection hooks a player's MediaSource must be created under). B20: a new WebView reaches the hook before
  * react-native-webview sets it up, so it can still be put in the active browser profile (its own cookies and storage).
+ * B8: the page's text-selection menu goes through the hooks too (wrapSelectionMenu), so the module can add its items
+ * to Android's own menu instead of replacing it.
  *
  * Runs at postinstall and is idempotent. Every edit is an exact text replacement: when an anchor is missing, for example
  * after upgrading react-native-webview, it exits non-zero rather than shipping a browser without media detection.
@@ -26,6 +28,7 @@ const HOOKS = 'RNCWebViewHooks.java';
 
 const HOOKS_SOURCE = `package com.reactnativecommunity.webview;
 
+import android.view.ActionMode;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 
@@ -71,6 +74,15 @@ public final class RNCWebViewHooks {
             @Nullable String contentDisposition,
             @Nullable String mimeType,
             long contentLength);
+
+        /**
+         * Main thread, when the page starts a text-selection menu (no custom menuItems set). Returns the callback to use:
+         * the given one, or one that wraps it to add items while keeping Android's own (Copy, Paste, Select all…).
+         */
+        @NonNull
+        default ActionMode.Callback wrapSelectionMenu(@NonNull RNCWebView webView, @NonNull ActionMode.Callback callback) {
+            return callback;
+        }
     }
 
     private static final String TAG = "RNCWebViewHooks";
@@ -147,6 +159,20 @@ public final class RNCWebViewHooks {
         } catch (RuntimeException e) {
             logFailure("onDownloadStart", e);
             return false;
+        }
+    }
+
+    @NonNull
+    public static ActionMode.Callback wrapSelectionMenu(@NonNull RNCWebView webView, @NonNull ActionMode.Callback callback) {
+        Listener current = listener;
+        if (current == null) {
+            return callback;
+        }
+        try {
+            return current.wrapSelectionMenu(webView, callback);
+        } catch (RuntimeException e) {
+            logFailure("wrapSelectionMenu", e);
+            return callback;
         }
     }
 
@@ -343,6 +369,15 @@ const EDITS = {
     },
   ],
   [VIEW]: [
+    {
+      name: 'let the hook add items to the text-selection menu',
+      from: `      if(menuCustomItems == null ){
+        return super.startActionMode(callback, type);
+      }`,
+      to: `      if(menuCustomItems == null ){
+        return super.startActionMode(RNCWebViewHooks.wrapSelectionMenu(this, callback), type);
+      }`,
+    },
     {
       name: 'skip the late evaluation when the script runs at document start',
       from: `    public void callInjectedJavaScriptBeforeContentLoaded() {
