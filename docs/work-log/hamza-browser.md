@@ -525,6 +525,89 @@ Tested: unit, typecheck, lint. Device: pending Faran's final pass.
 Found, not fixed: text selected inside an iframe isn't read (the read script sees the main frame only).
 ```
 
+## B10 — History (#95, #98, #99, #101, #103)
+
+No native code, no database change (`DATABASE_VERSION` stays **2**: B10 only deletes and reads existing tables).
+Testing rule for Mega 1: unit tests, typecheck and lint here; device, release and upgrade checks are in "Device test
+list for Faran" (B10 is an upgrade-test package).
+
+### Design and decisions
+
+| # | What the user sees | Where it lives | Notes / decisions |
+| --- | --- | --- | --- |
+| #95 Search history | The History screen's search (already there) now highlights the matches in each row (semi-bold, accent colour); when a match is only in a page's path, the row's second line shows the full address instead of the host | `history-highlight.ts` (pure), `components/HighlightedText.tsx`; `HistoryItem` / `HistoryList` (new optional `highlightQuery`) | **Already present:** matching title, URL and host — `HistoryRepository.list` runs `title LIKE ? OR url LIKE ? OR hostname LIKE ?` (proof: `browsing-data.queries.test.ts` runs those statements on SQLite with the app schema: a title word, an Urdu word, a path-only word and a host all found). **Speed with 5,000 entries:** five full searches (each a COUNT and a 20-row page) over 5,000 rows took ~30 ms in total on this PC (test limit 250 ms); highlighting 5,000 titles ~7 ms. **Added:** the highlight. It follows LIKE's rule exactly (the trimmed query as one piece, case ignored for A–Z only), so what is marked is what matched |
+| #98 Clear by time range | Browser settings → History → Clear browsing data, or the History screen's new clock-bin button: Last hour (selected first) / Last 24 hours / Last 7 days / Last 4 weeks / All time, the list of what is cleared, Cancel / Clear data | `browsing-data.service.ts` `clearBrowsingData`, `browsing-data-range.ts`, `components/ClearBrowsingDataSheet.tsx`; SQL `storage/repositories/browsing-data.queries.ts` (+ `browsing-data.repository.ts`) | Clears **history** (with the recent URLs the address bar suggests from), **recent searches**, **recently closed tabs** (B1's `closedTabsService.clearSince` / `clear`) and **tab previews** (`tabSnapshots.clearAll`). **Decision:** previews go whatever the range — they are a cache of what tabs showed, retaken when a tab is left. All in one transaction for the three tables; only the browser profile in use (B20), and the sheet says so. **The hook for B12:** `bindSiteDataClearer(fn)` in `browsing-data.service.ts` — the one place cookies, cache and site data join every clear (the sheet, Clear on exit, Exit). Nothing is bound, so they are kept and the sheet says "Cookies, cache and site data are kept." B12's `clearAllSiteData()` is in `src/browser/privacy/privacy.service.ts` |
+| #99 Auto clear on exit | Setting "Clear history on exit" (default **off**). While on: at the next cold start the last session's browsing data is cleared, and the browser menu shows **Exit** (closes every tab, pinned too, clears, leaves the app) | `runStartupBrowsingDataClear` (called from `bootstrap/app-initializer.ts` after the browser profile and privacy set-up, before anything shows), `exitBrowser`; menu item `exit` | **Decision:** Exit is shown only while the setting is on (like Firefox's Quit with "Delete browsing data on quit"), so the menu is unchanged by default. Exit dismisses the Undo bar; `BackHandler.exitApp()` leaves. The startup clear runs once per process; a cold start = a new JS runtime |
+| #101 Disable history | Setting "Save history" (default **on**). Off: no new history entries and no new recent searches; old ones stay; the History screen shows a "History is off" card with **Turn on** | `history-policy.ts` `shouldSaveVisit`, gate in `history-recording.service.ts` `recordSuccessfulVisit`; recent searches gated in `store/recent-searches/actions.ts`; `components/HistoryOffBanner.tsx` | Suggestions are not touched: bookmarks (and the history that is already there) still feed them. **Decision:** recent searches count as history here (a user who turns history off doesn't expect searches to be kept). Every visit now also passes `shouldPersistForTab(tab)` (the engine passes its tab), so B11's private tabs save nothing |
+| #103 Export history | Browser settings → History → Export history, or the History screen's export button: a CSV saved in a folder the user picks (system picker, no permission; the share sheet if no folder can be picked) | `history-export.ts` (pure), `history-export.service.ts`; `listHistoryForExport` | One row per page: **title** (of its latest visit), **URL**, **last visit** (local time `YYYY-MM-DD HH:MM`), **visits**. UTF-8 with BOM and CRLF (Excel shows Urdu), cells escaped like B20's CSV (`csvCell`, formula-safe). Column titles in the app's language. File `vidorax-history-YYYY-MM-DD.csv`. "Visits" counts History's entries (it merges revisits within 5 minutes) |
+| Seed helper | Debug builds only: Browser settings → History → "Debug: add 5,000 old history entries" (spread over 8 weeks, some in every range) | `debug/history-seed.ts`, `debug/HistorySeedRow.tsx` | Required behind `__DEV__` in `HistorySettingsSection`; Metro drops the branch and the module from release bundles. **Checked:** a production bundle (`npx expo export:embed --dev false --minify true`, into a temp folder, no APK) contains no seed code (`seed/` URLs, its test id: absent); only its two catalog strings ship |
+
+- **Strings:** `browserHistory.*` (`catalogs/browserHistory.{en,ur}.ts`).
+- **Accessibility:** every new control has a label (the header buttons, the range radios with checked state, Turn
+  on, Exit); rows ≥ 48 dp; the sheet and the banner use `rtl.rowDirection`; texts wrap (no fixed heights).
+
+### Files
+
+New: `src/browser/history/{browsing-data-range,browsing-data.service,history-export,history-export.service,history-highlight,history-policy}.ts`
+(+ `history.test.ts`), `history/components/{ClearBrowsingDataSheet,HighlightedText,HistoryOffBanner}.tsx`,
+`history/debug/{history-seed.ts,HistorySeedRow.tsx}`, `src/storage/repositories/browsing-data.{queries,repository}.ts`
+(+ `browsing-data.queries.test.ts`), `screens/settings/browser-settings/HistorySettingsSection.tsx`,
+`localization/catalogs/browserHistory.{en,ur}.ts`.
+Changed: `HistoryScreen.tsx` (banner, two header buttons, the sheet, the query to the list), `HistoryList.tsx` /
+`HistoryItem.tsx` (optional `highlightQuery`), `history-recording.service.ts` (+ optional `tab`, the gate),
+`useBrowserEngineEvents.ts` (passes the tab), `store/recent-searches/actions.ts` (gate), overflow menu (Exit), settings
+store (2 keys), `browser-setting-keys.ts`, `BrowserSettingsScreen.tsx`, `bootstrap/app-initializer.ts`,
+`storage/repositories/index.ts`, `en.ts` / `ur.ts`.
+
+### Automated tests
+
+`browsing-data.queries.test.ts` (6, **real SQLite** via `node:sqlite` with `applyBrowserTables`): last hour clears
+only the last hour in all three tables; 24 h / 7 d / 4 weeks keep older rows; all time empties them and is safe to run
+twice; export rows (latest title, last visit, count, newest first; Urdu); empty export; the 5,000-entry search (title,
+Urdu, path, host, none; timing). `history.test.ts` (12): range starts; highlight (all matches, A–Z case, Urdu, empty,
+non-ASCII as LIKE, the second line); highlight speed on 5,000 titles; CSV (BOM, CRLF, Urdu, quotes, formula cell,
+local time, file name); the save gate; the seed (5,000, every range, ≤ 8 weeks, unique URLs, Urdu titles).
+Settings audit test: the two keys persisted, backed up, reset.
+
+Gate (Windows): `npm test` **1622 / 1622**, typecheck 0 errors, lint **0 errors / 82 warnings**, `git diff --check`
+clean. No Kotlin or patch change.
+
+### Device test list for Faran
+
+- [ ] Debug build: Browser settings → History → "Debug: add 5,000 old history entries"; then each range in Clear
+      browsing data removes only its range (History screen count before / after)
+- [ ] Clear browsing data also empties recent searches, Recently closed tabs (menu "Reopen closed tab" greys out) and
+      the tab switcher's previews
+- [ ] History screen: search a title word, an Urdu word and a word only in a URL's path — matches highlighted, path
+      matches show the full address; scrolling stays smooth with 5,000 entries
+- [ ] Clear history on exit on: browser menu shows Exit; Exit closes all tabs and leaves; reopening: History empty, one
+      start page
+- [ ] Clear history on exit on, browse, force-stop (`adb shell am force-stop`), reopen: History empty
+- [ ] Save history off: visit pages and search — nothing new in History or recent searches; old entries still there;
+      History screen shows "History is off"; Turn on works; address bar suggestions still show bookmarks
+- [ ] Export history: pick a folder; open the CSV in a spreadsheet (Excel / Sheets) — Urdu titles correct, 4 columns
+- [ ] Release build: the History section has no debug row
+- [ ] Upgrade over seeded 1.1.0: history, recent searches, closed tabs all still there; Save history on, Clear on exit
+      off
+- [ ] Urdu (RTL), Dark, TalkBack (sheet radios, header buttons, banner), font scale 1.3 (sheet and banner wrap)
+
+### Handoff note
+
+```
+B10 History — done
+Commits: 3b8dc22 (code), <docs: this commit>
+Native code to review: none
+New settings: saveHistory = true (today's), clearHistoryOnExit = false (today's)
+New libraries: none
+Tested: unit, typecheck, lint. Device: pending Faran's final pass.
+Hook for B12: bindSiteDataClearer(fn) in src/browser/history/browsing-data.service.ts is where cookies, cache
+  and site data join Clear browsing data / Clear on exit / Exit. Nothing bound yet (they're kept, the sheet
+  says so); your clearAllSiteData() in src/browser/privacy/privacy.service.ts fits it.
+Database: no change, DATABASE_VERSION stays 2.
+Found, not fixed: History search treats % and _ as wildcards (LIKE without ESCAPE, existing); "Visits" counts
+  History's entries, which merge revisits within 5 minutes; clearing applies to the profile in use only.
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -558,6 +641,8 @@ Found, not fixed: text selected inside an iframe isn't read (the read script see
 | `scrollSpeed` | B6 | `normal` | `slow`, `normal`, `fast` |
 | `volumeKeyScroll` | B6 | `false` (today's) | on / off |
 | `preloadPages` | B6 | `wifi` | `off`, `wifi`, `always` |
+| `saveHistory` | B10 | `true` (today's) | on / off |
+| `clearHistoryOnExit` | B10 | `false` (today's) | on / off |
 
 ### Found, not fixed
 
@@ -574,6 +659,9 @@ Found, not fixed: text selected inside an iframe isn't read (the read script see
 | Dev only | After a JS reload (debug), expo-image can fail to create its view ("The current activity is no longer available"); a cold start clears it. Not seen on release |
 | Selection menu (B8) | Text selected inside an iframe isn't read (the read script runs in the main frame), so Search does nothing there |
 | Kotlin tests on Windows | vidorax-web `WebViewSnapshotsTest.replacesAnOlderSnapshot` fails (`File.renameTo` over an existing file); vidorax-media's unit tests don't compile (a `DownloadRunnerTest` name has a double quote). Both pass on the Mac; not changed by any B package of Mega 1 |
+| History search (existing) | `%` and `_` in a search act as wildcards (`LIKE` without `ESCAPE` in `HistoryRepository`): searching `100%` also lists `100 …`. Left as it is (existing code) |
+| History visit count (B10 export) | History merges revisits of a URL within 5 minutes into one entry, so "Visits" in the export counts those entries, not every load |
+| Clear browsing data (B10) | Clears the browser profile in use only (B20); other profiles keep theirs (the sheet says so) |
 
 ### Decisions (all packages)
 
@@ -594,3 +682,6 @@ Found, not fixed: text selected inside an iframe isn't read (the read script see
   search. The selection is read in the page only after an app item is tapped, and the menu closes after the answer.
 - Mega 1 (B8, B10, B21, B7): the owner's testing rule — unit tests, typecheck and lint per package; device, release and
   upgrade tests are Faran's final pass (each package lists them under "Device test list for Faran").
+- B10: tab previews are cleared for every time range (a cache). Menu → Exit appears only while "Clear history on
+  exit" is on. "Save history" off also stops new recent searches. The site-data part of every clear is one hook,
+  `bindSiteDataClearer`, left for B12.

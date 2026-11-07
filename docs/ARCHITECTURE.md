@@ -767,6 +767,15 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   is the list B22 / B23 extend). A tap runs `selection-read-script.ts` in the page (returns the selection, sends
   nothing) and arrives as `onSelectionAction`; `selection-actions.ts` handles it (Search: `getSearchEngine()`, ≤ 300
   characters, a new tab after the current one). Items only while the Browser screen listens (`useSelectionMenu`).
+- **History (B10).** `src/browser/history/`: `clearBrowsingData(range)` (`browsing-data.service.ts`) deletes history +
+  recent URLs + recent searches since the range's start in one transaction (SQL only in
+  `storage/repositories/browsing-data.queries.ts`, run by `browsing-data.repository.ts` on the active profile's
+  database), then closed tabs (`closedTabsService.clearSince`), tab previews (`tabSnapshots.clearAll`) and — through
+  the one hook `bindSiteDataClearer` (unbound until B12) — cookies, cache and site data. "Clear history on exit"
+  runs it at the next cold start (`runStartupBrowsingDataClear`, app initializer) and enables Menu → Exit. Every visit
+  passes `shouldSaveVisit(saveHistory, tab)` (`history-policy.ts`: the setting + `shouldPersistForTab`) in
+  `recordSuccessfulVisit`. Search highlighting mirrors SQLite `LIKE` (`history-highlight.ts`); the export is one CSV
+  row per page (`history-export.ts`, UTF-8 BOM). The debug seed (`history/debug/`) is required only behind `__DEV__`.
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab

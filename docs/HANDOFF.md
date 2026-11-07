@@ -2129,6 +2129,11 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   one, ≤ 300 characters with a note; Copy, Share, Paste and Select all stay Android's own; Chromium's Web search is
   removed. Native: VidoraWeb implements the patch hook `wrapSelectionMenu` (`setSelectionMenu`, `onSelectionAction`).
   No new setting, permission or library. Device checks pending Faran's final pass.
+- **B10 History.** Search highlights its matches (matching title / URL / host was already there; 5,000 entries
+  proven fast); Clear browsing data by range (hour, 24 h, 7 d, 4 weeks, all time: history, recent searches, closed
+  tabs, tab previews; hook `bindSiteDataClearer` for B12's site data); Clear history on exit (next cold start + Menu
+  → Exit); Save history off switch ("History is off"); Export history as CSV (UTF-8 BOM, system folder picker). No
+  native code, no database change (version 2), no permission or library.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 
