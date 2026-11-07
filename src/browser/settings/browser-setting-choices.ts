@@ -15,6 +15,7 @@ import {
   START_PAGE_COLOR_IDS,
   START_PAGE_GRADIENT_IDS,
 } from '@/browser/startup/start-page-background';
+import { TAB_SLEEP_CHOICES } from '@/browser/tab-sound/tab-sleep';
 
 /**
  * The allowed values of every browser setting that is a choice (stored as a string in `SettingsState`). Settings
@@ -36,6 +37,8 @@ export const BROWSER_SETTING_CHOICES: Readonly<Record<string, readonly string[]>
   startPageBackground: START_PAGE_BACKGROUND_KINDS,
   startPageBackgroundColor: START_PAGE_COLOR_IDS,
   startPageBackgroundGradient: START_PAGE_GRADIENT_IDS,
+  // B3 (Hamza)
+  tabSleepAfter: TAB_SLEEP_CHOICES,
 };
 
 /** String settings longer than Backup's usual 500-character cap (lists stored as JSON). */

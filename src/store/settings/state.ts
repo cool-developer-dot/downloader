@@ -24,6 +24,8 @@ import { DEFAULT_AFTER_DOWNLOAD_ACTION } from '@/downloads/v2/after-download';
 import { DEFAULT_STARTUP_OPTION } from '@/browser/startup/startup-settings';
 import { DEFAULT_TOOLBAR_BUTTONS_VALUE } from '@/browser/startup/toolbar-buttons';
 import { START_PAGE_COLORS, START_PAGE_GRADIENTS } from '@/browser/startup/start-page-background';
+// B3 (Hamza)
+import { DEFAULT_TAB_SLEEP_AFTER } from '@/browser/tab-sound/tab-sleep';
 
 export const initialSettingsState: SettingsState = {
   clipboardMonitor: false,
@@ -84,4 +86,5 @@ export const initialSettingsState: SettingsState = {
   startPageBackgroundColor: START_PAGE_COLORS[0].id,
   startPageBackgroundGradient: START_PAGE_GRADIENTS[0].id,
   startPageBackgroundPhoto: '',
+  tabSleepAfter: DEFAULT_TAB_SLEEP_AFTER,
 };

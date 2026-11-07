@@ -3,6 +3,7 @@ import { browserSelectionEn } from './catalogs/browserSelection.en';
 import { browserHistoryEn } from './catalogs/browserHistory.en';
 import { browserStartupEn } from './catalogs/browserStartup.en';
 import { browserFindEn } from './catalogs/browserFind.en';
+import { browserTabSoundEn } from './catalogs/browserTabSound.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
 import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
@@ -2811,4 +2812,6 @@ export const en = {
   browserStartup: browserStartupEn,
   // B7 (Hamza)
   browserFind: browserFindEn,
+  // B3 (Hamza)
+  browserTabSound: browserTabSoundEn,
 } as const;

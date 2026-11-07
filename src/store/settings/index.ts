@@ -48,6 +48,8 @@ import {
   normalizeStartPageBackground,
   readStartPagePhoto,
 } from '@/browser/startup/start-page-background';
+// B3 (Hamza)
+import { normalizeTabSleepAfter } from '@/browser/tab-sound/tab-sleep';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -158,6 +160,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         startPageBackgroundColor: state.startPageBackgroundColor,
         startPageBackgroundGradient: state.startPageBackgroundGradient,
         startPageBackgroundPhoto: state.startPageBackgroundPhoto,
+        tabSleepAfter: state.tabSleepAfter,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -301,6 +304,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.startPageBackgroundPhoto === 'string'
               ? (readStartPagePhoto(raw.startPageBackgroundPhoto) ?? '')
               : current.startPageBackgroundPhoto,
+          tabSleepAfter:
+            raw.tabSleepAfter === undefined ? current.tabSleepAfter : normalizeTabSleepAfter(raw.tabSleepAfter),
         };
       },
     },

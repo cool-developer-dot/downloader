@@ -64,6 +64,8 @@ import {
 import { clearTabWebViewTag, setTabWebViewTag } from '@/browser/webview/webview-view-tags';
 import { DO_NOT_TRACK_HEADERS, DO_NOT_TRACK_PAGE_SCRIPT } from '@/browser/privacy/privacy-page-script';
 import { SPELL_CHECK_OFF_PAGE_SCRIPT } from '@/browser/startup/spell-check';
+import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
+import { tabAudioScript } from '@/browser/tab-sound/tab-audio-script';
 import {
   isJavaScriptAllowed,
   normalizeCookiePolicy,
@@ -136,6 +138,10 @@ export const BrowserWebView = memo(function BrowserWebView({
   const doNotTrack = useSettingsStore((s) => s.doNotTrack === true);
   // B21 #237: Spell check off — pages get a document-start script that turns it off in their fields.
   const spellCheckOff = useSettingsStore((s) => s.spellCheck === false);
+  // B3 #8 / #220: a muted or turned-down tab's next pages start with its sound settings.
+  useSyncExternalStore(tabAudio.subscribe, tabAudio.getVersion, tabAudio.getVersion);
+  const tabAudioState = tabId && tabAudio.isAdjusted(tabId) ? tabAudio.get(tabId) : null;
+  const tabAudioStart = tabAudioState ? tabAudioScript(tabAudioState.muted, tabAudioState.volume) : '';
   const javaScriptDefault = useSettingsStore((s) => s.javaScript !== false);
   const javaScriptExceptionsRaw = useSettingsStore((s) => s.javaScriptExceptions);
   const javaScriptExceptions = useMemo(
@@ -549,8 +555,8 @@ export const BrowserWebView = memo(function BrowserWebView({
     () =>
       `${chromeBridge.injectedJavaScriptBeforeContentLoaded}\n${mediaBeforeContent}${
         doNotTrack ? `\n${DO_NOT_TRACK_PAGE_SCRIPT}` : ''
-      }${spellCheckOff ? `\n${SPELL_CHECK_OFF_PAGE_SCRIPT}` : ''}`,
-    [chromeBridge.injectedJavaScriptBeforeContentLoaded, doNotTrack, mediaBeforeContent, spellCheckOff],
+      }${spellCheckOff ? `\n${SPELL_CHECK_OFF_PAGE_SCRIPT}` : ''}${tabAudioStart ? `\n${tabAudioStart}` : ''}`,
+    [chromeBridge.injectedJavaScriptBeforeContentLoaded, doNotTrack, mediaBeforeContent, spellCheckOff, tabAudioStart],
   );
 
   const finalizeLoadEnd = useCallback(

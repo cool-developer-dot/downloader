@@ -36,6 +36,7 @@ import { useSwipeNavigation } from '@/browser/components/SwipeNavigation/useSwip
 import { useVolumeKeyScroll } from '@/browser/hooks/useVolumeKeyScroll';
 import { useSelectionMenu } from '@/browser/hooks/useSelectionMenu';
 import { useKeyboardShortcuts } from '@/browser/hooks/useKeyboardShortcuts';
+import { useTabSleep } from '@/browser/hooks/useTabSleep';
 import { FindInPageBar } from '@/browser/find/FindInPageBar';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
 import { useIsWebFullscreen, useWebFullscreenLifecycle } from '@/browser/fullscreen';
@@ -176,6 +177,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   useSelectionMenu();
   // B21 #246: keyboard shortcuts (physical keyboard) through B6's key channel.
   useKeyboardShortcuts();
+  // B3 #15: unused tabs sleep (Browser settings → Tabs; off by default).
+  useTabSleep();
   const pageControlsVisible = !tabSwitcherVisible && !webFullscreenActive;
   // The page area: the tour shows where "Video available" appears (its bottom edge, above the toolbar).
   const pageAreaRef = useTourTargetRef('pageArea');

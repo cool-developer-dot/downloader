@@ -42,7 +42,9 @@ import { matchesSearch } from '@/utils/search-text';
 import { CloseTabsDialog, type CloseTabsDialogRequest } from './CloseTabsDialog';
 import { SortableTabList } from './SortableTabList';
 import { TabActionsSheet, type TabSheetAction } from './TabActionsSheet';
-import { readableTabUrl, tabDisplaySite, tabSiteKey } from './tab-display';
+import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
+import { TabVolumeSheet } from '@/browser/tab-sound/components/TabVolumeSheet';
+import { readableTabUrl, tabDisplaySite, tabDisplayTitle, tabSiteKey } from './tab-display';
 
 export type BrowserTabSwitcherProps = {
   visible: boolean;
@@ -220,6 +222,10 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
     [closeRequest],
   );
 
+  // B3 #220: the tab whose volume sheet is open.
+  const [volumeTabId, setVolumeTabId] = useState<string | null>(null);
+  const volumeTab = useMemo(() => tabs.find((tab) => tab.id === volumeTabId) ?? null, [tabs, volumeTabId]);
+
   const optionsTab: BrowserTab | null = useMemo(
     () => tabs.find((tab) => tab.id === optionsTabId) ?? null,
     [optionsTabId, tabs],
@@ -257,6 +263,15 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
     if (tabs.length > 1) {
       list.push({ id: 'close_others', label: t('browserTabs.closeOthers'), icon: 'close-box-multiple-outline', onPress: () => requestClose('others', id) });
     }
+    // B3 #8 / #220: this tab's sound.
+    const muted = tabAudio.get(id).muted;
+    list.push({
+      id: muted ? 'unmute' : 'mute',
+      label: muted ? t('browserTabSound.unmute') : t('browserTabSound.mute'),
+      icon: muted ? 'volume-high' : 'volume-off',
+      onPress: () => tabAudio.setMuted(id, !muted),
+    });
+    list.push({ id: 'volume', label: t('browserTabSound.volume'), icon: 'volume-medium', onPress: () => setVolumeTabId(id) });
     list.push({ id: 'close', label: t('browserTabs.closeTab'), icon: 'close', destructive: true, onPress: () => handleCloseTab(id) });
     return list;
   }, [dragEnabled, handleCloseTab, handleMoveBy, onLimitReached, optionsTab, requestClose, t, tabs]);
@@ -421,6 +436,11 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
         </View>
 
         <TabActionsSheet tab={optionsTab} actions={optionsActions} onClose={() => setOptionsTabId(null)} />
+        <TabVolumeSheet
+          tabId={volumeTab ? volumeTab.id : null}
+          title={volumeTab ? tabDisplayTitle(volumeTab, t) : ''}
+          onClose={() => setVolumeTabId(null)}
+        />
         <ActionSheetModal
           visible={menuVisible}
           actions={menuActions}

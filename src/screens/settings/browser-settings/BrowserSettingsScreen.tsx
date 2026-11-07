@@ -11,6 +11,7 @@ import { AddressBarSettingsSection } from './AddressBarSettingsSection';
 import { BrowserDataSection } from './BrowserDataSection';
 import { HistorySettingsSection } from './HistorySettingsSection';
 import { StartupSettingsSection } from './StartupSettingsSection';
+import { TabsSettingsSection } from './TabsSettingsSection';
 import { NavigationSettingsSection } from './NavigationSettingsSection';
 import { PrivacySettingsSection } from './PrivacySettingsSection';
 import { ProfilesSettingsSection } from './ProfilesSettingsSection';
@@ -46,6 +47,7 @@ export const BrowserSettingsScreen = memo(function BrowserSettingsScreen() {
         <NavigationSettingsSection />
         <HistorySettingsSection />
         <StartupSettingsSection />
+        <TabsSettingsSection />
         <PrivacySettingsSection />
         <ProfilesSettingsSection />
         <BrowserDataSection />

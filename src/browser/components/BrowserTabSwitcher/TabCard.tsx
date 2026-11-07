@@ -13,6 +13,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 
 import { tabDisplaySite, tabDisplayTitle } from './tab-display';
+import { TabSoundButton, useTabSound } from '@/browser/tab-sound/components/TabSoundButton';
 
 export const TAB_CARD_HEIGHT = 76;
 const THUMB_WIDTH = 52;
@@ -104,6 +105,8 @@ export const TabCard = memo(function TabCard({
   const { t, rtl } = useTranslation();
   const title = tabDisplayTitle(tab, t);
   const site = tabDisplaySite(tab, t);
+  // B3 #283: the speaker while the page plays sound (or while muted), also in the card's spoken label.
+  const sound = useTabSound(tab.id);
 
   const actions = useMemo(() => {
     const list: { name: string; label: string }[] = [{ name: 'longpress', label: t('browserTabs.menuA11y') }];
@@ -139,6 +142,7 @@ export const TabCard = memo(function TabCard({
     title,
     site,
     tab.pinned ? t('browserTabs.pinned') : null,
+    sound.muted ? t('browserTabSound.muted') : sound.playing ? t('browserTabSound.playing') : null,
     active ? t('browser.tabActiveA11y') : null,
     `${position}/${count}`,
   ]
@@ -187,6 +191,7 @@ export const TabCard = memo(function TabCard({
           </Box>
         </Box>
       </Pressable>
+      <TabSoundButton tabId={tab.id} title={title} />
       <Pressable
         testID={`browser-tab-close-${tab.id.slice(0, 8)}`}
         accessibilityRole="button"

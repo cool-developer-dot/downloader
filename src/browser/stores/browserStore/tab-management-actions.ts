@@ -4,7 +4,7 @@ import { browserMediaActionService } from '@/browser/media-actions/browser-media
 import { closedTabsService } from '@/browser/tabs/closed-tabs.service';
 import type { ClosedTabEntry } from '@/browser/tabs/closed-tabs';
 import { MAX_MOUNTED_WEBVIEWS, MAX_OPEN_TABS } from '@/browser/tabs/constants';
-import { reconcileMountPool } from '@/browser/tabs/mount-pool';
+import { applyMountStates, reconcileMountPool } from '@/browser/tabs/mount-pool';
 import { createHomeTab, createTabFromPersisted } from '@/browser/tabs/tab-factory';
 import { createTabId } from '@/browser/tabs/tab-id';
 import { moveTabBy, moveTabTo, setTabPinned, type ClosedTabSlot } from '@/browser/tabs/tab-list-ops';
@@ -56,6 +56,11 @@ export interface TabManagementActions {
   reopenClosedTab: () => RestoreTabsOutcome;
   /** Undo of one close (one tab or a group). */
   undoCloseTabs: (batchId: string) => RestoreTabsOutcome;
+  /**
+   * B3 #15: unloads the pages of these tabs (gives up their WebViews); each loads its address again when opened. The tab
+   * in front is never put to sleep. Returns the tabs that went to sleep.
+   */
+  sleepTabs: (tabIds: readonly string[]) => string[];
 }
 
 type BatchMeta = {
@@ -282,6 +287,16 @@ export function createTabManagementActions(
     closeOtherTabs: (keepTabId, options) => closeMany({ kind: 'others', keepTabId }, options?.includePinned === true),
 
     closeAllTabs: (options) => closeMany({ kind: 'all' }, options?.includePinned === true),
+
+    sleepTabs: (tabIds) => {
+      const state = get();
+      const sleeping = state.mountedTabIds.filter((id) => id !== state.activeTabId && tabIds.includes(id));
+      if (sleeping.length === 0) return [];
+      const mountedTabIds = state.mountedTabIds.filter((id) => !sleeping.includes(id));
+      suspendUnmountedTabs(sleeping);
+      set({ mountedTabIds, tabs: applyMountStates(state.tabs, state.activeTabId, mountedTabIds) });
+      return sleeping;
+    },
 
     reopenClosedTab: () => {
       if (!closedTabsService.hasAny()) {
