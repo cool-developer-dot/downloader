@@ -13,6 +13,7 @@ import { addressBarVisibility } from '@/browser/address-bar/address-bar-visibili
 import { pageActivity } from '@/browser/scroll/page-activity';
 import { useBrowserStore } from '@/browser/stores';
 import { isBrowserHomeUrl } from '@/browser/utils';
+import { findInPage } from '@/browser/find/find-in-page.service';
 
 export type BrowserChromeBridgeBindings = {
   injectedJavaScript: string;
@@ -86,6 +87,11 @@ export function useBrowserChromeBridge(
           if (isActive) {
             pageActivity.onAutoScrollEvent(message.payload.event);
           }
+          return true;
+        }
+        case 'find_result': {
+          // B7: the page's answer to the find bar (dropped unless it is for the bar's tab and latest request).
+          findInPage.onResult(message.payload, tabId ?? useBrowserStore.getState().activeTabId);
           return true;
         }
         case 'media_state': {

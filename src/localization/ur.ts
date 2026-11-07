@@ -2,6 +2,7 @@ import { browserNavUr } from './catalogs/browserNav.ur';
 import { browserSelectionUr } from './catalogs/browserSelection.ur';
 import { browserHistoryUr } from './catalogs/browserHistory.ur';
 import { browserStartupUr } from './catalogs/browserStartup.ur';
+import { browserFindUr } from './catalogs/browserFind.ur';
 import { browserProfilesUr } from './catalogs/browserProfiles.ur';
 import { browserPrivacyUr } from './catalogs/browserPrivacy.ur';
 import { browserAddressUr } from './catalogs/browserAddress.ur';
@@ -2812,4 +2813,6 @@ export const ur: CatalogStrings<typeof en> = {
   browserHistory: browserHistoryUr,
   // B21 (Hamza)
   browserStartup: browserStartupUr,
+  // B7 (Hamza)
+  browserFind: browserFindUr,
 };

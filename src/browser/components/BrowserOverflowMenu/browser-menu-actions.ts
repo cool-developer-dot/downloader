@@ -36,6 +36,7 @@ import { normalizeUrl } from '@/storage/utils';
 import { batchAddPrefill } from '@/screens/batch-add/batch-add-prefill';
 import { buildFaviconUrl } from '@/screens/bookmarks/utils/bookmark-format';
 import { exitBrowser } from '@/browser/history/browsing-data.service';
+import { findInPage } from '@/browser/find/find-in-page.service';
 import { useSettingsStore } from '@/store/settings';
 
 import type { BrowserMenuFeedback, BrowserMenuItemModel } from './types';
@@ -383,6 +384,12 @@ export function useBrowserMenuActions({
     navigation.navigate(routePaths.settings);
   }, [onClose]);
 
+  // B7 #66: the find bar over the page.
+  const handleFindInPage = useCallback(() => {
+    onClose();
+    findInPage.open();
+  }, [onClose]);
+
   // B10 #99: close every tab, clear browsing data and leave the app.
   const showExit = useSettingsStore((s) => s.clearHistoryOnExit === true);
   const handleExit = useCallback(() => {
@@ -468,6 +475,9 @@ export function useBrowserMenuActions({
         case 'exit':
           handleExit();
           break;
+        case 'find_in_page':
+          handleFindInPage();
+          break;
         default:
           break;
       }
@@ -493,6 +503,7 @@ export function useBrowserMenuActions({
       handleSearchSite,
       handleSettings,
       handleExit,
+      handleFindInPage,
       handleShare,
       handleTranslate,
       handleMoveToWindow,
@@ -649,6 +660,14 @@ export function useBrowserMenuActions({
         accessibilityLabel: t('browser.translatePageA11y'),
         kind: 'action',
         enabled: translateUrl != null,
+      },
+      {
+        id: 'find_in_page',
+        icon: 'text-search',
+        label: t('browserFind.menuItem'),
+        accessibilityLabel: t('browserFind.menuA11y'),
+        kind: 'action',
+        enabled: hasValidPage,
       },
       {
         id: 'hard_reload',

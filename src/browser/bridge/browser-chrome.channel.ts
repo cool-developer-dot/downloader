@@ -11,6 +11,8 @@ export type BrowserChromeMessageType =
   | 'auto_scroll'
   /** B6 #240: whether the page is playing audible media (volume keys keep their job then). */
   | 'media_state'
+  /** B7: the page's answer to a find-in-page request (numbers only). */
+  | 'find_result'
   | 'ready';
 
 export type BrowserChromeEnvelope = {

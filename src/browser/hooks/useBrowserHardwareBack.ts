@@ -3,6 +3,7 @@ import { usePathname } from 'expo-router';
 
 import { logBrowserNav } from '@/browser/diagnostics';
 import { webFullscreen } from '@/browser/fullscreen/web-fullscreen.runtime';
+import { findInPage } from '@/browser/find/find-in-page.service';
 import { goBackForTab } from '@/browser/services';
 import { selectIsHome, useBrowserStore } from '@/browser/stores';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
@@ -21,6 +22,11 @@ export function useBrowserHardwareBack(enabled = true): void {
   const handleBackPress = useCallback(() => {
     // A website's fullscreen video first (Chromium's video view usually consumes Back itself; this is the fallback).
     if (webFullscreen.leave('back')) {
+      return true;
+    }
+    // B7 #66: then the find bar (Back closes it and clears its highlights).
+    if (findInPage.isOpen()) {
+      findInPage.close();
       return true;
     }
     if (selectIsHome(useBrowserStore.getState())) {

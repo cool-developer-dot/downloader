@@ -17,6 +17,8 @@ export type BrowserMenuActionId =
   | 'copy_link'
   | 'share'
   | 'translate'
+  /** B7 #66 */
+  | 'find_in_page'
   | 'hard_reload'
   | 'scroll_top'
   | 'scroll_bottom'

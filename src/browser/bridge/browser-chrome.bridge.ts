@@ -38,6 +38,11 @@ export type ParsedBrowserChromeMessage =
       payload: { playing: boolean };
     }
   | {
+      /** B7: where the find is (1-based `current`, 0 when nothing matched) for request `requestId`. */
+      type: 'find_result';
+      payload: { requestId: number; current: number; total: number; capped: boolean };
+    }
+  | {
       type: 'pull_to_refresh';
       payload: Record<string, never>;
     }
@@ -80,6 +85,7 @@ const MESSAGE_TYPES = new Set<BrowserChromeMessageType>([
   'page_links',
   'auto_scroll',
   'media_state',
+  'find_result',
   'ready',
 ]);
 
@@ -177,6 +183,29 @@ export function parseBrowserChromeMessage(
         return null;
       }
       return { type: 'media_state', payload: { playing: payload.playing } };
+    }
+    case 'find_result': {
+      // B7: any page can post this — only bounded whole numbers are taken.
+      const requestId = finiteNumber(payload.requestId);
+      const current = finiteNumber(payload.current);
+      const total = finiteNumber(payload.total);
+      if (
+        requestId == null ||
+        current == null ||
+        total == null ||
+        !Number.isInteger(requestId) ||
+        !Number.isInteger(current) ||
+        !Number.isInteger(total) ||
+        requestId < 0 ||
+        total < 0 ||
+        total > 100_000 ||
+        current < 0 ||
+        current > total ||
+        (total > 0 && current === 0)
+      ) {
+        return null;
+      }
+      return { type: 'find_result', payload: { requestId, current, total, capped: payload.capped === true } };
     }
     case 'link_long_press': {
       const href = optionalString(payload.href, 8_192);

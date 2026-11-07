@@ -36,6 +36,7 @@ import { useSwipeNavigation } from '@/browser/components/SwipeNavigation/useSwip
 import { useVolumeKeyScroll } from '@/browser/hooks/useVolumeKeyScroll';
 import { useSelectionMenu } from '@/browser/hooks/useSelectionMenu';
 import { useKeyboardShortcuts } from '@/browser/hooks/useKeyboardShortcuts';
+import { FindInPageBar } from '@/browser/find/FindInPageBar';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
 import { useIsWebFullscreen, useWebFullscreenLifecycle } from '@/browser/fullscreen';
 import {
@@ -251,6 +252,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
         <ScrollJumpButton visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
         <AutoScrollControl visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
         <SwipeArrow shared={swipe.shared} bottom={24} />
+        {/* B7: the find bar over the top of the page. */}
+        {pageControlsVisible ? <FindInPageBar /> : null}
       </Box>
       {addressBarPosition === 'bottom' ? <BrowserProgressBar /> : null}
       {addressBarPosition === 'bottom' ? (
