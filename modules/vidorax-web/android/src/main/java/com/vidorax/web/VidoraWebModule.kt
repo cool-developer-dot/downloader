@@ -32,14 +32,21 @@ import com.vidorax.web.selection.SelectionMenuCallback
 import com.vidorax.web.window.BrowserWindowRecord
 import com.vidorax.web.window.BrowserWindows
 import com.vidorax.web.snapshot.WebViewSnapshots
+import com.vidorax.web.startpage.StartPageImages
+import com.vidorax.web.startpage.StartPagePhotoContract
 import expo.modules.kotlin.Promise
+import expo.modules.kotlin.activityresult.AppContextActivityResultLauncher
 import expo.modules.kotlin.exception.Exceptions
+import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.io.File
 import java.util.concurrent.atomic.AtomicReference
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private const val ON_NETWORK_MEDIA = "onNetworkMedia"
 private const val ON_WEB_DOWNLOAD = "onWebDownload"
@@ -73,6 +80,9 @@ class VidoraWebModule : Module() {
   // B8: the app's items in the text-selection menu (from JS), used only while JS listens to onSelectionAction.
   private val selectionMenu = AtomicReference<SelectionMenu.Config?>(null)
   @Volatile private var hasSelectionListeners = false
+
+  // B21 #245: the system Photo Picker (or document picker) for the start page's background.
+  private lateinit var startPagePhotoLauncher: AppContextActivityResultLauncher<StartPagePhotoContract.Request, android.net.Uri?>
 
   private val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
@@ -172,6 +182,25 @@ class VidoraWebModule : Module() {
     // B8: the selection menu gets the app's items only while JS listens.
     OnStartObserving(ON_SELECTION_ACTION) { hasSelectionListeners = true }
     OnStopObserving(ON_SELECTION_ACTION) { hasSelectionListeners = false }
+
+    // B21 #245: the start page's background photo — picked without a permission, copied and scaled into app storage.
+    RegisterActivityContracts {
+      startPagePhotoLauncher = registerForActivityResult(StartPagePhotoContract())
+    }
+
+    AsyncFunction("pickStartPageImage") Coroutine { maxSize: Int ->
+      val uri = startPagePhotoLauncher.launch(StartPagePhotoContract.Request()) ?: return@Coroutine null
+      val resolver = context.contentResolver
+      val directory = File(context.filesDir, StartPageImages.DIRECTORY)
+      val saved = withContext(Dispatchers.IO) {
+        StartPageImages.copyScaled({ resolver.openInputStream(uri) }, directory, maxSize, System.currentTimeMillis())
+      } ?: return@Coroutine mapOf("error" to "unreadable")
+      mapOf("uri" to Uri.fromFile(saved.file).toString(), "width" to saved.width, "height" to saved.height)
+    }
+
+    AsyncFunction("clearStartPageImage") {
+      StartPageImages.clear(File(context.filesDir, StartPageImages.DIRECTORY))
+    }
 
     // B8: the app's text-selection menu items (`ids` / `titles` pair up) and the script that reads the selection.
     Function("setSelectionMenu") { ids: List<String>, titles: List<String>, readScript: String ->

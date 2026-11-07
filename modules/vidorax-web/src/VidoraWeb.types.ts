@@ -158,6 +158,12 @@ export interface SelectionActionEvent {
   text: string;
 }
 
+/**
+ * B21 #245: the start page's background photo after `pickStartPageImage`: a JPEG in the app's own storage
+ * (`<filesDir>/start-page/`), or `{ error: 'unreadable' }` when the picked file wasn't a readable image.
+ */
+export type StartPageImage = { uri: string; width: number; height: number } | { error: 'unreadable' };
+
 export type VidoraWebEvents = {
   onNetworkMedia: (event: NetworkMediaBatchEvent) => void;
   onWebDownload: (event: WebDownloadEvent) => void;
@@ -219,6 +225,15 @@ export interface VidoraWebModuleApi {
    * while something listens to `onSelectionAction`. Missing on older native builds.
    */
   setSelectionMenu?(ids: readonly string[], titles: readonly string[], readScript: string): void;
+  /**
+   * B21 #245: opens Android's Photo Picker (`ACTION_PICK_IMAGES` where it exists, else the system document picker for
+   * images — neither needs a permission), copies the picked image into the app's storage, upright and scaled so its
+   * longer side is at most `maxSize` px (clamped 480–2560), as a JPEG with a new name; older ones are deleted.
+   * Resolves null when the user cancels. Missing on older native builds.
+   */
+  pickStartPageImage?(maxSize: number): Promise<StartPageImage | null>;
+  /** B21 #245: deletes the start page's background photo(s). Missing on older native builds. */
+  clearStartPageImage?(): Promise<boolean>;
   /** B6 #45: the system navigation mode, read now. Missing on older native builds. */
   getNavigationMode?(): NavigationMode;
   /**
