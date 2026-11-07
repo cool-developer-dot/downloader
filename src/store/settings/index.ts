@@ -50,6 +50,8 @@ import {
 } from '@/browser/startup/start-page-background';
 // B3 (Hamza)
 import { normalizeTabSleepAfter } from '@/browser/tab-sound/tab-sleep';
+// B13 (Hamza)
+import { parseSitePermissions, serializeSitePermissions } from '@/browser/site-permissions/site-permissions';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -161,6 +163,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         startPageBackgroundGradient: state.startPageBackgroundGradient,
         startPageBackgroundPhoto: state.startPageBackgroundPhoto,
         tabSleepAfter: state.tabSleepAfter,
+        sitePermissions: state.sitePermissions,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -306,6 +309,10 @@ export const useSettingsStore = createStore<SettingsStore>()(
               : current.startPageBackgroundPhoto,
           tabSleepAfter:
             raw.tabSleepAfter === undefined ? current.tabSleepAfter : normalizeTabSleepAfter(raw.tabSleepAfter),
+          sitePermissions:
+            typeof raw.sitePermissions === 'string'
+              ? serializeSitePermissions(parseSitePermissions(raw.sitePermissions))
+              : current.sitePermissions,
         };
       },
     },

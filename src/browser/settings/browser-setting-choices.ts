@@ -45,4 +45,6 @@ export const BROWSER_SETTING_CHOICES: Readonly<Record<string, readonly string[]>
 export const BROWSER_SETTING_STRING_LIMITS: Readonly<Record<string, number>> = {
   searchShortcuts: 16_000,
   javaScriptExceptions: 16_000,
+  // B13 (Hamza)
+  sitePermissions: 16_000,
 };

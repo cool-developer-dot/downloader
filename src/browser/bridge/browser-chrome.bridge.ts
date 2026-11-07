@@ -38,6 +38,16 @@ export type ParsedBrowserChromeMessage =
       payload: { playing: boolean };
     }
   | {
+      /** B13: the kind of request the page made (it was refused in the page). */
+      type: 'site_permission';
+      payload: { kind: 'location' | 'camera' | 'microphone' | 'notifications' };
+    }
+  | {
+      /** B13: a window the page tried to open without a tap; `url` is null when it had no web address. */
+      type: 'popup_blocked';
+      payload: { url: string | null };
+    }
+  | {
       /** B7: where the find is (1-based `current`, 0 when nothing matched) for request `requestId`. */
       type: 'find_result';
       payload: { requestId: number; current: number; total: number; capped: boolean };
@@ -86,6 +96,8 @@ const MESSAGE_TYPES = new Set<BrowserChromeMessageType>([
   'auto_scroll',
   'media_state',
   'find_result',
+  'site_permission',
+  'popup_blocked',
   'ready',
 ]);
 
@@ -183,6 +195,19 @@ export function parseBrowserChromeMessage(
         return null;
       }
       return { type: 'media_state', payload: { playing: payload.playing } };
+    }
+    case 'site_permission': {
+      const kind = payload.kind;
+      if (kind !== 'location' && kind !== 'camera' && kind !== 'microphone' && kind !== 'notifications') {
+        return null;
+      }
+      return { type: 'site_permission', payload: { kind } };
+    }
+    case 'popup_blocked': {
+      const raw = optionalString(payload.url, 8_192);
+      const lower = raw?.toLowerCase() ?? '';
+      const url = raw && (lower.startsWith('https://') || lower.startsWith('http://')) ? raw : null;
+      return { type: 'popup_blocked', payload: { url } };
     }
     case 'find_result': {
       // B7: any page can post this — only bounded whole numbers are taken.

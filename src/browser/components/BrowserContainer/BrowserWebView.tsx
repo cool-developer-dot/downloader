@@ -66,6 +66,7 @@ import { DO_NOT_TRACK_HEADERS, DO_NOT_TRACK_PAGE_SCRIPT } from '@/browser/privac
 import { SPELL_CHECK_OFF_PAGE_SCRIPT } from '@/browser/startup/spell-check';
 import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
 import { tabAudioScript } from '@/browser/tab-sound/tab-audio-script';
+import { SITE_PERMISSION_PAGE_SCRIPT } from '@/browser/site-permissions/site-permission-script';
 import {
   isJavaScriptAllowed,
   normalizeCookiePolicy,
@@ -553,7 +554,9 @@ export const BrowserWebView = memo(function BrowserWebView({
 
   const injectedJavaScriptBeforeContentLoaded = useMemo(
     () =>
-      `${chromeBridge.injectedJavaScriptBeforeContentLoaded}\n${mediaBeforeContent}${
+      // B13: every page's location / camera / mic / notification requests and pop-ups without a tap are answered
+      // in the page (site-permission-script.ts).
+      `${chromeBridge.injectedJavaScriptBeforeContentLoaded}\n${mediaBeforeContent}\n${SITE_PERMISSION_PAGE_SCRIPT}${
         doNotTrack ? `\n${DO_NOT_TRACK_PAGE_SCRIPT}` : ''
       }${spellCheckOff ? `\n${SPELL_CHECK_OFF_PAGE_SCRIPT}` : ''}${tabAudioStart ? `\n${tabAudioStart}` : ''}`,
     [chromeBridge.injectedJavaScriptBeforeContentLoaded, doNotTrack, mediaBeforeContent, spellCheckOff, tabAudioStart],

@@ -37,6 +37,8 @@ import { useVolumeKeyScroll } from '@/browser/hooks/useVolumeKeyScroll';
 import { useSelectionMenu } from '@/browser/hooks/useSelectionMenu';
 import { useKeyboardShortcuts } from '@/browser/hooks/useKeyboardShortcuts';
 import { useTabSleep } from '@/browser/hooks/useTabSleep';
+import { SiteNoticeBar } from '@/browser/site-permissions/components/SiteNoticeBar';
+import { SitePermissionsHost } from '@/browser/site-permissions/components/SitePermissionsSheet';
 import { FindInPageBar } from '@/browser/find/FindInPageBar';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
 import { useIsWebFullscreen, useWebFullscreenLifecycle } from '@/browser/fullscreen';
@@ -232,6 +234,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
       <MediaDetectionHost />
       <ProfileSwitcherHost />
       <SiteInfoHost />
+      {/* B13: Site permissions from the bar or the lock icon. */}
+      <SitePermissionsHost />
       {addressBarPosition === 'top' ? (
         <AutoHideHeader position="top">
           <BrowserHeader
@@ -252,6 +256,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
         <InsecurePageBar visible={pageControlsVisible && !tabSwitcherVisible} />
         <TabUndoSnackbar visible={pageControlsVisible} bottom={12} />
         <BackgroundTabSnackbar visible={pageControlsVisible} bottom={12} />
+        <SiteNoticeBar visible={pageControlsVisible} bottom={12} />
         <ScrollJumpButton visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
         <AutoScrollControl visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
         <SwipeArrow shared={swipe.shared} bottom={24} />

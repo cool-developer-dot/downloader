@@ -26,6 +26,8 @@ import { DEFAULT_TOOLBAR_BUTTONS_VALUE } from '@/browser/startup/toolbar-buttons
 import { START_PAGE_COLORS, START_PAGE_GRADIENTS } from '@/browser/startup/start-page-background';
 // B3 (Hamza)
 import { DEFAULT_TAB_SLEEP_AFTER } from '@/browser/tab-sound/tab-sleep';
+// B13 (Hamza)
+import { DEFAULT_SITE_PERMISSIONS_JSON } from '@/browser/site-permissions/site-permissions';
 
 export const initialSettingsState: SettingsState = {
   clipboardMonitor: false,
@@ -87,4 +89,5 @@ export const initialSettingsState: SettingsState = {
   startPageBackgroundGradient: START_PAGE_GRADIENTS[0].id,
   startPageBackgroundPhoto: '',
   tabSleepAfter: DEFAULT_TAB_SLEEP_AFTER,
+  sitePermissions: DEFAULT_SITE_PERMISSIONS_JSON,
 };

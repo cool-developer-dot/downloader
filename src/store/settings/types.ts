@@ -113,6 +113,8 @@ export interface SettingsState {
   startPageBackgroundPhoto: string;
   /** B3 #15: unused tabs give up their page after this time (default 'off' — today's). */
   tabSleepAfter: import('@/browser/tab-sound/tab-sleep').TabSleepAfter;
+  /** B13 #116: per-site permissions (blocked requests, pop-ups always allowed) as JSON; default '{}' (none). */
+  sitePermissions: string;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

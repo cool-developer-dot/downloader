@@ -37,6 +37,7 @@ import { useSettingsStore } from '@/store/settings';
 import { useTourBlocker } from '@/tour/tour-store';
 
 import { siteInfoRequests } from './site-info-requests';
+import { sitePermissionsSheet } from '@/browser/site-permissions/site-permissions.service';
 
 type Details = { certificate: PageCertificate | null; cookies: number; storage: number };
 
@@ -233,6 +234,22 @@ export const SiteInfoHost = memo(function SiteInfoHost() {
               />
             </Box>
             <Box row rtlRow gap={8} style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {/* B13 #116: this site's permissions (location, camera, mic, notifications, pop-ups). */}
+              {site ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={t('browserSitePermissions.siteSettingsA11y', { site })}
+                  onPress={() => {
+                    close();
+                    sitePermissionsSheet.open(site);
+                  }}
+                  testID="browser-site-info-site-settings"
+                  style={styles.button}>
+                  <Text variant="button" color="textSecondary">
+                    {t('browserSitePermissions.siteSettings')}
+                  </Text>
+                </Pressable>
+              ) : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t('browserPrivacy.privacySettings')}

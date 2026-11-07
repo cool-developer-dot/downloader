@@ -13,6 +13,10 @@ export type BrowserChromeMessageType =
   | 'media_state'
   /** B7: the page's answer to a find-in-page request (numbers only). */
   | 'find_result'
+  /** B13: the page asked for location / camera / microphone / notifications (refused in the page). */
+  | 'site_permission'
+  /** B13: the page tried to open a window without a tap (not opened). */
+  | 'popup_blocked'
   | 'ready';
 
 export type BrowserChromeEnvelope = {

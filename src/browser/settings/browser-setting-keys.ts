@@ -37,6 +37,8 @@ export const BROWSER_SETTING_KEYS = [
   'startPageBackgroundPhoto',
   // B3 (Hamza)
   'tabSleepAfter',
+  // B13 (Hamza)
+  'sitePermissions',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

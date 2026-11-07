@@ -14,6 +14,7 @@ import { pageActivity } from '@/browser/scroll/page-activity';
 import { useBrowserStore } from '@/browser/stores';
 import { isBrowserHomeUrl } from '@/browser/utils';
 import { findInPage } from '@/browser/find/find-in-page.service';
+import { onPopupBlocked, onSitePermissionRequest } from '@/browser/site-permissions/site-permissions.service';
 
 export type BrowserChromeBridgeBindings = {
   injectedJavaScript: string;
@@ -87,6 +88,16 @@ export function useBrowserChromeBridge(
           if (isActive) {
             pageActivity.onAutoScrollEvent(message.payload.event);
           }
+          return true;
+        }
+        case 'site_permission': {
+          // B13: refused in the page; listed under its site, and the bar says so when it's the page in front.
+          onSitePermissionRequest(message.payload.kind, tabId ?? null, isActive);
+          return true;
+        }
+        case 'popup_blocked': {
+          // B13 #120: a window opened without a tap; sites allowed "always" get it, others get the bar.
+          onPopupBlocked(message.payload.url, tabId ?? null, isActive);
           return true;
         }
         case 'find_result': {

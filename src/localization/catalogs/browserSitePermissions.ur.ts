@@ -1,0 +1,36 @@
+import type { CatalogStrings } from '../types';
+import type { browserSitePermissionsEn } from './browserSitePermissions.en';
+
+export const browserSitePermissionsUr: CatalogStrings<typeof browserSitePermissionsEn> = {
+  blockedLocation: 'VidoraX نے {site} کو آپ کا مقام استعمال کرنے سے روک دیا',
+  blockedCamera: 'VidoraX نے {site} کو آپ کا کیمرا استعمال کرنے سے روک دیا',
+  blockedMicrophone: 'VidoraX نے {site} کو آپ کا مائیکروفون استعمال کرنے سے روک دیا',
+  blockedNotifications: 'VidoraX نے {site} کو اطلاعات دکھانے سے روک دیا',
+  siteSettings: 'سائٹ کی ترتیبات',
+  siteSettingsA11y: '{site} کی سائٹ اجازتیں کھولیں',
+  popupBlocked: 'پاپ اپ روک دیا گیا',
+  popupBlockedA11y: '{site} نے پاپ اپ کھولنے کی کوشش کی۔ اسے روک دیا گیا۔',
+  allowOnce: 'ایک بار اجازت دیں',
+  allowAlways: 'اس سائٹ کے لیے ہمیشہ',
+  dismiss: 'بند کریں',
+  section: 'سائٹ اجازتیں',
+  sectionDescription: 'سائٹوں نے کیا مانگا، اور پاپ اپ',
+  manage: 'سائٹ اجازتیں',
+  manageHint: 'مقام، کیمرا، مائیکروفون اور اطلاعات ہمیشہ بند رہتی ہیں',
+  siteCount: '{count} سائٹیں',
+  empty: 'ابھی تک کسی سائٹ نے کچھ نہیں مانگا',
+  location: 'مقام',
+  camera: 'کیمرا',
+  microphone: 'مائیکروفون',
+  notifications: 'اطلاعات',
+  blocked: 'بند',
+  popups: 'پاپ اپ',
+  allowPopups: 'پاپ اپ کی اجازت دیں',
+  allowPopupsHint: 'بند: صفحات صرف آپ کے ٹیپ کرنے پر ونڈو کھول سکتے ہیں',
+  resetSite: 'ری سیٹ',
+  resetSiteA11y: '{site} کی اجازتیں ری سیٹ کریں',
+  resetAll: 'تمام سائٹیں ری سیٹ کریں',
+  resetAllDone: 'تمام سائٹ اجازتیں ری سیٹ ہو گئیں',
+  alwaysBlockedNote:
+    'VidoraX کو مقام، کیمرا یا مائیکروفون تک رسائی نہیں، اور اینڈرائیڈ ویب صفحات کو اطلاعات دکھانے نہیں دیتا، اس لیے یہ بند رہتے ہیں۔',
+};
