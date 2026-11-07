@@ -164,6 +164,22 @@ export interface SelectionActionEvent {
  */
 export type StartPageImage = { uri: string; width: number; height: number } | { error: 'unreadable' };
 
+/**
+ * B3 #190: the app's memory use (`Debug.getMemoryInfo` for its own process — the numbers `dumpsys meminfo` shows) and
+ * the device's (`ActivityManager.getMemoryInfo`). Kilobytes.
+ */
+export interface AppMemoryInfo {
+  /** Proportional set size of the whole app process (WebView's renderer runs in its own process and isn't included). */
+  totalPssKb: number;
+  javaHeapKb: number;
+  nativeHeapKb: number;
+  graphicsKb: number;
+  deviceAvailableKb: number;
+  deviceTotalKb: number;
+  /** Android considers the device low on memory. */
+  lowMemory: boolean;
+}
+
 export type VidoraWebEvents = {
   onNetworkMedia: (event: NetworkMediaBatchEvent) => void;
   onWebDownload: (event: WebDownloadEvent) => void;
@@ -232,6 +248,8 @@ export interface VidoraWebModuleApi {
    * Resolves null when the user cancels. Missing on older native builds.
    */
   pickStartPageImage?(maxSize: number): Promise<StartPageImage | null>;
+  /** B3 #190: reads the app's memory use now (off the main thread). Missing on older native builds. */
+  getAppMemory?(): Promise<AppMemoryInfo>;
   /** B21 #245: deletes the start page's background photo(s). Missing on older native builds. */
   clearStartPageImage?(): Promise<boolean>;
   /** B6 #45: the system navigation mode, read now. Missing on older native builds. */

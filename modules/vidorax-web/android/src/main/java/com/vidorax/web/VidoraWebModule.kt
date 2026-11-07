@@ -19,6 +19,7 @@ import com.reactnativecommunity.webview.RNCWebViewHooks
 import com.reactnativecommunity.webview.RNCWebViewModule
 import com.reactnativecommunity.webview.RNCWebViewWrapper
 import com.vidorax.web.keys.VidoraKeyChannel
+import com.vidorax.web.memory.AppMemory
 import com.vidorax.web.navigation.NavigationMode
 import com.vidorax.web.navigation.WebHistoryWindow
 import com.vidorax.web.network.DnsPrefetcher
@@ -196,6 +197,11 @@ class VidoraWebModule : Module() {
         StartPageImages.copyScaled({ resolver.openInputStream(uri) }, directory, maxSize, System.currentTimeMillis())
       } ?: return@Coroutine mapOf("error" to "unreadable")
       mapOf("uri" to Uri.fromFile(saved.file).toString(), "width" to saved.width, "height" to saved.height)
+    }
+
+    // B3 #190: the app's memory use for Browser settings (background queue; a few ms).
+    AsyncFunction("getAppMemory") {
+      AppMemory.toMap(AppMemory.read(context))
     }
 
     AsyncFunction("clearStartPageImage") {
