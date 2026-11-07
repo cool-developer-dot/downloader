@@ -1,4 +1,5 @@
 import { browserNavUr } from './catalogs/browserNav.ur';
+import { browserSelectionUr } from './catalogs/browserSelection.ur';
 import { browserProfilesUr } from './catalogs/browserProfiles.ur';
 import { browserPrivacyUr } from './catalogs/browserPrivacy.ur';
 import { browserAddressUr } from './catalogs/browserAddress.ur';
@@ -2803,4 +2804,6 @@ export const ur: CatalogStrings<typeof en> = {
   browserNav: browserNavUr,
   browserProfiles: browserProfilesUr,
   browserPrivacy: browserPrivacyUr,
+  // B8 (Hamza)
+  browserSelection: browserSelectionUr,
 };
