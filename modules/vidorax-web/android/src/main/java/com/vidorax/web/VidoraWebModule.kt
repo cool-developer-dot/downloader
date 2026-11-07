@@ -29,6 +29,7 @@ import com.vidorax.web.network.WebDownloadRoute
 import com.vidorax.web.privacy.SitePrivacy
 import com.vidorax.web.profiles.WebProfiles
 import com.vidorax.web.selection.SelectionMenu
+import com.vidorax.web.shortcuts.BookmarkShortcuts
 import com.vidorax.web.selection.SelectionMenuCallback
 import com.vidorax.web.window.BrowserWindowRecord
 import com.vidorax.web.window.BrowserWindows
@@ -55,6 +56,7 @@ private const val ON_SHARED_TEXT = "onSharedText"
 private const val ON_CAPTURED_KEY = "onCapturedKey"
 private const val ON_BROWSER_WINDOW = "onBrowserWindow"
 private const val ON_SELECTION_ACTION = "onSelectionAction"
+private const val ON_SHORTCUT_OPEN = "onShortcutOpen"
 
 // react-native-webview's own download defaults (RNCWebViewManagerImpl).
 private const val DOWNLOADING_MESSAGE = "Downloading"
@@ -68,6 +70,10 @@ class VidoraWebModule : Module() {
 
   @Volatile private var hasWebDownloadListeners = false
   @Volatile private var hasSharedTextListeners = false
+  @Volatile private var hasShortcutListeners = false
+
+  // B9 #87: a bookmark shortcut tapped while JS was not listening, handed out by consumeShortcutUrl.
+  private val unclaimedShortcutUrl = AtomicReference<String?>(null)
 
   // A link shared while JS was not listening, handed out by consumeSharedText.
   private val unclaimedSharedText = AtomicReference<String?>(null)
@@ -149,7 +155,7 @@ class VidoraWebModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("VidoraWeb")
 
-    Events(ON_NETWORK_MEDIA, ON_WEB_DOWNLOAD, ON_SHARED_TEXT, ON_CAPTURED_KEY, ON_BROWSER_WINDOW, ON_SELECTION_ACTION)
+    Events(ON_NETWORK_MEDIA, ON_WEB_DOWNLOAD, ON_SHARED_TEXT, ON_CAPTURED_KEY, ON_BROWSER_WINDOW, ON_SELECTION_ACTION, ON_SHORTCUT_OPEN)
 
     OnCreate {
       RNCWebViewHooks.setListener(webViewHooks)
@@ -167,6 +173,8 @@ class VidoraWebModule : Module() {
     OnStartObserving(ON_WEB_DOWNLOAD) { hasWebDownloadListeners = true }
     OnStopObserving(ON_WEB_DOWNLOAD) { hasWebDownloadListeners = false }
     OnStartObserving(ON_SHARED_TEXT) { hasSharedTextListeners = true }
+    OnStartObserving(ON_SHORTCUT_OPEN) { hasShortcutListeners = true }
+    OnStopObserving(ON_SHORTCUT_OPEN) { hasShortcutListeners = false }
     OnStopObserving(ON_SHARED_TEXT) { hasSharedTextListeners = false }
     // B6 #240: keys are only ever taken while JS listens for them.
     OnStartObserving(ON_CAPTURED_KEY) {
@@ -197,6 +205,19 @@ class VidoraWebModule : Module() {
         StartPageImages.copyScaled({ resolver.openInputStream(uri) }, directory, maxSize, System.currentTimeMillis())
       } ?: return@Coroutine mapOf("error" to "unreadable")
       mapOf("uri" to Uri.fromFile(saved.file).toString(), "width" to saved.width, "height" to saved.height)
+    }
+
+    // B9 #87: bookmark shortcuts on the home screen (see BookmarkShortcuts).
+    Function("canPinShortcuts") {
+      BookmarkShortcuts.canPin(context)
+    }
+
+    AsyncFunction("pinBookmarkShortcut") { url: String, title: String ->
+      BookmarkShortcuts.pin(context, url, title)
+    }.runOnQueue(Queues.MAIN)
+
+    Function("consumeShortcutUrl") {
+      unclaimedShortcutUrl.getAndSet(null) ?: BookmarkShortcuts.takeShortcutUrl(appContext.currentActivity?.intent)
     }
 
     // B3 #190: the app's memory use for Browser settings (background queue; a few ms).
@@ -343,6 +364,11 @@ class VidoraWebModule : Module() {
     }.runOnQueue(Queues.MAIN)
 
     OnNewIntent { intent ->
+      // B9 #87: a bookmark shortcut tapped while the app runs.
+      BookmarkShortcuts.takeShortcutUrl(intent)?.let { url ->
+        if (hasShortcutListeners) sendEvent(ON_SHORTCUT_OPEN, mapOf("url" to url)) else unclaimedShortcutUrl.set(url)
+        return@OnNewIntent
+      }
       val text = takeSharedText(intent) ?: return@OnNewIntent
       if (hasSharedTextListeners) {
         sendEvent(ON_SHARED_TEXT, mapOf("text" to text))

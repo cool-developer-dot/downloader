@@ -189,6 +189,8 @@ export type VidoraWebEvents = {
   onCapturedKey: (event: CapturedKeyEvent) => void;
   /** B20 #16: see BrowserWindowEvent. Events from while nothing listened arrive when something does (at most 20). */
   onBrowserWindow: (event: BrowserWindowEvent) => void;
+  /** B9 #87: a bookmark's home-screen shortcut was tapped while the app was running (`url` is http(s)). */
+  onShortcutOpen: (event: { url: string }) => void;
   /** B8: see SelectionActionEvent. The menu shows the app's items only while something listens. */
   onSelectionAction: (event: SelectionActionEvent) => void;
 };
@@ -248,6 +250,16 @@ export interface VidoraWebModuleApi {
    * Resolves null when the user cancels. Missing on older native builds.
    */
   pickStartPageImage?(maxSize: number): Promise<StartPageImage | null>;
+  /** B9 #87: whether this phone's launcher can pin shortcuts (Android 8+ and a launcher that supports it). */
+  canPinShortcuts?(): boolean;
+  /**
+   * B9 #87: asks the launcher to pin a shortcut for this http(s) address (the launcher shows its own confirmation;
+   * no permission). Icon: the first letter of `title` (else the host) on a colour from the address. One shortcut per
+   * address. Resolves `pinned`, `unsupported` (this launcher can't), `invalid` (not a web address) or `failed`.
+   */
+  pinBookmarkShortcut?(url: string, title: string): Promise<'pinned' | 'unsupported' | 'invalid' | 'failed'>;
+  /** B9 #87: the address of the shortcut the app was started with, once; else null. */
+  consumeShortcutUrl?(): string | null;
   /** B3 #190: reads the app's memory use now (off the main thread). Missing on older native builds. */
   getAppMemory?(): Promise<AppMemoryInfo>;
   /** B21 #245: deletes the start page's background photo(s). Missing on older native builds. */
