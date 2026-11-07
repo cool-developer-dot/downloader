@@ -6,6 +6,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.security.NetworkSecurityPolicy
+import android.view.ActionMode
 import android.os.Environment
 import android.webkit.CookieManager
 import android.webkit.URLUtil
@@ -26,6 +27,8 @@ import com.vidorax.web.network.ServiceWorkerRequests
 import com.vidorax.web.network.WebDownloadRoute
 import com.vidorax.web.privacy.SitePrivacy
 import com.vidorax.web.profiles.WebProfiles
+import com.vidorax.web.selection.SelectionMenu
+import com.vidorax.web.selection.SelectionMenuCallback
 import com.vidorax.web.window.BrowserWindowRecord
 import com.vidorax.web.window.BrowserWindows
 import com.vidorax.web.snapshot.WebViewSnapshots
@@ -43,6 +46,7 @@ private const val ON_WEB_DOWNLOAD = "onWebDownload"
 private const val ON_SHARED_TEXT = "onSharedText"
 private const val ON_CAPTURED_KEY = "onCapturedKey"
 private const val ON_BROWSER_WINDOW = "onBrowserWindow"
+private const val ON_SELECTION_ACTION = "onSelectionAction"
 
 // react-native-webview's own download defaults (RNCWebViewManagerImpl).
 private const val DOWNLOADING_MESSAGE = "Downloading"
@@ -65,6 +69,10 @@ class VidoraWebModule : Module() {
 
   // B6 #55: DNS lookups ahead of a likely page load.
   private val dnsPrefetcher by lazy { DnsPrefetcher() }
+
+  // B8: the app's items in the text-selection menu (from JS), used only while JS listens to onSelectionAction.
+  private val selectionMenu = AtomicReference<SelectionMenu.Config?>(null)
+  @Volatile private var hasSelectionListeners = false
 
   private val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
@@ -115,12 +123,22 @@ class VidoraWebModule : Module() {
       )
       return true
     }
+
+    // B8: adds the app's items (Search, …) to the page's own text-selection menu; see SelectionMenuCallback.
+    override fun wrapSelectionMenu(webView: RNCWebView, callback: ActionMode.Callback): ActionMode.Callback {
+      val config = selectionMenu.get()
+      if (config == null || !hasSelectionListeners) return callback
+      val viewTag = RNCWebViewWrapper.getReactTagFromWebView(webView)
+      return SelectionMenuCallback(webView, callback, config) { itemId, text ->
+        sendEvent(ON_SELECTION_ACTION, mapOf("viewTag" to viewTag, "itemId" to itemId, "text" to text))
+      }
+    }
   }
 
   override fun definition() = ModuleDefinition {
     Name("VidoraWeb")
 
-    Events(ON_NETWORK_MEDIA, ON_WEB_DOWNLOAD, ON_SHARED_TEXT, ON_CAPTURED_KEY, ON_BROWSER_WINDOW)
+    Events(ON_NETWORK_MEDIA, ON_WEB_DOWNLOAD, ON_SHARED_TEXT, ON_CAPTURED_KEY, ON_BROWSER_WINDOW, ON_SELECTION_ACTION)
 
     OnCreate {
       RNCWebViewHooks.setListener(webViewHooks)
@@ -151,6 +169,14 @@ class VidoraWebModule : Module() {
       BrowserWindows.setListener { event -> sendEvent(ON_BROWSER_WINDOW, event) }
     }
     OnStopObserving(ON_BROWSER_WINDOW) { BrowserWindows.setListener(null) }
+    // B8: the selection menu gets the app's items only while JS listens.
+    OnStartObserving(ON_SELECTION_ACTION) { hasSelectionListeners = true }
+    OnStopObserving(ON_SELECTION_ACTION) { hasSelectionListeners = false }
+
+    // B8: the app's text-selection menu items (`ids` / `titles` pair up) and the script that reads the selection.
+    Function("setSelectionMenu") { ids: List<String>, titles: List<String>, readScript: String ->
+      selectionMenu.set(SelectionMenu.configOf(ids, titles, readScript))
+    }
 
     Function("setNetworkObservationEnabled") { enabled: Boolean ->
       networkObserver.setEnabled(enabled)

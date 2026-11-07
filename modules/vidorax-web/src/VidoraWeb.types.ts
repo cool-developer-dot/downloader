@@ -146,6 +146,18 @@ export interface BrowserWindowEvent {
   foreground: boolean;
 }
 
+/**
+ * B8: an app item was tapped in a page's text-selection menu. `text` is the page's selected text, read in the page when
+ * the item was tapped (at most 20,000 characters; never empty).
+ */
+export interface SelectionActionEvent {
+  /** React view tag of the RNCWebViewWrapper whose page the text was selected in. */
+  viewTag: number;
+  /** The item's id as given to `setSelectionMenu`. */
+  itemId: string;
+  text: string;
+}
+
 export type VidoraWebEvents = {
   onNetworkMedia: (event: NetworkMediaBatchEvent) => void;
   onWebDownload: (event: WebDownloadEvent) => void;
@@ -155,6 +167,8 @@ export type VidoraWebEvents = {
   onCapturedKey: (event: CapturedKeyEvent) => void;
   /** B20 #16: see BrowserWindowEvent. Events from while nothing listened arrive when something does (at most 20). */
   onBrowserWindow: (event: BrowserWindowEvent) => void;
+  /** B8: see SelectionActionEvent. The menu shows the app's items only while something listens. */
+  onSelectionAction: (event: SelectionActionEvent) => void;
 };
 
 export interface VidoraWebModuleApi {
@@ -197,6 +211,14 @@ export interface VidoraWebModuleApi {
    * `onCapturedKey`. Keys pressed in a dialog or another window are never captured. Missing on older native builds.
    */
   setKeyCapture?(volumeKeys: boolean, combos: readonly string[]): void;
+  /**
+   * B8: the app's items in every page's text-selection menu, added to Android's own menu (Copy, Paste, Select all,
+   * Share… stay; Chromium's "Web search" is removed while items are set). `ids[i]` (`[a-z][A-Za-z0-9_]{0,31}`) pairs
+   * with `titles[i]` (1–40 characters, already translated); at most 4, bad entries skipped. `readScript` runs in the page
+   * when an item is tapped and must return the selected text as a string. Empty lists clear the items. Items show only
+   * while something listens to `onSelectionAction`. Missing on older native builds.
+   */
+  setSelectionMenu?(ids: readonly string[], titles: readonly string[], readScript: string): void;
   /** B6 #45: the system navigation mode, read now. Missing on older native builds. */
   getNavigationMode?(): NavigationMode;
   /**
