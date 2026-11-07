@@ -542,6 +542,11 @@ list for Faran" (B10 is an upgrade-test package).
 | #103 Export history | Browser settings → History → Export history, or the History screen's export button: a CSV saved in a folder the user picks (system picker, no permission; the share sheet if no folder can be picked) | `history-export.ts` (pure), `history-export.service.ts`; `listHistoryForExport` | One row per page: **title** (of its latest visit), **URL**, **last visit** (local time `YYYY-MM-DD HH:MM`), **visits**. UTF-8 with BOM and CRLF (Excel shows Urdu), cells escaped like B20's CSV (`csvCell`, formula-safe). Column titles in the app's language. File `vidorax-history-YYYY-MM-DD.csv`. "Visits" counts History's entries (it merges revisits within 5 minutes) |
 | Seed helper | Debug builds only: Browser settings → History → "Debug: add 5,000 old history entries" (spread over 8 weeks, some in every range) | `debug/history-seed.ts`, `debug/HistorySeedRow.tsx` | Required behind `__DEV__` in `HistorySettingsSection`; Metro drops the branch and the module from release bundles. **Checked:** a production bundle (`npx expo export:embed --dev false --minify true`, into a temp folder, no APK) contains no seed code (`seed/` URLs, its test id: absent); only its two catalog strings ship |
 
+- **Fix after review (`B10: fix`):** every clear now also drops the saved browser session (last page, last successful
+  page and the per-page scroll positions — `clearPersistedBrowserSession`, `scrollPositionService.clear`). Without it a
+  start page in front (after Exit, or the next cold start) was reloaded with the last page by the session restore, and
+  those URLs survived the clear. Open tabs keep their own addresses (tabs aren't part of Clear browsing data; Exit closes
+  them).
 - **Strings:** `browserHistory.*` (`catalogs/browserHistory.{en,ur}.ts`).
 - **Accessibility:** every new control has a label (the header buttons, the range radios with checked state, Turn
   on, Exit); rows ≥ 48 dp; the sheet and the banner use `rtl.rowDirection`; texts wrap (no fixed heights).

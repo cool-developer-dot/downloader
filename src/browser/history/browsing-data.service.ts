@@ -1,6 +1,8 @@
 import { BackHandler } from 'react-native';
 
+import { scrollPositionService } from '@/browser/scroll';
 import { resetHistoryRecordingGuards } from '@/browser/services/history-recording.service';
+import { clearPersistedBrowserSession } from '@/browser/session';
 import { useBrowserStore } from '@/browser/stores';
 import { closedTabsService } from '@/browser/tabs/closed-tabs.service';
 import { tabSnapshots } from '@/browser/tabs/tab-snapshots';
@@ -50,6 +52,10 @@ export async function clearBrowsingData(
   else closedTabsService.clearSince(since);
   // Previews are a cache of what tabs showed: all go, whatever the range (a tab's next preview is taken when it is left).
   tabSnapshots.clearAll();
+  // The saved session (last page, last successful page, per-page scroll positions) is browsing data too, and a start
+  // page in front would otherwise reload the last page at the next start (after Exit, say).
+  clearPersistedBrowserSession();
+  scrollPositionService.clear();
 
   let siteDataCleared = false;
   if (siteDataClearer) {
