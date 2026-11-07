@@ -715,6 +715,99 @@ Found, not fixed: Android 8–10 get the document picker, not the Photo Picker (
   which keyboards honour Spell check off is unknown until tested.
 ```
 
+## B7 — Find in page (#66, #67, #68, #69, #70, #71)
+
+No native code, no setting, no database change. Testing rule for Mega 1: unit tests, typecheck and lint here; every
+device check is in "Device test list for Faran".
+
+### Design and decisions
+
+| # | What the user sees | Where it lives | Notes / decisions |
+| --- | --- | --- | --- |
+| #66 Find in page | Menu → **Find in page** (on web pages) opens a bar over the top of the page: the field (focused), the count and ✕, then ↑ ↓, Match case (Aa) and Whole word | `src/browser/find/FindInPageBar.tsx`, `find-in-page.service.ts`; menu item `find_in_page`; `BrowserScreen` | The bar belongs to the tab in front and closes on ✕, **Back** (through the one Back owner `useBrowserHardwareBack`: a fullscreen video first, then the bar, then page history), **Esc** (B21's `escapePanels`), another tab in front, or navigation in that tab. Hidden while the tab switcher or a fullscreen video covers the page |
+| #67 Match count | "3 of 12", "No matches" (in the error colour), "Searching…" while typing; past 1,000 matches "3 of 1000+" | `find-in-page-state.ts` `findCountLabel` | The count is a live region and is announced on each new answer |
+| #68 Next / previous | ↑ / ↓, and Enter for next; wraps around; the match is scrolled to the middle of its scroller (`scrollIntoView`) | `findStepScript` | A step while a search is still pending runs the search first |
+| #69 Match case | Aa toggle (a switch for TalkBack) | `findScript` flags | Off = case-insensitive (Unicode `iu`) |
+| #70 Whole word | Toggle | `findScript` | **Unicode boundaries:** no letter, mark or digit (`\p{L}\p{M}\p{N}_`) right before or after, so Urdu words work (`پاکستان` doesn't match inside `پاکستانی`); JS `\b` is ASCII-only and wasn't used |
+| #71 Highlights | Every match light amber, the current one deep amber; all gone when the bar closes | CSS Custom Highlight API | **No DOM change:** two `Highlight`s in `CSS.highlights` styled by a constructed sheet in `document.adoptedStyleSheets`; closing deletes both and the sheet. On a WebView without the API (Chromium < 105) only the current match shows, as the page selection |
+
+- **Approach — decision: the injected search, not `WebView.findAllAsync`.** `findAllAsync` is native and fast but has no
+  match case or whole word, so #69 and #70 could only have been BLOCKED although no rule blocks them; the injected
+  search does all six. Not a hybrid (one code path). **Not tried on real pages here** (the Mega 1 testing rule): the
+  choice is by capability, and comparing it on long real pages is a checkbox for Faran.
+- **How the search works** (`find-in-page-script.ts`, plain string templates — Hermes keeps no function source): the
+  body's text nodes are walked (skipping script, style, noscript, template, textarea, select/option and elements with no
+  rendered box) and joined into one string with an offset map, so a match can span elements (`Lah<b>ore</b>`). The
+  query is escaped (regex characters literal; white space matches any run of white space). At most 1,000 matches.
+  Typing waits 150 ms; the toggles search at once.
+- **What goes to and from the page:** in: the user's search text (as a JSON string literal, U+2028/2029 escaped, ≤ 200
+  characters), two flags, a request id and numbers — no app data. Out: only `find_result` `{ requestId, current, total,
+  capped }`; the bridge parser takes bounded whole numbers only (any page could post one) and answers to older requests
+  are dropped. **Logged for the owner:** while the bar is open the page's own scripts could observe the search text
+  (Chrome's native find doesn't expose it) — the price of match case / whole word.
+- **Sites with JavaScript off** (B12's per-site setting): injected scripts don't run there, so the bar says "Find in page
+  needs JavaScript, which is off for this site" instead of a false "No matches".
+- **Strings:** `browserFind.*` (`catalogs/browserFind.{en,ur}.ts`); like B1–B6 (`browserNav`, `browserTabs`) the
+  package's group is top-level, not `browser.find.*`.
+- **Accessibility:** field, ✕, ↑, ↓ and the two toggles labelled (toggles as switches with their state and a hint);
+  every button ≥ 48 dp; `rtl.rowDirection`, the field aligned and written by the app's direction; texts wrap.
+
+### Files
+
+New: `src/browser/find/{find-in-page-script,find-in-page-state,find-in-page.service}.ts`, `FindInPageBar.tsx`
+(+ `find-in-page.test.ts`), `localization/catalogs/browserFind.{en,ur}.ts`.
+Changed: `bridge/browser-chrome.{channel,bridge}.ts` (`find_result`), `hooks/useBrowserChromeBridge.ts` (hands it to
+the bar), `hooks/useBrowserHardwareBack.ts` (Back closes the bar), overflow menu (Find in page), `BrowserScreen.tsx`
+(the bar), `en.ts` / `ur.ts`.
+
+### Automated tests
+
+`find-in-page.test.ts` (15) — the scripts in a `node:vm` page (text nodes under elements, TreeWalker, Ranges, the
+Highlight API or not): count and "1 of n", all + current highlights, the style sheet, scrolled into view; Match case;
+Whole word in English and **Urdu**; a match across two elements; hidden / script text skipped; regex characters literal,
+white space flexible; next / previous wrap; no match and empty search = 0; the 1,000 cap with `capped`; close clears
+highlights and the sheet and posts nothing; the old-WebView selection fallback; only numbers posted, the query a quoted
+literal (a `'); alert(1); ('` query stays a string). Bar state: only the latest answer of the bar's tab counts; labels
+("3 of 12", "1000+", "No matches", searching, empty); closes on tab change / navigation. Bridge: `find_result` accepts
+bounded whole numbers only.
+
+Gate (Windows): `npm test` **1656 / 1656**, typecheck 0 errors, lint **0 errors / 82 warnings**, `git diff --check`
+clean. No Kotlin or patch change.
+
+### Device test list for Faran
+
+- [ ] English Wikipedia (e.g. "Lahore"): Menu → Find in page; type "lahore" → "1 of N", all highlighted, the current
+      one stronger; ↓ / ↑ / Enter move and scroll; wraps at the ends
+- [ ] Urdu Wikipedia (ur.wikipedia.org "لاہور"): count, highlights, Whole word with "پاکستان" vs "پاکستانی"
+- [ ] Match case: "Apple" vs "apple"; Whole word: "cat" vs "category"
+- [ ] A very long page (e.g. a long Wikipedia list or a book on Project Gutenberg): typing stays smooth; a common letter
+      shows "1000+"
+- [ ] A word with no matches: "No matches"
+- [ ] Back closes the bar and clears the highlights; Esc on a physical keyboard too; ✕ too
+- [ ] Switch tab or follow a link while the bar is open: it closes
+- [ ] Urdu app (RTL), Dark theme, after rotating (the bar stays usable), font scale 1.3 (count and field don't clip)
+- [ ] TalkBack: field, count announcements, ↑ / ↓, Match case / Whole word announced as switches with their state
+- [ ] A site with JavaScript off (Browser settings → Privacy → JavaScript exception): the bar shows the message
+- [ ] Compare with Chrome's own find on the same long page (speed, matches in iframes — this search covers the main
+      frame only) and write it down
+
+### Handoff note
+
+```
+B7 Find in page — done
+Commits: 8ecb1e0 (code), <docs: this commit>; then "B21: add Ctrl+F (find in page)"
+Native code to review: none
+New settings: none
+New libraries: none
+Tested: unit, typecheck, lint. Device: pending Faran's final pass.
+Decision: injected search (CSS Custom Highlight API, no DOM change) instead of findAllAsync, because
+  findAllAsync has no match case / whole word. Not compared on real pages yet (no device here).
+Note for the owner: while the find bar is open, the page's scripts could observe the search text
+  (native find wouldn't); only numbers come back to the app, validated in the bridge parser.
+Found, not fixed: text inside iframes and closed shadow roots isn't searched; sites with JavaScript off
+  can't be searched (the bar says so); WebView < 105 shows only the current match (selection).
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -781,6 +874,9 @@ Found, not fixed: Android 8–10 get the document picker, not the Photo Picker (
 | Start page photo (B21) | Android 8–10 (and 11–12 without the photo picker's SDK extension) get the system document picker for images instead of the Photo Picker; no permission either way. The Google Play services backport of the Photo Picker needs a manifest `<service>` entry, not added |
 | Spell check off (B21) | Whether a keyboard honours "no suggestions" is the keyboard's choice; unknown until tried on a device |
 | Kotlin tests on Windows (B21) | Robolectric here has no `ExifInterface(InputStream)` and decodes any bytes as a placeholder image, so `StartPageImagesTest` injects the orientation and can't check a real non-image file |
+| Find in page (B7) | Text inside iframes and closed shadow roots isn't searched (the script runs in the main document); a match across two paragraphs can be found as one (block boundaries aren't separators) |
+| Find in page (B7) | On a site with JavaScript off (B12) nothing can be searched (the bar says so); on WebView < 105 only the current match is shown (as the selection) |
+| Find in page (B7) | While the bar is open, the page's own scripts could observe the search text (native find doesn't expose it) — the cost of Match case / Whole word |
 
 ### Decisions (all packages)
 
@@ -808,3 +904,8 @@ Found, not fixed: Android 8–10 get the document picker, not the Photo Picker (
   RTL). Startup options add one tab in front and keep every tab; a launch link always wins. A custom start page
   background uses a dark layer **and** the dark palette (`ThemeModeOverrideContext`). Keyboard shortcuts have no on/off
   setting; Esc is taken only while a browser panel is open.
+- B7: an injected search instead of `findAllAsync` (which has no match case / whole word); highlights through the CSS
+  Custom Highlight API (no DOM change); Unicode word boundaries for Urdu; only numbers come back, validated in the
+  bridge parser. Back closes the bar through the existing Back owner, Esc through B21's `escapePanels`.
+- Strings: each package has a top-level catalog group like B1–B6 (`browserSelection`, `browserHistory`,
+  `browserStartup`, `browserFind`) rather than `browser.find.*`.

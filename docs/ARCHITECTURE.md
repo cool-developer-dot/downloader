@@ -786,6 +786,14 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   honours the context; unset elsewhere). The photo comes from VidoraWeb `pickStartPageImage` (Photo Picker / document
   picker, copied into `<filesDir>/start-page/`). Spell check off adds props in `TextField` and a constant document-start
   page script in `BrowserWebView`.
+- **Find in page (B7).** `src/browser/find/`: `find-in-page.service.ts` holds the bar's state for the tab in front
+  (rules in `find-in-page-state.ts`) and injects `find-in-page-script.ts` into that tab's WebView (`findScript`,
+  `findStepScript`, `FIND_CLEAR_SCRIPT`: plain string templates). The page script walks rendered text nodes into one
+  string with an offset map, matches with a Unicode-aware RegExp (whole word = no `\p{L}\p{M}\p{N}_` around), keeps
+  ≤ 1,000 Ranges, highlights them with the CSS Custom Highlight API (constructed sheet; selection fallback) and posts
+  only `find_result` numbers on the browser-chrome channel; `useBrowserChromeBridge` hands them to `findInPage.onResult`,
+  which drops stale request ids. Back (`useBrowserHardwareBack`), Esc (`escapePanels`), tab change and navigation close
+  the bar and clear the page.
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab

@@ -2140,6 +2140,11 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   Menu locked in the address bar); start page background (theme / colour / gradient / photo from the Photo Picker,
   dark layer + dark palette); keyboard shortcuts through B6's key channel, listed in settings. Native: VidoraWeb
   `pickStartPageImage`, `clearStartPageImage`. No permission, no library, no database change.
+- **B7 Find in page.** Menu → Find in page: a bar with "3 of 12" / "No matches", ↑ / ↓ / Enter (scrolling the match
+  into view), Match case, Whole word (Unicode, so Urdu works), every match highlighted and the current one stronger,
+  all cleared on close; Back, Esc, a tab change or navigation close it. An injected search with the CSS Custom
+  Highlight API (no DOM change) instead of `findAllAsync` (no match case / whole word); only numbers come back. No
+  native code, setting, permission or library.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 
