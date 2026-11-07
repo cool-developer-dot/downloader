@@ -2149,6 +2149,10 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   tab volume (applied in the page by wrapping the media elements' volume / muted), Sleep unused tabs (Off by default;
   15 min–3 h; never the front tab or one playing sound; hook for B18), Memory in Browser settings → Tabs. Native:
   VidoraWeb `getAppMemory`. No permission, library or database change.
+- **B13 Site permissions.** Location, camera, mic and notification requests refused in the page (no permission exists or
+  is added), with a bar and the site listed as Blocked; pop-ups without a tap blocked with Allow once / Always for this
+  site; Site permissions in Browser settings and from the lock icon, Reset one / all, per profile. Merged manifest
+  checked (no location / camera / mic). No native code, library or database change.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 

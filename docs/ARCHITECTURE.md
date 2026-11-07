@@ -800,6 +800,12 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   document-start script of that tab's `BrowserWebView` while adjusted. `tab-sleep.service.ts` checks every minute and
   calls the store's `sleepTabs` (removes ids from `mountedTabIds`; never the active tab or one playing sound);
   `bindTabSleepShortener` is B18's hook. The memory row reads VidoraWeb `getAppMemory`.
+- **Site permissions (B13).** `src/browser/site-permissions/`: `SITE_PERMISSION_PAGE_SCRIPT` (document start, every
+  page) refuses geolocation / getUserMedia / notifications in the page and posts `site_permission` (kind only), and
+  blocks `window.open` without user activation (+ untrusted `_blank` clicks), posting `popup_blocked`.
+  `useBrowserChromeBridge` hands both to `site-permissions.service.ts`, which records them in the `sitePermissions`
+  setting (per profile) and shows `SiteNoticeBar`; allowed pop-ups go through `resolvePopupNavigation`.
+  `SitePermissionsSheet` opens from Browser settings and the lock icon's Site settings (`sitePermissionsSheet`).
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab

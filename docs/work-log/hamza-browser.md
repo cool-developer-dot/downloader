@@ -894,6 +894,91 @@ Found, not fixed: mute / volume don't reach Web Audio sound or players in cross-
   is the app process only (WebView's renderer isn't counted); a tab's sound choice lasts for the app run.
 ```
 
+## B13 — Site permissions (#116, #117, #118, #119, #120)
+
+No native code, no permission, no database change (`DATABASE_VERSION` stays 2). Testing rule: unit tests, typecheck and
+lint here; device checks in "Device test list for Faran".
+
+### Merged manifest checked first (for the owner)
+
+`bash scripts/dev/gradle.sh :app:processDebugMainManifest` (debug, no release build), 2026-11-08, on `92cb8a3`:
+`android/app/build/intermediates/merged_manifest/debug/processDebugMainManifest/AndroidManifest.xml` has **42
+`uses-permission` entries, 40 names**: ACCESS_NETWORK_STATE, ACCESS_WIFI_STATE, FOREGROUND_SERVICE,
+FOREGROUND_SERVICE_DATA_SYNC, FOREGROUND_SERVICE_MEDIA_PLAYBACK, FOREGROUND_SERVICE_MEDIA_PROCESSING, INTERNET,
+POST_NOTIFICATIONS, READ_APP_BADGE, READ_MEDIA_VIDEO, READ_MEDIA_VISUAL_USER_SELECTED, RECEIVE_BOOT_COMPLETED,
+RUN_USER_INITIATED_JOBS, SYSTEM_ALERT_WINDOW, USE_BIOMETRIC, USE_FINGERPRINT, VIBRATE, WAKE_LOCK; launcher / badge
+permissions (com.anddoes UPDATE_COUNT; com.android.launcher INSTALL_SHORTCUT, UNINSTALL_SHORTCUT, READ_SETTINGS,
+WRITE_SETTINGS; htc READ_SETTINGS, UPDATE_SHORTCUT; huawei CHANGE_BADGE, READ_SETTINGS, WRITE_SETTINGS; majeur
+UPDATE_BADGE; oppo READ_SETTINGS, WRITE_SETTINGS; sec badge READ, WRITE; sonyericsson BROADCAST_BADGE; sonymobile
+PROVIDER_INSERT_BADGE; me.everything BADGE_COUNT_READ, BADGE_COUNT_WRITE); com.google.android.c2dm RECEIVE;
+com.google.android.finsky BIND_GET_INSTALL_REFERRER_SERVICE; the app's DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION.
+**No ACCESS_FINE / COARSE_LOCATION, CAMERA or RECORD_AUDIO** — so a site can never be given them, and B13 adds none.
+Nothing in B13 needed a permission.
+
+### Design and decisions
+
+| # | What the user sees | Where it lives | Notes / decisions |
+| --- | --- | --- | --- |
+| #117 Location, #118 Camera and mic, #119 Notifications | When a page asks: a short bar "VidoraX blocked <site> from using your location" (camera / microphone / "from showing notifications") with Site settings and Dismiss; the site is listed with that request as **Blocked** | `site-permissions/site-permission-script.ts`, `site-permissions.service.ts`, `components/SiteNoticeBar.tsx` | **Refused in the page** by a document-start script in every page: `navigator.geolocation` answers PERMISSION_DENIED (WebView already has geolocation off), `getUserMedia` (and the old prefixed forms) rejects with NotAllowedError, `Notification.permission` is "denied" and `requestPermission()` resolves "denied" — a stub is defined where Android WebView has no Notification API, so a page that asks gets a clear answer. **Decision:** the page side, because the native answer (react-native-webview's chrome client) can't be hooked without a patch-script change (not allowed); and it would ask Android for undeclared permissions anyway. The script posts only the kind (`site_permission`), once per kind per page; the app knows the site from the tab. The bar shows for the page in front; a background tab's request is only listed |
+| #116 Site permissions | Browser settings → Site permissions ("N sites"), and the lock icon's sheet → **Site settings** (that site): each site with its Blocked requests and an "Allow pop-ups" switch; **Reset** per site, **Reset all sites** | `components/SitePermissionsSheet.tsx` (+ `SitePermissionsHost`), `screens/settings/browser-settings/SitePermissionsSection.tsx`, `SiteInfoHost.tsx` (one button) | Stored as the setting `sitePermissions` (JSON; per profile because every browser setting is — B20; in Settings Backup, ≤ 16,000 characters, oldest sites dropped past 300). A site is its B12 `siteKey` (host without `www.`). The sheet says why location, camera, mic and notifications stay blocked |
+| #120 Pop-up blocker | A page opening a window without a tap: nothing opens, and a bar "Pop-up blocked" offers **Allow once** and **Always for this site** | `site-permission-script.ts`, `site-permissions.service.ts` | In the page: `window.open` without the user's tap (`navigator.userActivation.isActive` false) returns null and posts `popup_blocked` with the address; a script's untrusted click on a `target=_blank` link is stopped the same way. **A tapped `window.open` and every real link tap are untouched**, so the existing `onOpenWindow` handling (and new-tab / link behaviour) runs as before. Allow once / an always-allowed site: the address goes through the same `resolvePopupNavigation` as any new window and loads in the same tab (today's behaviour for new windows). **Decision:** the allowed-site list never goes into the page — the app decides. `webview-configuration.ts` unchanged (the native `onCreateWindow` doesn't pass "user gesture" to JS) |
+
+- **Strings:** `browserSitePermissions.*`. **Accessibility:** bar is a live region with labelled ≥ 48 dp buttons; rows read
+  "Location: Blocked"; switch and Reset name the site; RTL rows.
+
+### Files
+
+New: `src/browser/site-permissions/{site-permissions,site-permission-script,site-permissions.service}.ts`
+(+ `site-permissions.test.ts`), `components/{SiteNoticeBar,SitePermissionsSheet}.tsx`,
+`screens/settings/browser-settings/SitePermissionsSection.tsx`, `catalogs/browserSitePermissions.{en,ur}.ts`.
+Changed: `bridge/browser-chrome.{channel,bridge}.ts` (`site_permission`, `popup_blocked`), `useBrowserChromeBridge.ts`,
+`BrowserWebView.tsx` (the script at document start), `BrowserScreen.tsx` (bar, host), `SiteInfoHost.tsx` (Site
+settings button), settings store (`sitePermissions`), `browser-setting-{keys,choices}.ts`, `BrowserSettingsScreen.tsx`,
+`en.ts` / `ur.ts`.
+
+### Automated tests
+
+`site-permissions.test.ts` (10): the list (request recorded once as Blocked, pop-ups always / off, reset one / all,
+stored JSON read by fields with junk dropped, round trip, backup cap with newest kept, A–Z list); the page script in
+`node:vm` — location refused with code 1 and reported once, getUserMedia rejects NotAllowedError and reports camera +
+microphone, the Notification stub ("denied"), an existing Notification's requestPermission, `window.open` without a tap
+blocked with its absolute address and opened with a tap, untrusted `_blank` click stopped / real click left alone,
+installs once and touches no storage; bridge: four kinds only, pop-up address http(s) or null.
+
+Gate (Windows): `npm test` **1675 / 1675**, typecheck 0, lint **0 / 82**, `git diff --check` clean. No Kotlin or patch
+change.
+
+### Device test list for Faran
+
+- [ ] A test page asking for location (`navigator.geolocation.getCurrentPosition`): the page gets "denied", the bar
+      "VidoraX blocked <site> from using your location"; Site settings shows Location: Blocked
+- [ ] Camera and microphone (`getUserMedia({video:true,audio:true})`, e.g. webcamtests.com) and notifications
+      (`Notification.requestPermission()`): refused, bar, listed
+- [ ] The answers stay after a restart (the list is kept; the page is refused again)
+- [ ] Pop-ups: a page calling `window.open` on a timer → nothing opens, "Pop-up blocked"; Allow once loads it;
+      Always for this site → later pop-ups load; switch it off in Site permissions → blocked again
+- [ ] A tapped `window.open` / `target=_blank` link still works as before; normal links unaffected; Google sign-in style
+      pop-ups after a tap work
+- [ ] Lock icon → Site settings opens that site; Browser settings → Site permissions lists all; Reset one / all
+- [ ] Merged manifest still has no location, camera or microphone permission
+- [ ] Urdu (RTL), Dark, TalkBack reading the bar and its buttons, font scale 1.3 (bar text wraps)
+
+### Handoff note
+
+```
+B13 Site permissions — done
+Commits: 1d4d57d (code), <docs: this commit>
+Native code to review: none (patch script unchanged — requests are answered in the page)
+New settings: sitePermissions = '{}' (no site)
+New libraries: none
+Tested: unit, typecheck, lint. Device: pending Faran's final pass.
+Merged manifest (debug, gradle.sh :app:processDebugMainManifest): 40 permission names, no location, camera
+  or microphone; B13 adds none (full list in the work log).
+Found, not fixed: requests from cross-origin frames aren't seen by the page script (WebView refuses them anyway:
+  no permission); pop-ups aren't blocked on WebView < 72 (no navigator.userActivation); an allowed pop-up loads in
+  the same tab, as every new window does today.
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -940,6 +1025,7 @@ Found, not fixed: mute / volume don't reach Web Audio sound or players in cross-
 | `startPageBackgroundGradient` | B21 | `dusk` | `dusk`, `lagoon`, `ember`, `aurora` |
 | `startPageBackgroundPhoto` | B21 | `''` | `file://…/start-page/background-<time>.jpg` (only the app's own) |
 | `tabSleepAfter` | B3 | `off` (today's) | `off`, `15m`, `30m`, `1h`, `3h` |
+| `sitePermissions` | B13 | `'{}'` (no site) | JSON `{ site: { blocked: [location, camera, microphone, notifications], popupsAllowed, updatedAt } }`, ≤ 300 sites / 16,000 characters |
 
 ### Found, not fixed
 
@@ -967,6 +1053,7 @@ Found, not fixed: mute / volume don't reach Web Audio sound or players in cross-
 | Find in page (B7) | While the bar is open, the page's own scripts could observe the search text (native find doesn't expose it) — the cost of Match case / Whole word |
 | Tab sound (B3) | Mute / volume don't reach sound made with the Web Audio API or players inside cross-origin frames (the script runs in the main document) |
 | Memory monitor (B3) | The figure is the app process only; WebView's renderer process (where pages run) isn't counted |
+| Site permissions (B13) | Requests from cross-origin frames aren't seen by the page script (WebView still refuses them: no permission); on WebView < 72 (no `navigator.userActivation`) pop-ups aren't blocked |
 
 ### Decisions (all packages)
 
@@ -1002,3 +1089,6 @@ Found, not fixed: mute / volume don't reach Web Audio sound or players in cross-
 - B3: the speaker reuses B6's `media_state`; mute / volume wrap the page's media accessors so the page (and that report)
   keep seeing their own values. Tab sleeping defaults to Off (a sleeping tab reloads); it unmounts the second live
   WebView early. Hook `bindTabSleepShortener` for B18.
+- B13: requests are answered in the page (document-start script), not natively — the native chrome client can't be
+  hooked without a patch-script change. The allowed-pop-up list stays in the app; an allowed pop-up loads like any new
+  window (same tab).
