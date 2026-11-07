@@ -2,6 +2,7 @@ import type { StoreApi } from 'zustand';
 
 import { recentSearchService } from '@/storage/services';
 import { isStorageError } from '@/storage/types';
+import { useSettingsStore } from '@/store/settings';
 
 import { clearRecentSearches } from './clear-recent-searches';
 import { initialRecentSearchesState } from './state';
@@ -87,6 +88,10 @@ export function createRecentSearchesActions(
       await get().load(1);
     },
     record: async (query) => {
+      // B10 #101: with "Save history" off, searches aren't saved either.
+      if (useSettingsStore.getState().saveHistory === false) {
+        return null;
+      }
       try {
         const entry = await recentSearchService.record({ query });
         await get().refresh();

@@ -35,6 +35,8 @@ import { useTheme } from '@/hooks/use-theme';
 import { normalizeUrl } from '@/storage/utils';
 import { batchAddPrefill } from '@/screens/batch-add/batch-add-prefill';
 import { buildFaviconUrl } from '@/screens/bookmarks/utils/bookmark-format';
+import { exitBrowser } from '@/browser/history/browsing-data.service';
+import { useSettingsStore } from '@/store/settings';
 
 import type { BrowserMenuFeedback, BrowserMenuItemModel } from './types';
 
@@ -381,6 +383,13 @@ export function useBrowserMenuActions({
     navigation.navigate(routePaths.settings);
   }, [onClose]);
 
+  // B10 #99: close every tab, clear browsing data and leave the app.
+  const showExit = useSettingsStore((s) => s.clearHistoryOnExit === true);
+  const handleExit = useCallback(() => {
+    onClose();
+    void exitBrowser();
+  }, [onClose]);
+
   const handleItemPress = useCallback(
     (id: BrowserMenuItemModel['id']) => {
       switch (id) {
@@ -456,6 +465,9 @@ export function useBrowserMenuActions({
         case 'settings':
           handleSettings();
           break;
+        case 'exit':
+          handleExit();
+          break;
         default:
           break;
       }
@@ -480,6 +492,7 @@ export function useBrowserMenuActions({
       handleReopenClosedTab,
       handleSearchSite,
       handleSettings,
+      handleExit,
       handleShare,
       handleTranslate,
       handleMoveToWindow,
@@ -696,8 +709,21 @@ export function useBrowserMenuActions({
         kind: 'action',
         enabled: true,
       },
+      ...(showExit
+        ? [
+            {
+              id: 'exit',
+              icon: 'exit-run',
+              label: t('browserHistory.exit'),
+              accessibilityLabel: t('browserHistory.exitA11y'),
+              kind: 'action',
+              enabled: true,
+            } satisfies BrowserMenuItemModel,
+          ]
+        : []),
     ];
   }, [
+    showExit,
     autoScrollOn,
     bookmarkPending,
     bookmarked,

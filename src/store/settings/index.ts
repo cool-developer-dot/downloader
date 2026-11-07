@@ -139,6 +139,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
         insecurePageWarning: state.insecurePageWarning,
         javaScript: state.javaScript,
         javaScriptExceptions: state.javaScriptExceptions,
+        saveHistory: state.saveHistory,
+        clearHistoryOnExit: state.clearHistoryOnExit,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -255,6 +257,9 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.javaScriptExceptions === 'string'
               ? serializeJavaScriptExceptions(parseJavaScriptExceptions(raw.javaScriptExceptions))
               : current.javaScriptExceptions,
+          saveHistory: typeof raw.saveHistory === 'boolean' ? raw.saveHistory : current.saveHistory,
+          clearHistoryOnExit:
+            typeof raw.clearHistoryOnExit === 'boolean' ? raw.clearHistoryOnExit : current.clearHistoryOnExit,
         };
       },
     },

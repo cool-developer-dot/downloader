@@ -9,6 +9,7 @@ import { navigation } from '@/navigation';
 import { useSettingsTokens } from '../theme/settings-tokens';
 import { AddressBarSettingsSection } from './AddressBarSettingsSection';
 import { BrowserDataSection } from './BrowserDataSection';
+import { HistorySettingsSection } from './HistorySettingsSection';
 import { NavigationSettingsSection } from './NavigationSettingsSection';
 import { PrivacySettingsSection } from './PrivacySettingsSection';
 import { ProfilesSettingsSection } from './ProfilesSettingsSection';
@@ -42,6 +43,7 @@ export const BrowserSettingsScreen = memo(function BrowserSettingsScreen() {
         <SearchSettingsSection />
         <AddressBarSettingsSection />
         <NavigationSettingsSection />
+        <HistorySettingsSection />
         <PrivacySettingsSection />
         <ProfilesSettingsSection />
         <BrowserDataSection />

@@ -88,6 +88,17 @@ export async function runAppInitializer(): Promise<RoutePath> {
       }
     }
 
+    try {
+      const { runStartupBrowsingDataClear } = await import('@/browser/history/browsing-data.service');
+      // B10 #99: "Clear history on exit" clears the last session's browsing data at this cold start (the active
+      // profile's), before anything shows or reads it.
+      await runStartupBrowsingDataClear();
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[bootstrap] clear on exit failed', error);
+      }
+    }
+
     await Promise.all([
       (async () => {
         try {

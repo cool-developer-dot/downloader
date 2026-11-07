@@ -70,4 +70,6 @@ export const initialSettingsState: SettingsState = {
   insecurePageWarning: true,
   javaScript: true,
   javaScriptExceptions: DEFAULT_JAVASCRIPT_EXCEPTIONS_JSON,
+  saveHistory: true,
+  clearHistoryOnExit: false,
 };

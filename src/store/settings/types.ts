@@ -91,6 +91,10 @@ export interface SettingsState {
   javaScript: boolean;
   /** …except these sites (JSON array of hosts), which are the other way round. */
   javaScriptExceptions: string;
+  /** B10 #101: save pages visited in History (default on — today's). Off: no new entries; old ones stay. */
+  saveHistory: boolean;
+  /** B10 #99: clear browsing data at the next cold start, and show Menu → Exit (default off — today's). */
+  clearHistoryOnExit: boolean;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

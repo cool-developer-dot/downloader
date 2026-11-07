@@ -23,6 +23,9 @@ export const BROWSER_SETTING_KEYS = [
   'insecurePageWarning',
   'javaScript',
   'javaScriptExceptions',
+  // B10 (Hamza)
+  'saveHistory',
+  'clearHistoryOnExit',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

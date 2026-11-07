@@ -32,3 +32,6 @@ export {
   urlFavoriteRepository,
   urlFavoriteToApiItem,
 } from './url-favorite.repository';
+// B10 (Hamza): clear browsing data by time range, history export.
+export { BrowsingDataRepository, browsingDataRepository } from './browsing-data.repository';
+export type { BrowsingDataCleared, HistoryExportRow } from './browsing-data.repository';

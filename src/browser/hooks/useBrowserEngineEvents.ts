@@ -592,6 +592,8 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
             url: committedUrl,
             title: owningAfter.title,
             hasError: false,
+            // B10: the tab's own gate (shouldPersistForTab) decides whether this page is kept.
+            tab: tabId ? (useBrowserStore.getState().tabs.find((t) => t.id === tabId) ?? null) : undefined,
           }).then((entry) => {
             if (webViewInstanceGenerationRef.current !== visitGen) {
               return;

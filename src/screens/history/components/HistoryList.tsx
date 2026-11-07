@@ -17,6 +17,8 @@ export type HistoryListProps = {
   onEndReached: () => void;
   onPressItem: (item: BrowserHistoryEntry) => void;
   onDeleteItem: (item: BrowserHistoryEntry) => void;
+  /** B10 #95: the active search, highlighted in each row. */
+  highlightQuery?: string;
   testID?: string;
 };
 
@@ -29,6 +31,7 @@ export const HistoryList = memo(function HistoryList({
   onEndReached,
   onPressItem,
   onDeleteItem,
+  highlightQuery = '',
   testID = 'history-list',
 }: HistoryListProps) {
   const renderItem: SectionListRenderItem<BrowserHistoryEntry, HistoryListSection> =
@@ -38,10 +41,11 @@ export const HistoryList = memo(function HistoryList({
           item={item}
           onPress={onPressItem}
           onDelete={onDeleteItem}
+          highlightQuery={highlightQuery}
           testID={`history-item-${item.id}`}
         />
       ),
-      [onDeleteItem, onPressItem],
+      [highlightQuery, onDeleteItem, onPressItem],
     );
 
   const renderSectionHeader = useCallback(

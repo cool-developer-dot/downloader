@@ -25,7 +25,9 @@ export type BrowserMenuActionId =
   | 'desktop_site'
   | 'open_external'
   | 'downloads'
-  | 'settings';
+  | 'settings'
+  /** B10 #99: shown while "Clear history on exit" is on. */
+  | 'exit';
 
 export type BrowserMenuItemKind = 'action' | 'toggle';
 

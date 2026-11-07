@@ -1,5 +1,6 @@
 import { browserNavEn } from './catalogs/browserNav.en';
 import { browserSelectionEn } from './catalogs/browserSelection.en';
+import { browserHistoryEn } from './catalogs/browserHistory.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
 import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
@@ -2802,4 +2803,6 @@ export const en = {
   browserPrivacy: browserPrivacyEn,
   // B8 (Hamza)
   browserSelection: browserSelectionEn,
+  // B10 (Hamza)
+  browserHistory: browserHistoryEn,
 } as const;
