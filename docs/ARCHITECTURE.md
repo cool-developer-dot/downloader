@@ -776,6 +776,16 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   passes `shouldSaveVisit(saveHistory, tab)` (`history-policy.ts`: the setting + `shouldPersistForTab`) in
   `recordSuccessfulVisit`. Search highlighting mirrors SQLite `LIKE` (`history-highlight.ts`); the export is one CSV
   row per page (`history-export.ts`, UTF-8 BOM). The debug seed (`history/debug/`) is required only behind `__DEV__`.
+- **Startup and customization (B21).** `src/browser/startup/`: pure rules (`startup-settings.ts` homepage + `planStartup`,
+  `toolbar-buttons.ts`, `keyboard-shortcuts.ts`, `start-page-background.ts`, `spell-check.ts`) and one command table,
+  `browser-commands.ts`, which the customizable toolbar (`BrowserToolbar` reads `toolbarButtons`; Tabs / Menu stay in
+  the address bar) and the shortcuts (`useKeyboardShortcuts` → B6's `keyCapture.setCombos`) both call. The startup
+  option runs once in the app initializer after `ensureIncomingLinkHandling` (`didOpenLaunchLink` lets a launch link
+  win). Esc closes what `escape-panels.ts` lists (address bar, find bar). The start page background is drawn by
+  `StartPageBackdrop` under `BrowserHomeView`, which then renders inside `ThemeModeOverrideContext` = dark (`useTheme`
+  honours the context; unset elsewhere). The photo comes from VidoraWeb `pickStartPageImage` (Photo Picker / document
+  picker, copied into `<filesDir>/start-page/`). Spell check off adds props in `TextField` and a constant document-start
+  page script in `BrowserWebView`.
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab

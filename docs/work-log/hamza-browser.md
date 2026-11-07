@@ -608,6 +608,113 @@ Found, not fixed: History search treats % and _ as wildcards (LIKE without ESCAP
   History's entries, which merge revisits within 5 minutes; clearing applies to the profile in use only.
 ```
 
+## B21 — Startup and customization (#232, #233, #237, #238, #245, #246)
+
+Browser settings → **Startup and customization** (one section, seven rows). No database change (`DATABASE_VERSION`
+stays **2**); 8 new settings, all defaulting to today's behaviour. Testing rule for Mega 1: unit tests, typecheck and
+lint here; device, release and upgrade checks are in "Device test list for Faran" (B21 is an upgrade-test package).
+
+### Design and decisions
+
+| # | What the user sees | Where it lives | Notes / decisions |
+| --- | --- | --- | --- |
+| #232 Homepage | "Homepage": The start page (default) or A web address (checked: `example.com` → `https://example.com/`; only http(s), no spaces, no user/password, ≤ 500 characters, must have a dot). "Home button" switch (on = today's) | `startup/startup-settings.ts` (`normalizeHomepageInput`, `readHomepage`), `components/HomepageSheet.tsx`, `browser-commands.ts` `home()`; `BrowserToolbar` | Home opens the homepage when one is set (disabled while that page is shown), else the start page exactly as before (`goHomeForTab`). **New tabs still open the start page** (`createTab` untouched). The Home button switch adds / removes `home` in the toolbar list (one source of truth with #238). A stored value is checked again on load (backup / old value) |
+| #233 Startup options | "When VidoraX starts": Continue where you left off (default, today's) / Open the start page / Open the homepage | `startup-settings.ts` `planStartup` (pure), `startup.service.ts` `applyStartupOption` (app initializer, right after `ensureIncomingLinkHandling`) | Start page / homepage = **one new tab in front, every other tab kept**. Nothing happens when the tab in front already shows it, at the 10-tab limit, or when **a link from another app opened at this launch** — `incoming-link.service.ts` now records whether the launch link was opened (`didOpenLaunchLink`), so the link always wins. Runs once per cold start (a new JS runtime); warm returns change nothing |
+| #237 Spell check | "Spell check" switch (default **on** = today's) | `startup/spell-check.ts`; `TextField` (+ `SearchField` through it); `BrowserWebView` document-start scripts | Off: the app's fields get `autoCorrect={false}` + `spellCheck={false}` (Android `TYPE_TEXT_FLAG_NO_SUGGESTIONS`; a field's own props still win), and pages get `SPELL_CHECK_OFF_PAGE_SCRIPT` (constant; `spellcheck="false"` on `<html>`, inherited by fields, plus `spellcheck`/`autocorrect="off"` on a field when it gets focus, so Chromium tells the keyboard). On: nothing is added. The address bar already has `autoCorrect={false}` and is untouched. **Which keyboards follow it** (Gboard, SwiftKey, Samsung) can only be seen on a device → checkbox for Faran |
+| #238 Customize toolbar | "Customize toolbar": the toolbar's buttons in order (move earlier / later with arrows, remove), "Always in the address bar: Tabs, Menu" (locked), More buttons (add), Reset to default | `startup/toolbar-buttons.ts` (pure), `components/ToolbarCustomizeSheet.tsx`, `BrowserToolbar.tsx`, `browser-commands.ts` | Choices: Back, Forward, Home, New tab, Reload (Stop while loading), Share page, Bookmarks, History, Downloads, Search this site. 1–6 buttons (6 × 48 dp fit the narrowest phone). **Decision:** Tabs and Menu stay where they are today (the address bar) and are listed as locked, so they can't be removed and the default layout is unchanged. Stored as `toolbarButtons` = `back,forward,home` (today's); a saved list is read by its known ids (unknown ids — older/newer apps — and repeats skipped; nothing usable → default). **Decision:** arrows instead of drag, so ordering works with TalkBack and mirrors in RTL. Back / Forward / Home keep their existing icons, labels and handlers |
+| #245 Start page background | "Start page background": Theme (default) / Colour (6) / Gradient (4) / Photo (Choose / Change / Remove) | `startup/start-page-background.ts` (pure), `start-page-photo.service.ts`, `components/StartPageBackdrop.tsx`, `StartPageBackgroundSheet.tsx`; `BrowserHomeView.tsx`; `hooks/use-theme.ts` (`ThemeModeOverrideContext`); native `startpage/` (B21 native) | The photo comes from **Android's Photo Picker** (`ACTION_PICK_IMAGES` on Android 13+, and 11–12 with SDK extension 2); on Android 8–10 (and 11–12 without it) the system **document picker** for images — neither needs a permission, so nothing is BLOCKED. VidoraWeb copies it into `<filesDir>/start-page/background-<time>.jpg`, upright (EXIF) and ≤ 1920 px on the longer side; the app keeps no access to the original. A black 45 % layer goes over the colour / gradient / photo, and the start page then uses the **dark palette** (`ThemeModeOverrideContext`, a new context read by `useTheme`; unset everywhere else, so nothing else changes) — **decision:** a dark layer under the light theme's dark text would be unreadable. Only a photo in the app's own start-page folder is shown (a restored backup can't point elsewhere); a missing photo shows the theme. The picker is a system screen of the action (App Lock doesn't relock) |
+| #246 Keyboard shortcuts | Ctrl+T, Ctrl+W, Ctrl+Shift+T, Ctrl+Tab / Ctrl+Shift+Tab, Ctrl+L, Ctrl+R / F5, Ctrl+Shift+R, Alt+← / Alt+→, Ctrl+D, Ctrl+H, Esc; the list in "Keyboard shortcuts" | `startup/keyboard-shortcuts.ts` (pure), `hooks/useKeyboardShortcuts.ts`, `escape-panels.ts`, `browser-commands.ts`; B6's `keyCapture.setCombos('b21-shortcuts', …)` | **No native change:** B6's channel already names every combo. Taken only while the Browser tab is focused and the app in the foreground. **Esc** is taken only while a panel in the browser's window is open (the address bar while editing; B7's find bar), otherwise it stays the page's key; sheets and dialogs are their own windows and Android closes them on Esc. Held keys repeat only next / previous tab. **Decision:** no on/off setting (the card asks for the list only; nothing changes without a physical keyboard) |
+
+- **Strings:** `browserStartup.*` (`catalogs/browserStartup.{en,ur}.ts`). The keys (`Ctrl+T`…) are shown left-to-right in
+  both languages.
+- **Accessibility:** every control labelled (move / remove / add buttons name the button they act on; swatches are radios
+  named by colour; shortcut rows read "action: keys"); targets ≥ 48 dp (icon buttons `large` = 52 dp, swatches 52 dp,
+  rows ≥ 48 dp); `rtl.rowDirection` everywhere; no fixed text heights; the backdrop is hidden from TalkBack.
+
+### Files
+
+New: `src/browser/startup/{startup-settings,toolbar-buttons,keyboard-shortcuts,start-page-background,spell-check,escape-panels,browser-commands,startup.service,start-page-photo.service}.ts`
+(+ `startup.test.ts`), `startup/components/{SheetFrame,RadioRow,HomepageSheet,ToolbarCustomizeSheet,StartPageBackgroundSheet,KeyboardShortcutsSheet,StartPageBackdrop}.tsx`,
+`hooks/useKeyboardShortcuts.ts`, `screens/settings/browser-settings/StartupSettingsSection.tsx`,
+`localization/catalogs/browserStartup.{en,ur}.ts`; native `modules/vidorax-web/.../startpage/{StartPageImages,StartPagePhotoPicker}.kt`
+(+ `StartPageImagesTest.kt`).
+Changed: `BrowserToolbar.tsx` (reads the list), `BrowserHomeView.tsx` (backdrop), `BrowserWebView.tsx` (spell-check
+script when off), `TextField.tsx` (spell-check props), `hooks/use-theme.ts` (override context), `useAddressBar.ts`
+(registers as an Esc panel), `incoming-link.service.ts` (`didOpenLaunchLink`), `BrowserScreen.tsx` (one hook),
+`bootstrap/app-initializer.ts` (startup option), settings store (8 keys), `browser-setting-{keys,choices}.ts`,
+`BrowserSettingsScreen.tsx`, `VidoraWebModule.kt`, `VidoraWeb.types.ts`, `en.ts` / `ur.ts`.
+
+### Automated tests
+
+`startup.test.ts` (19): homepage input (site name, Urdu path, http, empty; refused: `javascript:`, `file:`, `intent:`,
+`data:`, spaces, no dot, credentials, `vidorax://`, too long; stored value re-checked); startup plan (continue, start
+page, homepage, no homepage, **launch link wins**, no duplicate in front, tab limit); toolbar (default = today's,
+unknown / repeated ids from old saves skipped, empty → default, add / move / remove, max 6, min 1); shortcuts (every
+combo on the card with the channel's names, no duplicates, case, nothing while not in front, Esc only with a panel,
+tab cycling wraps, Esc closes the newest panel); background (theme default, preset fallback, only the app's own photo
+path — `/sdcard`, `https:`, `..`, `content:` refused); spell check (props; the page script in `node:vm`: marks the
+document, marks focused fields only, idempotent, sends nothing). Kotlin `StartPageImagesTest` (8): sample size, fit,
+EXIF rotation, copy + scale + replace (old file deleted), a sideways photo turned upright, nothing readable → nothing
+written, clear, Photo Picker vs document picker by Android version. Settings audit: the 8 keys persisted, backed up
+(choices validated), reset.
+
+Gate (Windows): `npm test` **1641 / 1641**, typecheck 0 errors, lint **0 errors / 82 warnings**, `git diff --check`
+clean. Kotlin (`--rerun --continue`): vidorax-web **81 / 82** — the one failure is the Windows-only
+`WebViewSnapshotsTest.replacesAnOlderSnapshot` (see B8); vidorax-media's tests don't compile on Windows (see B8).
+Robolectric here decodes any bytes as a placeholder image and lacks `ExifInterface(InputStream)`, so the test passes the
+orientation in and checks "nothing readable" with an empty / failing stream; a real non-image file is refused by
+Android's `BitmapFactory` (device checkbox).
+
+### Device test list for Faran
+
+- [ ] Each startup option after a force-stop: Continue (tabs as left), Open the start page (tabs kept, a start page in
+      front), Open the homepage (tabs kept, the homepage in front); with a homepage unset, "Open the homepage" opens a
+      start page
+- [ ] Each option with a link opened from another app (`adb shell am start -a android.intent.action.VIEW -d https://example.com`
+      after a force-stop): the link is in front, no extra start page / homepage tab
+- [ ] Homepage: set `example.com` → Home opens https://example.com/; Home is disabled on it; New tab still opens the
+      start page; an invalid entry shows the message; back to The start page
+- [ ] Home button switch hides / shows Home on the toolbar
+- [ ] Customize toolbar: add New tab, Reload, Share, Bookmarks, History, Downloads, Search this site; reorder with the
+      arrows; remove; the 6-button limit message; Reset; changes survive a force-stop; Tabs and Menu stay in the address
+      bar; Urdu (RTL) order mirrored
+- [ ] Spell check off: no red underlines / suggestions in a page's textarea (e.g. a search box) and in an app field
+      (History search); the address bar never checks. **Write down which keyboards follow it** (Gboard, SwiftKey,
+      Samsung Keyboard)
+- [ ] Start page background: each colour and gradient, then Photo → the system Photo Picker opens (Android 13+ emulator)
+      with no permission prompt; the photo shows with the dark layer; text readable in Light and Dark app themes and
+      in Urdu; Remove → theme; a portrait camera photo is upright
+- [ ] Merged manifest unchanged: no READ_MEDIA_IMAGES, no CAMERA (`apkanalyzer manifest permissions`)
+- [ ] Shortcuts with `adb shell input keycombination` (e.g. `113 48` = Ctrl+T, `113 51` = Ctrl+W, `113 59 48` =
+      Ctrl+Shift+T, `113 61` = Ctrl+Tab, `113 40` = Ctrl+L, `135` = F5, `57 21` = Alt+←, `113 32` = Ctrl+D, `113 36` =
+      Ctrl+H, `111` = Esc while editing the address bar); Volume-key scrolling (B6) still works alongside
+- [ ] Upgrade over seeded 1.1.0: tabs restored as before (Continue), toolbar Back / Forward / Home, theme background,
+      spell check on
+- [ ] TalkBack on the toolbar sheet (move / remove labels), swatches, shortcut rows; font scale 1.3
+
+### Handoff note
+
+```
+B21 Startup and customization — done
+Commits: d1806e7 (native), d2eb4b8 (code), <docs: this commit>; Ctrl+F follows after B7
+Native code to review: VidoraWeb pickStartPageImage(maxSize) / clearStartPageImage():
+  startpage/StartPagePhotoPicker.kt — ACTION_PICK_IMAGES (13+, or 11–12 with SDK ext 2) else
+  ACTION_OPEN_DOCUMENT image/*, launched via Expo RegisterActivityContracts; no permission, no manifest change.
+  startpage/StartPageImages.kt — copies into <filesDir>/start-page/, EXIF-upright, <= 1920 px, JPEG 85, new name,
+  old ones deleted. Test: StartPageImagesTest. Key channel unchanged (shortcuts use B6's setCombos).
+New settings: homepageUrl = '' (start page), startupOption = continue, spellCheck = true,
+  toolbarButtons = back,forward,home, startPageBackground = theme, startPageBackgroundColor = night,
+  startPageBackgroundGradient = dusk, startPageBackgroundPhoto = '' — all today's behaviour
+New libraries: none (gradient with the existing react-native-svg)
+Tested: unit, typecheck, lint. Device: pending Faran's final pass.
+  Kotlin on Windows: vidorax-web 81/82 (the Windows-only WebViewSnapshotsTest), vidorax-media won't compile
+  its tests on Windows — please rerun both on the Mac.
+Shared code touched: useTheme reads a new ThemeModeOverrideContext (null everywhere except the start page
+  with a custom background); TextField gets spell-check props only when Spell check is off.
+Found, not fixed: Android 8–10 get the document picker, not the Photo Picker (no permission either way);
+  which keyboards honour Spell check off is unknown until tested.
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -617,6 +724,7 @@ Found, not fixed: History search treats % and _ as wildcards (LIKE without ESCAP
 | B1 | `snapshotWebView(viewTag, maxWidth, key)`: finds the WebView by view tag (like `setWebViewActive`), draws it into a bitmap on the main thread (scroll offset applied), encodes JPEG q72 on a single background executor, writes `<cacheDir>/tab-previews/<key>.jpg` atomically (temp + rename). `key` must match `[A-Za-z0-9_-]{1,64}`. Kotlin test `WebViewSnapshotsTest` (Robolectric NATIVE graphics, added as a test-only dependency of vidorax-web, same 4.16.1 as vidorax-media) | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `snapshot/WebViewSnapshots.kt`, `build.gradle` |
 | B6 | `getWebViewHistory(viewTag)` / `goBackOrForward(viewTag, steps)` (WebView back/forward list window, main thread); `setKeyCapture(volumeKeys, combos)` + event `onCapturedKey` — `VidoraKeyChannel`, asked first by **`MainActivity.dispatchKeyEvent`** (app module), takes keys only while JS listens and asked; `getNavigationMode()` (`Settings.Secure navigation_mode`); `prefetchDns(host)` (background `InetAddress`, ≤ 1 / min / host). Kotlin tests `KeyCaptureTest`, `WebHistoryWindowTest`, `NavigationModeTest`, `DnsPrefetcherTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `keys/VidoraKeyChannel.kt`, `navigation/WebHistoryWindow.kt`, `navigation/NavigationMode.kt`, `network/DnsPrefetcher.kt`, `android/app/.../MainActivity.kt` |
 | B8 | Hook listener `wrapSelectionMenu` (Faran's patch hook, unchanged): `SelectionMenuCallback` (an `ActionMode.Callback2`) delegates every call to Chromium's callback, removes Chromium's Web search (resource entry `select_action_menu_web_search`) and adds the items from `setSelectionMenu(ids, titles, readScript)`; a tap runs `readScript` with `evaluateJavascript`, finishes the menu in its callback and sends `onSelectionAction { viewTag, itemId, text }`. Items only while JS listens. Kotlin test `SelectionMenuTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `selection/SelectionMenu.kt`, `selection/SelectionMenuCallback.kt` |
+| B21 | `pickStartPageImage(maxSize)` / `clearStartPageImage()`: the system Photo Picker (`MediaStore.ACTION_PICK_IMAGES`, Android 13+ or 11–12 with SDK extension 2) else `ACTION_OPEN_DOCUMENT` `image/*` — no permission, no manifest change — launched through Expo's `RegisterActivityContracts`; the picked image is decoded (sampled), turned upright from EXIF, scaled to ≤ maxSize (480–2560) and written as JPEG 85 to `<filesDir>/start-page/background-<time>.jpg` (temp + rename; older files deleted). Kotlin test `StartPageImagesTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `startpage/StartPageImages.kt`, `startpage/StartPagePhotoPicker.kt` |
 
 ### New dependencies
 
@@ -643,6 +751,14 @@ Found, not fixed: History search treats % and _ as wildcards (LIKE without ESCAP
 | `preloadPages` | B6 | `wifi` | `off`, `wifi`, `always` |
 | `saveHistory` | B10 | `true` (today's) | on / off |
 | `clearHistoryOnExit` | B10 | `false` (today's) | on / off |
+| `homepageUrl` | B21 | `''` = the start page (today's) | an http(s) address (checked) |
+| `startupOption` | B21 | `continue` (today's) | `continue`, `startPage`, `homepage` |
+| `spellCheck` | B21 | `true` (today's) | on / off |
+| `toolbarButtons` | B21 | `back,forward,home` (today's) | 1–6 of `back`, `forward`, `home`, `newTab`, `reload`, `share`, `bookmarks`, `history`, `downloads`, `searchSite` |
+| `startPageBackground` | B21 | `theme` (today's) | `theme`, `color`, `gradient`, `photo` |
+| `startPageBackgroundColor` | B21 | `night` | `night`, `forest`, `ocean`, `plum`, `rust`, `slate` |
+| `startPageBackgroundGradient` | B21 | `dusk` | `dusk`, `lagoon`, `ember`, `aurora` |
+| `startPageBackgroundPhoto` | B21 | `''` | `file://…/start-page/background-<time>.jpg` (only the app's own) |
 
 ### Found, not fixed
 
@@ -662,6 +778,9 @@ Found, not fixed: History search treats % and _ as wildcards (LIKE without ESCAP
 | History search (existing) | `%` and `_` in a search act as wildcards (`LIKE` without `ESCAPE` in `HistoryRepository`): searching `100%` also lists `100 …`. Left as it is (existing code) |
 | History visit count (B10 export) | History merges revisits of a URL within 5 minutes into one entry, so "Visits" in the export counts those entries, not every load |
 | Clear browsing data (B10) | Clears the browser profile in use only (B20); other profiles keep theirs (the sheet says so) |
+| Start page photo (B21) | Android 8–10 (and 11–12 without the photo picker's SDK extension) get the system document picker for images instead of the Photo Picker; no permission either way. The Google Play services backport of the Photo Picker needs a manifest `<service>` entry, not added |
+| Spell check off (B21) | Whether a keyboard honours "no suggestions" is the keyboard's choice; unknown until tried on a device |
+| Kotlin tests on Windows (B21) | Robolectric here has no `ExifInterface(InputStream)` and decodes any bytes as a placeholder image, so `StartPageImagesTest` injects the orientation and can't check a real non-image file |
 
 ### Decisions (all packages)
 
@@ -685,3 +804,7 @@ Found, not fixed: History search treats % and _ as wildcards (LIKE without ESCAP
 - B10: tab previews are cleared for every time range (a cache). Menu → Exit appears only while "Clear history on
   exit" is on. "Save history" off also stops new recent searches. The site-data part of every clear is one hook,
   `bindSiteDataClearer`, left for B12.
+- B21: Tabs and Menu stay in the address bar and are listed as locked in Customize toolbar; ordering with arrows (TalkBack,
+  RTL). Startup options add one tab in front and keep every tab; a launch link always wins. A custom start page
+  background uses a dark layer **and** the dark palette (`ThemeModeOverrideContext`). Keyboard shortcuts have no on/off
+  setting; Esc is taken only while a browser panel is open.

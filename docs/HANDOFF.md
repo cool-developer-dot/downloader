@@ -2134,6 +2134,12 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   tabs, tab previews; hook `bindSiteDataClearer` for B12's site data); Clear history on exit (next cold start + Menu
   → Exit); Save history off switch ("History is off"); Export history as CSV (UTF-8 BOM, system folder picker). No
   native code, no database change (version 2), no permission or library.
+- **B21 Startup and customization.** Homepage (start page or a checked address; Home opens it; Home button switch);
+  startup options (Continue / start page / homepage — one tab in front, tabs kept; a launch link wins); Spell check
+  switch (app fields + page fields, not the address bar); Customize toolbar (≤ 6 of 10 buttons, order, Reset; Tabs and
+  Menu locked in the address bar); start page background (theme / colour / gradient / photo from the Photo Picker,
+  dark layer + dark palette); keyboard shortcuts through B6's key channel, listed in settings. Native: VidoraWeb
+  `pickStartPageImage`, `clearStartPageImage`. No permission, no library, no database change.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 
