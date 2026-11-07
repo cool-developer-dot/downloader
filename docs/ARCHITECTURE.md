@@ -794,6 +794,12 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   only `find_result` numbers on the browser-chrome channel; `useBrowserChromeBridge` hands them to `findInPage.onResult`,
   which drops stale request ids. Back (`useBrowserHardwareBack`), Esc (`escapePanels`), tab change and navigation close
   the bar and clear the page.
+- **Tab sound and sleep (B3).** `src/browser/tab-sound/`: the speaker (`TabSoundButton`) reads B6's per-tab
+  `media_state` (`pageActivity.isMediaPlaying`); `tab-audio.service.ts` keeps each tab's mute / volume (memory) and
+  injects `tab-audio-script.ts`, which wraps `HTMLMediaElement` `volume` / `muted` (page sees its own values) — also a
+  document-start script of that tab's `BrowserWebView` while adjusted. `tab-sleep.service.ts` checks every minute and
+  calls the store's `sleepTabs` (removes ids from `mountedTabIds`; never the active tab or one playing sound);
+  `bindTabSleepShortener` is B18's hook. The memory row reads VidoraWeb `getAppMemory`.
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab

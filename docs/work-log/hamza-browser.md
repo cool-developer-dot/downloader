@@ -818,6 +818,82 @@ Found, not fixed: text inside iframes and closed shadow roots isn't searched; si
   can't be searched (the bar says so); WebView < 105 shows only the current match (selection).
 ```
 
+## B3 — Tab sound and sleep (#283, #8, #220, #15, #190)
+
+Mega 2. `webview-configuration.ts` read first: its parking rules hold — no remount, no cookie clearing on tab switch;
+sleeping only unmounts a parked WebView the way the pool already evicts one, and its tab loads its address when opened.
+No database change (`DATABASE_VERSION` stays 2). Testing rule: unit tests, typecheck and lint here; device checks in
+"Device test list for Faran".
+
+### Design and decisions
+
+| # | What the user sees | Where it lives | Notes / decisions |
+| --- | --- | --- | --- |
+| #283 Audio indicator | A speaker on a tab card in the switcher while its page plays sound (also in the card's spoken label: "Playing sound" / "Muted") | `tab-sound/components/TabSoundButton.tsx`, `TabCard.tsx` | **Reuses B6's `media_state`** (the browser-chrome script already reports "playing" / "not playing" per tab: an unpaused, unmuted, audible `<audio>` / `<video>`). No new message from the page |
+| #8 Mute tab | Tap the speaker, or tab menu → Mute / Unmute | `tab-audio.service.ts` | Per tab, in memory for this app run (the tab list is what persists; a sound choice is not) |
+| #220 Tab volume | Tab menu → Tab volume: a 0–100 % slider with − / + and the mute button | `components/TabVolumeSheet.tsx`, `PercentSlider.tsx` | No slider library: `PercentSlider` (PanResponder track, 5 % steps, `adjustable` for TalkBack, mirrored in RTL, 48 dp); − / + move 10 % |
+| How sound is changed | — | `tab-audio-script.ts` | In the page: `HTMLMediaElement.prototype.volume` / `muted` are wrapped so an element plays at page volume × tab volume and is muted when the page **or** the tab says so, while the page reads back its own values (its player UI — and B6's `media_state`, so the speaker stays to unmute — stay right). `play()` applies the tab values first, covering `new Audio()` outside the document. Values put in: a flag and a number; **nothing is sent back**. Installed only in tabs the user adjusted: injected at once, and added to that tab's document-start scripts for its next pages. Not covered: Web Audio API sound, players in cross-origin frames |
+| #15 Tab sleeping | Browser settings → Tabs → "Sleep unused tabs": **Off (default)** / 15 min / 30 min / 1 h / 3 h | `tab-sleep.ts` (pure), `tab-sleep.service.ts`, `hooks/useTabSleep.ts`; store `sleepTabs` | **Default Off** — today's behaviour; a sleeping tab reloads its page and loses what was typed in it, so it's the user's choice. Only two tabs ever hold a live page (the WebView pool); sleeping gives up the second one early: checked every minute while the app is in front, a live tab unused for the time (since it was left, `lastActiveAt`) is unmounted (`sleepTabs` → `mountedTabIds`, `suspendUnmountedTabs`). **Never the tab in front or a tab playing sound.** Opening it mounts it and loads its address (the existing path for any unmounted tab). **Hook for B18:** `bindTabSleepShortener(fn)` in `tab-sleep.service.ts` — battery saver returns a shorter time |
+| #190 Memory monitor | Browser settings → Tabs → Memory: "182 MB used · 2 tabs awake, 5 asleep" (+ "The phone is low on memory") | VidoraWeb `getAppMemory` (B3 native), `TabsSettingsSection.tsx` | Read on open and every 5 s while shown. The app process's total PSS (WebView's renderer is a separate process and isn't counted — the row says so). Awake = tabs with a live page; asleep = the rest |
+
+- **Strings:** `browserTabSound.*`. **Accessibility:** speaker, menu items, slider, − / +, mute labelled; 48 dp; RTL.
+
+### Files
+
+New: `src/browser/tab-sound/{tab-audio-script,tab-audio.service,tab-sleep,tab-sleep.service}.ts` (+ `tab-sound.test.ts`),
+`tab-sound/components/{PercentSlider,TabVolumeSheet,TabSoundButton}.tsx`, `hooks/useTabSleep.ts`,
+`screens/settings/browser-settings/TabsSettingsSection.tsx`, `catalogs/browserTabSound.{en,ur}.ts`; native
+`memory/AppMemory.kt` (+ `AppMemoryTest.kt`).
+Changed: `TabCard.tsx` (speaker), `BrowserTabSwitcher.tsx` (Mute / Tab volume, the sheet), `BrowserWebView.tsx`
+(document-start sound script for an adjusted tab), `tab-management-actions.ts` (`sleepTabs`), `BrowserScreen.tsx`,
+settings store (`tabSleepAfter`), `browser-setting-{keys,choices}.ts`, `BrowserSettingsScreen.tsx`,
+`VidoraWebModule.kt`, `VidoraWeb.types.ts`, `en.ts` / `ur.ts`.
+
+### Automated tests
+
+`tab-sound.test.ts` (9): the sound script in `node:vm` with a fake `HTMLMediaElement` (native accessors validating like
+the browser's) — mute while the page reads its own `muted`; volume scales what the page sets and the page reads back its
+value (an invalid value still throws for the page); the page's own mute survives the tab's unmute; `play()` covers
+detached `new Audio()`; installing twice = one wrapper, latest values; only a flag and a number go in, nothing is
+posted. Sleep: default Off, choices; only live, unused tabs sleep — never the front tab or one playing sound; awake /
+asleep counts. Kotlin `AppMemoryTest` (3): summary stats in kB, fallback to total PSS, a real reading maps every field.
+
+Gate (Windows): `npm test` **1665 / 1665**, typecheck 0, lint **0 / 82**, `git diff --check` clean. Kotlin vidorax-web
+**84 / 85** (the Windows-only `WebViewSnapshotsTest`); vidorax-media doesn't compile its tests on Windows (see B8).
+
+### Device test list for Faran
+
+- [ ] A video page with sound in one tab, open the switcher: the speaker shows on that tab (and TalkBack says "Playing
+      sound"); a silent page has none
+- [ ] Tap the speaker: the tab goes silent, the icon shows muted; tap again: sound back. Tab menu → Mute / Unmute too
+- [ ] Tab menu → Tab volume: slider, − / +, at 30 % the video is quieter; the page's own volume control still shows its
+      own value; follow a link in that tab — the next page keeps the tab's volume
+- [ ] A page with sound inside a cross-origin iframe (e.g. an embedded player): note that mute doesn't reach it
+- [ ] Sleep unused tabs = 15 minutes: leave a tab (second live page) for 15+ minutes; Memory shows it asleep; opening it
+      reloads the same address. The tab in front and a tab playing sound never sleep
+- [ ] Memory row shows MB and tabs awake / asleep, updates while open; with many tabs the numbers change as tabs sleep
+- [ ] `webview-configuration` rules: switching tabs doesn't reload or log out of a site (cookies kept)
+- [ ] Urdu (RTL: slider mirrored), Dark, TalkBack on the slider (swipe up / down), font scale 1.3
+
+### Handoff note
+
+```
+B3 Tab sound and sleep — done
+Commits: dce1d32 (native), c8433de (code), <docs: this commit>
+Native code to review: VidoraWeb getAppMemory() — memory/AppMemory.kt: Debug.getMemoryInfo summary (total PSS,
+  Java / native heap, graphics) + ActivityManager.getMemoryInfo (device available / total / low). No permission.
+  Test: AppMemoryTest.
+New settings: tabSleepAfter = off (today's behaviour)
+New libraries: none
+Tested: unit, typecheck, lint. Device: pending Faran's final pass.
+  Kotlin on Windows: vidorax-web 84/85 (WebViewSnapshotsTest, Windows-only); vidorax-media won't compile on
+  Windows. Please rerun both on the Mac.
+Hook for B18: bindTabSleepShortener(fn) in src/browser/tab-sound/tab-sleep.service.ts (battery saver shortens
+  the sleep time).
+Found, not fixed: mute / volume don't reach Web Audio sound or players in cross-origin frames; the memory figure
+  is the app process only (WebView's renderer isn't counted); a tab's sound choice lasts for the app run.
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -828,6 +904,7 @@ Found, not fixed: text inside iframes and closed shadow roots isn't searched; si
 | B6 | `getWebViewHistory(viewTag)` / `goBackOrForward(viewTag, steps)` (WebView back/forward list window, main thread); `setKeyCapture(volumeKeys, combos)` + event `onCapturedKey` — `VidoraKeyChannel`, asked first by **`MainActivity.dispatchKeyEvent`** (app module), takes keys only while JS listens and asked; `getNavigationMode()` (`Settings.Secure navigation_mode`); `prefetchDns(host)` (background `InetAddress`, ≤ 1 / min / host). Kotlin tests `KeyCaptureTest`, `WebHistoryWindowTest`, `NavigationModeTest`, `DnsPrefetcherTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `keys/VidoraKeyChannel.kt`, `navigation/WebHistoryWindow.kt`, `navigation/NavigationMode.kt`, `network/DnsPrefetcher.kt`, `android/app/.../MainActivity.kt` |
 | B8 | Hook listener `wrapSelectionMenu` (Faran's patch hook, unchanged): `SelectionMenuCallback` (an `ActionMode.Callback2`) delegates every call to Chromium's callback, removes Chromium's Web search (resource entry `select_action_menu_web_search`) and adds the items from `setSelectionMenu(ids, titles, readScript)`; a tap runs `readScript` with `evaluateJavascript`, finishes the menu in its callback and sends `onSelectionAction { viewTag, itemId, text }`. Items only while JS listens. Kotlin test `SelectionMenuTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `selection/SelectionMenu.kt`, `selection/SelectionMenuCallback.kt` |
 | B21 | `pickStartPageImage(maxSize)` / `clearStartPageImage()`: the system Photo Picker (`MediaStore.ACTION_PICK_IMAGES`, Android 13+ or 11–12 with SDK extension 2) else `ACTION_OPEN_DOCUMENT` `image/*` — no permission, no manifest change — launched through Expo's `RegisterActivityContracts`; the picked image is decoded (sampled), turned upright from EXIF, scaled to ≤ maxSize (480–2560) and written as JPEG 85 to `<filesDir>/start-page/background-<time>.jpg` (temp + rename; older files deleted). Kotlin test `StartPageImagesTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `startpage/StartPageImages.kt`, `startpage/StartPagePhotoPicker.kt` |
+| B3 | `getAppMemory()`: the app process's memory (`Debug.getMemoryInfo` summary: total PSS, Java heap, native heap, graphics) and the device's (`ActivityManager.getMemoryInfo`: available, total, low memory), kB; async (background queue), no permission. Kotlin test `AppMemoryTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `memory/AppMemory.kt` |
 
 ### New dependencies
 
@@ -862,6 +939,7 @@ Found, not fixed: text inside iframes and closed shadow roots isn't searched; si
 | `startPageBackgroundColor` | B21 | `night` | `night`, `forest`, `ocean`, `plum`, `rust`, `slate` |
 | `startPageBackgroundGradient` | B21 | `dusk` | `dusk`, `lagoon`, `ember`, `aurora` |
 | `startPageBackgroundPhoto` | B21 | `''` | `file://…/start-page/background-<time>.jpg` (only the app's own) |
+| `tabSleepAfter` | B3 | `off` (today's) | `off`, `15m`, `30m`, `1h`, `3h` |
 
 ### Found, not fixed
 
@@ -887,6 +965,8 @@ Found, not fixed: text inside iframes and closed shadow roots isn't searched; si
 | Find in page (B7) | Text inside iframes and closed shadow roots isn't searched (the script runs in the main document); a match across two paragraphs can be found as one (block boundaries aren't separators) |
 | Find in page (B7) | On a site with JavaScript off (B12) nothing can be searched (the bar says so); on WebView < 105 only the current match is shown (as the selection) |
 | Find in page (B7) | While the bar is open, the page's own scripts could observe the search text (native find doesn't expose it) — the cost of Match case / Whole word |
+| Tab sound (B3) | Mute / volume don't reach sound made with the Web Audio API or players inside cross-origin frames (the script runs in the main document) |
+| Memory monitor (B3) | The figure is the app process only; WebView's renderer process (where pages run) isn't counted |
 
 ### Decisions (all packages)
 
@@ -919,3 +999,6 @@ Found, not fixed: text inside iframes and closed shadow roots isn't searched; si
   bridge parser. Back closes the bar through the existing Back owner, Esc through B21's `escapePanels`.
 - Strings: each package has a top-level catalog group like B1–B6 (`browserSelection`, `browserHistory`,
   `browserStartup`, `browserFind`) rather than `browser.find.*`.
+- B3: the speaker reuses B6's `media_state`; mute / volume wrap the page's media accessors so the page (and that report)
+  keep seeing their own values. Tab sleeping defaults to Off (a sleeping tab reloads); it unmounts the second live
+  WebView early. Hook `bindTabSleepShortener` for B18.

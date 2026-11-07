@@ -2145,6 +2145,10 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   all cleared on close; Back, Esc, a tab change or navigation close it. An injected search with the CSS Custom
   Highlight API (no DOM change) instead of `findAllAsync` (no match case / whole word); only numbers come back. No
   native code, setting, permission or library.
+- **B3 Tab sound and sleep.** Speaker on tabs playing sound (B6's media report), mute from it or the tab menu, a 0–100 %
+  tab volume (applied in the page by wrapping the media elements' volume / muted), Sleep unused tabs (Off by default;
+  15 min–3 h; never the front tab or one playing sound; hook for B18), Memory in Browser settings → Tabs. Native:
+  VidoraWeb `getAppMemory`. No permission, library or database change.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 
