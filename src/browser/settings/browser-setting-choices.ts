@@ -9,6 +9,12 @@ import { TAB_SORT_ORDERS } from '@/browser/tabs/tab-list-ops';
 import { SCROLL_SPEEDS } from '@/browser/scroll/scroll-speed';
 import { PRELOAD_PAGES_CHOICES } from '@/browser/preload/preload-policy';
 import { COOKIE_POLICIES } from '@/browser/privacy/privacy-settings';
+import { STARTUP_OPTIONS } from '@/browser/startup/startup-settings';
+import {
+  START_PAGE_BACKGROUND_KINDS,
+  START_PAGE_COLOR_IDS,
+  START_PAGE_GRADIENT_IDS,
+} from '@/browser/startup/start-page-background';
 
 /**
  * The allowed values of every browser setting that is a choice (stored as a string in `SettingsState`). Settings
@@ -25,6 +31,11 @@ export const BROWSER_SETTING_CHOICES: Readonly<Record<string, readonly string[]>
   scrollSpeed: SCROLL_SPEEDS,
   preloadPages: PRELOAD_PAGES_CHOICES,
   cookiePolicy: COOKIE_POLICIES,
+  // B21 (Hamza)
+  startupOption: STARTUP_OPTIONS,
+  startPageBackground: START_PAGE_BACKGROUND_KINDS,
+  startPageBackgroundColor: START_PAGE_COLOR_IDS,
+  startPageBackgroundGradient: START_PAGE_GRADIENT_IDS,
 };
 
 /** String settings longer than Backup's usual 500-character cap (lists stored as JSON). */

@@ -95,6 +95,22 @@ export interface SettingsState {
   saveHistory: boolean;
   /** B10 #99: clear browsing data at the next cold start, and show Menu → Exit (default off — today's). */
   clearHistoryOnExit: boolean;
+  /** B21 #232: the homepage, '' = the start page (default — today's). */
+  homepageUrl: string;
+  /** B21 #233: what opens at a cold start (default 'continue' — today's). */
+  startupOption: import('@/browser/startup/startup-settings').StartupOption;
+  /** B21 #237: spell check in page fields and the app's fields, not the address bar (default on — today's). */
+  spellCheck: boolean;
+  /** B21 #238: bottom toolbar buttons, comma-separated ids (default 'back,forward,home' — today's). */
+  toolbarButtons: string;
+  /** B21 #245: start page background 'theme' (default — today's) / 'color' / 'gradient' / 'photo'. */
+  startPageBackground: import('@/browser/startup/start-page-background').StartPageBackgroundKind;
+  /** B21 #245: the colour preset id. */
+  startPageBackgroundColor: string;
+  /** B21 #245: the gradient preset id. */
+  startPageBackgroundGradient: string;
+  /** B21 #245: `file://…/start-page/background-<time>.jpg` written by VidoraWeb, '' = none. */
+  startPageBackgroundPhoto: string;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

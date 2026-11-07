@@ -63,6 +63,7 @@ import {
 } from '@/browser/webview/webview-activity';
 import { clearTabWebViewTag, setTabWebViewTag } from '@/browser/webview/webview-view-tags';
 import { DO_NOT_TRACK_HEADERS, DO_NOT_TRACK_PAGE_SCRIPT } from '@/browser/privacy/privacy-page-script';
+import { SPELL_CHECK_OFF_PAGE_SCRIPT } from '@/browser/startup/spell-check';
 import {
   isJavaScriptAllowed,
   normalizeCookiePolicy,
@@ -133,6 +134,8 @@ export const BrowserWebView = memo(function BrowserWebView({
   // B12: the privacy settings that are WebView props (per profile, B20).
   const cookiePolicy = useSettingsStore((s) => normalizeCookiePolicy(s.cookiePolicy));
   const doNotTrack = useSettingsStore((s) => s.doNotTrack === true);
+  // B21 #237: Spell check off — pages get a document-start script that turns it off in their fields.
+  const spellCheckOff = useSettingsStore((s) => s.spellCheck === false);
   const javaScriptDefault = useSettingsStore((s) => s.javaScript !== false);
   const javaScriptExceptionsRaw = useSettingsStore((s) => s.javaScriptExceptions);
   const javaScriptExceptions = useMemo(
@@ -546,8 +549,8 @@ export const BrowserWebView = memo(function BrowserWebView({
     () =>
       `${chromeBridge.injectedJavaScriptBeforeContentLoaded}\n${mediaBeforeContent}${
         doNotTrack ? `\n${DO_NOT_TRACK_PAGE_SCRIPT}` : ''
-      }`,
-    [chromeBridge.injectedJavaScriptBeforeContentLoaded, doNotTrack, mediaBeforeContent],
+      }${spellCheckOff ? `\n${SPELL_CHECK_OFF_PAGE_SCRIPT}` : ''}`,
+    [chromeBridge.injectedJavaScriptBeforeContentLoaded, doNotTrack, mediaBeforeContent, spellCheckOff],
   );
 
   const finalizeLoadEnd = useCallback(

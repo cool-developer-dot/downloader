@@ -35,6 +35,7 @@ import { SwipeArrow } from '@/browser/components/SwipeNavigation/SwipeArrow';
 import { useSwipeNavigation } from '@/browser/components/SwipeNavigation/useSwipeNavigation';
 import { useVolumeKeyScroll } from '@/browser/hooks/useVolumeKeyScroll';
 import { useSelectionMenu } from '@/browser/hooks/useSelectionMenu';
+import { useKeyboardShortcuts } from '@/browser/hooks/useKeyboardShortcuts';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
 import { useIsWebFullscreen, useWebFullscreenLifecycle } from '@/browser/fullscreen';
 import {
@@ -172,6 +173,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   const swipe = useSwipeNavigation();
   // B8: Search in pages' text-selection menu (Copy and Share stay Android's own).
   useSelectionMenu();
+  // B21 #246: keyboard shortcuts (physical keyboard) through B6's key channel.
+  useKeyboardShortcuts();
   const pageControlsVisible = !tabSwitcherVisible && !webFullscreenActive;
   // The page area: the tour shows where "Video available" appears (its bottom edge, above the toolbar).
   const pageAreaRef = useTourTargetRef('pageArea');

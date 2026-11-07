@@ -13,6 +13,8 @@ import { Pressable } from '@/components/base/Pressable';
 import { Text } from '@/components/base/Text';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import { spellCheckInputProps } from '@/browser/startup/spell-check';
+import { useSettingsStore } from '@/store/settings';
 
 import { fieldMetrics, getFieldColors, type FieldState } from './field-styles';
 
@@ -55,6 +57,7 @@ export const TextField = memo(
     ref,
   ) {
     const theme = useTheme();
+    const spellCheck = useSettingsStore((s) => s.spellCheck !== false);
     const { t } = useTranslation();
     const [isFocused, setIsFocused] = useState(false);
 
@@ -123,6 +126,8 @@ export const TextField = memo(
               },
               inputStyle,
             ]}
+            // B21 #237: Spell check off turns off the keyboard's suggestions and checking; a field's own props win.
+            {...spellCheckInputProps(spellCheck)}
             {...rest}
           />
           {showClearButton ? (

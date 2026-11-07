@@ -10,10 +10,28 @@ import { goBackInActiveTab, loadActiveTabBackHistory } from '@/browser/navigatio
 
 import { BROWSER_TOOLBAR_HEIGHT, BROWSER_TOUCH_TARGET } from '@/browser/constants';
 import { useBrowserNavigation } from '@/browser/hooks';
-import { useTranslation } from '@/localization';
+import { useTranslation, type TranslationKey } from '@/localization';
+import type { IconName } from '@/components/base/Icon';
+import { selectCurrentUrl, selectIsLoading, useBrowserStore } from '@/browser/stores';
+import { browserCommands } from '@/browser/startup/browser-commands';
+import { readHomepage } from '@/browser/startup/startup-settings';
+import { parseToolbarButtons, type ToolbarButtonId } from '@/browser/startup/toolbar-buttons';
+import { isValidBrowserPageUrl } from '@/browser/utils';
+import { useSettingsStore } from '@/store/settings';
 
-import { getBrowserToolbarItems, type BrowserToolbarItemId } from './toolbar-config';
+import { getBrowserToolbarItems } from './toolbar-config';
 import { ToolbarButton } from './ToolbarButton';
+
+/** B21 #238: the buttons beyond today's Back / Forward / Home. */
+const EXTRA_BUTTONS: Record<Exclude<ToolbarButtonId, 'back' | 'forward' | 'home'>, { icon: IconName; label: TranslationKey }> = {
+  newTab: { icon: 'tab-plus', label: 'browserStartup.buttonNewTab' },
+  reload: { icon: 'refresh', label: 'browserStartup.buttonReload' },
+  share: { icon: 'share-variant', label: 'browserStartup.buttonShare' },
+  bookmarks: { icon: 'bookmark-outline', label: 'browserStartup.buttonBookmarks' },
+  history: { icon: 'history', label: 'browserStartup.buttonHistory' },
+  downloads: { icon: 'download', label: 'browserStartup.buttonDownloads' },
+  searchSite: { icon: 'magnify', label: 'browserStartup.buttonSearchSite' },
+};
 
 export type BrowserToolbarProps = {
   /** B6 #45: the sideways swipe that goes back / forward (owned by the browser screen). */
@@ -40,6 +58,13 @@ export const BrowserToolbar = memo(function BrowserToolbar({
     handleForward,
     handleHome,
   } = useBrowserNavigation();
+  // B21 #238 / #232: the user's buttons and order (default: today's Back, Forward, Home); Home opens the homepage.
+  const toolbarValue = useSettingsStore((s) => s.toolbarButtons);
+  const toolbarIds = useMemo(() => parseToolbarButtons(toolbarValue), [toolbarValue]);
+  const homepage = readHomepage(useSettingsStore((s) => s.homepageUrl));
+  const currentUrl = useBrowserStore(selectCurrentUrl);
+  const isLoading = useBrowserStore(selectIsLoading);
+  const hasPage = isValidBrowserPageUrl(currentUrl);
   // B6 #44: a long press on Back lists the tab's earlier pages.
   const [backHistory, setBackHistory] = useState<BackHistoryEntry[] | null>(null);
 
@@ -60,22 +85,24 @@ export const BrowserToolbar = memo(function BrowserToolbar({
     void goBackInActiveTab(entry.steps);
   }, []);
 
-  const visibleItems = useMemo(
-    () =>
-      getBrowserToolbarItems(t)
-        .filter((item) => item.enabled)
-        .map((item) =>
-          item.id === 'back'
-            ? { ...item, icon: rtl.arrowBack }
-            : item.id === 'forward'
-              ? { ...item, icon: rtl.arrowForward }
-              : item,
-        ),
-    [rtl.arrowBack, rtl.arrowForward, t],
-  );
+  const visibleItems = useMemo(() => {
+    const base = getBrowserToolbarItems(t);
+    return toolbarIds.map((id): { id: ToolbarButtonId; icon: IconName; accessibilityLabel: string } => {
+      if (id === 'back' || id === 'forward' || id === 'home') {
+        const item = base.find((b) => b.id === id)!;
+        const icon = id === 'back' ? rtl.arrowBack : id === 'forward' ? rtl.arrowForward : item.icon;
+        return { id, icon, accessibilityLabel: item.accessibilityLabel };
+      }
+      const extra = EXTRA_BUTTONS[id];
+      if (id === 'reload' && isLoading) {
+        return { id, icon: 'close', accessibilityLabel: t('browserStartup.buttonStop') };
+      }
+      return { id, icon: extra.icon, accessibilityLabel: t(extra.label) };
+    });
+  }, [toolbarIds, isLoading, rtl.arrowBack, rtl.arrowForward, t]);
 
   const resolveDisabled = useCallback(
-    (id: BrowserToolbarItemId): boolean => {
+    (id: ToolbarButtonId): boolean => {
       if (id === 'back') {
         return !canGoBack;
       }
@@ -83,28 +110,45 @@ export const BrowserToolbar = memo(function BrowserToolbar({
         return !canGoForward;
       }
       if (id === 'home') {
-        // Deterministic: Home is a no-op on Browser Home — disable for clarity.
-        return isHome;
+        // Deterministic: Home is a no-op on Browser Home — disable for clarity. With a homepage: on the homepage.
+        return homepage ? currentUrl === homepage : isHome;
+      }
+      if (id === 'reload' || id === 'share' || id === 'searchSite') {
+        return !hasPage;
       }
       return false;
     },
-    [canGoBack, canGoForward, isHome],
+    [canGoBack, canGoForward, currentUrl, hasPage, homepage, isHome],
   );
 
   const resolvePress = useCallback(
-    (id: BrowserToolbarItemId) => {
+    (id: ToolbarButtonId) => {
       switch (id) {
         case 'back':
           return handleBack;
         case 'forward':
           return handleForward;
         case 'home':
-          return handleHome;
+          return homepage ? browserCommands.home : handleHome;
+        case 'newTab':
+          return browserCommands.newTab;
+        case 'reload':
+          return browserCommands.reload;
+        case 'share':
+          return () => void browserCommands.share();
+        case 'bookmarks':
+          return browserCommands.bookmarks;
+        case 'history':
+          return browserCommands.history;
+        case 'downloads':
+          return browserCommands.downloads;
+        case 'searchSite':
+          return browserCommands.searchSite;
         default:
           return () => undefined;
       }
     },
-    [handleBack, handleForward, handleHome],
+    [handleBack, handleForward, handleHome, homepage],
   );
 
   return (

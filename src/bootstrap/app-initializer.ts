@@ -209,6 +209,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureIncomingLinkHandling } = await import('@/browser/services/incoming-link.service');
       // A link shared to VidoraX, or opened through it as the device's browser, lands in the browser tab.
       ensureIncomingLinkHandling();
+      const { applyStartupOption } = await import('@/browser/startup/startup.service');
+      // B21 #233: Browser settings → Startup ("Continue where you left off" unless changed); a launch link wins.
+      applyStartupOption();
       const { ensureBrowserWindowEvents } = await import('@/browser/profiles/browser-window.service');
       // B20 #16: tabs moved to their own window come back, and their visits reach history.
       ensureBrowserWindowEvents();

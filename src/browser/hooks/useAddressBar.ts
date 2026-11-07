@@ -4,6 +4,7 @@ import * as Clipboard from 'expo-clipboard';
 import { useFocusEffect } from 'expo-router';
 
 import { addressBarVisibility } from '@/browser/address-bar/address-bar-visibility';
+import { escapePanels } from '@/browser/startup/escape-panels';
 import { registrableDomain } from '@/browser/address-bar/domain';
 import { pagePreload } from '@/browser/preload/page-preload.service';
 import { prefetchHostFor } from '@/browser/preload/preload-policy';
@@ -118,6 +119,12 @@ export function useAddressBar() {
   // B4 #29: an address bar being edited is never hidden.
   useEffect(() => {
     addressBarVisibility.setEditing(isFocused);
+  }, [isFocused]);
+
+  // B21 #246: while the address bar is being edited, Esc (physical keyboard) closes it.
+  useEffect(() => {
+    if (!isFocused) return undefined;
+    return escapePanels.open('addressBar', () => inputRef.current?.blur());
   }, [isFocused]);
 
   const displayValue = isFocused

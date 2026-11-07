@@ -39,6 +39,15 @@ import { createSettingsActions } from './actions';
 import { initialSettingsState } from './state';
 import type { SettingsState, SettingsStore } from './types';
 import { normalizeLimitMb } from '@/downloads/v2/data-usage';
+// B21 (Hamza)
+import { normalizeStartupOption, readHomepage } from '@/browser/startup/startup-settings';
+import { parseToolbarButtons, serializeToolbarButtons } from '@/browser/startup/toolbar-buttons';
+import {
+  colorPreset,
+  gradientPreset,
+  normalizeStartPageBackground,
+  readStartPagePhoto,
+} from '@/browser/startup/start-page-background';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -141,6 +150,14 @@ export const useSettingsStore = createStore<SettingsStore>()(
         javaScriptExceptions: state.javaScriptExceptions,
         saveHistory: state.saveHistory,
         clearHistoryOnExit: state.clearHistoryOnExit,
+        homepageUrl: state.homepageUrl,
+        startupOption: state.startupOption,
+        spellCheck: state.spellCheck,
+        toolbarButtons: state.toolbarButtons,
+        startPageBackground: state.startPageBackground,
+        startPageBackgroundColor: state.startPageBackgroundColor,
+        startPageBackgroundGradient: state.startPageBackgroundGradient,
+        startPageBackgroundPhoto: state.startPageBackgroundPhoto,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -260,6 +277,30 @@ export const useSettingsStore = createStore<SettingsStore>()(
           saveHistory: typeof raw.saveHistory === 'boolean' ? raw.saveHistory : current.saveHistory,
           clearHistoryOnExit:
             typeof raw.clearHistoryOnExit === 'boolean' ? raw.clearHistoryOnExit : current.clearHistoryOnExit,
+          homepageUrl: typeof raw.homepageUrl === 'string' ? readHomepage(raw.homepageUrl) : current.homepageUrl,
+          startupOption:
+            raw.startupOption === undefined ? current.startupOption : normalizeStartupOption(raw.startupOption),
+          spellCheck: typeof raw.spellCheck === 'boolean' ? raw.spellCheck : current.spellCheck,
+          toolbarButtons:
+            typeof raw.toolbarButtons === 'string'
+              ? serializeToolbarButtons(parseToolbarButtons(raw.toolbarButtons))
+              : current.toolbarButtons,
+          startPageBackground:
+            raw.startPageBackground === undefined
+              ? current.startPageBackground
+              : normalizeStartPageBackground(raw.startPageBackground),
+          startPageBackgroundColor:
+            typeof raw.startPageBackgroundColor === 'string'
+              ? colorPreset(raw.startPageBackgroundColor).id
+              : current.startPageBackgroundColor,
+          startPageBackgroundGradient:
+            typeof raw.startPageBackgroundGradient === 'string'
+              ? gradientPreset(raw.startPageBackgroundGradient).id
+              : current.startPageBackgroundGradient,
+          startPageBackgroundPhoto:
+            typeof raw.startPageBackgroundPhoto === 'string'
+              ? (readStartPagePhoto(raw.startPageBackgroundPhoto) ?? '')
+              : current.startPageBackgroundPhoto,
         };
       },
     },

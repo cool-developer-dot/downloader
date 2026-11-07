@@ -26,6 +26,15 @@ export const BROWSER_SETTING_KEYS = [
   // B10 (Hamza)
   'saveHistory',
   'clearHistoryOnExit',
+  // B21 (Hamza)
+  'homepageUrl',
+  'startupOption',
+  'spellCheck',
+  'toolbarButtons',
+  'startPageBackground',
+  'startPageBackgroundColor',
+  'startPageBackgroundGradient',
+  'startPageBackgroundPhoto',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

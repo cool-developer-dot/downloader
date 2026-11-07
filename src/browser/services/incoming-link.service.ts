@@ -15,6 +15,13 @@ export { urlFromSharedText };
 
 let attached = false;
 let detach: (() => void) | null = null;
+// B21 #233: whether the app was started by a link (it then wins over the startup option).
+let openedLaunchLink = false;
+
+/** B21: true when the link the app was launched with was opened (read once, after ensureIncomingLinkHandling). */
+export function didOpenLaunchLink(): boolean {
+  return openedLaunchLink;
+}
 
 export function resetIncomingLinksForTests(): void {
   detach?.();
@@ -22,19 +29,21 @@ export function resetIncomingLinksForTests(): void {
   attached = false;
 }
 
-function open(text: string | null): void {
+function open(text: string | null): boolean {
   const url = urlFromSharedText(text);
   // A shared or opened YouTube link is refused before the tab loads or fetches anything.
   if (url && isYouTubeLink(url)) {
     announceYouTubeNotSupported();
-    return;
+    return false;
   }
   if (url) {
     // What the user came for: the first-launch tour waits for a calmer moment.
     noteTourLinkOpened();
     // A shared link is a pasted link: the direct analyzer reads its page, then the active tab loads it.
     openPastedLink(url, { source: 'share' });
+    return true;
   }
+  return false;
 }
 
 /**
@@ -48,12 +57,14 @@ export function ensureIncomingLinkHandling(): void {
   attached = true;
   const web = getVidoraWeb();
   try {
-    open(web.consumeSharedText());
+    openedLaunchLink = open(web.consumeSharedText());
   } catch {
     // No intent to read.
   }
   try {
-    const subscription = web.addListener('onSharedText', ({ text }) => open(text));
+    const subscription = web.addListener('onSharedText', ({ text }) => {
+      open(text);
+    });
     detach = () => subscription.remove();
   } catch {
     // Older module build without the event: the launch link still works.

@@ -20,6 +20,10 @@ import { DEFAULT_COOKIE_POLICY, DEFAULT_JAVASCRIPT_EXCEPTIONS_JSON } from '@/bro
 
 import type { SettingsState } from './types';
 import { DEFAULT_AFTER_DOWNLOAD_ACTION } from '@/downloads/v2/after-download';
+// B21 (Hamza)
+import { DEFAULT_STARTUP_OPTION } from '@/browser/startup/startup-settings';
+import { DEFAULT_TOOLBAR_BUTTONS_VALUE } from '@/browser/startup/toolbar-buttons';
+import { START_PAGE_COLORS, START_PAGE_GRADIENTS } from '@/browser/startup/start-page-background';
 
 export const initialSettingsState: SettingsState = {
   clipboardMonitor: false,
@@ -72,4 +76,12 @@ export const initialSettingsState: SettingsState = {
   javaScriptExceptions: DEFAULT_JAVASCRIPT_EXCEPTIONS_JSON,
   saveHistory: true,
   clearHistoryOnExit: false,
+  homepageUrl: '',
+  startupOption: DEFAULT_STARTUP_OPTION,
+  spellCheck: true,
+  toolbarButtons: DEFAULT_TOOLBAR_BUTTONS_VALUE,
+  startPageBackground: 'theme',
+  startPageBackgroundColor: START_PAGE_COLORS[0].id,
+  startPageBackgroundGradient: START_PAGE_GRADIENTS[0].id,
+  startPageBackgroundPhoto: '',
 };
