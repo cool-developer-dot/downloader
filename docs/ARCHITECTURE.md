@@ -761,6 +761,12 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   `services/key-capture.service.ts` is the JS side of the key channel (B21 adds combos through `setCombos`).
   `services/hard-reload.ts` asks a tab's `BrowserWebView` for one `LOAD_NO_CACHE` reload. `preload/browser-savers.ts`
   is the seam B18 binds (Data saver / Battery saver turn preloading off).
+- **Selected text (B8).** The page's text-selection menu stays Android's / Chromium's (Copy, Paste, Select all, Share,
+  text-processing apps); VidoraWeb's `SelectionMenuCallback` (behind the patch hook `wrapSelectionMenu`) removes
+  Chromium's Web search and adds the app's items, set from JS with `setSelectionMenu` (`selection/selection-menu-items.ts`
+  is the list B22 / B23 extend). A tap runs `selection-read-script.ts` in the page (returns the selection, sends
+  nothing) and arrives as `onSelectionAction`; `selection-actions.ts` handles it (Search: `getSearchEngine()`, ≤ 300
+  characters, a new tab after the current one). Items only while the Browser screen listens (`useSelectionMenu`).
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab

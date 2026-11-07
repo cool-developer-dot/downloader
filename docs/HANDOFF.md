@@ -2125,6 +2125,10 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   native key channel shared with B21), Open in background tab, Preload pages (DNS ahead for the top suggestion, prefetch
   of a page's `rel="next"`; Wi-Fi only by default). Native: `getWebViewHistory`, `goBackOrForward`, `setKeyCapture` +
   `onCapturedKey` (+ `MainActivity.dispatchKeyEvent`), `getNavigationMode`, `prefetchDns`.
+- **B8 Selected text.** Search in a page's text-selection menu: the chosen engine, in a new tab right after the current
+  one, ≤ 300 characters with a note; Copy, Share, Paste and Select all stay Android's own; Chromium's Web search is
+  removed. Native: VidoraWeb implements the patch hook `wrapSelectionMenu` (`setSelectionMenu`, `onSelectionAction`).
+  No new setting, permission or library. Device checks pending Faran's final pass.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 

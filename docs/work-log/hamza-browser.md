@@ -437,6 +437,94 @@ available" → download completed (HTML Video, 770 KB, 176p) (`B6-rel-01`, `B6-r
 stored data, so no upgrade run (its 4 settings start at their defaults through the store's merge, as the audit test
 checks).
 
+## B8 — Selected text (#72, #73, #74)
+
+Built on Faran's patch hook `wrapSelectionMenu` (commit `e7c8ca4`, unchanged here). Testing rule for Mega 1: unit tests,
+typecheck and lint here; every device check is in "Device test list for Faran" below (his final pass).
+
+### Design and decisions
+
+| # | What the user sees | Where it lives | Notes / decisions |
+| --- | --- | --- | --- |
+| #72 Search | Select text on a page → the menu shows **Search** (in the app's language); it opens the results of the search engine chosen in Browser settings in a new tab right after the current one, shown at once. Over 300 characters: the first 300 are searched (cut at a word when one ends in the last 40) and a toast says "Searched for the first 300 characters of your selection" | native `selection/SelectionMenuCallback.kt`, `SelectionMenu.kt`; `src/browser/selection/` (`selection-actions.ts`, `selection-search.ts`, `selection-menu.service.ts`), `hooks/useSelectionMenu.ts` | The tab goes in with B6's `openTabInBackground` (placed after the tab in front) and is then switched to. At the 10-tab limit the usual "Maximum 10 tabs open" notice, nothing else. Whitespace (line breaks across paragraphs) is collapsed like a typed search. The search URL carries text the user chose to search for — the typed-search exception of the URL rule |
+| #73 Copy | Android's own **Copy** in the same menu | Chromium's item, kept | **Decision:** not re-built. Chromium's Copy already puts the exact selection (no 20,000-character cap) on the clipboard; a second Copy would duplicate it |
+| #74 Share | Android's own **Share** → the share sheet | Chromium's item, kept | **Decision:** as Copy |
+| Select all / Paste | Unchanged | Chromium's items, kept | The wrapper passes every call to Chromium's callback (create, prepare, click, destroy, content rect), so its items and the floating toolbar's position stay Chromium's |
+| Web search | Chromium's "Web search" is gone while the app's items are set | `SelectionMenu.idsToRemove` | Found by its resource entry name `select_action_menu_web_search` (WebView's resources are reachable through the app's `Resources`). **Not checked on a device yet** — own checkbox below. If the name ever differs, the item simply stays (no harm) |
+
+- **How the text is read.** Chromium does not hand the selected text to the menu's callback. When an app item is tapped,
+  VidoraWeb runs `SELECTION_READ_SCRIPT` (`selection-read-script.ts`) in the page: a selection inside a `<textarea>` or
+  an `<input>` of type text / search / url / tel is read from the field; otherwise `window.getSelection()`. Password
+  fields and other input types are never read. At most 20,000 characters. The script returns a string and sends
+  nothing; no app data goes into the page. **The menu is closed only after the page has answered** (Chromium clears the
+  page's selection when its menu goes, so closing first could read nothing).
+- **Extending the menu (B22, B23).** `selection-menu-items.ts` lists the app's items (id + catalog key); a new item
+  needs an entry there and a `case` for its id in `selection-actions.ts`. Native takes any list (ids
+  `[a-z][A-Za-z0-9_]{0,31}`, titles ≤ 40 characters, at most 4), so new items need no native change. An id without a
+  handler is ignored.
+- **When items show.** Only while the Browser screen is mounted and JS listens to `onSelectionAction`; the titles are
+  set again when the app language changes. Otherwise (or on an older native build) the menu is exactly Chromium's.
+- **Strings:** `browserSelection.*` (`catalogs/browserSelection.{en,ur}.ts`).
+
+### Files
+
+New: native `modules/vidorax-web/android/.../selection/{SelectionMenu,SelectionMenuCallback}.kt` (+
+`SelectionMenuTest.kt`); `src/browser/selection/{selection-actions,selection-menu-items,selection-read-script,selection-search,selection-menu.service}.ts`
+(+ `selection.test.ts`), `src/browser/hooks/useSelectionMenu.ts`, `src/localization/catalogs/browserSelection.{en,ur}.ts`.
+Changed: `VidoraWebModule.kt` (hook listener `wrapSelectionMenu`, `setSelectionMenu`, event `onSelectionAction`),
+`VidoraWeb.types.ts`, `BrowserScreen.tsx` (one hook), `en.ts` / `ur.ts` (the catalog).
+
+### Automated tests
+
+`selection.test.ts` (16): the read script in a `node:vm` page — page selection (English, Urdu), text-field selection
+(textarea, search input), password / email fields never read, a field without a selection falls back, a throwing field
+or `getSelection` gives `''`, the 20,000 cap, no `postMessage` / storage / cookie access; search text — whitespace,
+blank, cut at a word with `truncated`, a 2,000-character Urdu selection → ≤ 300, hard cut without splitting a surrogate
+pair; menu items — Search titled in the app language, empty titles left out, 40-character titles, at most 4; actions —
+Search opens the engine's URL in a new tab, the note only when cut, nothing more at the tab limit, blank text and
+unknown ids ignored. Kotlin `SelectionMenuTest` (6): item sanitising, caps, config cleared, only Web search removed,
+JSON result decoding (strings only), the 20,000 cap without splitting a surrogate pair.
+
+Gate (this machine, Windows): `npm test` **1604 / 1604**, typecheck 0 errors, lint **0 errors / 82 warnings**,
+`git diff --check` clean. Patch script unchanged (its test: 5 / 5). Kotlin, run with `--rerun --continue`:
+vidorax-web **73 / 74**. The one failure is `WebViewSnapshotsTest.replacesAnOlderSnapshot` (B1, `4af9355`):
+`File.renameTo` does not replace an existing file on Windows; it passes on Android / macOS. vidorax-media **does not
+compile its unit tests on Windows**: `DownloadRunnerTest` (`ceb1981`) has a test whose name contains a double quote,
+which Windows can't put in a class-file name. B8 touches neither file. **Faran: please rerun both Kotlin suites on the
+Mac.**
+
+### Device test list for Faran
+
+- [ ] English Wikipedia: select a word → the menu has Search; Search opens the chosen engine's results in a new tab
+      right after the current one
+- [ ] Urdu Wikipedia (ur.wikipedia.org): the same with an Urdu selection; the menu says تلاش in the Urdu app
+- [ ] Change Browser settings → Search engine (e.g. DuckDuckGo): Search uses it
+- [ ] A 2,000-character selection: Search runs with the first 300 characters and the toast appears
+- [ ] Chromium's "Web search" is no longer in the menu (entry-name match, never seen on a device)
+- [ ] Copy, then paste into the address bar: the selected text
+- [ ] Share opens Android's share sheet with the text
+- [ ] Select all and Paste still work (Paste in a page's text field)
+- [ ] Search on a selection inside a page's text field (e.g. a search box); a password field is never read
+- [ ] At 10 tabs: Search shows "Maximum 10 tabs open" and opens nothing
+- [ ] TalkBack reads the menu items; Urdu (RTL) and Dark: the menu is Android's own
+
+### Handoff note
+
+```
+B8 Selected text — done
+Commits: 2f24e5b (native), 4504780 (code), <docs: this commit>
+Native code to review: VidoraWeb implements your wrapSelectionMenu hook (patch script unchanged).
+  selection/SelectionMenuCallback.kt wraps Chromium's callback (every call delegated), removes Chromium's
+  "Web search" by resource entry name, adds the JS-given items; setSelectionMenu(ids, titles, readScript),
+  event onSelectionAction. The menu closes only after the page answered the read script. Test: SelectionMenuTest.
+New settings: none
+New libraries: none
+Tested: unit, typecheck, lint. Device: pending Faran's final pass.
+  Kotlin on Windows: vidorax-web 73/74 (WebViewSnapshotsTest fails on Windows only); vidorax-media's tests
+  don't compile on Windows (a DownloadRunnerTest name has a double quote). Please rerun both on the Mac.
+Found, not fixed: text selected inside an iframe isn't read (the read script sees the main frame only).
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -445,6 +533,7 @@ checks).
 | --- | --- | --- |
 | B1 | `snapshotWebView(viewTag, maxWidth, key)`: finds the WebView by view tag (like `setWebViewActive`), draws it into a bitmap on the main thread (scroll offset applied), encodes JPEG q72 on a single background executor, writes `<cacheDir>/tab-previews/<key>.jpg` atomically (temp + rename). `key` must match `[A-Za-z0-9_-]{1,64}`. Kotlin test `WebViewSnapshotsTest` (Robolectric NATIVE graphics, added as a test-only dependency of vidorax-web, same 4.16.1 as vidorax-media) | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `snapshot/WebViewSnapshots.kt`, `build.gradle` |
 | B6 | `getWebViewHistory(viewTag)` / `goBackOrForward(viewTag, steps)` (WebView back/forward list window, main thread); `setKeyCapture(volumeKeys, combos)` + event `onCapturedKey` — `VidoraKeyChannel`, asked first by **`MainActivity.dispatchKeyEvent`** (app module), takes keys only while JS listens and asked; `getNavigationMode()` (`Settings.Secure navigation_mode`); `prefetchDns(host)` (background `InetAddress`, ≤ 1 / min / host). Kotlin tests `KeyCaptureTest`, `WebHistoryWindowTest`, `NavigationModeTest`, `DnsPrefetcherTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `keys/VidoraKeyChannel.kt`, `navigation/WebHistoryWindow.kt`, `navigation/NavigationMode.kt`, `network/DnsPrefetcher.kt`, `android/app/.../MainActivity.kt` |
+| B8 | Hook listener `wrapSelectionMenu` (Faran's patch hook, unchanged): `SelectionMenuCallback` (an `ActionMode.Callback2`) delegates every call to Chromium's callback, removes Chromium's Web search (resource entry `select_action_menu_web_search`) and adds the items from `setSelectionMenu(ids, titles, readScript)`; a tap runs `readScript` with `evaluateJavascript`, finishes the menu in its callback and sends `onSelectionAction { viewTag, itemId, text }`. Items only while JS listens. Kotlin test `SelectionMenuTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `selection/SelectionMenu.kt`, `selection/SelectionMenuCallback.kt` |
 
 ### New dependencies
 
@@ -483,6 +572,8 @@ checks).
 | Long-press Back (B6) | An entry whose load failed is listed with Chromium's own English error title ("Webpage not available") — it is a real history entry |
 | Release builds | `http://` pages are refused (the app's network security config) — local `http` test fixtures need the debug build |
 | Dev only | After a JS reload (debug), expo-image can fail to create its view ("The current activity is no longer available"); a cold start clears it. Not seen on release |
+| Selection menu (B8) | Text selected inside an iframe isn't read (the read script runs in the main frame), so Search does nothing there |
+| Kotlin tests on Windows | vidorax-web `WebViewSnapshotsTest.replacesAnOlderSnapshot` fails (`File.renameTo` over an existing file); vidorax-media's unit tests don't compile (a `DownloadRunnerTest` name has a double quote). Both pass on the Mac; not changed by any B package of Mega 1 |
 
 ### Decisions (all packages)
 
@@ -499,3 +590,7 @@ checks).
 - B6: Preload pages = DNS ahead + `rel="next"` prefetch, never a hidden page load; savers seam for B18.
 - B4: user text inside Urdu sentences is wrapped in a first-strong isolate (`\u2068…\u2069`, as escapes, never raw
   characters), like the e-mail isolates already in `ur.ts`.
+- B8: Copy and Share are Android's own selection-menu items (kept); the app adds Search and removes Chromium's Web
+  search. The selection is read in the page only after an app item is tapped, and the menu closes after the answer.
+- Mega 1 (B8, B10, B21, B7): the owner's testing rule — unit tests, typecheck and lint per package; device, release and
+  upgrade tests are Faran's final pass (each package lists them under "Device test list for Faran").
