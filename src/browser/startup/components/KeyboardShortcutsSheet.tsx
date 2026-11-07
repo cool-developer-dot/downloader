@@ -23,6 +23,7 @@ export const SHORTCUT_LABELS: Record<ShortcutAction, TranslationKey> = {
   forward: 'browserStartup.shortcutForward',
   bookmark: 'browserStartup.shortcutBookmark',
   history: 'browserStartup.shortcutHistory',
+  findInPage: 'browserStartup.shortcutFindInPage',
   closePanel: 'browserStartup.shortcutClosePanel',
 };
 

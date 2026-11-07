@@ -85,5 +85,6 @@ export const browserStartupUr: CatalogStrings<typeof browserStartupEn> = {
   shortcutForward: 'آگے',
   shortcutBookmark: 'اس صفحے کو بُک مارک کریں',
   shortcutHistory: 'ہسٹری',
+  shortcutFindInPage: 'صفحے میں تلاش کریں',
   shortcutClosePanel: 'جو کھلا ہے اسے بند کریں (ایڈریس بار، تلاش بار)',
 };

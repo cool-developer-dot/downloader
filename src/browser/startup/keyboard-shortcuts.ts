@@ -19,6 +19,8 @@ export type ShortcutAction =
   | 'forward'
   | 'bookmark'
   | 'history'
+  /** B7: Ctrl+F opens the find bar (or puts the cursor back in its field). */
+  | 'findInPage'
   | 'closePanel';
 
 export type KeyboardShortcut = {
@@ -42,6 +44,7 @@ export const KEYBOARD_SHORTCUTS: readonly KeyboardShortcut[] = [
   { action: 'forward', combos: ['alt+right'], keys: 'Alt+→' },
   { action: 'bookmark', combos: ['ctrl+d'], keys: 'Ctrl+D' },
   { action: 'history', combos: ['ctrl+h'], keys: 'Ctrl+H' },
+  { action: 'findInPage', combos: ['ctrl+f'], keys: 'Ctrl+F' },
   { action: 'closePanel', combos: ['escape'], keys: 'Esc' },
 ];
 

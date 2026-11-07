@@ -21,6 +21,8 @@ export type FindState = {
   answered: boolean;
   /** The page can't be searched: JavaScript is off for this site (B12). */
   unavailable: 'javascriptOff' | null;
+  /** Bumped to put the cursor back in the field (Ctrl+F while the bar is open). */
+  focusTick: number;
 };
 
 export const CLOSED_FIND_STATE: FindState = {
@@ -36,6 +38,7 @@ export const CLOSED_FIND_STATE: FindState = {
   capped: false,
   answered: false,
   unavailable: null,
+  focusTick: 0,
 };
 
 export type FindResult = { requestId: number; current: number; total: number; capped: boolean };

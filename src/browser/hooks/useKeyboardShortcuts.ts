@@ -5,6 +5,7 @@ import { useFocusEffect } from 'expo-router';
 import { keyCapture } from '@/browser/services/key-capture.service';
 import { browserCommands } from '@/browser/startup/browser-commands';
 import { escapePanels } from '@/browser/startup/escape-panels';
+import { findInPage } from '@/browser/find/find-in-page.service';
 import { shortcutActionFor, shortcutCombos, type ShortcutAction } from '@/browser/startup/keyboard-shortcuts';
 
 const OWNER = 'b21-shortcuts';
@@ -35,6 +36,9 @@ function run(action: ShortcutAction): void {
       return void browserCommands.bookmarkPage();
     case 'history':
       return browserCommands.history();
+    case 'findInPage':
+      findInPage.open();
+      return;
     case 'closePanel':
       escapePanels.closeNewest();
       return;

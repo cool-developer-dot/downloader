@@ -94,7 +94,10 @@ export const findInPage = {
     const browser = useBrowserStore.getState();
     const tab = browser.tabs.find((t) => t.id === browser.activeTabId);
     if (!tab || isBrowserHomeUrl(tab.url)) return false;
-    if (state.open && state.tabId === tab.id) return true;
+    if (state.open && state.tabId === tab.id) {
+      set({ ...state, focusTick: state.focusTick + 1 });
+      return true;
+    }
     if (state.open) findInPage.close();
     const settings = useSettingsStore.getState();
     const javaScript = isJavaScriptAllowed(

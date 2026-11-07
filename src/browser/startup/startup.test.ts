@@ -117,12 +117,13 @@ describe('B21 #238 toolbar', () => {
 describe('B21 #246 keyboard shortcuts', () => {
   test('every shortcut on the card, with the channel names', () => {
     const combos = KEYBOARD_SHORTCUTS.flatMap((s) => s.combos);
-    for (const combo of ['ctrl+t', 'ctrl+w', 'ctrl+shift+t', 'ctrl+tab', 'ctrl+shift+tab', 'ctrl+l', 'ctrl+r', 'f5', 'ctrl+shift+r', 'alt+left', 'alt+right', 'ctrl+d', 'ctrl+h', 'escape']) {
+    for (const combo of ['ctrl+t', 'ctrl+w', 'ctrl+shift+t', 'ctrl+tab', 'ctrl+shift+tab', 'ctrl+l', 'ctrl+r', 'f5', 'ctrl+shift+r', 'alt+left', 'alt+right', 'ctrl+d', 'ctrl+h', 'ctrl+f', 'escape']) {
       assert.ok(combos.includes(combo), combo);
     }
     assert.equal(new Set(combos).size, combos.length);
     assert.equal(shortcutActionFor('CTRL+T'), 'newTab');
     assert.equal(shortcutActionFor('f5'), 'reload');
+    assert.equal(shortcutActionFor('ctrl+f'), 'findInPage');
     assert.equal(shortcutActionFor('ctrl+q'), null);
   });
 

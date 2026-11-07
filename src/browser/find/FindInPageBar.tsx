@@ -71,7 +71,7 @@ export const FindInPageBar = memo(function FindInPageBar({ testID = 'find-in-pag
       return () => clearTimeout(timer);
     }
     return undefined;
-  }, [state.open, state.tabId]);
+  }, [state.open, state.tabId, state.focusTick]);
 
   // The count is announced as it changes (TalkBack users hear "3 of 12" / "No matches").
   const countText =

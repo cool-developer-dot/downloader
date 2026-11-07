@@ -83,5 +83,6 @@ export const browserStartupEn = {
   shortcutForward: 'Forward',
   shortcutBookmark: 'Bookmark this page',
   shortcutHistory: 'History',
+  shortcutFindInPage: 'Find in page',
   shortcutClosePanel: 'Close what’s open (address bar, find bar)',
 } as const;
