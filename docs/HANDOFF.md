@@ -2153,6 +2153,11 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   is added), with a bar and the site listed as Blocked; pop-ups without a tap blocked with Allow once / Always for this
   site; Site permissions in Browser settings and from the lock icon, Reset one / all, per profile. Merged manifest
   checked (no location / camera / mic). No native code, library or database change.
+- **B9 Bookmarks.** Folders (nest, breadcrumbs, delete keep / all), Edit (title, address, folder, tags, note; also from
+  the star), drag + Move up / down, bookmarks bar (off by default), Bookmark all tabs, import / export bookmark HTML
+  (5,000 tested), reading list (own table; B17 hook), Check links (no cookies, Wi-Fi only by default, never deletes),
+  tags and notes in search, Add to home screen (pinned shortcut, App Lock first). Native: VidoraWeb
+  `pinBookmarkShortcut` and friends. DATABASE_VERSION 3. No permission or library.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 

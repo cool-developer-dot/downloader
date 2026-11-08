@@ -979,6 +979,127 @@ Found, not fixed: requests from cross-origin frames aren't seen by the page scri
   the same tab, as every new window does today.
 ```
 
+## B9 — Bookmarks (#77, #78, #80, #81, #83, #84, #85, #87, #89, #91, #92, #93)
+
+Mega 2. **`DATABASE_VERSION` 2 → 3.** B20's per-profile storage is in the base, so every new table lives in the active
+profile's database. Favorites (`src/store/favorites`) untouched. Testing rule: unit tests, typecheck and lint here;
+device and upgrade checks are in "Device test list for Faran" (B9 is an upgrade-test package).
+
+### Database (v3)
+
+- `applyBrowserTables` → `bookmark-organizer-schema.ts` (app database and every B20 profile database, on each open;
+  migration step `currentVersion < 3` runs it and sets `user_version = 3`): `bookmark_folders` (id, parent_id → itself
+  ON DELETE CASCADE, name, position, dates), `bookmark_tags` (bookmark_id → bookmarks ON DELETE / UPDATE CASCADE, tag;
+  PK both), `reading_list` (url UNIQUE, title, hostname, created_at, read_at, **offline_uri — B17's hook**), and on
+  `bookmarks` the columns `folder_id`, `note`, `position`, each only when `PRAGMA table_info` lacks it.
+- **Old bookmarks** stay in the root folder (`folder_id` NULL); their order — the Bookmarks screen's newest first —
+  becomes `position` 0…n in the same step that adds the column (`ROW_NUMBER() OVER (ORDER BY created_at DESC, id)`), so a
+  second run changes nothing. Bookmarks added later without a position (the browser's star, B20's restore) sort first,
+  newest first, as before.
+- **Decision — the reading list is its own table, not `kind = 'reading'` rows in `bookmarks`** (the card's field list):
+  `bookmarks.url` is UNIQUE and B20's restore dedupes on it (`INSERT OR IGNORE`), so a page couldn't be both bookmarked
+  and on the reading list; dropping the constraint means rebuilding the table that holds every user's bookmarks. The
+  card's `kind` / `readAt` are the reading-list table and its `read_at`.
+- Because addresses are unique, import skips an address already bookmarked **in any folder**, not only the same one.
+
+### Design and decisions
+
+| # | What the user sees | Where it lives | Notes / decisions |
+| --- | --- | --- | --- |
+| #77 Folders | Bookmarks screen (`/bookmarks`, now `BookmarkManagerScreen`): breadcrumbs (Bookmarks › News › …), folders first then bookmarks; menu → New folder; a folder's options: Open, Rename, Move to folder (nest; never into itself), Move up / down, Delete → "keep its contents (move them up)" or "delete folder and everything in it", with counts | `browser/bookmarks/BookmarkManagerScreen.tsx`, `components/BookmarkSheets.tsx` (FolderNameSheet, FolderPickerSheet), `storage/repositories/bookmark-organizer.{queries,repository}.ts` | Delete runs in one transaction; "delete everything" removes the subtree's bookmarks (their tags go by cascade) |
+| #78 Edit bookmark | Title, address (checked: http(s), not another bookmark's), folder, tags, note; from a row's options and from the browser menu's star on a bookmarked page ("Edit bookmark") | `BookmarkEditSheet`, `BookmarkEditHost` (browser and bookmarks screen; only the newest mounted host draws), `browser-menu-actions.ts` | **Changed:** the star item on a bookmarked page used to be a disabled "Already bookmarked"; it now opens Edit |
+| #80 Reorder | Hold a row and drag it within its folder (folders among folders, bookmarks among bookmarks); also Move up / Move down in the options and as TalkBack actions | `components/SortableRows.tsx` (B1's drag pattern made generic; shared values written with `.set()` for the React Compiler), `setOrder` | Saved at once. Rows grow with the font scale (`bookmarkRowHeight`), so nothing is cut at 1.3 |
+| #81 Bookmarks bar | Browser settings → Bookmarks → "Show bookmarks bar" (**off**): the "Bookmarks bar" folder as a sideways strip under the address bar | `components/BookmarksBar.tsx` inside `AutoHideHeader` | Hides with the address bar (it is in the same auto-hiding header); the folder is created on first use (fixed id `bookmarks-bar`); a hint when it's empty |
+| #83 Bookmark all tabs | Tab switcher menu → Bookmark all tabs: a new folder "Tabs 2026-11-08 14:05" with every open web page | `bookmarks.service.ts` `bookmarkAllTabs` | Start pages skipped; addresses already bookmarked are counted ("3 were already bookmarked") |
+| #84 Import / #85 Export | Bookmarks menu → Import / Export bookmarks | `bookmarks/netscape-import.ts`, `bookmarks.service.ts` | The standard bookmark HTML (Chrome / Firefox / Edge). Import: the system file picker (no permission), up to 40 MB (Chrome files carry base64 icons), **read as text** — a single regex pass over `<DL> <H3> <A> <DD>`, never rendered or run; folders by path (the file's toolbar folder → VidoraX's bookmarks bar), ADD_DATE, Firefox TAGS, `<DD>` notes, entities; non-http(s) entries counted as invalid. In transactions of 500 with "Importing… 1500 of 5000". Result toast: added / skipped / invalid. Export: the whole tree (folders, order, dates, TAGS, notes as `<DD>`, toolbar flag) through the folder picker |
+| #89 Reading list | Browser menu → "Add to reading list", and a link's long-press; Bookmarks screen's "Reading list" tab: Unread / Read; swipe a row (either way) to mark read / unread; check and remove buttons | `components/ReadingListView.tsx` (gesture-handler `ReanimatedSwipeable`), `add-to-reading-list.action.ts` | Adding a page already on the list makes it unread again. **Hook for B17:** `bookmarkOrganizerRepository.setReadingOfflineCopy(id, uri)` (`reading_list.offline_uri`); a row opens the offline copy when there is one |
+| #91 Broken link check | Bookmarks menu → Check links: "Only on Wi-Fi" (on), Start, "Checked 12 of 230", Cancel; then the problems: Moved (with **Use new address**), Not found, Unreachable | `bookmarks/link-check.ts` (pure), `components/LinkCheckSheet.tsx` | 4 at a time, 10 s each, **no cookies** (`credentials: 'omit'` → react-native's OkHttp `CookieJar.NO_COOKIES`, checked in its source), HEAD then GET when refused. 401 / 403 / 429 count as Works (the site is there). Only the bookmark's own address is requested, on the user's tap. **Never deletes anything**; "Use new address" changes one address when the user taps it |
+| #92 Tags / #93 Notes | Tags and a note in Edit; tag chips above the list (All, #food, …); search covers titles, addresses, hosts, notes and tags; rows show the note and #tags | `searchBookmarks`, `listTags`, `BookmarkRows.tsx` | Tags: trimmed, no commas, ≤ 40 characters, repeats (ignoring case) dropped, ≤ 20 per bookmark |
+| #87 Add to home screen | A bookmark's options → Add to home screen: the launcher's own dialog adds a shortcut (the first letter on a colour); "This phone's launcher can't add shortcuts" when it can't | VidoraWeb `pinBookmarkShortcut` / `consumeShortcutUrl` / `onShortcutOpen` (B9 native), `bookmarks.service.ts` | Tapping the shortcut starts VidoraX with a private action (never the shared-link path); the site opens **in a new tab after App Lock** (`useAppLockStore` unlocked) on the Browser tab. **Decision:** a letter icon, not the site icon — fetching a favicon natively for it would be one more network call |
+
+- **Strings:** `browserBookmarks.*`. **Accessibility:** every row, chip, crumb and button labelled; ≥ 48 dp; RTL (rows,
+  crumbs ‹, indents); TalkBack actions Move up / Move down / options on rows; the reading list's swipe has buttons and
+  actions too.
+
+### Files
+
+New: native `shortcuts/BookmarkShortcuts.kt` (+ test); `storage/sqlite/bookmark-organizer-schema.ts`,
+`storage/repositories/bookmark-organizer.{queries,repository}.ts` (+ `bookmark-organizer.test.ts`),
+`browser/bookmarks/{netscape-import,link-check,bookmarks.service}.ts` (+ `link-check.test.ts`),
+`BookmarkManagerScreen.tsx`, `components/{SortableRows,BookmarkRows,BookmarkSheets,LinkCheckSheet,ReadingListView,BookmarksBar}.tsx`,
+`actions/builtins/add-to-reading-list.action.ts`, `screens/settings/browser-settings/BookmarksSettingsSection.tsx`,
+`catalogs/browserBookmarks.{en,ur}.ts`.
+Changed: `storage/constants/database.ts` (version 3, table names), `sqlite/schema.ts`, `sqlite/migrations.ts`,
+`repositories/index.ts`, `app/(app)/bookmarks.tsx` (new screen; the old one kept), browser menu (star → Edit, Add to
+reading list), `register-default-actions.ts`, tab switcher menu, `BrowserScreen.tsx` (bar, edit host),
+`app-initializer.ts` (shortcut handling), settings store (2 keys), `browser-setting-keys.ts`, `BrowserSettingsScreen.tsx`,
+`VidoraWebModule.kt`, `VidoraWeb.types.ts`, `en.ts` / `ur.ts`.
+
+### Automated tests
+
+`bookmark-organizer.test.ts` (13, real SQLite with foreign keys on): **migration** — the v2 `bookmarks` table made by
+hand with 15 bookmarks, `migrateDatabase` → version 3, all 15 kept in the root in newest-first order; run twice (and the
+profile path twice) changes nothing, a reorder after the upgrade survives, each column added once; a fresh install gets
+v3 and the tables. Folders (nest, breadcrumbs, cycle refused, empty name refused), order with unpositioned (starred)
+bookmarks first, delete "move up" / "delete all" with tag cascade, edit (invalid / duplicate address refused; title,
+address, folder, tags normalised, note), search over notes / tags / tag filter, the bar folder once, reading list
+(unread / read, re-add = unread, invalid refused, the B17 hook). Import / export: a Chrome-style file (toolbar flag,
+lowercase tags, a 5 KB ICON, entities, Urdu, a bookmarklet = invalid, `<DD>` note, empty folder), import (bar mapping;
+importing again skips all), export → import round trip. **5,000 bookmarks in a 10.6 MB file: parse ~30 ms, import
+~200 ms** (500 per transaction). `link-check.test.ts` (4): classification, cookies omitted with HEAD → GET, timeout,
+≤ 4 at a time with progress and Cancel. Kotlin `BookmarkShortcutsTest` (6): web addresses only, letter (Latin, Urdu,
+digit, host fallback), stable ids / colours / labels, the intent carries the address once and is never a VIEW, the icon
+bitmap, a bad address refused.
+
+Gate (Windows): `npm test` **1692 / 1692**, typecheck 0, lint **0 / 82**, `git diff --check` clean. Kotlin vidorax-web
+**90 / 91** (the Windows-only `WebViewSnapshotsTest`); vidorax-media doesn't compile its tests on Windows (see B8).
+
+### Device test list for Faran
+
+- [ ] **Upgrade from 1.1.0 with 15 bookmarks:** all there, in the same order, in the root; the star still shows on
+      those pages; History and other data unharmed
+- [ ] Folders: create, nest, rename, move a folder and a bookmark, breadcrumbs back; delete a folder both ways
+- [ ] Edit from a row and from the star on a bookmarked page; a bad address and a duplicate address show the message
+- [ ] Reorder by dragging (also near the list's edges, auto-scroll) and with Move up / down; survives a restart
+- [ ] Bookmarks bar on: strip under the address bar with the "Bookmarks bar" folder, scrolls sideways, hides with the
+      address bar (auto-hide on), opens in the tab in front; off by default
+- [ ] Bookmark all tabs with a start page among them: folder "Tabs <date>" without the start page
+- [ ] Export, then import on a clean install: folders, order, dates, tags, notes kept; import a hand-made / real Chrome
+      export (with icons) — added / skipped / invalid counts; importing it again adds nothing; 5,000 bookmarks stay
+      responsive with progress
+- [ ] Reading list from the menu and a link's long-press; Unread / Read; swipe both ways; remove
+- [ ] Check links with a 404 page and a redirect (e.g. `http://github.com` → https): Not found and Moved + Use new
+      address; Cancel mid-way; "Only on Wi-Fi" on mobile data refuses; no cookies sent (a logged-in site isn't seen as
+      logged in — e.g. httpbin.org/cookies bookmarked)
+- [ ] Tags and notes: chips filter, search finds a note word and a tag
+- [ ] Add to home screen: the launcher's dialog; tap the shortcut with App Lock on → PIN first, then a new tab with the
+      site; also when the app is already open; a launcher without pinning → the message
+- [ ] Merged manifest unchanged (no new permission)
+- [ ] Urdu (RTL: crumbs ‹, indents), Dark, TalkBack (row actions Move up / down, swipe alternatives), font scale 1.3
+- [ ] The bars at `bottom={12}` (B1's Undo, B6's background tab, B13's site notice) don't overlap each other
+
+### Handoff note
+
+```
+B9 Bookmarks — done
+Commits: 5df4a25 (native), 5395365 (database), e97e25c (UI), <docs: this commit>
+Native code to review: VidoraWeb canPinShortcuts / pinBookmarkShortcut / consumeShortcutUrl + event onShortcutOpen —
+  shortcuts/BookmarkShortcuts.kt: ShortcutManager.requestPinShortcut (8+, no permission, no manifest change), letter
+  icon, private action (not VIEW) carrying the address once. Test: BookmarkShortcutsTest.
+Database: DATABASE_VERSION 2 -> 3 (bookmark_folders, bookmark_tags, reading_list; bookmarks.folder_id / note /
+  position), via applyBrowserTables so B20's profile databases get it too; safe to run twice; old bookmarks keep order.
+  Reading list is its own table (bookmarks.url is UNIQUE and your restore relies on it) — differs from the card's
+  kind / readAt fields.
+New settings: bookmarksBar = false, linkCheckWifiOnly = true
+New libraries: none
+Tested: unit, typecheck, lint. Device: pending Faran's final pass (upgrade test needed).
+  Kotlin on Windows: vidorax-web 90/91 (WebViewSnapshotsTest), vidorax-media won't compile — please rerun on the Mac.
+Hook for B17: bookmarkOrganizerRepository.setReadingOfflineCopy(id, uri).
+Found, not fixed: B20's backup / export doesn't carry folders, tags, notes or the reading list (its format is yours);
+  import skips an address bookmarked in another folder (addresses are unique); shortcut icon is a letter, not the
+  site icon.
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -990,6 +1111,7 @@ Found, not fixed: requests from cross-origin frames aren't seen by the page scri
 | B8 | Hook listener `wrapSelectionMenu` (Faran's patch hook, unchanged): `SelectionMenuCallback` (an `ActionMode.Callback2`) delegates every call to Chromium's callback, removes Chromium's Web search (resource entry `select_action_menu_web_search`) and adds the items from `setSelectionMenu(ids, titles, readScript)`; a tap runs `readScript` with `evaluateJavascript`, finishes the menu in its callback and sends `onSelectionAction { viewTag, itemId, text }`. Items only while JS listens. Kotlin test `SelectionMenuTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `selection/SelectionMenu.kt`, `selection/SelectionMenuCallback.kt` |
 | B21 | `pickStartPageImage(maxSize)` / `clearStartPageImage()`: the system Photo Picker (`MediaStore.ACTION_PICK_IMAGES`, Android 13+ or 11–12 with SDK extension 2) else `ACTION_OPEN_DOCUMENT` `image/*` — no permission, no manifest change — launched through Expo's `RegisterActivityContracts`; the picked image is decoded (sampled), turned upright from EXIF, scaled to ≤ maxSize (480–2560) and written as JPEG 85 to `<filesDir>/start-page/background-<time>.jpg` (temp + rename; older files deleted). Kotlin test `StartPageImagesTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `startpage/StartPageImages.kt`, `startpage/StartPagePhotoPicker.kt` |
 | B3 | `getAppMemory()`: the app process's memory (`Debug.getMemoryInfo` summary: total PSS, Java heap, native heap, graphics) and the device's (`ActivityManager.getMemoryInfo`: available, total, low memory), kB; async (background queue), no permission. Kotlin test `AppMemoryTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `memory/AppMemory.kt` |
+| B9 | `canPinShortcuts()`, `pinBookmarkShortcut(url, title)`, `consumeShortcutUrl()` + event `onShortcutOpen`: `ShortcutManager.requestPinShortcut` (Android 8+, the launcher confirms; no permission, no manifest change); icon = first letter on a colour from the address; one id per address (SHA-1); the shortcut starts the launcher activity with a private action (`com.vidorax.web.action.OPEN_BOOKMARK_SHORTCUT`, not VIEW) and the address, handed to JS once (consumed flag). Kotlin test `BookmarkShortcutsTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `shortcuts/BookmarkShortcuts.kt` |
 
 ### New dependencies
 
@@ -1026,6 +1148,8 @@ Found, not fixed: requests from cross-origin frames aren't seen by the page scri
 | `startPageBackgroundPhoto` | B21 | `''` | `file://…/start-page/background-<time>.jpg` (only the app's own) |
 | `tabSleepAfter` | B3 | `off` (today's) | `off`, `15m`, `30m`, `1h`, `3h` |
 | `sitePermissions` | B13 | `'{}'` (no site) | JSON `{ site: { blocked: [location, camera, microphone, notifications], popupsAllowed, updatedAt } }`, ≤ 300 sites / 16,000 characters |
+| `bookmarksBar` | B9 | `false` (today's) | on / off |
+| `linkCheckWifiOnly` | B9 | `true` | on / off |
 
 ### Found, not fixed
 
@@ -1054,6 +1178,9 @@ Found, not fixed: requests from cross-origin frames aren't seen by the page scri
 | Tab sound (B3) | Mute / volume don't reach sound made with the Web Audio API or players inside cross-origin frames (the script runs in the main document) |
 | Memory monitor (B3) | The figure is the app process only; WebView's renderer process (where pages run) isn't counted |
 | Site permissions (B13) | Requests from cross-origin frames aren't seen by the page script (WebView still refuses them: no permission); on WebView < 72 (no `navigator.userActivation`) pop-ups aren't blocked |
+| Bookmarks (B9) | B20's backup / restore and export don't carry folders, tags, notes or the reading list (B20's format; Faran's) |
+| Bookmarks import (B9) | An address already bookmarked in another folder is skipped (bookmark addresses are unique) |
+| Bookmark shortcuts (B9) | The home-screen icon is a letter on a colour, not the site's icon |
 
 ### Decisions (all packages)
 
@@ -1092,3 +1219,6 @@ Found, not fixed: requests from cross-origin frames aren't seen by the page scri
 - B13: requests are answered in the page (document-start script), not natively — the native chrome client can't be
   hooked without a patch-script change. The allowed-pop-up list stays in the app; an allowed pop-up loads like any new
   window (same tab).
+- B9: DATABASE_VERSION 3 through `applyBrowserTables` (app and profile databases). The reading list is its own table
+  (`bookmarks.url` stays UNIQUE for B20's restore) instead of `kind = 'reading'` rows. The star on a bookmarked page
+  opens Edit. Link check sends no cookies. Shortcut icons are letters.

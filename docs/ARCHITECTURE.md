@@ -806,6 +806,14 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   `useBrowserChromeBridge` hands both to `site-permissions.service.ts`, which records them in the `sitePermissions`
   setting (per profile) and shows `SiteNoticeBar`; allowed pop-ups go through `resolvePopupNavigation`.
   `SitePermissionsSheet` opens from Browser settings and the lock icon's Site settings (`sitePermissionsSheet`).
+- **Bookmarks (B9).** Schema v3 (`sqlite/bookmark-organizer-schema.ts`, part of `applyBrowserTables`): folders, tags,
+  notes, positions, `reading_list`. SQL in `storage/repositories/bookmark-organizer.queries.ts` (node:sqlite-tested),
+  run per profile by `bookmark-organizer.repository.ts`; the existing `BookmarkRepository` (star, list) works on the
+  same table, and `bookmarkChanges.changed()` refreshes its store after organizer changes. `/bookmarks` renders
+  `browser/bookmarks/BookmarkManagerScreen.tsx` (folders, `SortableRows`, tag chips, search, reading list tab, import /
+  export via `netscape-import.ts` and the system pickers, `LinkCheckSheet` over `link-check.ts`). `BookmarksBar` sits in
+  `AutoHideHeader`; `BookmarkEditHost` serves the star. Shortcuts: VidoraWeb `pinBookmarkShortcut`; the app start reads
+  `consumeShortcutUrl` / `onShortcutOpen` and opens a new tab once App Lock is open.
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab
