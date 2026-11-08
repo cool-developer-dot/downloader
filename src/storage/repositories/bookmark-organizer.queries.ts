@@ -657,3 +657,16 @@ export async function importChunk(
   }
   return counts;
 }
+
+/** #91: every bookmark's id, address and title (the link check). */
+export async function listAllBookmarkLinks(db: OrganizerDb): Promise<{ id: string; url: string; title: string }[]> {
+  return db.getAllAsync<{ id: string; url: string; title: string }>(`SELECT id, url, title FROM ${B} ORDER BY title COLLATE NOCASE`);
+}
+
+/** #91 "Use new address": only when no other bookmark has it. */
+export async function setBookmarkUrl(db: OrganizerDb, id: string, url: string, nowIso: string): Promise<void> {
+  if (!isWebUrl(url)) throw new OrganizerError('INVALID_URL', 'Not a web address');
+  const other = await db.getFirstAsync<{ id: string }>(`SELECT id FROM ${B} WHERE url = ? AND id <> ?`, url, id);
+  if (other) throw new OrganizerError('DUPLICATE_URL', 'Already bookmarked');
+  await db.runAsync(`UPDATE ${B} SET url = ?, hostname = ?, updated_at = ? WHERE id = ?`, url, hostnameOf(url), nowIso, id);
+}

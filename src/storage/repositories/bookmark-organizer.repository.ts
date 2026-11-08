@@ -122,6 +122,8 @@ export const bookmarkOrganizerRepository = {
     return totals;
   },
   exportTree: () => run('Failed to read bookmarks for export', (db) => q.exportTree(db)),
+  listAllLinks: () => run('Failed to list bookmarks', (db) => q.listAllBookmarkLinks(db)),
+  setUrl: (id: string, url: string) => run('Failed to change the address', (db) => q.setBookmarkUrl(db, id, url, nowIso())),
 
   async addToReadingList(url: string, title: string) {
     const id = await createId();

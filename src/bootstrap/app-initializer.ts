@@ -212,6 +212,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { applyStartupOption } = await import('@/browser/startup/startup.service');
       // B21 #233: Browser settings → Startup ("Continue where you left off" unless changed); a launch link wins.
       applyStartupOption();
+      const { ensureBookmarkShortcutHandling } = await import('@/browser/bookmarks/bookmarks.service');
+      // B9 #87: a bookmark's home-screen shortcut opens its site in a new tab once App Lock is open.
+      ensureBookmarkShortcutHandling();
       const { ensureBrowserWindowEvents } = await import('@/browser/profiles/browser-window.service');
       // B20 #16: tabs moved to their own window come back, and their visits reach history.
       ensureBrowserWindowEvents();

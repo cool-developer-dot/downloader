@@ -19,6 +19,8 @@ export type BrowserMenuActionId =
   | 'translate'
   /** B7 #66 */
   | 'find_in_page'
+  /** B9 #89 */
+  | 'reading_list_add'
   | 'hard_reload'
   | 'scroll_top'
   | 'scroll_bottom'

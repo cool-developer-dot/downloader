@@ -44,6 +44,7 @@ import { SortableTabList } from './SortableTabList';
 import { TabActionsSheet, type TabSheetAction } from './TabActionsSheet';
 import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
 import { TabVolumeSheet } from '@/browser/tab-sound/components/TabVolumeSheet';
+import { bookmarkAllTabs } from '@/browser/bookmarks/bookmarks.service';
 import { readableTabUrl, tabDisplaySite, tabDisplayTitle, tabSiteKey } from './tab-display';
 
 export type BrowserTabSwitcherProps = {
@@ -281,6 +282,8 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
     if (closedTabs.length > 0) {
       list.push({ id: 'reopen', label: t('browserTabs.reopenClosed'), icon: 'restore', onPress: handleReopen });
     }
+    // B9 #83: every open page into a new bookmark folder named with the date.
+    list.push({ id: 'bookmark_all', label: t('browserBookmarks.bookmarkAllTabs'), icon: 'bookmark-plus-outline', onPress: () => void bookmarkAllTabs() });
     list.push({
       id: 'sort',
       label: t('browserTabs.sortByValue', { order: sortLabel(sortOrder, t) }),

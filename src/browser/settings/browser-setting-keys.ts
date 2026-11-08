@@ -39,6 +39,9 @@ export const BROWSER_SETTING_KEYS = [
   'tabSleepAfter',
   // B13 (Hamza)
   'sitePermissions',
+  // B9 (Hamza)
+  'bookmarksBar',
+  'linkCheckWifiOnly',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

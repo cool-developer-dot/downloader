@@ -164,6 +164,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
         startPageBackgroundPhoto: state.startPageBackgroundPhoto,
         tabSleepAfter: state.tabSleepAfter,
         sitePermissions: state.sitePermissions,
+        bookmarksBar: state.bookmarksBar,
+        linkCheckWifiOnly: state.linkCheckWifiOnly,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -313,6 +315,9 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.sitePermissions === 'string'
               ? serializeSitePermissions(parseSitePermissions(raw.sitePermissions))
               : current.sitePermissions,
+          bookmarksBar: typeof raw.bookmarksBar === 'boolean' ? raw.bookmarksBar : current.bookmarksBar,
+          linkCheckWifiOnly:
+            typeof raw.linkCheckWifiOnly === 'boolean' ? raw.linkCheckWifiOnly : current.linkCheckWifiOnly,
         };
       },
     },

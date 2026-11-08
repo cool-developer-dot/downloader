@@ -115,6 +115,10 @@ export interface SettingsState {
   tabSleepAfter: import('@/browser/tab-sound/tab-sleep').TabSleepAfter;
   /** B13 #116: per-site permissions (blocked requests, pop-ups always allowed) as JSON; default '{}' (none). */
   sitePermissions: string;
+  /** B9 #81: the bookmarks bar under the address bar (default off — today's). */
+  bookmarksBar: boolean;
+  /** B9 #91: Check links only on Wi-Fi (default on). */
+  linkCheckWifiOnly: boolean;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

@@ -90,4 +90,6 @@ export const initialSettingsState: SettingsState = {
   startPageBackgroundPhoto: '',
   tabSleepAfter: DEFAULT_TAB_SLEEP_AFTER,
   sitePermissions: DEFAULT_SITE_PERMISSIONS_JSON,
+  bookmarksBar: false,
+  linkCheckWifiOnly: true,
 };

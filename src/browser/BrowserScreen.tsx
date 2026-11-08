@@ -38,6 +38,8 @@ import { useSelectionMenu } from '@/browser/hooks/useSelectionMenu';
 import { useKeyboardShortcuts } from '@/browser/hooks/useKeyboardShortcuts';
 import { useTabSleep } from '@/browser/hooks/useTabSleep';
 import { SiteNoticeBar } from '@/browser/site-permissions/components/SiteNoticeBar';
+import { BookmarksBar } from '@/browser/bookmarks/components/BookmarksBar';
+import { BookmarkEditHost } from '@/browser/bookmarks/components/BookmarkSheets';
 import { SitePermissionsHost } from '@/browser/site-permissions/components/SitePermissionsSheet';
 import { FindInPageBar } from '@/browser/find/FindInPageBar';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
@@ -236,12 +238,16 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
       <SiteInfoHost />
       {/* B13: Site permissions from the bar or the lock icon. */}
       <SitePermissionsHost />
+      {/* B9 #78: Edit bookmark from the star. */}
+      <BookmarkEditHost />
       {addressBarPosition === 'top' ? (
         <AutoHideHeader position="top">
           <BrowserHeader
             leadingSlot={<BrowserTabBadge onPress={openTabSwitcher} />}
             trailingSlot={<BrowserOverflowControls />}
           />
+          {/* B9 #81: hides with the address bar. */}
+          <BookmarksBar />
         </AutoHideHeader>
       ) : null}
       {addressBarPosition === 'top' ? <BrowserProgressBar /> : null}
@@ -266,6 +272,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
       {addressBarPosition === 'bottom' ? <BrowserProgressBar /> : null}
       {addressBarPosition === 'bottom' ? (
         <AutoHideHeader position="bottom">
+          <BookmarksBar />
           <BrowserHeader
             position="bottom"
             leadingSlot={<BrowserTabBadge onPress={openTabSwitcher} />}

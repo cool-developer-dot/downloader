@@ -37,6 +37,8 @@ import { batchAddPrefill } from '@/screens/batch-add/batch-add-prefill';
 import { buildFaviconUrl } from '@/screens/bookmarks/utils/bookmark-format';
 import { exitBrowser } from '@/browser/history/browsing-data.service';
 import { findInPage } from '@/browser/find/find-in-page.service';
+import { addPageToReadingList, bookmarkEditRequests } from '@/browser/bookmarks/bookmarks.service';
+import { bookmarkOrganizerRepository } from '@/storage/repositories';
 import { useSettingsStore } from '@/store/settings';
 
 import type { BrowserMenuFeedback, BrowserMenuItemModel } from './types';
@@ -384,6 +386,13 @@ export function useBrowserMenuActions({
     navigation.navigate(routePaths.settings);
   }, [onClose]);
 
+  // B9 #78: Edit bookmark for the page in front (already bookmarked).
+  const handleEditBookmark = useCallback(async () => {
+    onClose();
+    const found = await bookmarkOrganizerRepository.getByUrl(normalizeUrl(currentUrl)).catch(() => null);
+    if (found) bookmarkEditRequests.open(found.id);
+  }, [currentUrl, onClose]);
+
   // B7 #66: the find bar over the page.
   const handleFindInPage = useCallback(() => {
     onClose();
@@ -434,7 +443,13 @@ export function useBrowserMenuActions({
           handleSearchSite();
           break;
         case 'add_bookmark':
-          void handleAddBookmark();
+          // B9 #78: the star on a bookmarked page opens Edit bookmark.
+          if (bookmarked) void handleEditBookmark();
+          else void handleAddBookmark();
+          break;
+        case 'reading_list_add':
+          onClose();
+          void addPageToReadingList(currentUrl, pageTitle || currentUrl);
           break;
         case 'bookmarks':
           handleBookmarks();
@@ -504,6 +519,11 @@ export function useBrowserMenuActions({
       handleSettings,
       handleExit,
       handleFindInPage,
+      handleEditBookmark,
+      bookmarked,
+      currentUrl,
+      pageTitle,
+      onClose,
       handleShare,
       handleTranslate,
       handleMoveToWindow,
@@ -621,12 +641,21 @@ export function useBrowserMenuActions({
       {
         id: 'add_bookmark',
         icon: bookmarked ? 'bookmark' : 'bookmark-outline',
-        label: addBookmarkLabel,
+        // B9 #78: on a bookmarked page the star edits the bookmark.
+        label: bookmarked ? t('browserBookmarks.editStar') : addBookmarkLabel,
         accessibilityLabel: bookmarked
-          ? t('browser.alreadyBookmarkedA11y')
+          ? t('browserBookmarks.editStar')
           : t('browser.addBookmarkA11y'),
         kind: 'action',
-        enabled: hasValidPage && !bookmarked && !bookmarkPending,
+        enabled: hasValidPage && !bookmarkPending,
+      },
+      {
+        id: 'reading_list_add',
+        icon: 'book-open-variant',
+        label: t('browserBookmarks.readingAdd'),
+        accessibilityLabel: t('browserBookmarks.readingAdd'),
+        kind: 'action',
+        enabled: hasValidPage,
       },
       {
         id: 'copy_link',
