@@ -382,6 +382,13 @@ export interface VidoraWebModuleApi {
   getAppTraffic?(): AppTrafficReading | null;
   /** B18 #191: whether the phone's Battery Saver is on (`PowerManager.isPowerSaveMode`). */
   isPowerSaveMode?(): boolean;
+  /** B18 #192: bytes of the WebView's disk cache (every browser profile). */
+  getWebViewCacheSize?(): Promise<number>;
+  /**
+   * B18 #192: clears the WebView's disk cache with `WebView.clearCache(true)` for the default profile and each browser
+   * profile (cookies, site data and history stay). Resolves how many profiles were cleared.
+   */
+  clearWebViewCache?(): Promise<number>;
 }
 
 /** B18 #185: `getAppTraffic`. */

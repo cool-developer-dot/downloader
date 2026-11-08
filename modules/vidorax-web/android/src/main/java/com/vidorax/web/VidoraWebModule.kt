@@ -24,6 +24,7 @@ import com.vidorax.web.keys.VidoraKeyChannel
 import com.vidorax.web.performance.AppTraffic
 import com.vidorax.web.performance.ImageBlocking
 import com.vidorax.web.performance.PowerSaving
+import com.vidorax.web.performance.WebViewCache
 import com.vidorax.web.memory.AppMemory
 import com.vidorax.web.navigation.NavigationMode
 import com.vidorax.web.navigation.WebHistoryWindow
@@ -409,6 +410,15 @@ class VidoraWebModule : Module() {
     Function("isPowerSaveMode") {
       PowerSaving.isOn(context)
     }
+
+    // B18 #192: the WebView's disk cache — its size (off the main thread) and clearing it (every profile).
+    AsyncFunction("getWebViewCacheSize") {
+      WebViewCache.size(context).toDouble()
+    }
+
+    AsyncFunction("clearWebViewCache") {
+      WebViewCache.clear(context)
+    }.runOnQueue(Queues.MAIN)
 
     OnNewIntent { intent ->
       // B9 #87: a bookmark shortcut tapped while the app runs.
