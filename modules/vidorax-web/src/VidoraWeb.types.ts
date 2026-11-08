@@ -375,4 +375,17 @@ export interface VidoraWebModuleApi {
    * the default (never forced to a hardware layer). Resolves false when the view is gone.
    */
   setSoftwareLayer?(viewTag: number, software: boolean): Promise<boolean>;
+  /**
+   * B18 #185: this app's received / sent bytes since the phone started (TrafficStats for the app's uid), with the boot
+   * count (-1 before Android 7) and the time since boot; null where the phone doesn't count per-app traffic.
+   */
+  getAppTraffic?(): AppTrafficReading | null;
+}
+
+/** B18 #185: `getAppTraffic`. */
+export interface AppTrafficReading {
+  rxBytes: number;
+  txBytes: number;
+  bootCount: number;
+  sinceBootMs: number;
 }

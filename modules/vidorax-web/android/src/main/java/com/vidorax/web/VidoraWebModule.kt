@@ -21,6 +21,7 @@ import com.reactnativecommunity.webview.RNCWebViewWrapper
 import com.vidorax.web.display.LayerPaint
 import com.vidorax.web.display.PageLayout
 import com.vidorax.web.keys.VidoraKeyChannel
+import com.vidorax.web.performance.AppTraffic
 import com.vidorax.web.performance.ImageBlocking
 import com.vidorax.web.memory.AppMemory
 import com.vidorax.web.navigation.NavigationMode
@@ -397,6 +398,11 @@ class VidoraWebModule : Module() {
       LayerPaint.setSoftware(webView, software)
       true
     }.runOnQueue(Queues.MAIN)
+
+    // B18 #185: this app's network bytes since the phone started (TrafficStats), with the boot count.
+    Function("getAppTraffic") {
+      AppTraffic.toMap(AppTraffic.read(context))
+    }
 
     OnNewIntent { intent ->
       // B9 #87: a bookmark shortcut tapped while the app runs.
