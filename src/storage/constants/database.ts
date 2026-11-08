@@ -1,7 +1,10 @@
 export const DATABASE_NAME = 'vidorax.db';
 
-/** v1: browser history/bookmarks. v2: local download catalog + folders + url favorites. */
-export const DATABASE_VERSION = 2;
+/**
+ * v1: browser history/bookmarks. v2: local download catalog + folders + url favorites.
+ * v3 (B9): bookmark folders, tags, notes and order, and the reading list (`applyBrowserTables` → bookmark-organizer-schema).
+ */
+export const DATABASE_VERSION = 3;
 
 export const TABLE_NAMES = {
   browserHistory: 'browser_history',
@@ -11,6 +14,10 @@ export const TABLE_NAMES = {
   downloadsCatalog: 'downloads_catalog',
   mediaFolders: 'media_folders',
   urlFavorites: 'url_favorites',
+  // B9 (Hamza)
+  bookmarkFolders: 'bookmark_folders',
+  bookmarkTags: 'bookmark_tags',
+  readingList: 'reading_list',
 } as const;
 
 export const RECENT_SEARCH_LIMIT = 50;

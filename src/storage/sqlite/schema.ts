@@ -2,6 +2,8 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { DATABASE_VERSION, TABLE_NAMES } from '@/storage/constants';
 
+import { applyBookmarkOrganizerTables } from './bookmark-organizer-schema';
+
 /**
  * Apply pragmas outside any transaction.
  * WAL mode cannot be changed from within a transaction (expo-sqlite).
@@ -91,6 +93,8 @@ export async function applyBrowserTables(db: SQLiteDatabase): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_recent_urls_hostname
       ON ${TABLE_NAMES.recentUrls}(hostname);
   `);
+  // B9: bookmark folders, tags, notes, order and the reading list (idempotent; see bookmark-organizer-schema.ts).
+  await applyBookmarkOrganizerTables(db);
 }
 
 /**
