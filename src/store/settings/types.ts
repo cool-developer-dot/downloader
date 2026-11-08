@@ -119,6 +119,18 @@ export interface SettingsState {
   bookmarksBar: boolean;
   /** B9 #91: Check links only on Wi-Fi (default on). */
   linkCheckWifiOnly: boolean;
+  /** B15 #172: reader colours 'app' (default: follows the app) / 'light' / 'sepia' / 'dark'. */
+  readerTheme: import('@/browser/reader/reader-settings').ReaderTheme;
+  /** B15 #172: reader text size in dp (default '18'). */
+  readerFontSize: import('@/browser/reader/reader-settings').ReaderFontSize;
+  /** B15 #172: reader font 'sans' (default) / 'serif'. */
+  readerFontFamily: import('@/browser/reader/reader-settings').ReaderFontFamily;
+  /** B15 #172: reader line spacing 'compact' / 'normal' (default) / 'wide'. */
+  readerLineSpacing: import('@/browser/reader/reader-settings').ReaderLineSpacing;
+  /** B15 #161: pictures in the reader (default on). */
+  readerImages: boolean;
+  /** B15 #173: read-aloud speed (default '1'). */
+  readerSpeechRate: import('@/browser/reader/reader-settings').ReaderSpeechRate;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

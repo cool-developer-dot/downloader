@@ -42,6 +42,13 @@ export const BROWSER_SETTING_KEYS = [
   // B9 (Hamza)
   'bookmarksBar',
   'linkCheckWifiOnly',
+  // B15 (Hamza)
+  'readerTheme',
+  'readerFontSize',
+  'readerFontFamily',
+  'readerLineSpacing',
+  'readerImages',
+  'readerSpeechRate',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

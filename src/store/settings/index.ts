@@ -52,6 +52,14 @@ import {
 import { normalizeTabSleepAfter } from '@/browser/tab-sound/tab-sleep';
 // B13 (Hamza)
 import { parseSitePermissions, serializeSitePermissions } from '@/browser/site-permissions/site-permissions';
+// B15 (Hamza)
+import {
+  normalizeReaderFontFamily,
+  normalizeReaderFontSize,
+  normalizeReaderLineSpacing,
+  normalizeReaderSpeechRate,
+  normalizeReaderTheme,
+} from '@/browser/reader/reader-settings';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -166,6 +174,12 @@ export const useSettingsStore = createStore<SettingsStore>()(
         sitePermissions: state.sitePermissions,
         bookmarksBar: state.bookmarksBar,
         linkCheckWifiOnly: state.linkCheckWifiOnly,
+        readerTheme: state.readerTheme,
+        readerFontSize: state.readerFontSize,
+        readerFontFamily: state.readerFontFamily,
+        readerLineSpacing: state.readerLineSpacing,
+        readerImages: state.readerImages,
+        readerSpeechRate: state.readerSpeechRate,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -318,6 +332,17 @@ export const useSettingsStore = createStore<SettingsStore>()(
           bookmarksBar: typeof raw.bookmarksBar === 'boolean' ? raw.bookmarksBar : current.bookmarksBar,
           linkCheckWifiOnly:
             typeof raw.linkCheckWifiOnly === 'boolean' ? raw.linkCheckWifiOnly : current.linkCheckWifiOnly,
+          readerTheme:
+            raw.readerTheme === undefined ? current.readerTheme : normalizeReaderTheme(raw.readerTheme),
+          readerFontSize:
+            raw.readerFontSize === undefined ? current.readerFontSize : normalizeReaderFontSize(raw.readerFontSize),
+          readerFontFamily:
+            raw.readerFontFamily === undefined ? current.readerFontFamily : normalizeReaderFontFamily(raw.readerFontFamily),
+          readerLineSpacing:
+            raw.readerLineSpacing === undefined ? current.readerLineSpacing : normalizeReaderLineSpacing(raw.readerLineSpacing),
+          readerImages: typeof raw.readerImages === 'boolean' ? raw.readerImages : current.readerImages,
+          readerSpeechRate:
+            raw.readerSpeechRate === undefined ? current.readerSpeechRate : normalizeReaderSpeechRate(raw.readerSpeechRate),
         };
       },
     },

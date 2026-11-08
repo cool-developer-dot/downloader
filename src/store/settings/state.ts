@@ -28,6 +28,14 @@ import { START_PAGE_COLORS, START_PAGE_GRADIENTS } from '@/browser/startup/start
 import { DEFAULT_TAB_SLEEP_AFTER } from '@/browser/tab-sound/tab-sleep';
 // B13 (Hamza)
 import { DEFAULT_SITE_PERMISSIONS_JSON } from '@/browser/site-permissions/site-permissions';
+// B15 (Hamza)
+import {
+  DEFAULT_READER_FONT_FAMILY,
+  DEFAULT_READER_FONT_SIZE,
+  DEFAULT_READER_LINE_SPACING,
+  DEFAULT_READER_SPEECH_RATE,
+  DEFAULT_READER_THEME,
+} from '@/browser/reader/reader-settings';
 
 export const initialSettingsState: SettingsState = {
   clipboardMonitor: false,
@@ -92,4 +100,10 @@ export const initialSettingsState: SettingsState = {
   sitePermissions: DEFAULT_SITE_PERMISSIONS_JSON,
   bookmarksBar: false,
   linkCheckWifiOnly: true,
+  readerTheme: DEFAULT_READER_THEME,
+  readerFontSize: DEFAULT_READER_FONT_SIZE,
+  readerFontFamily: DEFAULT_READER_FONT_FAMILY,
+  readerLineSpacing: DEFAULT_READER_LINE_SPACING,
+  readerImages: true,
+  readerSpeechRate: DEFAULT_READER_SPEECH_RATE,
 };

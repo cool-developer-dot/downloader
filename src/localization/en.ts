@@ -6,6 +6,7 @@ import { browserFindEn } from './catalogs/browserFind.en';
 import { browserTabSoundEn } from './catalogs/browserTabSound.en';
 import { browserSitePermissionsEn } from './catalogs/browserSitePermissions.en';
 import { browserBookmarksEn } from './catalogs/browserBookmarks.en';
+import { browserReaderEn } from './catalogs/browserReader.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
 import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
@@ -2820,4 +2821,6 @@ export const en = {
   browserSitePermissions: browserSitePermissionsEn,
   // B9 (Hamza)
   browserBookmarks: browserBookmarksEn,
+  // B15 (Hamza)
+  browserReader: browserReaderEn,
 } as const;

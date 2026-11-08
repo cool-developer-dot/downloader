@@ -67,6 +67,7 @@ import { SPELL_CHECK_OFF_PAGE_SCRIPT } from '@/browser/startup/spell-check';
 import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
 import { tabAudioScript } from '@/browser/tab-sound/tab-audio-script';
 import { SITE_PERMISSION_PAGE_SCRIPT } from '@/browser/site-permissions/site-permission-script';
+import { readerMode } from '@/browser/reader/reader-mode.service';
 import {
   isJavaScriptAllowed,
   normalizeCookiePolicy,
@@ -725,6 +726,10 @@ export const BrowserWebView = memo(function BrowserWebView({
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
       const raw = event.nativeEvent.data;
+      // B15 #161: reader mode's answers have their own channel (articles are larger than the chrome channel's cap).
+      if (readerMode.handleMessage(tabId, raw)) {
+        return;
+      }
       if (chromeBridge.handleChromeMessage(raw)) {
         return;
       }
@@ -734,7 +739,7 @@ export const BrowserWebView = memo(function BrowserWebView({
       }
       onMediaDetectionMessage(raw);
     },
-    [chromeBridge, isActive, onMediaDetectionMessage],
+    [chromeBridge, isActive, onMediaDetectionMessage, tabId],
   );
 
   const config = browserWebViewConfiguration;

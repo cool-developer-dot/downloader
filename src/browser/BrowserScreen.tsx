@@ -41,6 +41,7 @@ import { SiteNoticeBar } from '@/browser/site-permissions/components/SiteNoticeB
 import { BookmarksBar } from '@/browser/bookmarks/components/BookmarksBar';
 import { BookmarkEditHost } from '@/browser/bookmarks/components/BookmarkSheets';
 import { SitePermissionsHost } from '@/browser/site-permissions/components/SitePermissionsSheet';
+import { ReaderHost } from '@/browser/reader/components/ReaderView';
 import { FindInPageBar } from '@/browser/find/FindInPageBar';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
 import { useIsWebFullscreen, useWebFullscreenLifecycle } from '@/browser/fullscreen';
@@ -240,6 +241,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
       <SitePermissionsHost />
       {/* B9 #78: Edit bookmark from the star. */}
       <BookmarkEditHost />
+      {/* B15 #161: reader mode over the page. */}
+      <ReaderHost />
       {addressBarPosition === 'top' ? (
         <AutoHideHeader position="top">
           <BrowserHeader

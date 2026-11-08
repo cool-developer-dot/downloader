@@ -33,6 +33,7 @@ import { useSearchEngineDefinition } from '@/browser/hooks/useSearchEngineDefini
 import { useSettingsStore } from '@/store/settings';
 
 import { OmniboxTrailing } from './OmniboxTrailing';
+import { ReaderButton } from '@/browser/reader/components/ReaderButton';
 import { SecurityIndicator } from './SecurityIndicator';
 import { SuggestionOverlay } from './SuggestionOverlay';
 
@@ -228,6 +229,8 @@ export const AddressBar = memo(function AddressBar({
           isLoading={isLoading && !isFocused}
           onClear={clear}
         />
+        {/* B15 #161: reader mode, only on article pages. */}
+        <ReaderButton hidden={isFocused || isLoading} />
         {trailingSlot}
       </Animated.View>
 

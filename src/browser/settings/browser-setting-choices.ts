@@ -16,6 +16,13 @@ import {
   START_PAGE_GRADIENT_IDS,
 } from '@/browser/startup/start-page-background';
 import { TAB_SLEEP_CHOICES } from '@/browser/tab-sound/tab-sleep';
+import {
+  READER_FONT_FAMILIES,
+  READER_FONT_SIZES,
+  READER_LINE_SPACINGS,
+  READER_SPEECH_RATES,
+  READER_THEMES,
+} from '@/browser/reader/reader-settings';
 
 /**
  * The allowed values of every browser setting that is a choice (stored as a string in `SettingsState`). Settings
@@ -39,6 +46,12 @@ export const BROWSER_SETTING_CHOICES: Readonly<Record<string, readonly string[]>
   startPageBackgroundGradient: START_PAGE_GRADIENT_IDS,
   // B3 (Hamza)
   tabSleepAfter: TAB_SLEEP_CHOICES,
+  // B15 (Hamza)
+  readerTheme: READER_THEMES,
+  readerFontSize: READER_FONT_SIZES,
+  readerFontFamily: READER_FONT_FAMILIES,
+  readerLineSpacing: READER_LINE_SPACINGS,
+  readerSpeechRate: READER_SPEECH_RATES,
 };
 
 /** String settings longer than Backup's usual 500-character cap (lists stored as JSON). */
