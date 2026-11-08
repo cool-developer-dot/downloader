@@ -1256,7 +1256,7 @@ in "Device test list for Faran".
 | Page display (B16) | Android 13+: forced dark only while the app's theme is dark (WebView rule for apps targeting API 33+) |
 | Page display (B16) | ~~Bundled Nastaliq inside web pages BLOCKED~~ — **done in the B16 update** (interceptRequest hook) |
 | Page display (B16) | Page zoom per site applies from the next load; Nastaliq may touch lines on sites with a tight `line-height` |
-| Data saver (B18) | Save-Data header skipped: `source` headers reload the tab's first page and miss link taps; needs the request-intercept patch hook |
+| Data saver (B18) | ~~Save-Data header skipped~~ — **sent since the B18 update**, in the `source` headers like DNT (the browser's own loads only; switching Data saver reloads a moved-on tab's first page) |
 | Data usage (B18) | Browsing includes other traffic the app makes while the browser is in front, and a few percent of a download's network overhead; per-site numbers not built (card) |
 | Do Not Track (B12) | Switching it while a tab has moved on by links loads that tab's first page again (react-native-webview `setSource`); found while checking Save-Data |
 
@@ -1457,7 +1457,7 @@ tests, typecheck and lint here; device checks in "Device test list for Faran".
 | --- | --- | --- | --- |
 | #183 | Block images + "Sites that always show pictures" (add by typing, remove) | VidoraWeb `setBlockNetworkImage` per tab | Decided per page: when a top-level page is requested (`onShouldStartLoadWithRequest`, http(s) only) and again when it starts loading. A site on the list always shows pictures (it overrides every rule below) |
 | #193 | Images on Wi-Fi only | same | "Wi-Fi" = NetInfo `wifi` or `ethernet` — B9's "Only on Wi-Fi" rule. Network changes apply from the next page load |
-| #184 | Data saver | `resolveSaverEffects` | Pictures on Wi-Fi only; no preloading (B6 `bindBrowserSaversReader`); lite mode while on mobile data; **`dataSaverWantsNoAutoplay()` — the named hook for B14** (autoplay). **Save-Data header: skipped** — without a patch change the only way is the `source` headers (as Do Not Track does), which react-native-webview re-applies by loading `source` again whenever the WebView's current address differs from it (confirmed in `RNCWebViewManagerImpl.setSource`), so turning Data saver on would pull a tab back to the page it was first opened on, and it would cover only pages the browser opens itself. Needs the request-intercept hook from B16's BLOCKED item to do properly |
+| #184 | Data saver | `resolveSaverEffects` | Pictures on Wi-Fi only; no preloading (B6 `bindBrowserSaversReader`); lite mode while on mobile data; **`dataSaverWantsNoAutoplay()` — the named hook for B14** (autoplay). **Save-Data header: skipped** — without a patch change the only way is the `source` headers (as Do Not Track does), which react-native-webview re-applies by loading `source` again whenever the WebView's current address differs from it (confirmed in `RNCWebViewManagerImpl.setSource`), so turning Data saver on would pull a tab back to the page it was first opened on, and it would cover only pages the browser opens itself. Needs the request-intercept hook from B16's BLOCKED item to do properly. **B18 update (Mega 5): sent anyway, the owner's call — `source` headers merged with DNT, following the Data saver setting (below)** |
 | #188 | Lite mode (also automatic with Data saver on mobile data) | | **Exact set:** (1) one live tab — B3's sleep check runs 1.5 s after another tab comes to the front, with a 1 ms cap through `bindTabSleepShortener`, so every other tab sleeps (B3's own rules keep the front tab and playing tabs awake); (2) page animations off — a document-start style with the reduced-motion values (`0.01ms`, one iteration, no smooth scrolling; not `0s`, so pages waiting for `transitionend` still work); (3) pictures on Wi-Fi only; (4) the lightweight start page; (5) no preloading |
 | #189 | Hardware acceleration (on by default) | VidoraWeb `setSoftwareLayer` | Off = a software layer for each tab from its next load, through B16's `LayerPaint` (B16's colour filter is kept). On never forces a hardware layer (back to `LAYER_TYPE_NONE`) |
 | #191 | Battery saver: Off (default) / With the phone's Battery Saver / Always on | VidoraWeb `isPowerSaveMode` (read when the app comes to the front and every minute while it is) | No preloading; auto scroll at 60 % — a **new additive seam in B6 (Faran's)**: `bindAutoScrollSpeedFactor` in `scroll/auto-scroll.ts`, used in `page-activity.ts`'s `dispatchAutoScroll` (unbound = 1, B6 unchanged); tabs sleep after 5 minutes at the latest (`bindTabSleepShortener`; B3's timer runs even with Sleep unused tabs off, so the cap works for everyone) |
@@ -1508,7 +1508,7 @@ reduced-motion values, never throws); the auto-scroll speed seam (unbound 1, cla
 
 ### Found, not fixed
 
-- Save-Data header skipped (no way without a patch change; see #184).
+- ~~Save-Data header skipped~~ — sent since the B18 update (below), with the same limits as Do Not Track.
 - Browsing data includes any other traffic the app makes while the browser is in front (e.g. a thumbnail or a media
   check); downloads are subtracted. Per-site numbers not built (as the card says).
 - H6 counts a download's payload bytes, TrafficStats counts what went over the network (headers, TLS, retries): a big
@@ -1558,10 +1558,51 @@ Tested: unit, typecheck, lint. Device: pending Faran's final pass.
 Hooks: B14 reads dataSaverWantsNoAutoplay() (src/browser/data-saver/data-saver.service.ts). Uses B6's
   bindBrowserSaversReader and B3's bindTabSleepShortener; adds bindAutoScrollSpeedFactor to B6's auto scroll (your
   files scroll/auto-scroll.ts, scroll/page-activity.ts — additive).
-Skipped: Save-Data header (needs the request-intercept patch hook). Not built: per-site data numbers (card).
+Skipped: Save-Data header (needs the request-intercept patch hook) — sent since the B18 update. Not built: per-site
+  data numbers (card).
 Found, not fixed: browsing data includes other app traffic while the browser is in front and a few percent of a
   download's network overhead; picture rules from the next page load after a network change; the existing Do Not
   Track switch re-loads a tab's first page (same react-native-webview source behaviour).
+```
+
+### B18: update — Save-Data header (Mega 5)
+
+The owner's call: send `Save-Data: on` the same way B12 sends Do Not Track, with no patch change and no native
+re-fetching.
+
+- **How:** `src/browser/data-saver/source-headers.ts` — `webViewSourceFor(uri, { doNotTrack, saveData })` builds the
+  `source` of `BrowserWebView`: the DNT headers (`DNT: 1`, `Sec-GPC: 1`) and/or `Save-Data: on`, merged into one
+  `headers` object; with neither on it is exactly `{ uri }` (today's source, no `headers` key). `saveData` = the
+  **Data saver setting** (`dataSaver`), not its effects: the effects change between Wi-Fi and mobile data, and any
+  change to `source` makes react-native-webview load it again.
+- **What it reaches:** the pages the browser opens itself (a typed address, a bookmark, a restored tab, a reload). Not
+  a page's own links, redirects or resources, and not pages opened from a page (the same limit as Do Not Track).
+- **Known:** switching Data saver while a tab has moved on by links loads that tab's first page again (the same
+  react-native-webview `setSource` behaviour already logged for Do Not Track).
+- Commits: `c0ae68e` (B18: Save-Data header), and this docs commit.
+- Tests: `source-headers.test.ts` (5): neither (exactly `{ uri }`), DNT only (B12's headers unchanged), Save-Data only,
+  both merged, the shared constants never modified. Full gate: unit 1774/1774, typecheck, lint 0 errors / 82 warnings.
+
+#### Device test list for Faran (B18 update)
+
+- [ ] Data saver on → open `https://httpbin.org/headers` from the address bar: the page lists `Save-Data: on`; with Do
+      Not Track on too, also `Dnt: 1` and `Sec-Gpc: 1`; Data saver off → reload → no `Save-Data`
+- [ ] Data saver on, on Wi-Fi and on mobile data: the header is sent on both (it follows the setting)
+- [ ] A link tapped on a page: no `Save-Data` on that request (expected; only the browser's own loads carry it)
+
+#### Handoff note (B18 update)
+
+```
+B18: update — Save-Data header
+Commits: c0ae68e (B18: Save-Data header), <docs>
+Native code to review: none (no patch change, no native re-fetch)
+Database: unchanged (DATABASE_VERSION 3)
+New settings: none (follows dataSaver = false)
+New libraries: none. package-lock: unchanged
+Tested: unit 1774/1774, typecheck, lint (0 errors, 82 warnings); new source-headers.test.ts (DNT only, Save-Data only,
+  both, neither). Device: list above.
+Found, not fixed: only the browser's own loads carry it (as DNT); switching Data saver reloads a tab's first page if it
+  has moved on by links (react-native-webview setSource, as DNT).
 ```
 
 ## Lists kept for the owner
@@ -1735,4 +1776,5 @@ Found, not fixed: browsing data includes other app traffic while the browser is 
 - B18: one pure resolver for every saver effect; picture / layer state per page at request and load start; Battery
   saver default Off; lite = sleep other tabs through B3 + reduced-motion page style; browsing data counted only while
   the browser is in front, minus H6's download total, never across restarts or resets; cache limit checked once per
-  start when idle, with a floor; Save-Data skipped (needs a patch hook); additive auto-scroll seam in B6.
+  start when idle, with a floor; Save-Data skipped (needs a patch hook) — B18 update: sent in the `source` headers
+  like DNT, following the Data saver setting (not its network effects); additive auto-scroll seam in B6.

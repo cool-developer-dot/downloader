@@ -835,7 +835,8 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   `imagesOffFor` — pure) and `data-saver.service.ts` (NetInfo, VidoraWeb `isPowerSaveMode`; binds B6
   `bindBrowserSaversReader`, B3 `bindTabSleepShortener`, B6 `bindAutoScrollSpeedFactor`; B14 hook
   `dataSaverWantsNoAutoplay`; `applySaverNative(tag, url)` from `BrowserWebView` on request / load start →
-  `setBlockNetworkImage` / `setSoftwareLayer` via the per-tag cache in `data-saver-native.ts`). Browsing data:
+  `setBlockNetworkImage` / `setSoftwareLayer` via the per-tag cache in `data-saver-native.ts`; B18 update:
+  `source-headers.ts` `webViewSourceFor` merges `Save-Data: on` with the DNT headers in the WebView `source`). Browsing data:
   `browsing-traffic.ts` + `.service.ts` (VidoraWeb `getAppTraffic` minus H6's download total, MMKV
   `vidorax.browsingData.v1`; `BrowsingUsageSection` in Data usage). Cache limit: `cache-limit(.service).ts`.
   `LightweightHome` replaces the start page's content when on. Native: VidoraWeb `performance/*.kt`.

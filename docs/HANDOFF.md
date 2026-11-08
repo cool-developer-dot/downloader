@@ -2171,8 +2171,8 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   the WebView layer, window-only brightness. Aa panel in the menu; Browser settings → Page display with the per-site
   list. Native: VidoraWeb `setPageLayout`, `setDisplayFilter`. No permission, library or database change.
 - **B18 Data saver and performance.** Block images (+ always-show sites), images on Wi-Fi only, Data saver (pictures
-  Wi-Fi only, no preloading, lite on mobile data, B14 autoplay hook; Save-Data header skipped — needs the
-  request-intercept patch hook), Lite mode (one live tab, page animations off, pictures Wi-Fi only, light start page),
+  Wi-Fi only, no preloading, lite on mobile data, B14 autoplay hook; **B18 update:** `Save-Data: on` in the
+  `source` headers with DNT while Data saver is on), Lite mode (one live tab, page animations off, pictures Wi-Fi only, light start page),
   hardware acceleration switch (software layer after reload), Battery saver (off / with the phone's / on: no
   preloading, slower auto scroll, 5-minute tab sleep), cache limit with size and Clear now, Data usage → Browsing
   (TrafficStats minus downloads, only while browsing), lightweight start page. Native: VidoraWeb
