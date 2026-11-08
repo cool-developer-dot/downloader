@@ -2,7 +2,7 @@ import { useSyncExternalStore } from 'react';
 import { AppState, Linking, type NativeEventSubscription } from 'react-native';
 import * as Speech from 'expo-speech';
 
-import { pickVoice, speechChunks, stepChunk, SPEECH_CHUNK_MAX, type SpeechChunk } from './read-aloud';
+import { paragraphStart, pickVoice, speechChunks, stepChunk, SPEECH_CHUNK_MAX, type SpeechChunk } from './read-aloud';
 import type { ReaderArticle } from './reader-article';
 
 /**
@@ -137,7 +137,7 @@ export const readAloud = {
     if (state.status !== 'playing') return;
     silence();
     // Back to the start of the paragraph being read (Android can't resume mid-utterance).
-    while (at > 0 && chunks[at - 1]?.blockIndex === chunks[at]?.blockIndex) at -= 1;
+    at = paragraphStart(chunks, at);
     set({ ...state, status: 'paused' });
   },
 
@@ -161,7 +161,7 @@ export const readAloud = {
   setRate(speed: number): void {
     rate = speed;
     if (state.status === 'playing') {
-      while (at > 0 && chunks[at - 1]?.blockIndex === chunks[at]?.blockIndex) at -= 1;
+      at = paragraphStart(chunks, at);
       speakCurrent();
     }
   },

@@ -174,6 +174,9 @@ const ReaderImage = memo(function ReaderImage({ src, alt, label }: { src: string
       accessibilityLabel={label}
       alt={alt}
       contentFit="contain"
+      // Memory only: the reader's pictures are never written to disk (they would outlive Clear browsing data and
+      // private tabs).
+      cachePolicy="memory"
       onLoad={(event) => {
         const { width, height } = event.source;
         if (width > 0 && height > 0) setRatio(Math.min(3, Math.max(0.3, width / height)));

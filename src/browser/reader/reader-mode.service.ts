@@ -4,11 +4,26 @@ import { useBrowserStore } from '@/browser/stores';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
 import { isValidBrowserPageUrl } from '@/browser/utils';
 
-import { buildReaderArticle, parseReaderMessage, READER_MESSAGE_PREFIX, type ReaderArticle } from './reader-article';
+import { parseReaderMessage, READER_MESSAGE_PREFIX } from './reader-article';
+import {
+  INITIAL_READER_STATE,
+  isReaderAvailable,
+  needsCheck,
+  onCheckSent,
+  onClose,
+  onFrontChange,
+  onOpenFailed,
+  onOpenRequested,
+  onReaderMessage,
+  readerPageKey,
+  type ReaderModeState,
+} from './reader-mode-state';
 import { readerCheckScript, readerExtractScript } from './reader-scripts';
 
+export type { ReaderOpenState } from './reader-mode-state';
+
 /**
- * B15 #161 — reader mode for the tab in front.
+ * B15 #161 — reader mode for the tab in front (state changes in reader-mode-state.ts).
  *
  * - After a page finishes loading (or its address changes without a load), the page is asked whether it looks like an
  *   article (`readerCheckScript`). The answer is kept per tab with the address it was for, so the address bar's reader
@@ -22,29 +37,20 @@ import { readerCheckScript, readerExtractScript } from './reader-scripts';
 const CHECK_DELAY_MS = 700;
 const EXTRACT_TIMEOUT_MS = 15_000;
 
-export type ReaderOpenState =
-  | { status: 'loading'; tabId: string; url: string }
-  | { status: 'ready'; tabId: string; url: string; article: ReaderArticle }
-  | { status: 'failed'; tabId: string; url: string };
-
-type State = {
-  /** Per tab: the page's last answer and the address it was for. */
-  checks: Readonly<Record<string, { url: string; readerable: boolean }>>;
-  open: ReaderOpenState | null;
-};
-
-let state: State = { checks: {}, open: null };
+let state: ReaderModeState = INITIAL_READER_STATE;
 const listeners = new Set<() => void>();
 let requestCounter = 0;
-/** The newest check / extract request per tab (older answers are ignored). */
-const pendingChecks = new Map<string, number>();
-let pendingExtract: { tabId: string; requestId: number } | null = null;
 let checkTimer: ReturnType<typeof setTimeout> | null = null;
 let extractTimer: ReturnType<typeof setTimeout> | null = null;
 let unwatch: (() => void) | null = null;
 
-function set(next: State): void {
+function set(next: ReaderModeState): void {
+  if (next === state) return;
   state = next;
+  if (!state.pendingExtract && extractTimer) {
+    clearTimeout(extractTimer);
+    extractTimer = null;
+  }
   for (const listener of listeners) {
     try {
       listener();
@@ -52,12 +58,6 @@ function set(next: State): void {
       // ignore
     }
   }
-}
-
-/** The address without its #fragment (an in-page jump is the same article). */
-export function readerPageKey(url: string): string {
-  const at = url.indexOf('#');
-  return at < 0 ? url : url.slice(0, at);
 }
 
 function inject(tabId: string, script: string): boolean {
@@ -74,13 +74,11 @@ function inject(tabId: string, script: string): boolean {
 function checkFront(): void {
   checkTimer = null;
   const browser = useBrowserStore.getState();
-  const tabId = browser.activeTabId;
-  if (!tabId || browser.isLoading || !isValidBrowserPageUrl(browser.currentUrl)) return;
-  const known = state.checks[tabId];
-  if (known && known.url === readerPageKey(browser.currentUrl)) return;
+  const front = { tabId: browser.activeTabId, url: browser.currentUrl, isLoading: browser.isLoading };
+  if (!front.tabId || !isValidBrowserPageUrl(front.url) || !needsCheck(state, front)) return;
   const requestId = ++requestCounter;
-  pendingChecks.set(tabId, requestId);
-  inject(tabId, readerCheckScript(requestId));
+  set(onCheckSent(state, front.tabId, requestId));
+  inject(front.tabId, readerCheckScript(requestId));
 }
 
 function scheduleCheck(): void {
@@ -88,15 +86,8 @@ function scheduleCheck(): void {
   checkTimer = setTimeout(checkFront, CHECK_DELAY_MS);
 }
 
-function finishExtract(next: ReaderOpenState | null): void {
-  if (extractTimer) clearTimeout(extractTimer);
-  extractTimer = null;
-  pendingExtract = null;
-  set({ ...state, open: next });
-}
-
 export const readerMode = {
-  getState(): State {
+  getState(): ReaderModeState {
     return state;
   },
 
@@ -112,17 +103,17 @@ export const readerMode = {
     if (!unwatch) {
       let last = '';
       unwatch = useBrowserStore.subscribe((browser) => {
-        const key = `${browser.activeTabId}|${readerPageKey(browser.currentUrl)}|${browser.isLoading ? 1 : 0}`;
+        const key = `${browser.activeTabId}|${readerPageKey(browser.currentUrl)}|${browser.isLoading ? 1 : 0}|${browser.tabs.length}`;
         if (key === last) return;
         last = key;
-        // Closed tabs' answers go.
-        const stale = Object.keys(state.checks).filter((id) => !browser.tabs.some((tab) => tab.id === id));
-        if (stale.length) stale.forEach((id) => readerMode.forgetTab(id));
-        // Leaving the page (another tab, another address) closes the reader.
-        const open = state.open;
-        if (open && (open.tabId !== browser.activeTabId || readerPageKey(browser.currentUrl) !== readerPageKey(open.url))) {
-          finishExtract(null);
-        }
+        set(
+          onFrontChange(state, {
+            tabId: browser.activeTabId,
+            url: browser.currentUrl,
+            isLoading: browser.isLoading,
+            tabIds: browser.tabs.map((tab) => tab.id),
+          }),
+        );
         if (!browser.isLoading) scheduleCheck();
       });
       scheduleCheck();
@@ -142,18 +133,7 @@ export const readerMode = {
   handleMessage(tabId: string | null | undefined, raw: string | null | undefined): boolean {
     if (typeof raw !== 'string' || !raw.startsWith(READER_MESSAGE_PREFIX)) return false;
     const message = parseReaderMessage(raw);
-    if (!message || !tabId) return true;
-    if (message.type === 'state') {
-      if (pendingChecks.get(tabId) !== message.requestId) return true;
-      pendingChecks.delete(tabId);
-      set({ ...state, checks: { ...state.checks, [tabId]: { url: readerPageKey(message.url), readerable: message.readerable } } });
-      return true;
-    }
-    if (!pendingExtract || pendingExtract.tabId !== tabId || pendingExtract.requestId !== message.requestId) return true;
-    const open = state.open;
-    if (!open || open.status !== 'loading') return true;
-    const article = message.ok ? buildReaderArticle(message) : null;
-    finishExtract(article ? { status: 'ready', tabId, url: open.url, article } : { status: 'failed', tabId, url: open.url });
+    if (message && tabId) set(onReaderMessage(state, tabId, message));
     return true;
   },
 
@@ -164,43 +144,33 @@ export const readerMode = {
     const url = browser.currentUrl;
     if (!tabId || !isValidBrowserPageUrl(url)) return;
     const requestId = ++requestCounter;
-    pendingExtract = { tabId, requestId };
-    set({ ...state, open: { status: 'loading', tabId, url } });
+    set(onOpenRequested(state, tabId, url, requestId));
     if (!inject(tabId, readerExtractScript(requestId))) {
-      finishExtract({ status: 'failed', tabId, url });
+      set(onOpenFailed(state, requestId));
       return;
     }
     if (extractTimer) clearTimeout(extractTimer);
     extractTimer = setTimeout(() => {
-      if (pendingExtract?.requestId === requestId) finishExtract({ status: 'failed', tabId, url });
+      extractTimer = null;
+      set(onOpenFailed(state, requestId));
     }, EXTRACT_TIMEOUT_MS);
   },
 
   close(): void {
-    finishExtract(null);
-  },
-
-  /** A closed tab's answer is dropped. */
-  forgetTab(tabId: string): void {
-    if (!(tabId in state.checks)) return;
-    const checks = { ...state.checks };
-    delete checks[tabId];
-    pendingChecks.delete(tabId);
-    set({ ...state, checks });
+    set(onClose(state));
   },
 };
 
 const getState = () => state;
 
-export function useReaderState(): State {
+export function useReaderState(): ReaderModeState {
   return useSyncExternalStore(readerMode.subscribe, getState, getState);
 }
 
 /** Whether the page in front answered that it is an article. */
 export function useReaderAvailable(): boolean {
-  const checks = useSyncExternalStore(readerMode.subscribe, () => state.checks, () => state.checks);
+  const current = useSyncExternalStore(readerMode.subscribe, getState, getState);
   const tabId = useBrowserStore((browser) => browser.activeTabId);
   const url = useBrowserStore((browser) => browser.currentUrl);
-  const check = tabId ? checks[tabId] : undefined;
-  return !!check && check.readerable && check.url === readerPageKey(url);
+  return isReaderAvailable(current, tabId, url);
 }

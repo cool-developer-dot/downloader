@@ -73,3 +73,10 @@ export function pickVoice(voices: readonly VoiceInfo[], language: string): Voice
   const exact = local.find((v) => v.language.toLowerCase().replace('_', '-') === language.toLowerCase());
   return exact ?? local[0];
 }
+
+/** The first chunk of the paragraph chunk `at` belongs to (Pause and a speed change start that paragraph again). */
+export function paragraphStart(chunks: readonly SpeechChunk[], at: number): number {
+  let i = Math.min(Math.max(at, 0), Math.max(0, chunks.length - 1));
+  while (i > 0 && chunks[i - 1].blockIndex === chunks[i].blockIndex) i -= 1;
+  return i;
+}
