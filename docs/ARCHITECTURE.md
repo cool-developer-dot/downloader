@@ -827,6 +827,14 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   (window only; mounted in `BrowserScreen`). Native: VidoraWeb `display/PageLayout.kt` (text autosizing, initial scale,
   algorithmic darkening) and `display/LayerPaint.kt` (the one owner of a tab WebView's layer type + paint). UI:
   `PageDisplayHost` (Aa panel) and `PageDisplaySettingsSection` in Browser settings.
+- **Data saver and performance (B18).** `src/browser/data-saver/`: `data-saver-settings.ts` (`resolveSaverEffects`,
+  `imagesOffFor` — pure) and `data-saver.service.ts` (NetInfo, VidoraWeb `isPowerSaveMode`; binds B6
+  `bindBrowserSaversReader`, B3 `bindTabSleepShortener`, B6 `bindAutoScrollSpeedFactor`; B14 hook
+  `dataSaverWantsNoAutoplay`; `applySaverNative(tag, url)` from `BrowserWebView` on request / load start →
+  `setBlockNetworkImage` / `setSoftwareLayer` via the per-tag cache in `data-saver-native.ts`). Browsing data:
+  `browsing-traffic.ts` + `.service.ts` (VidoraWeb `getAppTraffic` minus H6's download total, MMKV
+  `vidorax.browsingData.v1`; `BrowsingUsageSection` in Data usage). Cache limit: `cache-limit(.service).ts`.
+  `LightweightHome` replaces the start page's content when on. Native: VidoraWeb `performance/*.kt`.
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab

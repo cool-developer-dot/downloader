@@ -1256,6 +1256,8 @@ in "Device test list for Faran".
 | Page display (B16) | Android 13+: forced dark only while the app's theme is dark (WebView rule for apps targeting API 33+) |
 | Page display (B16) | Bundled Nastaliq inside web pages BLOCKED (patch-script hook needed; exact change in the B16 section) |
 | Page display (B16) | Page zoom per site applies from the next load; Nastaliq may touch lines on sites with a tight `line-height` |
+| Data saver (B18) | Save-Data header skipped: `source` headers reload the tab's first page and miss link taps; needs the request-intercept patch hook |
+| Data usage (B18) | Browsing includes other traffic the app makes while the browser is in front; per-site numbers not built (card) |
 
 - **One Aa panel** (browser menu → Page display): this site's text size, page zoom, "No forced dark on this site",
   Reset this site; then the every-site choices. **Browser settings → Page display**: the defaults, the text size
@@ -1373,6 +1375,120 @@ Found, not fixed: Android 13+ forced dark only while the app is dark (platform);
   Nastaliq needs the phone's font; tight site line-heights; textZoom 100 after a change vs WebView's own default.
 ```
 
+## B18 — Data saver and performance (#183, #193, #184, #185, #188, #189, #191, #192, #285)
+
+Mega 3. Four native commits (Kotlin tests), no database change (`DATABASE_VERSION` stays 3), no permission, no new
+library. Every setting is off / keeps today's behaviour by default (hardware acceleration on). Testing rule: unit
+tests, typecheck and lint here; device checks in "Device test list for Faran".
+
+### What the user sees (Browser settings → Data saver and performance)
+
+| # | Feature | How | Notes / decisions |
+| --- | --- | --- | --- |
+| #183 | Block images + "Sites that always show pictures" (add by typing, remove) | VidoraWeb `setBlockNetworkImage` per tab | Decided per page: when a top-level page is requested (`onShouldStartLoadWithRequest`, http(s) only) and again when it starts loading. A site on the list always shows pictures (it overrides every rule below) |
+| #193 | Images on Wi-Fi only | same | "Wi-Fi" = NetInfo `wifi` or `ethernet` — B9's "Only on Wi-Fi" rule. Network changes apply from the next page load |
+| #184 | Data saver | `resolveSaverEffects` | Pictures on Wi-Fi only; no preloading (B6 `bindBrowserSaversReader`); lite mode while on mobile data; **`dataSaverWantsNoAutoplay()` — the named hook for B14** (autoplay). **Save-Data header: skipped** — without a patch change the only way is the `source` headers (as Do Not Track does), which react-native-webview re-applies by loading `source` again, so turning Data saver on would pull a tab back to the page it was first opened on, and it would cover only pages the browser opens itself. Needs the request-intercept hook from B16's BLOCKED item to do properly |
+| #188 | Lite mode (also automatic with Data saver on mobile data) | | **Exact set:** (1) one live tab — B3's sleep check runs 1.5 s after another tab comes to the front, with a 1 ms cap through `bindTabSleepShortener`, so every other tab sleeps (B3's own rules keep the front tab and playing tabs awake); (2) page animations off — a document-start style with the reduced-motion values (`0.01ms`, one iteration, no smooth scrolling; not `0s`, so pages waiting for `transitionend` still work); (3) pictures on Wi-Fi only; (4) the lightweight start page; (5) no preloading |
+| #189 | Hardware acceleration (on by default) | VidoraWeb `setSoftwareLayer` | Off = a software layer for each tab from its next load, through B16's `LayerPaint` (B16's colour filter is kept). On never forces a hardware layer (back to `LAYER_TYPE_NONE`) |
+| #191 | Battery saver: Off (default) / With the phone's Battery Saver / Always on | VidoraWeb `isPowerSaveMode` (read when the app comes to the front and every minute while it is) | No preloading; auto scroll at 60 % — a **new additive seam in B6 (Faran's)**: `bindAutoScrollSpeedFactor` in `scroll/auto-scroll.ts`, used in `page-activity.ts`'s `dispatchAutoScroll` (unbound = 1, B6 unchanged); tabs sleep after 5 minutes at the latest (`bindTabSleepShortener`; B3's timer runs even with Sleep unused tabs off, so the cap works for everyone) |
+| #192 | Cache limit Off (default) / 50 / 100 / 250 / 500 MB, with the cache size; Clear cache now | VidoraWeb `getWebViewCacheSize`, `clearWebViewCache` | Size = everything under `<cacheDir>/WebView` (all profiles). Checked **once per start, 10 s after the browser shows and when the app is idle** (with the default Off nothing runs). Clearing = `WebView.clearCache(true)` per profile (cookies, site data, history stay). The size right after a clear is kept as a floor: if Chromium's code / GPU cache keeps it over the limit, the next start clears only when it has grown 10 % past that floor — never on every start |
+| #185 | Data usage → **Browsing**: today, this month, Reset | VidoraWeb `getAppTraffic` (TrafficStats for the app's uid) | Counted in intervals while the app is active **and** the Browser route is shown (so the player, downloads screen etc. aren't counted): app bytes − H6's download total over the same interval (read only — `getDataUsageSummary`; no download code changed). An interval is dropped when the boot count or time since boot shows a restart, a counter went down, or downloads were Reset (undercount, never overcount). The open interval is in memory only: after the app is killed nothing in between is counted. Stored in MMKV `vidorax.browsingData.v1` (62 days / 24 months). Phones without per-app counts say so |
+| #285 | Lightweight start page (also with Lite mode) | `LightweightHome` | Text only (no pictures, icons, backgrounds): Quick Access names and the bookmarks in the top folder (50), as links |
+
+- **Not built (as the card says): per-site data numbers.**
+- Reader pictures (B15) follow the same picture rules for the article's site (`useImagesOffFor`); the reader's own
+  "Show pictures" setting is not changed.
+- Native calls are sent only once a value is non-default for that WebView (`data-saver-native.ts`).
+
+### Native (Faran to review)
+
+- `performance/ImageBlocking.kt` + `setBlockNetworkImage(viewTag, block)`; `setSoftwareLayer(viewTag, software)` via
+  `display/LayerPaint.kt`. Test `ImageBlockingTest` (2).
+- `performance/AppTraffic.kt` + `getAppTraffic()`: `TrafficStats.getUidRxBytes/TxBytes(myUid)`, boot count, time since
+  boot; null when unsupported. Test `AppTrafficTest` (3; Robolectric's TrafficStats has no per-uid numbers, so the
+  counter source is injectable).
+- `performance/PowerSaving.kt` + `isPowerSaveMode()`. Test `PowerSavingTest` (1).
+- `performance/WebViewCache.kt` + `getWebViewCacheSize()`, `clearWebViewCache()` (default profile + each B20 profile,
+  a throwaway WebView each, destroyed). Test `WebViewCacheTest` (4).
+- Kotlin on Windows: vidorax-web 108/109 (the known `WebViewSnapshotsTest`), vidorax-media doesn't compile (known) —
+  please rerun both on the Mac.
+
+### Files
+
+- New: `src/browser/data-saver/` (`data-saver-settings.ts`, `data-saver.service.ts`, `data-saver-native.ts`,
+  `browsing-traffic.ts`, `browsing-traffic.service.ts`, `cache-limit.ts`, `cache-limit.service.ts`,
+  `components/{LightweightHome,BrowsingUsageSection}.tsx`, `data-saver.test.ts`),
+  `src/screens/settings/browser-settings/DataSaverSettingsSection.tsx`, catalogs `browserDataSaver.{en,ur}.ts`,
+  `modules/vidorax-web/android/.../performance/*.kt` and tests.
+- Changed (additive): `BrowserWebView.tsx` (apply on request / load start, forget on unmount, lite page style),
+  `BrowserScreen.tsx` (start the services), `BrowserHomeView.tsx` (light start page), `ReaderView.tsx` (picture
+  rules), `DataUsageScreen.tsx` (Browsing section), `BrowserSettingsScreen.tsx`, **B6's `scroll/auto-scroll.ts` and
+  `scroll/page-activity.ts` (the speed seam)**, settings store, `browser-setting-keys.ts` / `-choices.ts`,
+  `VidoraWebModule.kt`, `VidoraWeb.types.ts`, `en.ts` / `ur.ts`.
+
+### Tests
+
+`data-saver.test.ts` (17): defaults change nothing on any network / power state; Data saver on Wi-Fi vs mobile data;
+block images with exceptions; Wi-Fi only; lite mode's set; battery saver off / phone / on; software layer; the tab
+sleep cap (incl. Sleep off); exception sites typed any way, list cleaning; cache limit choices; browsing intervals
+(subtraction, never negative; dropped on restart, counter drop, download Reset, bad numbers); day / month buckets and
+the saved form; the cache floor rule; the native-call cache; **the lite page script in `node:vm`** (one style, the
+reduced-motion values, never throws); the auto-scroll speed seam (unbound 1, clamped, throwing binder). Kotlin:
+`ImageBlockingTest`, `AppTrafficTest`, `PowerSavingTest`, `WebViewCacheTest`.
+
+### Found, not fixed
+
+- Save-Data header skipped (no way without a patch change; see #184).
+- Browsing data includes any other traffic the app makes while the browser is in front (e.g. a thumbnail or a media
+  check); downloads are subtracted. Per-site numbers not built (as the card says).
+- Image rules for a page decided at its request / load start; a network change shows from the next page.
+
+### Device test list for Faran
+
+- [ ] Block images on: pages load without pictures; add the site to "always show pictures" → its next page has them;
+      remove it → gone again
+- [ ] Images on Wi-Fi only: on mobile data a new page has no pictures; on Wi-Fi it has them (after the next load)
+- [ ] Data saver on, mobile data: no pictures, start page becomes the text one, only one tab stays awake (tab
+      switcher: others asleep), Preload pages does nothing; on Wi-Fi: pictures back, normal start page
+- [ ] Lite mode: switch tabs — the previous tab sleeps within ~2 s (a tab playing audio stays awake); a site with CSS
+      animations (menus, carousels) shows them finished and menus still open / close
+- [ ] Lightweight start page: text only, Quick Access and bookmarks open; RTL (Urdu UI); TalkBack reads links
+- [ ] Hardware acceleration off → reload a page: it still draws (slower); with a B16 colour filter on, the filter
+      stays; on again → normal after reload
+- [ ] Battery saver "With the phone's": turn the phone's Battery Saver on → within a minute (or on returning to the
+      app) auto scroll is slower and tabs sleep after 5 min; Always on; Off
+- [ ] Cache limit 50 MB with a bigger cache (browse a few heavy sites; the row shows the size) → restart the app, wait
+      ~15 s → the size is under the limit; Clear cache now → size drops; still logged in to sites (cookies stay)
+- [ ] Data usage → Browsing: browse a few pages, open Data usage → today / month grow; start a download and stay on
+      the Downloads screen → Browsing doesn't grow; download while browsing → Browsing grows by about the page data,
+      not the download; Reset → zero, download figures unchanged; restart the phone → no jump
+- [ ] B15 reader with Block images on → no pictures in the reader either; the reader's "Show pictures" switch is
+      unchanged afterwards
+- [ ] Merged manifest unchanged (no permission)
+
+### Handoff note
+
+```
+B18 Data saver and performance — done
+Commits: 86cf585 (native: image blocking + software layer), 8d977be (native: TrafficStats), b046eb7 (native: power
+  save), 06f679b (native: cache size / clear), 89074f8 (data saver and performance), <docs: this commit>
+Native code to review: VidoraWeb setBlockNetworkImage, setSoftwareLayer (via LayerPaint), getAppTraffic,
+  isPowerSaveMode, getWebViewCacheSize, clearWebViewCache (performance/*.kt). Tests: ImageBlockingTest,
+  AppTrafficTest, PowerSavingTest, WebViewCacheTest.
+Database: unchanged (DATABASE_VERSION 3)
+New settings: blockImages = false, imageExceptions = '[]', imagesWifiOnly = false, dataSaver = false, liteMode = false,
+  lightweightHome = false, batterySaver = 'off', hardwareAcceleration = true, cacheLimitMb = '0' (Off)
+New libraries: none
+Tested: unit, typecheck, lint. Device: pending Faran's final pass.
+  Kotlin on Windows: vidorax-web 108/109 (WebViewSnapshotsTest), vidorax-media won't compile — please rerun on the Mac.
+Hooks: B14 reads dataSaverWantsNoAutoplay() (src/browser/data-saver/data-saver.service.ts). Uses B6's
+  bindBrowserSaversReader and B3's bindTabSleepShortener; adds bindAutoScrollSpeedFactor to B6's auto scroll (your
+  files scroll/auto-scroll.ts, scroll/page-activity.ts — additive).
+Skipped: Save-Data header (needs the request-intercept patch hook). Not built: per-site data numbers (card).
+Found, not fixed: browsing data includes other app traffic while the browser is in front; picture rules from the
+  next page load after a network change.
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -1388,6 +1504,10 @@ Found, not fixed: Android 13+ forced dark only while the app is dark (platform);
 | Reader mode (B15) | No reader button on sites with JavaScript off (Readability runs in the page) |
 | B16 | `setPageLayout(viewTag, textAutosizing, initialScale, algorithmicDarkening)`, `canDarkenPagesAlgorithmically()`: `LayoutAlgorithm.TEXT_AUTOSIZING` / `NORMAL`, `WebView.setInitialScale` (25–500, else 0 = default), `WebSettingsCompat.setAlgorithmicDarkeningAllowed` on Android 13+ when supported. Test `PageLayoutTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `display/PageLayout.kt` |
 | B16 | `setDisplayFilter(viewTag, matrix \| null)`: 4×5 `ColorMatrixColorFilter` as the paint of a hardware layer; none / identity → `LAYER_TYPE_NONE`; `LayerPaint` is the single owner of a tab WebView's layer type + paint (software flag for B18 #189 keeps the filter). Test `LayerPaintTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `display/LayerPaint.kt` |
+| B18 | `setBlockNetworkImage(viewTag, block)` (`WebSettings.blockNetworkImage`) and `setSoftwareLayer(viewTag, software)` (through B16's `LayerPaint`; never a forced hardware layer). Test `ImageBlockingTest` | `performance/ImageBlocking.kt`, `display/LayerPaint.kt` |
+| B18 | `getAppTraffic()`: `TrafficStats.getUidRxBytes / getUidTxBytes(myUid)`, `Settings.Global.BOOT_COUNT`, `elapsedRealtime`; null when unsupported. Test `AppTrafficTest` | `performance/AppTraffic.kt` |
+| B18 | `isPowerSaveMode()`: `PowerManager.isPowerSaveMode`. Test `PowerSavingTest` | `performance/PowerSaving.kt` |
+| B18 | `getWebViewCacheSize()` (bytes under `<cacheDir>/WebView`, links not followed, off the main thread), `clearWebViewCache()` (`WebView.clearCache(true)` with a throwaway WebView for the default profile and each B20 profile). Test `WebViewCacheTest` | `performance/WebViewCache.kt` |
 
 ### New dependencies
 
@@ -1446,6 +1566,15 @@ Found, not fixed: Android 13+ forced dark only while the app is dark (platform);
 | `pageNightLightStrength` | B16 | `50` | 10–100 % |
 | `pageBrightness` | B16 | `-1` (the phone's — today's) | -1 or 5–100 % |
 | `pageDisplaySites` | B16 | `'{}'` | per site: text size, page zoom, no forced dark (JSON, ≤ 300 sites) |
+| `blockImages` | B18 | `false` (today's) | on / off |
+| `imageExceptions` | B18 | `'[]'` | JSON list of hosts that always show pictures (≤ 200) |
+| `imagesWifiOnly` | B18 | `false` (today's) | on / off |
+| `dataSaver` | B18 | `false` (today's) | on / off |
+| `liteMode` | B18 | `false` (today's) | on / off |
+| `lightweightHome` | B18 | `false` (today's) | on / off |
+| `batterySaver` | B18 | `'off'` (today's) | off / phone / on |
+| `hardwareAcceleration` | B18 | `true` (today's) | on / off |
+| `cacheLimitMb` | B18 | `'0'` (Off — today's) | 0 / 50 / 100 / 250 / 500 |
 
 ### Found, not fixed
 
@@ -1524,3 +1653,7 @@ Found, not fixed: Android 13+ forced dark only while the app is dark (platform);
 - B16: forced dark = `forceDarkOn` plus native algorithmic darkening (13+); text reflow = native text autosizing,
   not CSS; colour-blind choices are corrections (daltonize); filter + night light = one native matrix; WebView props
   and native calls only after a setting first leaves its default; bundled Nastaliq in pages BLOCKED (patch hook).
+- B18: one pure resolver for every saver effect; picture / layer state per page at request and load start; Battery
+  saver default Off; lite = sleep other tabs through B3 + reduced-motion page style; browsing data counted only while
+  the browser is in front, minus H6's download total, never across restarts or resets; cache limit checked once per
+  start when idle, with a floor; Save-Data skipped (needs a patch hook); additive auto-scroll seam in B6.
