@@ -71,6 +71,13 @@ export const BROWSER_SETTING_KEYS = [
   'batterySaver',
   'hardwareAcceleration',
   'cacheLimitMb',
+  // B14 (Hamza)
+  'adBlocker',
+  'trackerBlocker',
+  'adAllowedSites',
+  'autoplay',
+  'autoplaySites',
+  'focusMinutes',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

@@ -49,6 +49,8 @@ export type BrowserErrorCode =
   | 'https_unavailable'
   /** B12 #124: the same in a build that can't open plain http at all (release): nothing to fall back to. */
   | 'https_required'
+  /** B14 #276 / #277 / #278: the user's site blocker, a used-up daily limit or focus mode (`retryUrl` = the page). */
+  | 'site_blocked'
   | 'http_error'
   | 'unsupported'
   | 'process_terminated'

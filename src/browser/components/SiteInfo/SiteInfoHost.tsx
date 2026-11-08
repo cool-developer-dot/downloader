@@ -38,8 +38,10 @@ import { useTourBlocker } from '@/tour/tour-store';
 
 import { siteInfoRequests } from './site-info-requests';
 import { sitePermissionsSheet } from '@/browser/site-permissions/site-permissions.service';
+import { blockedCountForTab } from '@/browser/blocking/content-blocking.service';
+import { SiteBlockingControls } from '@/browser/blocking/components/SiteBlockingControls';
 
-type Details = { certificate: PageCertificate | null; cookies: number; storage: number };
+type Details = { certificate: PageCertificate | null; cookies: number; storage: number; blocked: number };
 
 /**
  * B12 site information, from the lock icon in the address bar: whether the connection is secure, the page's
@@ -77,9 +79,11 @@ export const SiteInfoHost = memo(function SiteInfoHost() {
 
   const load = useCallback(async (afterClear = false) => {
     setDetails(null);
-    const [certificate, origins] = await Promise.all([
+    const [certificate, origins, blocked] = await Promise.all([
       getPageCertificate(activeTabId),
       afterClear ? listSiteDataAfterClear() : listSiteData(),
+      // B14 #121: requests the ad / tracker blocker stopped on this page.
+      blockedCountForTab(activeTabId),
     ]);
     const pageHost = (() => {
       try {
@@ -97,7 +101,7 @@ export const SiteInfoHost = memo(function SiteInfoHost() {
         }
       })
       .reduce((sum, entry) => sum + entry.usage, 0);
-    setDetails({ certificate, cookies: cookieCountFor(useBrowserStore.getState().currentUrl), storage });
+    setDetails({ certificate, cookies: cookieCountFor(useBrowserStore.getState().currentUrl), storage, blocked });
   }, [activeTabId]);
 
   useEffect(
@@ -233,6 +237,12 @@ export const SiteInfoHost = memo(function SiteInfoHost() {
                 testID="browser-site-info-javascript"
               />
             </Box>
+            {/* B14 #121 / #218: blocked on this page, "Allow ads on this site", autoplay for this site. */}
+            <SiteBlockingControls
+              site={site}
+              blocked={details ? details.blocked : null}
+              onChanged={() => setTimeout(() => reloadForTab(activeTabId), 50)}
+            />
             <Box row rtlRow gap={8} style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               {/* B13 #116: this site's permissions (location, camera, mic, notifications, pop-ups). */}
               {site ? (

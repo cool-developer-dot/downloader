@@ -46,6 +46,8 @@ import { PageDisplayHost } from '@/browser/page-display/components/PageDisplaySh
 import { usePageBrightness } from '@/browser/page-display/use-page-brightness';
 import { ensureDataSaver } from '@/browser/data-saver/data-saver.service';
 import { ensureBrowsingTraffic } from '@/browser/data-saver/browsing-traffic.service';
+import { ensureContentBlocking } from '@/browser/blocking/content-blocking.service';
+import { ensureSiteBlocking } from '@/browser/blocking/site-blocking.service';
 import { scheduleCacheLimitCheck } from '@/browser/data-saver/cache-limit.service';
 import { FindInPageBar } from '@/browser/find/FindInPageBar';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
@@ -180,6 +182,9 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   // B18: savers (preloading, tab sleep, auto scroll, pictures), browsing data counts, the cache limit check.
   useEffect(() => ensureDataSaver(), []);
   useEffect(() => ensureBrowsingTraffic(), []);
+  // B14: ad / tracker rules to the native blocker; the site blocker, time limits and focus mode.
+  useEffect(() => ensureContentBlocking(), []);
+  useEffect(() => ensureSiteBlocking(), []);
   useEffect(() => scheduleCacheLimitCheck(), []);
   const { loadUrl } = useBrowserEngineContext();
   const { t } = useTranslation();

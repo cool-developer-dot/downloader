@@ -9,6 +9,7 @@ import { browserBookmarksEn } from './catalogs/browserBookmarks.en';
 import { browserReaderEn } from './catalogs/browserReader.en';
 import { browserPageDisplayEn } from './catalogs/browserPageDisplay.en';
 import { browserDataSaverEn } from './catalogs/browserDataSaver.en';
+import { browserBlockingEn } from './catalogs/browserBlocking.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
 import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
@@ -999,6 +1000,10 @@ export const en = {
       https_required: {
         title: 'No secure version of this site',
         message: 'VidoraX opens websites only over a secure connection (https), and this site didn’t answer on one, so it can’t be opened.',
+      },
+      site_blocked: {
+        title: 'This site is blocked',
+        message: 'You chose to block this site.',
       },
       http_error: {
         title: 'Unable to open this page',
@@ -2829,4 +2834,5 @@ export const en = {
   browserPageDisplay: browserPageDisplayEn,
   // B18 (Hamza)
   browserDataSaver: browserDataSaverEn,
+  browserBlocking: browserBlockingEn,
 } as const;

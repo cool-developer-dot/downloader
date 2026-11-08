@@ -9,6 +9,7 @@ import { browserBookmarksUr } from './catalogs/browserBookmarks.ur';
 import { browserReaderUr } from './catalogs/browserReader.ur';
 import { browserPageDisplayUr } from './catalogs/browserPageDisplay.ur';
 import { browserDataSaverUr } from './catalogs/browserDataSaver.ur';
+import { browserBlockingUr } from './catalogs/browserBlocking.ur';
 import { browserProfilesUr } from './catalogs/browserProfiles.ur';
 import { browserPrivacyUr } from './catalogs/browserPrivacy.ur';
 import { browserAddressUr } from './catalogs/browserAddress.ur';
@@ -1003,6 +1004,10 @@ export const ur: CatalogStrings<typeof en> = {
         title: 'اس سائٹ کا محفوظ ورژن نہیں',
         message:
           'VidoraX ویب سائٹس صرف محفوظ کنکشن (https) پر کھولتا ہے، اور اس سائٹ نے محفوظ کنکشن پر جواب نہیں دیا، اس لیے یہ نہیں کھل سکتی۔',
+      },
+      site_blocked: {
+        title: 'یہ سائٹ بلاک ہے',
+        message: 'آپ نے یہ سائٹ بلاک کرنے کا انتخاب کیا ہے۔',
       },
       http_error: {
         title: 'صفحہ دستیاب نہیں',
@@ -2833,4 +2838,5 @@ export const ur: CatalogStrings<typeof en> = {
   browserPageDisplay: browserPageDisplayUr,
   // B18 (Hamza)
   browserDataSaver: browserDataSaverUr,
+  browserBlocking: browserBlockingUr,
 };

@@ -78,6 +78,15 @@ import {
   parseImageExceptions,
   serializeImageExceptions,
 } from '@/browser/data-saver/data-saver-settings';
+// B14 (Hamza)
+import {
+  normalizeAutoplay,
+  parseAutoplaySites,
+  parseSiteList,
+  serializeAutoplaySites,
+  serializeSiteList,
+} from '@/browser/blocking/blocking-settings';
+import { normalizeFocusMinutesChoice } from '@/browser/blocking/site-limits';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -218,6 +227,12 @@ export const useSettingsStore = createStore<SettingsStore>()(
         batterySaver: state.batterySaver,
         hardwareAcceleration: state.hardwareAcceleration,
         cacheLimitMb: state.cacheLimitMb,
+        adBlocker: state.adBlocker,
+        trackerBlocker: state.trackerBlocker,
+        adAllowedSites: state.adAllowedSites,
+        autoplay: state.autoplay,
+        autoplaySites: state.autoplaySites,
+        focusMinutes: state.focusMinutes,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -418,6 +433,19 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.hardwareAcceleration === 'boolean' ? raw.hardwareAcceleration : current.hardwareAcceleration,
           cacheLimitMb:
             raw.cacheLimitMb === undefined ? current.cacheLimitMb : normalizeCacheLimit(raw.cacheLimitMb),
+          adBlocker: typeof raw.adBlocker === 'boolean' ? raw.adBlocker : current.adBlocker,
+          trackerBlocker: typeof raw.trackerBlocker === 'boolean' ? raw.trackerBlocker : current.trackerBlocker,
+          adAllowedSites:
+            typeof raw.adAllowedSites === 'string'
+              ? serializeSiteList(parseSiteList(raw.adAllowedSites))
+              : current.adAllowedSites,
+          autoplay: raw.autoplay === undefined ? current.autoplay : normalizeAutoplay(raw.autoplay),
+          autoplaySites:
+            typeof raw.autoplaySites === 'string'
+              ? serializeAutoplaySites(parseAutoplaySites(raw.autoplaySites))
+              : current.autoplaySites,
+          focusMinutes:
+            raw.focusMinutes === undefined ? current.focusMinutes : normalizeFocusMinutesChoice(raw.focusMinutes),
         };
       },
     },

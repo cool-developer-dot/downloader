@@ -106,11 +106,12 @@ describe('B9 migration v2 → v3 (15 old bookmarks, real SQLite)', () => {
   const order = (sqlite: DatabaseSync) =>
     (sqlite.prepare(`SELECT id FROM ${TABLE_NAMES.bookmarks} ORDER BY position`).all() as { id: string }[]).map((r) => r.id);
 
-  test('every bookmark is kept, in the root folder, in today’s order (newest first); version 3', async () => {
+  test('every bookmark is kept, in the root folder, in today’s order (newest first); version 3 or later', async () => {
     const { sqlite, db } = await oldDatabase();
     await migrateDatabase(db as never);
-    assert.equal(DATABASE_VERSION, 3);
-    assert.equal((sqlite.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, 3);
+    // B9 made it 3; later packages go on from there (B14: 4) and the migration runs every step.
+    assert.ok(DATABASE_VERSION >= 3);
+    assert.equal((sqlite.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, DATABASE_VERSION);
     assert.deepEqual(
       order(sqlite),
       Array.from({ length: 15 }, (_, i) => `old-${14 - i}`),
@@ -143,10 +144,10 @@ describe('B9 migration v2 → v3 (15 old bookmarks, real SQLite)', () => {
     assert.equal((sqlite.prepare(`SELECT COUNT(*) AS n FROM ${TABLE_NAMES.bookmarks}`).get() as { n: number }).n, 15);
   });
 
-  test('a fresh install gets version 3 with the new tables', async () => {
+  test('a fresh install gets the current version with the new tables', async () => {
     const { sqlite, db } = openDb();
     await migrateDatabase(db as never);
-    assert.equal((sqlite.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, 3);
+    assert.equal((sqlite.prepare('PRAGMA user_version').get() as { user_version: number }).user_version, DATABASE_VERSION);
     const tables = (sqlite.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]).map((t) => t.name);
     for (const name of [TABLE_NAMES.bookmarkFolders, TABLE_NAMES.bookmarkTags, TABLE_NAMES.readingList]) assert.ok(tables.includes(name), name);
   });

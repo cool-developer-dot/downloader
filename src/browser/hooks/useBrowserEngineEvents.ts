@@ -14,6 +14,7 @@ import { useBrowserEngineContext } from '@/browser/engine';
 import {
   browserSyncService,
   goBackWebView,
+  stopWebViewLoading,
   navigationService,
   recordSuccessfulVisit,
 } from '@/browser/services';
@@ -46,6 +47,8 @@ import { useSettingsStore } from '@/store/settings';
 import { createBrowserError } from '@/browser/utils/errors';
 import { decideHttpNavigation, httpsUpgradeFor } from '@/browser/privacy/https-upgrade';
 import { isJavaScriptAllowed, parseJavaScriptExceptions } from '@/browser/privacy/privacy-settings';
+import { siteBlockReasonFor } from '@/browser/blocking/site-blocking.service';
+import { autoplayPolicyFor } from '@/browser/blocking/autoplay.service';
 import {
   currentHttpPolicy,
   httpAllowedHosts,
@@ -476,6 +479,14 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
         return;
       }
 
+      // B14: a page that started without the browser's own load or the request guard (a restored tab, a reload, a
+      // back / forward) on a site that is blocked now: stop it and show the notice.
+      if (siteBlockReasonFor(url)) {
+        stopWebViewLoading(webViewRef.current);
+        setTimeout(() => loadUrl(url), 0);
+        return;
+      }
+
       logBrowserLoad(navId, 'start', {
         safeHost: urlMeta.safeHost,
         safePathPattern: urlMeta.safePathPattern,
@@ -495,9 +506,11 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
       getOwningTabChrome,
       loadStartEpochRef,
       loadStartUrlRef,
+      loadUrl,
       navigationEpochRef,
       setLoading,
       tabId,
+      webViewRef,
     ],
   );
 
@@ -580,7 +593,8 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
         markVisited();
 
         const owningAfter = getOwningTabChrome();
-        if (!owningAfter.error && !state.incognito) {
+        // B14: a blocked page that was stopped as it started (restored tab, reload) is never a visit.
+        if (!owningAfter.error && !state.incognito && !siteBlockReasonFor(committedUrl)) {
           const activeId = useBrowserStore.getState().activeTabId;
           if (!tabId || tabId === activeId) {
             browserSyncService.onSuccessfulPage(committedUrl, owningAfter.title);
@@ -1007,6 +1021,12 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
     }
 
     if (isMainFrame) {
+      // B14 #276 / #277 / #278: a blocked site is shown as blocked by the browser's own load (never loaded).
+      if (siteBlockReasonFor(url)) {
+        logBrowserNav(navId, 'block', { decision: false, decisionReason: 'site_blocked', safeHost: urlMeta.safeHost });
+        setTimeout(() => loadUrl(url), 0);
+        return false;
+      }
       const settings = useSettingsStore.getState();
       // B12 #124: with HTTPS-only on, or in a build that can't open http, a page asked for over http opens over https.
       const http = decideHttpNavigation(url, currentHttpPolicy(), httpAllowedHosts(), upgradingHosts());
@@ -1031,6 +1051,13 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
       const runningNow = isJavaScriptAllowed(getOwningTabChrome().url, settings.javaScript, exceptions);
       if (isJavaScriptAllowed(url, settings.javaScript, exceptions) !== runningNow) {
         logBrowserNav(navId, 'block', { decision: false, decisionReason: 'javascript_site_setting', safeHost: urlMeta.safeHost });
+        setTimeout(() => loadUrl(url), 0);
+        return false;
+      }
+      // B14 #218: a site with another autoplay choice reloads through the browser too (the WebView's autoplay setting
+      // and page script follow the tab's site, so they must change before the page starts).
+      if (autoplayPolicyFor(url) !== autoplayPolicyFor(getOwningTabChrome().url)) {
+        logBrowserNav(navId, 'block', { decision: false, decisionReason: 'autoplay_site_setting', safeHost: urlMeta.safeHost });
         setTimeout(() => loadUrl(url), 0);
         return false;
       }

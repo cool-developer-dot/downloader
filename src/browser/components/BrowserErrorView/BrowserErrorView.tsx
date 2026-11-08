@@ -10,6 +10,7 @@ import { goHomeForTab, reloadForTab } from '@/browser/services';
 import { selectBrowserError, useBrowserStore } from '@/browser/stores';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
 import { allowHttpForHost } from '@/browser/privacy/privacy.service';
+import { SiteBlockedView } from '@/browser/blocking/components/SiteBlockedView';
 
 export type BrowserErrorViewProps = {
   testID?: string;
@@ -59,6 +60,11 @@ export const BrowserErrorView = memo(function BrowserErrorView({
 
   if (!error) {
     return null;
+  }
+
+  // B14 #276 / #277 / #278: the user's own block, with its reason (and Open once it no longer applies).
+  if (error.code === 'site_blocked') {
+    return <SiteBlockedView url={retryUrl} testID={`${testID}-site-blocked`} />;
   }
 
   const titleKey = `browser.errors.${error.code}.title` as TranslationKey;

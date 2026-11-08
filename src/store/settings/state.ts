@@ -52,6 +52,13 @@ import {
   DEFAULT_CACHE_LIMIT,
   DEFAULT_IMAGE_EXCEPTIONS_JSON,
 } from '@/browser/data-saver/data-saver-settings';
+// B14 (Hamza)
+import {
+  DEFAULT_AD_ALLOWED_SITES_JSON,
+  DEFAULT_AUTOPLAY,
+  DEFAULT_AUTOPLAY_SITES_JSON,
+} from '@/browser/blocking/blocking-settings';
+import { DEFAULT_FOCUS_MINUTES_CHOICE } from '@/browser/blocking/site-limits';
 
 export const initialSettingsState: SettingsState = {
   clipboardMonitor: false,
@@ -142,4 +149,10 @@ export const initialSettingsState: SettingsState = {
   batterySaver: DEFAULT_BATTERY_SAVER,
   hardwareAcceleration: true,
   cacheLimitMb: DEFAULT_CACHE_LIMIT,
+  adBlocker: false,
+  trackerBlocker: false,
+  adAllowedSites: DEFAULT_AD_ALLOWED_SITES_JSON,
+  autoplay: DEFAULT_AUTOPLAY,
+  autoplaySites: DEFAULT_AUTOPLAY_SITES_JSON,
+  focusMinutes: DEFAULT_FOCUS_MINUTES_CHOICE,
 };

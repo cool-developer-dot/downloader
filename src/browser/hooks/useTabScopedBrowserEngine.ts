@@ -4,6 +4,7 @@ import type WebView from 'react-native-webview';
 import { BROWSER_WEBVIEW_BLANK } from '@/browser/constants';
 import type { BrowserEngineContextValue, ChromeNavState } from '@/browser/engine';
 import {
+  assignWebViewUrl,
   blankWebView,
   browserSyncService,
   goBackWebView,
@@ -25,6 +26,8 @@ import { isSameDocumentUrl } from '@/media-detection/utils';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
 import { httpsUpgradeFor } from '@/browser/privacy/https-upgrade';
 import { currentHttpPolicy, httpAllowedHosts, noteHttpsUpgrade } from '@/browser/privacy/privacy.service';
+import { siteBlockReasonFor } from '@/browser/blocking/site-blocking.service';
+import { createBrowserError } from '@/browser/utils/errors';
 
 type WebViewWithHistory = WebView & {
   clearHistory?: () => void;
@@ -55,6 +58,12 @@ export function useTabScopedBrowserEngine(tabId: string): BrowserEngineContextVa
 
   const updateTab = useBrowserStore((state) => state.updateTab);
   const isActiveTab = useBrowserStore((state) => state.activeTabId === tabId);
+
+  // B14: the source the WebView was last given (a blocked page is shown without changing it; see loadUrl).
+  const sourceUriRef = useRef(sourceUri);
+  useEffect(() => {
+    sourceUriRef.current = sourceUri;
+  }, [sourceUri]);
 
   const bumpNavigationEpoch = useCallback(() => {
     navigationEpochRef.current += 1;
@@ -212,7 +221,28 @@ export function useTabScopedBrowserEngine(tabId: string): BrowserEngineContextVa
       const previousUrl = tab?.url ?? '';
       const wasHome = isBrowserHomeUrl(previousUrl);
 
-      if (!wasHome && isSameDocumentUrl(previousUrl, trimmed)) {
+      // B14 #276 / #277 / #278: a blocked site never loads. The tab shows "This site is blocked" for that address; the
+      // WebView keeps what it had (stopped, hidden behind the notice and paused — BrowserWebView's runsPage).
+      if (siteBlockReasonFor(trimmed)) {
+        logBrowserNav(navigationEpochRef.current, 'block', {
+          decision: false,
+          decisionReason: 'site_blocked',
+          safeHost: safeBrowserHost(trimmed),
+          tabId,
+        });
+        stopWebViewLoading(webViewRef.current);
+        updateTab(tabId, {
+          url: trimmed,
+          error: createBrowserError('site_blocked', { retryUrl: trimmed }),
+          loading: false,
+          progress: 0,
+        });
+        return;
+      }
+      // Opening the page again after its block ended: it was never loaded (or was stopped), so no same-page skip.
+      const showingBlock = tab?.error?.code === 'site_blocked';
+
+      if (!wasHome && !showingBlock && isSameDocumentUrl(previousUrl, trimmed)) {
         logBrowserNav(navigationEpochRef.current, 'request', {
           skipped: true,
           decisionReason: 'same_document',
@@ -266,7 +296,12 @@ export function useTabScopedBrowserEngine(tabId: string): BrowserEngineContextVa
       // updateTab mirrors chrome when this tab is active — do not call patchActiveTab Raw helpers.
       browserSyncService.onNavigate(trimmed);
 
-      setSourceUri(trimmed);
+      if (showingBlock && sourceUriRef.current === trimmed) {
+        // The WebView was already given this address (then stopped by the block): load it in place.
+        assignWebViewUrl(webViewRef.current, trimmed);
+      } else {
+        setSourceUri(trimmed);
+      }
       logBrowserWebView({
         event: 'source_changed',
         navigationId: navId,

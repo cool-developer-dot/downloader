@@ -72,6 +72,9 @@ import { applyPageDisplayNative, pageDisplayNative, usePageDisplay } from '@/bro
 import { applySaverNative, saverNative, useSaverEffects } from '@/browser/data-saver/data-saver.service';
 import { LITE_PAGE_SCRIPT } from '@/browser/data-saver/data-saver-settings';
 import { webViewSourceFor } from '@/browser/data-saver/source-headers';
+import { AUTOPLAY_BLOCK_ALL_SCRIPT, autoplayNeedsTap } from '@/browser/blocking/blocking-settings';
+import { useAutoplayPolicy } from '@/browser/blocking/autoplay.service';
+import { applyBlockingPage, blockingNative } from '@/browser/blocking/content-blocking.service';
 import {
   isJavaScriptAllowed,
   normalizeCookiePolicy,
@@ -165,6 +168,13 @@ export const BrowserWebView = memo(function BrowserWebView({
   const pageDisplay = usePageDisplay({ tabId, url: owningTabUrl, webViewRef });
   // B18 #188: Lite mode's page style (animations off) for the pages that load while it is on.
   const pageAnimationsOff = useSaverEffects().pageAnimationsOff;
+  // B14 #187 / #218: the autoplay policy for this tab's site ('sound' = today's WebView setting, no script).
+  const autoplayPolicy = useAutoplayPolicy(owningTabUrl);
+  const autoplayBlockAll = autoplayPolicy === 'all';
+  // B14 #276–#278: a tab showing "This site is blocked" keeps its WebView paused (like a parked tab).
+  const siteBlocked = useBrowserStore((s) =>
+    (tabId ? s.tabs.find((tab) => tab.id === tabId)?.error?.code : s.error?.code) === 'site_blocked',
+  );
 
   const [pullToRefreshEnabled, setPullToRefreshEnabled] = useState(() =>
     computePullToRefreshEnabled(useBrowserStore.getState()),
@@ -230,7 +240,7 @@ export const BrowserWebView = memo(function BrowserWebView({
   // Only the active tab's WebView runs, and only while the Browser route is in front; every other one is paused
   // natively (see webview-activity.ts).
   const browserRouteVisible = useSyncExternalStore(subscribeBrowserRouteVisible, isBrowserRouteVisible);
-  const runsPage = isActive && browserRouteVisible;
+  const runsPage = isActive && browserRouteVisible && !siteBlocked;
 
   const nativeViewTagRef = useRef<number | null>(null);
   const nativeScopeCleanupRef = useRef<(() => void) | null>(null);
@@ -245,6 +255,8 @@ export const BrowserWebView = memo(function BrowserWebView({
     applyPageDisplayNative(tag, pageUrl);
     // B18: pictures off / software layer for the page now loading.
     applySaverNative(tag, pageUrl);
+    // B14: the page's site, for "Allow ads on this site" (only while ad or tracker blocking is on).
+    applyBlockingPage(tag, pageUrl);
     applyNativeWebViewActivity(tag, runsPage);
     const previousCleanup = nativeScopeCleanupRef.current;
     nativeScopeCleanupRef.current = registerNativeObservationScope(tag, {
@@ -272,6 +284,7 @@ export const BrowserWebView = memo(function BrowserWebView({
         forgetNativeWebViewActivity(nativeViewTagRef.current);
         pageDisplayNative.forget(nativeViewTagRef.current);
         saverNative.forget(nativeViewTagRef.current);
+        blockingNative.forget(nativeViewTagRef.current);
       }
       if (tabId) {
         clearTabWebViewTag(tabId, nativeViewTagRef.current);
@@ -575,12 +588,17 @@ export const BrowserWebView = memo(function BrowserWebView({
       // in the page (site-permission-script.ts).
       `${chromeBridge.injectedJavaScriptBeforeContentLoaded}\n${mediaBeforeContent}\n${SITE_PERMISSION_PAGE_SCRIPT}${
         doNotTrack ? `\n${DO_NOT_TRACK_PAGE_SCRIPT}` : ''
-      }${spellCheckOff ? `\n${SPELL_CHECK_OFF_PAGE_SCRIPT}` : ''}${tabAudioStart ? `\n${tabAudioStart}` : ''}\n${
+      }${spellCheckOff ? `\n${SPELL_CHECK_OFF_PAGE_SCRIPT}` : ''}${tabAudioStart ? `\n${tabAudioStart}` : ''}${
+        // B14 #187 / #218: Block all — nothing plays until the user taps (after B3's wrapper; either order works).
+        autoplayBlockAll ? `
+${AUTOPLAY_BLOCK_ALL_SCRIPT}` : ''
+      }\n${
         // B16: font style, Urdu in Nastaliq, Force enable zoom (page-display-script.ts).
         pageDisplay.script
       }${pageAnimationsOff ? `
 ${LITE_PAGE_SCRIPT}` : ''}`,
     [
+      autoplayBlockAll,
       chromeBridge.injectedJavaScriptBeforeContentLoaded,
       doNotTrack,
       mediaBeforeContent,
@@ -812,7 +830,8 @@ ${LITE_PAGE_SCRIPT}` : ''}`,
       geolocationEnabled={config.geolocationEnabled}
       allowsBackForwardNavigationGestures={config.allowsBackForwardNavigationGestures}
       allowsInlineMediaPlayback={config.allowsInlineMediaPlayback}
-      mediaPlaybackRequiresUserAction={config.mediaPlaybackRequiresUserAction}
+      // B14 #218: only "Allow" (all sites, or this site) lets pages start sound by themselves; otherwise today's value.
+      mediaPlaybackRequiresUserAction={config.mediaPlaybackRequiresUserAction && autoplayNeedsTap(autoplayPolicy)}
       // Only the active tab can cover the app: a parked tab gets react-native-webview's plain chrome client (no
       // fullscreen support, so the page's request is refused), and losing it closes the tab's video view natively.
       allowsFullscreenVideo={config.allowsFullscreenVideo && isActive}

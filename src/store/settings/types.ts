@@ -170,6 +170,18 @@ export interface SettingsState {
   hardwareAcceleration: boolean;
   /** B18 #192: WebView cache limit in MB, '0' = Off (default — today's) / '50' / '100' / '250' / '500'. */
   cacheLimitMb: import('@/browser/data-saver/data-saver-settings').CacheLimit;
+  /** B14 #121: block ads with the bundled list (default off — today's). */
+  adBlocker: boolean;
+  /** B14 #114: block trackers with the bundled list (default off — today's). */
+  trackerBlocker: boolean;
+  /** B14 #121: "Allow ads on this site" — JSON list of sites where ads and trackers load (default '[]'). */
+  adAllowedSites: string;
+  /** B14 #218: autoplay for every site: 'allow' / 'sound' (default — today's: a tap before sound) / 'all'. */
+  autoplay: import('@/browser/blocking/blocking-settings').AutoplayPolicy;
+  /** B14 #218: autoplay per site, JSON `{ site: policy }` (default '{}'). */
+  autoplaySites: string;
+  /** B14 #278: the focus timer last chosen, minutes as text (default '25'). */
+  focusMinutes: import('@/browser/blocking/site-limits').FocusMinutes;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

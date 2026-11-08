@@ -3,6 +3,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { DATABASE_VERSION, TABLE_NAMES } from '@/storage/constants';
 
 import { applyBookmarkOrganizerTables } from './bookmark-organizer-schema';
+import { applySiteBlockingTables } from './site-blocking-schema';
 
 /**
  * Apply pragmas outside any transaction.
@@ -95,6 +96,8 @@ export async function applyBrowserTables(db: SQLiteDatabase): Promise<void> {
   `);
   // B9: bookmark folders, tags, notes, order and the reading list (idempotent; see bookmark-organizer-schema.ts).
   await applyBookmarkOrganizerTables(db);
+  // B14: site blocker / focus lists, time limits and time used, the focus timer (new tables; site-blocking-schema.ts).
+  await applySiteBlockingTables(db);
 }
 
 /**
