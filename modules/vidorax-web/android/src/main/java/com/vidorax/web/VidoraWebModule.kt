@@ -18,6 +18,7 @@ import com.reactnativecommunity.webview.RNCWebView
 import com.reactnativecommunity.webview.RNCWebViewHooks
 import com.reactnativecommunity.webview.RNCWebViewModule
 import com.reactnativecommunity.webview.RNCWebViewWrapper
+import com.vidorax.web.display.PageLayout
 import com.vidorax.web.keys.VidoraKeyChannel
 import com.vidorax.web.memory.AppMemory
 import com.vidorax.web.navigation.NavigationMode
@@ -362,6 +363,17 @@ class VidoraWebModule : Module() {
     AsyncFunction("requestDefaultBrowser") {
       DefaultBrowser.request(appContext.currentActivity, context)
     }.runOnQueue(Queues.MAIN)
+
+    // B16 #169 / #165 / #163: text reflow, default zoom, darkening on Android 13+ (see PageLayout).
+    AsyncFunction("setPageLayout") { viewTag: Int, textAutosizing: Boolean, initialScale: Int, algorithmicDarkening: Boolean ->
+      val webView = webViewFor(viewTag) ?: return@AsyncFunction false
+      PageLayout.apply(webView, textAutosizing, initialScale, algorithmicDarkening)
+      true
+    }.runOnQueue(Queues.MAIN)
+
+    Function("canDarkenPagesAlgorithmically") {
+      PageLayout.canDarkenAlgorithmically()
+    }
 
     OnNewIntent { intent ->
       // B9 #87: a bookmark shortcut tapped while the app runs.

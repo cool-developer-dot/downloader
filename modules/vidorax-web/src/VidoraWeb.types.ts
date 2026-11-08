@@ -349,4 +349,14 @@ export interface VidoraWebModuleApi {
 
   /** Opens the system's own dialog; never changes the setting by itself. */
   requestDefaultBrowser(): Promise<boolean>;
+
+  /**
+   * B16 #169 / #165 / #163: for the WebView with this view tag — text reflow (`TEXT_AUTOSIZING` layout), the initial
+   * zoom in percent (25–500; 0 = WebView's default; from the next load) and, on Android 13+, algorithmic darkening
+   * (applied only while the app's theme is dark, to pages without their own dark theme). Resolves false when the view
+   * is gone. Missing on older native builds.
+   */
+  setPageLayout?(viewTag: number, textAutosizing: boolean, initialScale: number, algorithmicDarkening: boolean): Promise<boolean>;
+  /** B16 #163: whether this phone's WebView can darken pages (Android 13+); else `forceDarkOn` is what works. */
+  canDarkenPagesAlgorithmically?(): boolean;
 }
