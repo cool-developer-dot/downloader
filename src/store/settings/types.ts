@@ -152,6 +152,24 @@ export interface SettingsState {
   pageBrightness: number;
   /** B16: per-site text size, zoom and "Not on this site" for force dark, as JSON (default '{}'). */
   pageDisplaySites: string;
+  /** B18 #183: pictures off on every site except `imageExceptions` (default off — today's). */
+  blockImages: boolean;
+  /** B18 #183: sites that always show pictures, as a JSON list of hosts (default '[]'). */
+  imageExceptions: string;
+  /** B18 #193: pictures only on Wi-Fi (default off — today's). */
+  imagesWifiOnly: boolean;
+  /** B18 #184: Data saver (default off — today's). */
+  dataSaver: boolean;
+  /** B18 #188: Lite mode (default off — today's). */
+  liteMode: boolean;
+  /** B18 #285: the text-only start page (default off — today's). */
+  lightweightHome: boolean;
+  /** B18 #191: Battery saver 'off' (default — today's) / 'phone' (follow the phone's) / 'on'. */
+  batterySaver: import('@/browser/data-saver/data-saver-settings').BatterySaverMode;
+  /** B18 #189: hardware acceleration (default on — today's). */
+  hardwareAcceleration: boolean;
+  /** B18 #192: WebView cache limit in MB, '0' = Off (default — today's) / '50' / '100' / '250' / '500'. */
+  cacheLimitMb: import('@/browser/data-saver/data-saver-settings').CacheLimit;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

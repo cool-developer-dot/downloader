@@ -46,6 +46,12 @@ import {
   DEFAULT_PAGE_FONT_STYLE,
   DEFAULT_TEXT_ZOOM,
 } from '@/browser/page-display/page-display-settings';
+// B18 (Hamza)
+import {
+  DEFAULT_BATTERY_SAVER,
+  DEFAULT_CACHE_LIMIT,
+  DEFAULT_IMAGE_EXCEPTIONS_JSON,
+} from '@/browser/data-saver/data-saver-settings';
 
 export const initialSettingsState: SettingsState = {
   clipboardMonitor: false,
@@ -127,4 +133,13 @@ export const initialSettingsState: SettingsState = {
   pageNightLightStrength: DEFAULT_NIGHT_LIGHT_STRENGTH,
   pageBrightness: BRIGHTNESS_SYSTEM,
   pageDisplaySites: DEFAULT_PAGE_DISPLAY_SITES_JSON,
+  blockImages: false,
+  imageExceptions: DEFAULT_IMAGE_EXCEPTIONS_JSON,
+  imagesWifiOnly: false,
+  dataSaver: false,
+  liteMode: false,
+  lightweightHome: false,
+  batterySaver: DEFAULT_BATTERY_SAVER,
+  hardwareAcceleration: true,
+  cacheLimitMb: DEFAULT_CACHE_LIMIT,
 };

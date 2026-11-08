@@ -10,6 +10,7 @@ import { NASTALIQ_FONT_FAMILY, useNastaliqFont } from '@/browser/fonts/urdu-font
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { useSettingsStore } from '@/store/settings';
+import { useImagesOffFor } from '@/browser/data-saver/data-saver.service';
 
 import { readAloud, useReadAloud } from '../read-aloud.service';
 import type { ReaderArticle } from '../reader-article';
@@ -129,7 +130,9 @@ const ArticleBody = memo(function ArticleBody({ article, palette }: { article: R
   const fontSize = Number(normalizeReaderFontSize(useSettingsStore((s) => s.readerFontSize)));
   const fontFamily = normalizeReaderFontFamily(useSettingsStore((s) => s.readerFontFamily));
   const spacing = normalizeReaderLineSpacing(useSettingsStore((s) => s.readerLineSpacing));
-  const showImages = useSettingsStore((s) => s.readerImages);
+  // B18: pictures off for this site (Block images, Wi-Fi only, Data saver) hide the reader's too.
+  const imagesOff = useImagesOffFor(article.url);
+  const showImages = useSettingsStore((s) => s.readerImages) && !imagesOff;
   const nastaliqReady = useNastaliqFont(article.urdu);
   const nastaliq = article.urdu && nastaliqReady;
   const speech = useReadAloud();

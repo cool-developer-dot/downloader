@@ -61,6 +61,16 @@ export const BROWSER_SETTING_KEYS = [
   'pageNightLightStrength',
   'pageBrightness',
   'pageDisplaySites',
+  // B18 (Hamza)
+  'blockImages',
+  'imageExceptions',
+  'imagesWifiOnly',
+  'dataSaver',
+  'liteMode',
+  'lightweightHome',
+  'batterySaver',
+  'hardwareAcceleration',
+  'cacheLimitMb',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

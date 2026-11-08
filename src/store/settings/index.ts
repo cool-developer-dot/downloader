@@ -71,6 +71,13 @@ import {
   parseSiteDisplays,
   serializeSiteDisplays,
 } from '@/browser/page-display/page-display-settings';
+// B18 (Hamza)
+import {
+  normalizeBatterySaver,
+  normalizeCacheLimit,
+  parseImageExceptions,
+  serializeImageExceptions,
+} from '@/browser/data-saver/data-saver-settings';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -202,6 +209,15 @@ export const useSettingsStore = createStore<SettingsStore>()(
         pageNightLightStrength: state.pageNightLightStrength,
         pageBrightness: state.pageBrightness,
         pageDisplaySites: state.pageDisplaySites,
+        blockImages: state.blockImages,
+        imageExceptions: state.imageExceptions,
+        imagesWifiOnly: state.imagesWifiOnly,
+        dataSaver: state.dataSaver,
+        liteMode: state.liteMode,
+        lightweightHome: state.lightweightHome,
+        batterySaver: state.batterySaver,
+        hardwareAcceleration: state.hardwareAcceleration,
+        cacheLimitMb: state.cacheLimitMb,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -387,6 +403,21 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.pageDisplaySites === 'string'
               ? serializeSiteDisplays(parseSiteDisplays(raw.pageDisplaySites))
               : current.pageDisplaySites,
+          blockImages: typeof raw.blockImages === 'boolean' ? raw.blockImages : current.blockImages,
+          imageExceptions:
+            typeof raw.imageExceptions === 'string'
+              ? serializeImageExceptions(parseImageExceptions(raw.imageExceptions))
+              : current.imageExceptions,
+          imagesWifiOnly: typeof raw.imagesWifiOnly === 'boolean' ? raw.imagesWifiOnly : current.imagesWifiOnly,
+          dataSaver: typeof raw.dataSaver === 'boolean' ? raw.dataSaver : current.dataSaver,
+          liteMode: typeof raw.liteMode === 'boolean' ? raw.liteMode : current.liteMode,
+          lightweightHome: typeof raw.lightweightHome === 'boolean' ? raw.lightweightHome : current.lightweightHome,
+          batterySaver:
+            raw.batterySaver === undefined ? current.batterySaver : normalizeBatterySaver(raw.batterySaver),
+          hardwareAcceleration:
+            typeof raw.hardwareAcceleration === 'boolean' ? raw.hardwareAcceleration : current.hardwareAcceleration,
+          cacheLimitMb:
+            raw.cacheLimitMb === undefined ? current.cacheLimitMb : normalizeCacheLimit(raw.cacheLimitMb),
         };
       },
     },

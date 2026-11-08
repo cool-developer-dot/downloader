@@ -8,6 +8,7 @@ import { browserSitePermissionsEn } from './catalogs/browserSitePermissions.en';
 import { browserBookmarksEn } from './catalogs/browserBookmarks.en';
 import { browserReaderEn } from './catalogs/browserReader.en';
 import { browserPageDisplayEn } from './catalogs/browserPageDisplay.en';
+import { browserDataSaverEn } from './catalogs/browserDataSaver.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
 import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
@@ -2826,4 +2827,6 @@ export const en = {
   browserReader: browserReaderEn,
   // B16 (Hamza)
   browserPageDisplay: browserPageDisplayEn,
+  // B18 (Hamza)
+  browserDataSaver: browserDataSaverEn,
 } as const;

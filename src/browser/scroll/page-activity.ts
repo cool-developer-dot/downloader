@@ -6,6 +6,7 @@ import { useSettingsStore } from '@/store/settings';
 import {
   AUTO_SCROLL_OFF,
   autoScrollPixelsPerSecond,
+  autoScrollSpeedFactor,
   nextAutoScroll,
   type AutoScrollEvent,
   type AutoScrollState,
@@ -78,7 +79,8 @@ function dispatchAutoScroll(event: AutoScrollEvent): void {
   const next = nextAutoScroll(previous, event);
   if (next === previous) return;
   autoScroll = next;
-  const pixelsPerSecond = autoScrollPixelsPerSecond(next.level);
+  // B18 #191: Battery saver's share of the speed (1 when it is off).
+  const pixelsPerSecond = Math.round(autoScrollPixelsPerSecond(next.level) * autoScrollSpeedFactor());
   if (next.status === 'running' && previous.status !== 'running') {
     runInActivePage(autoScrollScript({ type: 'start', pixelsPerSecond }));
   } else if (next.status === 'running' && next.level !== previous.level) {

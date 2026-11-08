@@ -15,6 +15,7 @@ import { SettingsRow, SettingsSection } from '@/screens/settings/components';
 import { useSettingsTokens } from '@/screens/settings/theme/settings-tokens';
 import { formatDownloadFileSize } from '@/screens/downloads/utils/download-format';
 import { selectDataLimitDailyMb, selectDataLimitMonthlyMb, useSettingsStore } from '@/store/settings';
+import { BrowsingUsageSection } from '@/browser/data-saver/components/BrowsingUsageSection';
 
 function bytesLabel(bytes: number): string {
   return formatDownloadFileSize(String(Math.max(0, Math.round(bytes)))) ?? '0 B';
@@ -112,6 +113,9 @@ export const DataUsageScreen = memo(function DataUsageScreen() {
           testID="data-usage-completed"
         />
       </SettingsSection>
+
+      {/* B18 #185: data used while browsing (downloads not included). */}
+      <BrowsingUsageSection />
 
       <SettingsSection
         testID="data-usage-limits"

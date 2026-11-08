@@ -44,6 +44,9 @@ import { SitePermissionsHost } from '@/browser/site-permissions/components/SiteP
 import { ReaderHost } from '@/browser/reader/components/ReaderView';
 import { PageDisplayHost } from '@/browser/page-display/components/PageDisplaySheet';
 import { usePageBrightness } from '@/browser/page-display/use-page-brightness';
+import { ensureDataSaver } from '@/browser/data-saver/data-saver.service';
+import { ensureBrowsingTraffic } from '@/browser/data-saver/browsing-traffic.service';
+import { scheduleCacheLimitCheck } from '@/browser/data-saver/cache-limit.service';
 import { FindInPageBar } from '@/browser/find/FindInPageBar';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
 import { useIsWebFullscreen, useWebFullscreenLifecycle } from '@/browser/fullscreen';
@@ -174,6 +177,10 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   useBrowserHardwareBack();
   // B16 #181: the browser's own brightness while it is in front.
   usePageBrightness();
+  // B18: savers (preloading, tab sleep, auto scroll, pictures), browsing data counts, the cache limit check.
+  useEffect(() => ensureDataSaver(), []);
+  useEffect(() => ensureBrowsingTraffic(), []);
+  useEffect(() => scheduleCacheLimitCheck(), []);
   const { loadUrl } = useBrowserEngineContext();
   const { t } = useTranslation();
   const [tabSwitcherVisible, setTabSwitcherVisible] = useState(false);

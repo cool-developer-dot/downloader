@@ -8,6 +8,7 @@ import { browserSitePermissionsUr } from './catalogs/browserSitePermissions.ur';
 import { browserBookmarksUr } from './catalogs/browserBookmarks.ur';
 import { browserReaderUr } from './catalogs/browserReader.ur';
 import { browserPageDisplayUr } from './catalogs/browserPageDisplay.ur';
+import { browserDataSaverUr } from './catalogs/browserDataSaver.ur';
 import { browserProfilesUr } from './catalogs/browserProfiles.ur';
 import { browserPrivacyUr } from './catalogs/browserPrivacy.ur';
 import { browserAddressUr } from './catalogs/browserAddress.ur';
@@ -2830,4 +2831,6 @@ export const ur: CatalogStrings<typeof en> = {
   browserReader: browserReaderUr,
   // B16 (Hamza)
   browserPageDisplay: browserPageDisplayUr,
+  // B18 (Hamza)
+  browserDataSaver: browserDataSaverUr,
 };

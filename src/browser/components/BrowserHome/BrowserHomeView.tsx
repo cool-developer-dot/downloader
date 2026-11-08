@@ -11,6 +11,8 @@ import { ThemeModeOverrideContext, useTheme } from '@/hooks/use-theme';
 import { StartPageBackdrop, useStartPageBackground } from '@/browser/startup/components/StartPageBackdrop';
 import { useTranslation } from '@/localization';
 import { useTourTargetRef } from '@/tour/tour-targets';
+import { useSaverEffects } from '@/browser/data-saver/data-saver.service';
+import { LightweightHome } from '@/browser/data-saver/components/LightweightHome';
 
 import { browserHomeTokens } from './browser-home-tokens';
 
@@ -32,6 +34,9 @@ export const BrowserHomeView = memo(function BrowserHomeView({
   // B21 #245: a colour, gradient or photo behind the page (dark layer + dark palette); the theme by default.
   const background = useStartPageBackground();
   const custom = background.kind !== 'theme';
+  // B18 #285 / #188: the text-only start page (its own switch, or Lite mode).
+  const lightHome = useSaverEffects().lightHome;
+  if (lightHome) return <LightweightHome onOpen={openUrl} />;
 
   const page = (
     <ScrollView

@@ -69,6 +69,8 @@ import { tabAudioScript } from '@/browser/tab-sound/tab-audio-script';
 import { SITE_PERMISSION_PAGE_SCRIPT } from '@/browser/site-permissions/site-permission-script';
 import { readerMode } from '@/browser/reader/reader-mode.service';
 import { applyPageDisplayNative, pageDisplayNative, usePageDisplay } from '@/browser/page-display/use-page-display';
+import { applySaverNative, saverNative, useSaverEffects } from '@/browser/data-saver/data-saver.service';
+import { LITE_PAGE_SCRIPT } from '@/browser/data-saver/data-saver-settings';
 import {
   isJavaScriptAllowed,
   normalizeCookiePolicy,
@@ -158,6 +160,8 @@ export const BrowserWebView = memo(function BrowserWebView({
   const javaScriptEnabled = isJavaScriptAllowed(owningTabUrl, javaScriptDefault, javaScriptExceptions);
   // B16: Page display — text size, force dark, the page script, and the native layout / colour filter.
   const pageDisplay = usePageDisplay({ tabId, url: owningTabUrl, webViewRef });
+  // B18 #188: Lite mode's page style (animations off) for the pages that load while it is on.
+  const pageAnimationsOff = useSaverEffects().pageAnimationsOff;
 
   const [pullToRefreshEnabled, setPullToRefreshEnabled] = useState(() =>
     computePullToRefreshEnabled(useBrowserStore.getState()),
@@ -236,6 +240,8 @@ export const BrowserWebView = memo(function BrowserWebView({
     setTabWebViewTag(tabId, tag);
     // B16: the native layout / colour matrix for the page now loading (its own site's values).
     applyPageDisplayNative(tag, pageUrl);
+    // B18: pictures off / software layer for the page now loading.
+    applySaverNative(tag, pageUrl);
     applyNativeWebViewActivity(tag, runsPage);
     const previousCleanup = nativeScopeCleanupRef.current;
     nativeScopeCleanupRef.current = registerNativeObservationScope(tag, {
@@ -262,6 +268,7 @@ export const BrowserWebView = memo(function BrowserWebView({
       if (nativeViewTagRef.current != null) {
         forgetNativeWebViewActivity(nativeViewTagRef.current);
         pageDisplayNative.forget(nativeViewTagRef.current);
+        saverNative.forget(nativeViewTagRef.current);
       }
       if (tabId) {
         clearTabWebViewTag(tabId, nativeViewTagRef.current);
@@ -568,11 +575,13 @@ export const BrowserWebView = memo(function BrowserWebView({
       }${spellCheckOff ? `\n${SPELL_CHECK_OFF_PAGE_SCRIPT}` : ''}${tabAudioStart ? `\n${tabAudioStart}` : ''}\n${
         // B16: font style, Urdu in Nastaliq, Force enable zoom (page-display-script.ts).
         pageDisplay.script
-      }`,
+      }${pageAnimationsOff ? `
+${LITE_PAGE_SCRIPT}` : ''}`,
     [
       chromeBridge.injectedJavaScriptBeforeContentLoaded,
       doNotTrack,
       mediaBeforeContent,
+      pageAnimationsOff,
       pageDisplay.script,
       spellCheckOff,
       tabAudioStart,
@@ -682,7 +691,17 @@ export const BrowserWebView = memo(function BrowserWebView({
   );
 
   const handleShouldStartLoadWithRequest = useCallback(
-    (request: ShouldStartLoadRequest) => onShouldStartLoadWithRequest(request),
+    (request: ShouldStartLoadRequest) => {
+      // B18: a new top-level page gets its pictures setting before it starts loading (the load start is later).
+      if (
+        (request as { isTopFrame?: boolean }).isTopFrame !== false &&
+        /^https?:/i.test(request.url) &&
+        nativeViewTagRef.current != null
+      ) {
+        applySaverNative(nativeViewTagRef.current, request.url);
+      }
+      return onShouldStartLoadWithRequest(request);
+    },
     [onShouldStartLoadWithRequest],
   );
 

@@ -31,6 +31,25 @@ export function startLevel(speed: ScrollSpeed): number {
   return speed === 'slow' ? 1 : speed === 'fast' ? 4 : 2;
 }
 
+/**
+ * B18 #191: Battery saver slows auto scroll — a share of the speed (0.25–1) read when scrolling starts or changes
+ * speed. Unbound: 1 (B6's speeds unchanged).
+ */
+let speedFactor: () => number = () => 1;
+
+export function bindAutoScrollSpeedFactor(next: (() => number) | null): void {
+  speedFactor = next ?? (() => 1);
+}
+
+export function autoScrollSpeedFactor(): number {
+  try {
+    const value = speedFactor();
+    return Number.isFinite(value) ? Math.min(1, Math.max(0.25, value)) : 1;
+  } catch {
+    return 1;
+  }
+}
+
 export function autoScrollPixelsPerSecond(level: number): number {
   const index = Math.max(0, Math.min(AUTO_SCROLL_LEVELS.length - 1, Math.round(level)));
   return AUTO_SCROLL_LEVELS[index]!;

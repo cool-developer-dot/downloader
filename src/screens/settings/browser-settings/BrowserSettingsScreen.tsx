@@ -15,6 +15,7 @@ import { TabsSettingsSection } from './TabsSettingsSection';
 import { SitePermissionsSection } from './SitePermissionsSection';
 import { BookmarksSettingsSection } from './BookmarksSettingsSection';
 import { PageDisplaySettingsSection } from './PageDisplaySettingsSection';
+import { DataSaverSettingsSection } from './DataSaverSettingsSection';
 import { NavigationSettingsSection } from './NavigationSettingsSection';
 import { PrivacySettingsSection } from './PrivacySettingsSection';
 import { ProfilesSettingsSection } from './ProfilesSettingsSection';
@@ -53,6 +54,7 @@ export const BrowserSettingsScreen = memo(function BrowserSettingsScreen() {
         <TabsSettingsSection />
         <BookmarksSettingsSection />
         <PageDisplaySettingsSection />
+        <DataSaverSettingsSection />
         <PrivacySettingsSection />
         <SitePermissionsSection />
         <ProfilesSettingsSection />
