@@ -6,9 +6,10 @@
  *   marked as icons by the common icon-font classes, `i`, `[aria-hidden="true"]`, `[data-icon]`, SVG) and code, which
  *   keep their own fonts.
  * - **Urdu in Nastaliq (#272)**: only text marked Urdu (`:lang(ur)`) and only its Arabic-script letters (the font face's
- *   `unicodeRange`); the face is the phone's own Noto Nastaliq Urdu (`local()`), loaded with the `FontFace` API. The
- *   Urdu rule is added **only after that font has loaded** (its own style element), so on a phone without it the page
- *   keeps its own fonts. The bundled copy would need the WebView to load it from the app — BLOCKED (B16 notes).
+ *   `unicodeRange`); the face is the phone's own Noto Nastaliq Urdu (`local()`) and, on a phone without it, the copy
+ *   bundled in the app (`NASTALIQ_BUNDLED_SOURCE`, served natively at one fixed address — BundledFonts.kt), loaded with
+ *   the `FontFace` API. The Urdu rule is added **only after the font has loaded** (its own style element), so if
+ *   neither loads (e.g. a site whose CSP `font-src` refuses it) the page keeps its own fonts.
  * - **Force enable zoom (#165)**: the page's viewport tag loses `user-scalable=no` and a maximum scale below 5, so
  *   pinch zoom always works (WebView's built-in zoom is already on, without on-screen buttons). Tags added or changed
  *   later are fixed too.
@@ -64,7 +65,17 @@ export function pageDisplayCss(options: PageDisplayScriptOptions): string {
 export const NASTALIQ_LOCAL_SOURCES =
   'local("Noto Nastaliq Urdu"), local("NotoNastaliqUrdu-Regular"), local("Noto Nastaliq Urdu Regular")';
 
-/** The Urdu rule, added only once the phone's Nastaliq has loaded. */
+/**
+ * B16 update — the bundled Noto Nastaliq Urdu, the only file the app serves to pages
+ * (modules/vidorax-web/.../fonts/BundledFonts.kt `FONT_URL`). Listed after the phone's own font, which wins.
+ */
+export const NASTALIQ_BUNDLED_URL = 'https://appassets.androidplatform.net/vidorax-fonts/NotoNastaliqUrdu-Regular.ttf';
+export const NASTALIQ_BUNDLED_SOURCE = `url("${NASTALIQ_BUNDLED_URL}") format("truetype")`;
+
+/** The font face's sources, in order: the phone's Nastaliq first, the bundled one as the fallback. */
+export const NASTALIQ_SOURCES = `${NASTALIQ_LOCAL_SOURCES}, ${NASTALIQ_BUNDLED_SOURCE}`;
+
+/** The Urdu rule, added only once the Nastaliq font (the phone's, else the bundled one) has loaded. */
 export function urduRuleCss(fontStyle: PageFontStyle): string {
   const fallback = fontStyle === 'default' ? 'sans-serif' : FAMILY[fontStyle];
   return `:lang(ur), :lang(ur) :not(${KEEP_FONT}) { font-family: "VidoraX Nastaliq", ${fallback} !important; }\n`;
@@ -102,8 +113,8 @@ export function pageDisplayScript(options: PageDisplayScriptOptions): string {
     } else if (state.urduFont === 'loaded') {
       putUrdu(urduCss);
     } else if (window.FontFace && document.fonts && document.fonts.add) {
-      // Only with the phone's own Nastaliq: without it the page keeps its own fonts.
-      var face = new FontFace('VidoraX Nastaliq', ${JSON.stringify(NASTALIQ_LOCAL_SOURCES)}, { unicodeRange: ${JSON.stringify(ARABIC_RANGE)} });
+      // The phone's own Nastaliq, else the bundled one; if neither loads, the page keeps its own fonts.
+      var face = new FontFace('VidoraX Nastaliq', ${JSON.stringify(NASTALIQ_SOURCES)}, { unicodeRange: ${JSON.stringify(ARABIC_RANGE)} });
       face.load().then(function (loaded) {
         document.fonts.add(loaded);
         state.urduFont = 'loaded';

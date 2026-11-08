@@ -1,10 +1,20 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { describe, test } from 'node:test';
 import vm from 'node:vm';
 
 import { applyMatrix, displayMatrix, filterMatrix3, nightLightMatrix3 } from './page-display-filters.ts';
 import { createPageDisplayNative } from './page-display-native.ts';
-import { NASTALIQ_LOCAL_SOURCES, pageDisplayCss, pageDisplayScript, urduRuleCss } from './page-display-script.ts';
+import {
+  NASTALIQ_BUNDLED_SOURCE,
+  NASTALIQ_BUNDLED_URL,
+  NASTALIQ_LOCAL_SOURCES,
+  NASTALIQ_SOURCES,
+  pageDisplayCss,
+  pageDisplayScript,
+  urduRuleCss,
+} from './page-display-script.ts';
 import {
   normalizePageBrightness,
   normalizePageZoom,
@@ -177,15 +187,32 @@ describe('page display native calls', () => {
 });
 
 describe('page display CSS (#170 / #272)', () => {
-  test('no font-style sheet by default; the Urdu rule touches only Urdu text, with no bundled font', () => {
+  test('no font-style sheet by default; the Urdu rule touches only Urdu text (the font comes from the face)', () => {
     assert.equal(pageDisplayCss({ fontStyle: 'default', urduNastaliq: true, forceZoom: false }), '');
     const urdu = urduRuleCss('default');
     assert.ok(urdu.startsWith(':lang(ur), :lang(ur) :not('));
     assert.ok(urdu.includes('"VidoraX Nastaliq", sans-serif !important'));
-    assert.ok(!/url\(/.test(urdu), 'no bundled font address (blocked)');
+    assert.ok(!/url\(/.test(urdu), 'the rule names the face; the sources are in the FontFace');
     assert.ok(!/body/.test(urdu), 'only Urdu text is touched');
     assert.ok(NASTALIQ_LOCAL_SOURCES.includes('local("Noto Nastaliq Urdu")'));
     assert.ok(!/url\(/.test(NASTALIQ_LOCAL_SOURCES));
+  });
+
+  test('B16 update: the phone font first, the bundled one last, at the one address the native side serves', () => {
+    assert.ok(NASTALIQ_SOURCES.startsWith(NASTALIQ_LOCAL_SOURCES), 'the phone font stays first');
+    assert.ok(NASTALIQ_SOURCES.endsWith(NASTALIQ_BUNDLED_SOURCE), 'the bundled font is the fallback');
+    assert.equal((NASTALIQ_SOURCES.match(/url\(/g) ?? []).length, 1, 'one bundled address only');
+    assert.equal(NASTALIQ_BUNDLED_URL, 'https://appassets.androidplatform.net/vidorax-fonts/NotoNastaliqUrdu-Regular.ttf');
+    // The same address BundledFonts.kt serves (and nothing else on that host).
+    const kotlin = fs.readFileSync(
+      path.join(process.cwd(), 'modules/vidorax-web/android/src/main/java/com/vidorax/web/fonts/BundledFonts.kt'),
+      'utf8',
+    );
+    assert.ok(kotlin.includes('const val PATH_PREFIX = "/vidorax-fonts/"'));
+    assert.ok(kotlin.includes('const val FONT_FILE = "NotoNastaliqUrdu-Regular.ttf"'));
+    assert.ok(kotlin.includes('WebViewAssetLoader.DEFAULT_DOMAIN'));
+    const script = pageDisplayScript({ fontStyle: 'default', urduNastaliq: true, forceZoom: false });
+    assert.ok(script.includes(JSON.stringify(NASTALIQ_SOURCES)), 'the page script loads both sources');
   });
 
   test('font style keeps icon fonts and code; Urdu keeps Nastaliq with the chosen fallback', () => {
@@ -297,7 +324,7 @@ describe('page display script (node:vm)', () => {
   }
   const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
-  test('Urdu rule only after the phone Nastaliq font has loaded', async () => {
+  test('Urdu rule only after the Nastaliq font (phone or bundled) has loaded', async () => {
     const api = fontApi(true);
     const page = fakePage(null, { FontFace: api.extra.FontFace, Promise });
     (page.context.document as Record<string, unknown>).fonts = api.extra.fonts;
@@ -306,7 +333,7 @@ describe('page display script (node:vm)', () => {
     await flush();
     assert.equal(api.added.length, 1);
     assert.equal(api.made[0][0], 'VidoraX Nastaliq');
-    assert.equal(api.made[0][1], NASTALIQ_LOCAL_SOURCES);
+    assert.equal(api.made[0][1], NASTALIQ_SOURCES);
     assert.equal(page.nodes.length, 1);
     assert.equal(page.nodes[0].id, 'vidorax-page-urdu');
     assert.ok(String(page.nodes[0].textContent).includes(':lang(ur)'));
@@ -315,7 +342,7 @@ describe('page display script (node:vm)', () => {
     assert.equal(page.nodes.length, 0);
   });
 
-  test('no phone Nastaliq, or no FontFace API: the page keeps its own fonts', async () => {
+  test('the font fails to load (e.g. a CSP refusing it), or no FontFace API: the page keeps its own fonts', async () => {
     const api = fontApi(false);
     const page = fakePage(null, { FontFace: api.extra.FontFace, Promise });
     (page.context.document as Record<string, unknown>).fonts = api.extra.fonts;
