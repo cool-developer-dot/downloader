@@ -365,4 +365,14 @@ export interface VidoraWebModuleApi {
    * = no filter and no layer. Resolves false when the view is gone. Missing on older native builds.
    */
   setDisplayFilter?(viewTag: number, matrix: number[] | null): Promise<boolean>;
+  /**
+   * B18 #183 / #193 / #184: pictures from the network off (true) or on for the WebView with this view tag
+   * (`WebSettings.setBlockNetworkImage`). Resolves false when the view is gone. Missing on older native builds.
+   */
+  setBlockNetworkImage?(viewTag: number, block: boolean): Promise<boolean>;
+  /**
+   * B18 #189: hardware acceleration off for this WebView (a software layer; B16's colour filter is kept), or back to
+   * the default (never forced to a hardware layer). Resolves false when the view is gone.
+   */
+  setSoftwareLayer?(viewTag: number, software: boolean): Promise<boolean>;
 }

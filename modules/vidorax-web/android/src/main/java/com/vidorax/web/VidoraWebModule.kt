@@ -21,6 +21,7 @@ import com.reactnativecommunity.webview.RNCWebViewWrapper
 import com.vidorax.web.display.LayerPaint
 import com.vidorax.web.display.PageLayout
 import com.vidorax.web.keys.VidoraKeyChannel
+import com.vidorax.web.performance.ImageBlocking
 import com.vidorax.web.memory.AppMemory
 import com.vidorax.web.navigation.NavigationMode
 import com.vidorax.web.navigation.WebHistoryWindow
@@ -380,6 +381,20 @@ class VidoraWebModule : Module() {
     AsyncFunction("setDisplayFilter") { viewTag: Int, matrix: List<Double>? ->
       val webView = webViewFor(viewTag) ?: return@AsyncFunction false
       LayerPaint.setColorMatrix(webView, LayerPaint.validMatrix(matrix))
+      true
+    }.runOnQueue(Queues.MAIN)
+
+    // B18 #183 / #193 / #184: pictures off for this tab (WebSettings.setBlockNetworkImage).
+    AsyncFunction("setBlockNetworkImage") { viewTag: Int, block: Boolean ->
+      val webView = webViewFor(viewTag) ?: return@AsyncFunction false
+      ImageBlocking.apply(webView, block)
+      true
+    }.runOnQueue(Queues.MAIN)
+
+    // B18 #189: hardware acceleration off for this tab = a software layer (LayerPaint keeps B16's filter).
+    AsyncFunction("setSoftwareLayer") { viewTag: Int, software: Boolean ->
+      val webView = webViewFor(viewTag) ?: return@AsyncFunction false
+      LayerPaint.setSoftware(webView, software)
       true
     }.runOnQueue(Queues.MAIN)
 
