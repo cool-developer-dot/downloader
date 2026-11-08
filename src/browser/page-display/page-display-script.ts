@@ -6,8 +6,9 @@
  *   marked as icons by the common icon-font classes, `i`, `[aria-hidden="true"]`, `[data-icon]`, SVG) and code, which
  *   keep their own fonts.
  * - **Urdu in Nastaliq (#272)**: only text marked Urdu (`:lang(ur)`) and only its Arabic-script letters (the font face's
- *   `unicode-range`); the face is the phone's own Noto Nastaliq Urdu (`local()`). The bundled copy would need the
- *   WebView to load it from the app — BLOCKED (see the B16 notes); without a phone font the page is unchanged.
+ *   `unicodeRange`); the face is the phone's own Noto Nastaliq Urdu (`local()`), loaded with the `FontFace` API. The
+ *   Urdu rule is added **only after that font has loaded** (its own style element), so on a phone without it the page
+ *   keeps its own fonts. The bundled copy would need the WebView to load it from the app — BLOCKED (B16 notes).
  * - **Force enable zoom (#165)**: the page's viewport tag loses `user-scalable=no` and a maximum scale below 5, so
  *   pinch zoom always works (WebView's built-in zoom is already on, without on-screen buttons). Tags added or changed
  *   later are fixed too.
@@ -53,28 +54,64 @@ const FAMILY: Record<Exclude<PageFontStyle, 'default'>, string> = {
 
 const ARABIC_RANGE = 'U+0600-06FF, U+0750-077F, U+08A0-08FF, U+FB50-FDFF, U+FE70-FEFF';
 
-/** The style sheet for these choices ('' = nothing to change). */
+/** The font-style sheet for these choices ('' = nothing to change). */
 export function pageDisplayCss(options: PageDisplayScriptOptions): string {
-  let css = '';
-  if (options.fontStyle !== 'default') {
-    const family = FAMILY[options.fontStyle];
-    css += `body, body :not(${KEEP_FONT}) { font-family: ${family} !important; }\n`;
-  }
-  if (options.urduNastaliq) {
-    css +=
-      `@font-face { font-family: "VidoraX Nastaliq"; src: local("Noto Nastaliq Urdu"), local("NotoNastaliqUrdu-Regular"), local("Noto Nastaliq Urdu Regular"); unicode-range: ${ARABIC_RANGE}; }\n` +
-      `:lang(ur), :lang(ur) :not(${KEEP_FONT}) { font-family: "VidoraX Nastaliq", ${options.fontStyle === 'default' ? 'sans-serif' : FAMILY[options.fontStyle]} !important; }\n`;
-  }
-  return css;
+  if (options.fontStyle === 'default') return '';
+  return `body, body :not(${KEEP_FONT}) { font-family: ${FAMILY[options.fontStyle]} !important; }\n`;
+}
+
+/** The phone's Nastaliq, by its names. */
+export const NASTALIQ_LOCAL_SOURCES =
+  'local("Noto Nastaliq Urdu"), local("NotoNastaliqUrdu-Regular"), local("Noto Nastaliq Urdu Regular")';
+
+/** The Urdu rule, added only once the phone's Nastaliq has loaded. */
+export function urduRuleCss(fontStyle: PageFontStyle): string {
+  const fallback = fontStyle === 'default' ? 'sans-serif' : FAMILY[fontStyle];
+  return `:lang(ur), :lang(ur) :not(${KEEP_FONT}) { font-family: "VidoraX Nastaliq", ${fallback} !important; }\n`;
 }
 
 /** The script (document start, and again on a change). */
 export function pageDisplayScript(options: PageDisplayScriptOptions): string {
   const css = JSON.stringify(pageDisplayCss(options));
+  const urduCss = JSON.stringify(options.urduNastaliq ? urduRuleCss(options.fontStyle) : '');
   return `(function () {
   try {
     var state = window.__vidoraxDisplay || (window.__vidoraxDisplay = {});
     var css = ${css};
+    var urduCss = ${urduCss};
+    var putUrdu = function (text) {
+      var root = document.documentElement;
+      if (!root) return;
+      var el = document.getElementById('vidorax-page-urdu');
+      if (!text) {
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+        return;
+      }
+      if (!el) {
+        el = document.createElement('style');
+        el.id = 'vidorax-page-urdu';
+      }
+      if (el.textContent !== text) el.textContent = text;
+      var parent = document.head || root;
+      if (el.parentNode !== parent) parent.appendChild(el);
+    };
+    var urduToken = (state.urduToken || 0) + 1;
+    state.urduToken = urduToken;
+    if (!urduCss) {
+      putUrdu('');
+    } else if (state.urduFont === 'loaded') {
+      putUrdu(urduCss);
+    } else if (window.FontFace && document.fonts && document.fonts.add) {
+      // Only with the phone's own Nastaliq: without it the page keeps its own fonts.
+      var face = new FontFace('VidoraX Nastaliq', ${JSON.stringify(NASTALIQ_LOCAL_SOURCES)}, { unicodeRange: ${JSON.stringify(ARABIC_RANGE)} });
+      face.load().then(function (loaded) {
+        document.fonts.add(loaded);
+        state.urduFont = 'loaded';
+        if (state.urduToken === urduToken) putUrdu(urduCss);
+      }, function () {
+        if (state.urduToken === urduToken) putUrdu('');
+      });
+    }
     var forceZoom = ${options.forceZoom ? 'true' : 'false'};
     var put = function () {
       var root = document.documentElement;
@@ -139,7 +176,13 @@ export function pageDisplayScript(options: PageDisplayScriptOptions): string {
       });
       state.observer.observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['content'] });
     }
-    if (!document.head) document.addEventListener('DOMContentLoaded', put, { once: true });
+    if (!document.head) {
+      document.addEventListener('DOMContentLoaded', function () {
+        put();
+        var urdu = document.getElementById('vidorax-page-urdu');
+        if (urdu && document.head && urdu.parentNode !== document.head) document.head.appendChild(urdu);
+      }, { once: true });
+    }
   } catch (e) {}
 })(); true;`;
 }

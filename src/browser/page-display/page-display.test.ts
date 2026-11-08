@@ -4,7 +4,7 @@ import vm from 'node:vm';
 
 import { applyMatrix, displayMatrix, filterMatrix3, nightLightMatrix3 } from './page-display-filters.ts';
 import { createPageDisplayNative } from './page-display-native.ts';
-import { pageDisplayCss, pageDisplayScript } from './page-display-script.ts';
+import { NASTALIQ_LOCAL_SOURCES, pageDisplayCss, pageDisplayScript, urduRuleCss } from './page-display-script.ts';
 import {
   normalizePageBrightness,
   normalizePageZoom,
@@ -177,31 +177,30 @@ describe('page display native calls', () => {
 });
 
 describe('page display CSS (#170 / #272)', () => {
-  test('nothing for the defaults except Urdu', () => {
-    assert.equal(pageDisplayCss({ fontStyle: 'default', urduNastaliq: false, forceZoom: false }), '');
-    const urdu = pageDisplayCss({ fontStyle: 'default', urduNastaliq: true, forceZoom: false });
-    assert.ok(urdu.includes('local("Noto Nastaliq Urdu")'));
-    assert.ok(urdu.includes('unicode-range: U+0600-06FF'));
-    assert.ok(urdu.includes(':lang(ur)'));
+  test('no font-style sheet by default; the Urdu rule touches only Urdu text, with no bundled font', () => {
+    assert.equal(pageDisplayCss({ fontStyle: 'default', urduNastaliq: true, forceZoom: false }), '');
+    const urdu = urduRuleCss('default');
+    assert.ok(urdu.startsWith(':lang(ur), :lang(ur) :not('));
+    assert.ok(urdu.includes('"VidoraX Nastaliq", sans-serif !important'));
     assert.ok(!/url\(/.test(urdu), 'no bundled font address (blocked)');
-    assert.ok(!/body\s*,/.test(urdu), 'only Urdu text is touched');
+    assert.ok(!/body/.test(urdu), 'only Urdu text is touched');
+    assert.ok(NASTALIQ_LOCAL_SOURCES.includes('local("Noto Nastaliq Urdu")'));
+    assert.ok(!/url\(/.test(NASTALIQ_LOCAL_SOURCES));
   });
 
-  test('font style keeps icon fonts and code', () => {
+  test('font style keeps icon fonts and code; Urdu keeps Nastaliq with the chosen fallback', () => {
     const css = pageDisplayCss({ fontStyle: 'serif', urduNastaliq: true, forceZoom: false });
     assert.ok(css.startsWith('body, body :not('));
     for (const keep of ['i,', 'code', '[class*="icon" i]', '[class*="fa-"]', '[class*="material-icons"]', '[aria-hidden="true"]', 'svg']) {
       assert.ok(css.includes(keep), keep);
     }
     assert.ok(css.includes('font-family: serif !important'));
-    // The Urdu rule comes after the font-style rule, so Urdu keeps Nastaliq.
-    assert.ok(css.indexOf(':lang(ur)') > css.indexOf('font-family: serif'));
-    assert.ok(css.includes('"VidoraX Nastaliq", serif'));
+    assert.ok(urduRuleCss('serif').includes('"VidoraX Nastaliq", serif'));
   });
 });
 
 /** Just enough DOM for the page-display script. */
-function fakePage(viewport: string | null) {
+function fakePage(viewport: string | null, extra: Record<string, unknown> = {}) {
   const nodes: Record<string, unknown>[] = [];
   const head = {
     children: nodes,
@@ -246,6 +245,7 @@ function fakePage(viewport: string | null) {
     MutationObserver: function MutationObserver() {
       return { observe: () => (observed += 1) };
     },
+    ...extra,
   };
   context.window = context;
   vm.createContext(context);
@@ -283,6 +283,50 @@ describe('page display script (node:vm)', () => {
     assert.equal(page.observed(), 0);
     const added = Object.keys(page.context).filter((k) => !['document', 'JSON', 'parseFloat', 'MutationObserver', 'window'].includes(k));
     assert.deepEqual(added, ['__vidoraxDisplay']);
+  });
+
+  /** A FontFace that loads (`ok`) or doesn't; `fonts` records what was added. */
+  function fontApi(ok: boolean) {
+    const added: unknown[] = [];
+    const made: unknown[][] = [];
+    function FontFace(this: Record<string, unknown>, ...args: unknown[]) {
+      made.push(args);
+      this.load = () => (ok ? Promise.resolve(this) : Promise.reject(new Error('no local font')));
+    }
+    return { added, made, extra: { FontFace, Promise, fonts: { add: (f: unknown) => added.push(f) } } };
+  }
+  const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+
+  test('Urdu rule only after the phone Nastaliq font has loaded', async () => {
+    const api = fontApi(true);
+    const page = fakePage(null, { FontFace: api.extra.FontFace, Promise });
+    (page.context.document as Record<string, unknown>).fonts = api.extra.fonts;
+    page.run(pageDisplayScript({ fontStyle: 'default', urduNastaliq: true, forceZoom: false }));
+    assert.equal(page.nodes.length, 0, 'nothing before the font loads');
+    await flush();
+    assert.equal(api.added.length, 1);
+    assert.equal(api.made[0][0], 'VidoraX Nastaliq');
+    assert.equal(api.made[0][1], NASTALIQ_LOCAL_SOURCES);
+    assert.equal(page.nodes.length, 1);
+    assert.equal(page.nodes[0].id, 'vidorax-page-urdu');
+    assert.ok(String(page.nodes[0].textContent).includes(':lang(ur)'));
+    // Turning it off removes the rule.
+    page.run(pageDisplayScript({ fontStyle: 'default', urduNastaliq: false, forceZoom: false }));
+    assert.equal(page.nodes.length, 0);
+  });
+
+  test('no phone Nastaliq, or no FontFace API: the page keeps its own fonts', async () => {
+    const api = fontApi(false);
+    const page = fakePage(null, { FontFace: api.extra.FontFace, Promise });
+    (page.context.document as Record<string, unknown>).fonts = api.extra.fonts;
+    page.run(pageDisplayScript({ fontStyle: 'default', urduNastaliq: true, forceZoom: false }));
+    await flush();
+    assert.equal(page.nodes.length, 0);
+    assert.equal(api.added.length, 0);
+    const old = fakePage(null);
+    old.run(pageDisplayScript({ fontStyle: 'default', urduNastaliq: true, forceZoom: false }));
+    await flush();
+    assert.equal(old.nodes.length, 0);
   });
 
   test('a page that breaks the DOM never sees an error', () => {
