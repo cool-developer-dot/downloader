@@ -1249,7 +1249,7 @@ in "Device test list for Faran".
 | #165 | Force enable zoom; page zoom per site; no on-screen zoom buttons | Aa panel / settings | Force zoom rewrites the page's viewport tag (`user-scalable=no` and a maximum scale below 5 removed; later changes watched). Page zoom per site = WebView `setInitialScale` (Default, 50–300 %), from the next load on that site. Built-in pinch zoom was already on and the zoom buttons already off (`webview-configuration.ts`, unchanged) |
 | #169 | Text reflow | settings / Aa | **Decision: native text autosizing** (`LayoutAlgorithm.TEXT_AUTOSIZING`), not injected CSS: Chromium's own autosizer enlarges text in wide columns using the real layout, and a CSS guess (e.g. `max-width` on paragraphs) breaks many layouts. True "reflow on pinch" doesn't exist in Chromium WebView |
 | #170 | Font style: Page's own (default) / Sans / Serif / Monospace | settings / Aa | Injected style sheet with `!important` on `body` and its descendants **except** `i`, `[class*="icon" i]`, Font Awesome / Material / Glyphicon / Dashicons / Octicon classes, `[aria-hidden="true"]`, `[data-icon]`, SVG, math, code / pre / kbd / samp — icon fonts and code keep their fonts |
-| #272 | Urdu in Nastaliq — on by default (as the card asks) | settings / Aa | Only `:lang(ur)` text and only its Arabic-script letters (`@font-face` `unicode-range`), with the **phone's own** Noto Nastaliq Urdu (`local()`); Latin text inside Urdu keeps a normal font; Arabic / Persian pages are untouched. Without the phone font the page is unchanged. **Bundled-font path BLOCKED** (below) |
+| #272 | Urdu in Nastaliq — on by default (as the card asks) | settings / Aa | Only `:lang(ur)` text and only its Arabic-script letters (`unicodeRange`), with the **phone's own** Noto Nastaliq Urdu (`local()`), loaded with the `FontFace` API; the Urdu rule (its own style element) is added **only after that font has loaded**, so without the phone font the page keeps its own fonts (fix 03454cc). Latin text inside Urdu gets a normal font; Arabic / Persian pages are untouched. **Bundled-font path BLOCKED** (below) |
 | #179 | Colour filter: None / Grayscale / Protanopia / Deuteranopia / Tritanopia | settings / Aa | A 4×5 colour matrix on the WebView's layer (VidoraWeb `setDisplayFilter` → `LayerPaint`, hardware layer + `ColorMatrixColorFilter`) — **never a CSS filter**. The three colour-blindness choices are **corrections** (daltonize, `I + E·(I − S)`, Machado 2009 simulation matrices), not simulations: they shift confused colours into ones the user can tell apart; greys stay grey (tested) |
 | #180 | Night light with strength 10–100 % | settings / Aa | Blue (and a little green) turned down; multiplied after the colour filter into the same matrix |
 | #181 | Brightness: "Use phone brightness" (default) or a level | settings / Aa | expo-brightness `setBrightnessAsync` = **this app's window only** (no permission; the phone's setting never changes). Applied while the browser is in front; leaving it (or switching back to phone brightness) restores the window exactly as it was (system or the previous level); apply / restore are queued so quick changes can't leave the wrong level |
@@ -1257,7 +1257,8 @@ in "Device test list for Faran".
 | Page display (B16) | Bundled Nastaliq inside web pages BLOCKED (patch-script hook needed; exact change in the B16 section) |
 | Page display (B16) | Page zoom per site applies from the next load; Nastaliq may touch lines on sites with a tight `line-height` |
 | Data saver (B18) | Save-Data header skipped: `source` headers reload the tab's first page and miss link taps; needs the request-intercept patch hook |
-| Data usage (B18) | Browsing includes other traffic the app makes while the browser is in front; per-site numbers not built (card) |
+| Data usage (B18) | Browsing includes other traffic the app makes while the browser is in front, and a few percent of a download's network overhead; per-site numbers not built (card) |
+| Do Not Track (B12) | Switching it while a tab has moved on by links loads that tab's first page again (react-native-webview `setSource`); found while checking Save-Data |
 
 - **One Aa panel** (browser menu → Page display): this site's text size, page zoom, "No forced dark on this site",
   Reset this site; then the every-site choices. **Browser settings → Page display**: the defaults, the text size
@@ -1283,7 +1284,7 @@ WebViewAssetLoader has to answer requests from `WebViewClient.shouldInterceptReq
    `/vidorax-fonts/`, only `NotoNastaliqUrdu-Regular.ttf`, response header `Access-Control-Allow-Origin: *` because a
    page loads it cross-origin), the font copied to `modules/vidorax-web/android/src/main/assets/vidorax-fonts/`.
 4. `page-display-script.ts`: add `url("https://appassets.androidplatform.net/vidorax-fonts/NotoNastaliqUrdu-Regular.ttf")`
-   after the `local()` sources.
+   after the `local()` sources in `NASTALIQ_LOCAL_SOURCES` (the `FontFace` the script loads).
 
 Everything else of #272 ships (phone font, `:lang(ur)` only, Arabic letters only, on by default).
 
@@ -1326,6 +1327,8 @@ never throws). Kotlin: `PageLayoutTest`, `LayerPaintTest`.
 - Page zoom per site applies from the next load (WebView `setInitialScale`).
 - Nastaliq inside pages needs the phone's font (bundled path BLOCKED above); Nastaliq's tall letters can touch lines
   on sites with a tight `line-height` (line heights are left to the site).
+- On a phone with Noto Nastaliq Urdu, an Urdu site's own Nastaliq web font is replaced by the phone's (the rule wins
+  with `!important`).
 - Once text size has been changed, setting it back to 100 % passes `textZoom` 100 rather than leaving WebView's own
   default (which may follow the phone's font size).
 
@@ -1344,7 +1347,8 @@ never throws). Kotlin: `PageLayoutTest`, `LayerPaintTest`.
 - [ ] Font style Serif / Monospace: text changes; icons (e.g. a site using Font Awesome / Material icons) still show
       as icons, not letters; code blocks keep monospace
 - [ ] Urdu: BBC Urdu / Express Urdu in Nastaliq (phone with the font, e.g. Android 8+ Pixel / Samsung); an Arabic site
-      (e.g. aljazeera.net) unchanged; Urdu in Nastaliq off → back to the site's font
+      (e.g. aljazeera.net) unchanged; Urdu in Nastaliq off → back to the site's font; on a phone **without** the font,
+      Urdu sites look exactly as without VidoraX
 - [ ] Colour filters: Grayscale, then each correction — the page's colours change, the app's own bars don't; Night
       light 10 % → 100 % gets warmer; both together. Scrolling and video stay smooth with a filter on (hardware layer)
 - [ ] Brightness: switch off "Use phone brightness", set 20 % → the browser dims; go to Downloads → normal; back →
@@ -1357,7 +1361,8 @@ never throws). Kotlin: `PageLayoutTest`, `LayerPaintTest`.
 
 ```
 B16 Page display — done (one part BLOCKED)
-Commits: ef7b527 (native: page layout), a8b60e2 (native: colour matrix), 763c32b (page display), <docs: this commit>
+Commits: ef7b527 (native: page layout), a8b60e2 (native: colour matrix), 763c32b (page display), b7c31c3 (docs),
+  c3b4ade (fix: native values for the page that starts loading), 03454cc (fix: Urdu rule only once the phone font loads)
 Native code to review: VidoraWeb setPageLayout / canDarkenPagesAlgorithmically (display/PageLayout.kt:
   TEXT_AUTOSIZING, setInitialScale, setAlgorithmicDarkeningAllowed on 13+) and setDisplayFilter
   (display/LayerPaint.kt: ColorMatrixColorFilter on a hardware layer; the one place layer type + paint are set,
@@ -1387,7 +1392,7 @@ tests, typecheck and lint here; device checks in "Device test list for Faran".
 | --- | --- | --- | --- |
 | #183 | Block images + "Sites that always show pictures" (add by typing, remove) | VidoraWeb `setBlockNetworkImage` per tab | Decided per page: when a top-level page is requested (`onShouldStartLoadWithRequest`, http(s) only) and again when it starts loading. A site on the list always shows pictures (it overrides every rule below) |
 | #193 | Images on Wi-Fi only | same | "Wi-Fi" = NetInfo `wifi` or `ethernet` — B9's "Only on Wi-Fi" rule. Network changes apply from the next page load |
-| #184 | Data saver | `resolveSaverEffects` | Pictures on Wi-Fi only; no preloading (B6 `bindBrowserSaversReader`); lite mode while on mobile data; **`dataSaverWantsNoAutoplay()` — the named hook for B14** (autoplay). **Save-Data header: skipped** — without a patch change the only way is the `source` headers (as Do Not Track does), which react-native-webview re-applies by loading `source` again, so turning Data saver on would pull a tab back to the page it was first opened on, and it would cover only pages the browser opens itself. Needs the request-intercept hook from B16's BLOCKED item to do properly |
+| #184 | Data saver | `resolveSaverEffects` | Pictures on Wi-Fi only; no preloading (B6 `bindBrowserSaversReader`); lite mode while on mobile data; **`dataSaverWantsNoAutoplay()` — the named hook for B14** (autoplay). **Save-Data header: skipped** — without a patch change the only way is the `source` headers (as Do Not Track does), which react-native-webview re-applies by loading `source` again whenever the WebView's current address differs from it (confirmed in `RNCWebViewManagerImpl.setSource`), so turning Data saver on would pull a tab back to the page it was first opened on, and it would cover only pages the browser opens itself. Needs the request-intercept hook from B16's BLOCKED item to do properly |
 | #188 | Lite mode (also automatic with Data saver on mobile data) | | **Exact set:** (1) one live tab — B3's sleep check runs 1.5 s after another tab comes to the front, with a 1 ms cap through `bindTabSleepShortener`, so every other tab sleeps (B3's own rules keep the front tab and playing tabs awake); (2) page animations off — a document-start style with the reduced-motion values (`0.01ms`, one iteration, no smooth scrolling; not `0s`, so pages waiting for `transitionend` still work); (3) pictures on Wi-Fi only; (4) the lightweight start page; (5) no preloading |
 | #189 | Hardware acceleration (on by default) | VidoraWeb `setSoftwareLayer` | Off = a software layer for each tab from its next load, through B16's `LayerPaint` (B16's colour filter is kept). On never forces a hardware layer (back to `LAYER_TYPE_NONE`) |
 | #191 | Battery saver: Off (default) / With the phone's Battery Saver / Always on | VidoraWeb `isPowerSaveMode` (read when the app comes to the front and every minute while it is) | No preloading; auto scroll at 60 % — a **new additive seam in B6 (Faran's)**: `bindAutoScrollSpeedFactor` in `scroll/auto-scroll.ts`, used in `page-activity.ts`'s `dispatchAutoScroll` (unbound = 1, B6 unchanged); tabs sleep after 5 minutes at the latest (`bindTabSleepShortener`; B3's timer runs even with Sleep unused tabs off, so the cap works for everyone) |
@@ -1441,6 +1446,10 @@ reduced-motion values, never throws); the auto-scroll speed seam (unbound 1, cla
 - Save-Data header skipped (no way without a patch change; see #184).
 - Browsing data includes any other traffic the app makes while the browser is in front (e.g. a thumbnail or a media
   check); downloads are subtracted. Per-site numbers not built (as the card says).
+- H6 counts a download's payload bytes, TrafficStats counts what went over the network (headers, TLS, retries): a big
+  download running while browsing adds a few percent of its size to Browsing (compressed transfers the other way).
+- The existing Do Not Track switch (B12) has the same `source` re-load behaviour: switching it while a tab has moved
+  on by links loads that tab's first page again (seen while checking Save-Data; not changed).
 - Image rules for a page decided at its request / load start; a network change shows from the next page.
 
 ### Device test list for Faran
@@ -1460,8 +1469,8 @@ reduced-motion values, never throws); the auto-scroll speed seam (unbound 1, cla
 - [ ] Cache limit 50 MB with a bigger cache (browse a few heavy sites; the row shows the size) → restart the app, wait
       ~15 s → the size is under the limit; Clear cache now → size drops; still logged in to sites (cookies stay)
 - [ ] Data usage → Browsing: browse a few pages, open Data usage → today / month grow; start a download and stay on
-      the Downloads screen → Browsing doesn't grow; download while browsing → Browsing grows by about the page data,
-      not the download; Reset → zero, download figures unchanged; restart the phone → no jump
+      the Downloads screen → Browsing doesn't grow; download a large file while browsing → Browsing grows by the page
+      data plus a few percent of the download (network overhead), not the whole download; Reset → zero, download figures unchanged; restart the phone → no jump
 - [ ] B15 reader with Block images on → no pictures in the reader either; the reader's "Show pictures" switch is
       unchanged afterwards
 - [ ] Merged manifest unchanged (no permission)
@@ -1471,7 +1480,7 @@ reduced-motion values, never throws); the auto-scroll speed seam (unbound 1, cla
 ```
 B18 Data saver and performance — done
 Commits: 86cf585 (native: image blocking + software layer), 8d977be (native: TrafficStats), b046eb7 (native: power
-  save), 06f679b (native: cache size / clear), 89074f8 (data saver and performance), <docs: this commit>
+  save), 06f679b (native: cache size / clear), 89074f8 (data saver and performance), 353eae2 (docs)
 Native code to review: VidoraWeb setBlockNetworkImage, setSoftwareLayer (via LayerPaint), getAppTraffic,
   isPowerSaveMode, getWebViewCacheSize, clearWebViewCache (performance/*.kt). Tests: ImageBlockingTest,
   AppTrafficTest, PowerSavingTest, WebViewCacheTest.
@@ -1485,8 +1494,9 @@ Hooks: B14 reads dataSaverWantsNoAutoplay() (src/browser/data-saver/data-saver.s
   bindBrowserSaversReader and B3's bindTabSleepShortener; adds bindAutoScrollSpeedFactor to B6's auto scroll (your
   files scroll/auto-scroll.ts, scroll/page-activity.ts — additive).
 Skipped: Save-Data header (needs the request-intercept patch hook). Not built: per-site data numbers (card).
-Found, not fixed: browsing data includes other app traffic while the browser is in front; picture rules from the
-  next page load after a network change.
+Found, not fixed: browsing data includes other app traffic while the browser is in front and a few percent of a
+  download's network overhead; picture rules from the next page load after a network change; the existing Do Not
+  Track switch re-loads a tab's first page (same react-native-webview source behaviour).
 ```
 
 ## Lists kept for the owner
