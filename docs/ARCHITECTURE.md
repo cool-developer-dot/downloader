@@ -826,7 +826,11 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   `page-display-native.ts`), colour matrices in `page-display-filters.ts`, brightness in `use-page-brightness.ts`
   (window only; mounted in `BrowserScreen`). Native: VidoraWeb `display/PageLayout.kt` (text autosizing, initial scale,
   algorithmic darkening) and `display/LayerPaint.kt` (the one owner of a tab WebView's layer type + paint). UI:
-  `PageDisplayHost` (Aa panel) and `PageDisplaySettingsSection` in Browser settings.
+  `PageDisplayHost` (Aa panel) and `PageDisplaySettingsSection` in Browser settings. B16 update: on phones without
+  Nastaliq the page font falls back to the bundled copy, which `fonts/BundledFonts.kt` serves at one fixed address on
+  `appassets.androidplatform.net` (every other path there: an empty 404) through the patch script's
+  `RNCWebViewHooks.interceptRequest` hook — called in the one `shouldInterceptRequest` override right after
+  `observeRequest`, on network threads, returning a response or null.
 - **Data saver and performance (B18).** `src/browser/data-saver/`: `data-saver-settings.ts` (`resolveSaverEffects`,
   `imagesOffFor` — pure) and `data-saver.service.ts` (NetInfo, VidoraWeb `isPowerSaveMode`; binds B6
   `bindBrowserSaversReader`, B3 `bindTabSleepShortener`, B6 `bindAutoScrollSpeedFactor`; B14 hook

@@ -1236,8 +1236,8 @@ Found, not fixed: reader needs JavaScript on for the site; reader pictures load 
 ## B16 — Page display (#163, #164, #165, #169, #170, #272, #179, #180, #181)
 
 Mega 3. Two native commits (Kotlin tests), no database change (`DATABASE_VERSION` stays 3), no permission, no new
-library (expo-brightness was already in the app). **One part BLOCKED:** the bundled Nastaliq font inside web pages
-(details below); the phone's own Nastaliq path ships. Testing rule: unit tests, typecheck and lint here; device checks
+library (expo-brightness was already in the app). The bundled Nastaliq font inside web pages was BLOCKED here on a
+patch-script hook; **done in the B16 update (Mega 5, below)** with Faran's approved `interceptRequest` hook. Testing rule: unit tests, typecheck and lint here; device checks
 in "Device test list for Faran".
 
 ### What the user sees
@@ -1249,12 +1249,12 @@ in "Device test list for Faran".
 | #165 | Force enable zoom; page zoom per site; no on-screen zoom buttons | Aa panel / settings | Force zoom rewrites the page's viewport tag (`user-scalable=no` and a maximum scale below 5 removed; later changes watched). Page zoom per site = WebView `setInitialScale` (Default, 50–300 %), from the next load on that site. Built-in pinch zoom was already on and the zoom buttons already off (`webview-configuration.ts`, unchanged) |
 | #169 | Text reflow | settings / Aa | **Decision: native text autosizing** (`LayoutAlgorithm.TEXT_AUTOSIZING`), not injected CSS: Chromium's own autosizer enlarges text in wide columns using the real layout, and a CSS guess (e.g. `max-width` on paragraphs) breaks many layouts. True "reflow on pinch" doesn't exist in Chromium WebView |
 | #170 | Font style: Page's own (default) / Sans / Serif / Monospace | settings / Aa | Injected style sheet with `!important` on `body` and its descendants **except** `i`, `[class*="icon" i]`, Font Awesome / Material / Glyphicon / Dashicons / Octicon classes, `[aria-hidden="true"]`, `[data-icon]`, SVG, math, code / pre / kbd / samp — icon fonts and code keep their fonts |
-| #272 | Urdu in Nastaliq — on by default (as the card asks) | settings / Aa | Only `:lang(ur)` text and only its Arabic-script letters (`unicodeRange`), with the **phone's own** Noto Nastaliq Urdu (`local()`), loaded with the `FontFace` API; the Urdu rule (its own style element) is added **only after that font has loaded**, so without the phone font the page keeps its own fonts (fix 03454cc). Latin text inside Urdu gets a normal font; Arabic / Persian pages are untouched. **Bundled-font path BLOCKED** (below) |
+| #272 | Urdu in Nastaliq — on by default (as the card asks) | settings / Aa | Only `:lang(ur)` text and only its Arabic-script letters (`unicodeRange`), with the **phone's own** Noto Nastaliq Urdu (`local()`), loaded with the `FontFace` API; the Urdu rule (its own style element) is added **only after that font has loaded**, so without the phone font the page keeps its own fonts (fix 03454cc). Latin text inside Urdu gets a normal font; Arabic / Persian pages are untouched. **B16 update:** the bundled font is the fallback on phones without Nastaliq (below) |
 | #179 | Colour filter: None / Grayscale / Protanopia / Deuteranopia / Tritanopia | settings / Aa | A 4×5 colour matrix on the WebView's layer (VidoraWeb `setDisplayFilter` → `LayerPaint`, hardware layer + `ColorMatrixColorFilter`) — **never a CSS filter**. The three colour-blindness choices are **corrections** (daltonize, `I + E·(I − S)`, Machado 2009 simulation matrices), not simulations: they shift confused colours into ones the user can tell apart; greys stay grey (tested) |
 | #180 | Night light with strength 10–100 % | settings / Aa | Blue (and a little green) turned down; multiplied after the colour filter into the same matrix |
 | #181 | Brightness: "Use phone brightness" (default) or a level | settings / Aa | expo-brightness `setBrightnessAsync` = **this app's window only** (no permission; the phone's setting never changes). Applied while the browser is in front; leaving it (or switching back to phone brightness) restores the window exactly as it was (system or the previous level); apply / restore are queued so quick changes can't leave the wrong level |
 | Page display (B16) | Android 13+: forced dark only while the app's theme is dark (WebView rule for apps targeting API 33+) |
-| Page display (B16) | Bundled Nastaliq inside web pages BLOCKED (patch-script hook needed; exact change in the B16 section) |
+| Page display (B16) | ~~Bundled Nastaliq inside web pages BLOCKED~~ — **done in the B16 update** (interceptRequest hook) |
 | Page display (B16) | Page zoom per site applies from the next load; Nastaliq may touch lines on sites with a tight `line-height` |
 | Data saver (B18) | Save-Data header skipped: `source` headers reload the tab's first page and miss link taps; needs the request-intercept patch hook |
 | Data usage (B18) | Browsing includes other traffic the app makes while the browser is in front, and a few percent of a download's network overhead; per-site numbers not built (card) |
@@ -1269,9 +1269,10 @@ in "Device test list for Faran".
   (`page-display-native.ts`, cached per view tag). The only default-on item is Urdu in Nastaliq (as the card asks).
 - Settings are per browser profile (B20) like every browser setting, and in Backup / Reset.
 
-### BLOCKED — bundled Nastaliq font in web pages (#272)
+### Bundled Nastaliq font in web pages (#272) — was BLOCKED; done in the B16 update
 
-Needs Faran's OK for a patch-script change. The card allows the bundled font "via WebViewAssetLoader only", and
+The plan as written in Mega 3, kept for the record (what was built is in "B16: update" below). It needed Faran's OK
+for a patch-script change. The card allows the bundled font "via WebViewAssetLoader only", and
 WebViewAssetLoader has to answer requests from `WebViewClient.shouldInterceptRequest`; the patch script's hook there
 (`RNCWebViewHooks.observeRequest`) is `void` and can't return a response. The exact change:
 
@@ -1325,8 +1326,8 @@ never throws). Kotlin: `PageLayoutTest`, `LayerPaintTest`.
 - Android 13+: forced dark only while the app's theme is dark (WebView platform rule for apps targeting 33+); "On"
   with a light app theme does nothing there.
 - Page zoom per site applies from the next load (WebView `setInitialScale`).
-- Nastaliq inside pages needs the phone's font (bundled path BLOCKED above); Nastaliq's tall letters can touch lines
-  on sites with a tight `line-height` (line heights are left to the site).
+- ~~Nastaliq inside pages needs the phone's font~~ (the B16 update adds the bundled fallback); Nastaliq's tall letters
+  can touch lines on sites with a tight `line-height` (line heights are left to the site).
 - On a phone with Noto Nastaliq Urdu, an Urdu site's own Nastaliq web font is replaced by the phone's (the rule wins
   with `!important`).
 - Once text size has been changed, setting it back to 100 % passes `textZoom` 100 rather than leaving WebView's own
@@ -1360,7 +1361,7 @@ never throws). Kotlin: `PageLayoutTest`, `LayerPaintTest`.
 ### Handoff note
 
 ```
-B16 Page display — done (one part BLOCKED)
+B16 Page display — done (one part was BLOCKED; done in the B16 update below)
 Commits: ef7b527 (native: page layout), a8b60e2 (native: colour matrix), 763c32b (page display), b7c31c3 (docs),
   c3b4ade (fix: native values for the page that starts loading), 03454cc (fix: Urdu rule only once the phone font loads)
 Native code to review: VidoraWeb setPageLayout / canDarkenPagesAlgorithmically (display/PageLayout.kt:
@@ -1374,10 +1375,74 @@ New settings: pageForceDark = 'off', pageTextZoom = 100, pageForceZoom = false, 
 New libraries: none (expo-brightness was already in the app)
 Tested: unit, typecheck, lint. Device: pending Faran's final pass.
   Kotlin on Windows: vidorax-web 98/99 (WebViewSnapshotsTest), vidorax-media won't compile — please rerun on the Mac.
-BLOCKED: bundled Nastaliq in web pages — needs Faran's OK for a patch-script change (an interceptRequest hook
+Was BLOCKED (done in the B16 update): bundled Nastaliq in web pages — needed Faran's OK for a patch-script change (an interceptRequest hook
   returning a WebResourceResponse from shouldInterceptRequest, for WebViewAssetLoader); exact change in the work log.
 Found, not fixed: Android 13+ forced dark only while the app is dark (platform); page zoom from the next load;
   Nastaliq needs the phone's font; tight site line-heights; textZoom 100 after a change vs WebView's own default.
+```
+
+### B16: update — bundled Nastaliq in web pages (Mega 5)
+
+#272 is no longer BLOCKED. Faran approved the patch-script change with these rules, followed exactly: one hook only
+(the existing `shouldInterceptRequest` override, no second one); one new `Listener` method `interceptRequest(view,
+request)` returning a `WebResourceResponse` or null (default null), called right after `observeRequest`, which stays
+first so video detection sees every request. It runs on network threads, so it is fast, thread-safe, never calls JS or
+the WebView, and reads only what is held natively. Every anchor is exact text; the script is safe to run twice; a test
+case per change; its own "B16: native …" commit.
+
+| What | How |
+| --- | --- |
+| Patch script | `RNCWebViewHooks.Listener.interceptRequest` (default null) + a static dispatcher that catches, logs the exception type and returns null. In `RNCWebViewClient.shouldInterceptRequest`: `observeRequest(view, request)`, then `interceptRequest`; a non-null answer is returned, else `super`. **Run twice / upgrade:** a client already patched by the previous script (observe only) is first turned back into the anchor by a reversal entry (the same mechanism as the v1 migration), so there is always exactly one override |
+| Serving | `fonts/BundledFonts.kt`: `WebViewAssetLoader` (domain `appassets.androidplatform.net`, https only) with **one** path handler on `/vidorax-fonts/` that knows exactly one name, `NotoNastaliqUrdu-Regular.ttf`, and opens exactly one asset, `vidorax-fonts/NotoNastaliqUrdu-Regular.ttf` — never `AssetsPathHandler` (that would hand out every asset, the JS bundle included). Answer: `font/ttf`, 200, `Access-Control-Allow-Origin: *` (a page loads it cross-origin through `FontFace`), long cache. **Every other address on that host** (other paths, `..` / `%2e%2e`, other case, `http://`, POST) gets an **empty 404** and opens nothing, so nothing on that host reaches the network; other hosts are untouched (null) |
+| The file | Copied into `modules/vidorax-web/android/src/main/assets/vidorax-fonts/` (690,304 bytes, same SHA-256 as `assets/fonts`, OFL text beside it, not served). The `assets/fonts` copy stays for the reader (Metro packs it into `res/`, which WebView can't reach), so the **APK carries the font twice (+0.69 MB)** |
+| Page | `page-display-script.ts`: the `FontFace` sources are `NASTALIQ_SOURCES` = the phone's `local()` names **first**, then `url("https://appassets.androidplatform.net/vidorax-fonts/NotoNastaliqUrdu-Regular.ttf") format("truetype")`. The phone's font always wins; the bundled one is fetched only when the phone has none. The Urdu rule is still added only after the face has loaded |
+
+- Commits: `d88c8b9` (B16: native — interceptRequest hook and bundled Nastaliq), `8661362` (B16: update — bundled
+  Nastaliq as the fallback page font), and this docs commit.
+- Tests: `patch-react-native-webview.test.mjs` 7/7 (new: one override with `observeRequest` first and the hook after
+  it; previously patched sources end up the same as a pristine install and a second run says "Already patched");
+  `BundledFontsTest` (6: the one font with CORS; 12 other addresses on the host → empty 404, nothing opened; POST →
+  404; other hosts untouched; the asset ships in the module, 690,304 bytes; a missing asset → 404, no crash);
+  `page-display.test.ts` (phone font first, bundled last, one address, the same address as `BundledFonts.kt`, the page
+  script loads both). Real `node_modules`: patched, one override, a second run says "Already patched".
+- Kotlin on Windows: vidorax-web 114/115 (the known `WebViewSnapshotsTest`), vidorax-media doesn't compile (known).
+- Found, not fixed: a site whose Content-Security-Policy restricts `font-src` refuses the bundled address (it keeps its
+  own fonts, as before); any page can tell the browser is VidoraX by fetching that one address (the font is public,
+  nothing else is exposed); the font is in the APK twice (reader + pages).
+
+#### Device test list for Faran (B16 update)
+
+- [ ] **Phone without Nastaliq** (this project's AVD `VidoraX_Browser_H` has none — `adb shell ls /system/fonts | grep -i
+      nastaliq` is empty): BBC Urdu / ur.wikipedia.org → Urdu in Nastaliq, English words on the page unchanged; Urdu in
+      Nastaliq off → the site's own font; an Arabic site (aljazeera.net) unchanged
+- [ ] Same phone, airplane mode after a page was loaded once: reloading it from cache still gives Nastaliq (the font
+      comes from the app, not the network)
+- [ ] Phone **with** Noto Nastaliq Urdu: still the phone's font (no `appassets.androidplatform.net` request in
+      `chrome://inspect` → Network on a debug build)
+- [ ] `https://appassets.androidplatform.net/vidorax-fonts/NotoNastaliqUrdu-OFL.txt` and
+      `https://appassets.androidplatform.net/index.android.bundle` typed in the address bar → an empty page (404),
+      never the file
+- [ ] Video detection unchanged: "Video available" on an MP4 page and an HLS page (`observeRequest` still first)
+- [ ] Release build: the same; the asset is in the APK (`unzip -l app-release.apk | grep vidorax-fonts`)
+
+#### Handoff note (B16 update)
+
+```
+B16: update — bundled Nastaliq in web pages (#272 no longer BLOCKED)
+Commits: d88c8b9 (B16: native — interceptRequest hook and bundled Nastaliq), 8661362 (page font fallback), <docs>
+Native code to review: patch script — RNCWebViewHooks.Listener.interceptRequest (default null) + dispatcher; in
+  RNCWebViewClient.shouldInterceptRequest, observeRequest first, then interceptRequest (one override; a reversal
+  migrates the previous observe-only patch). VidoraWeb interceptRequest → fonts/BundledFonts.kt (WebViewAssetLoader,
+  one name, one asset; every other path on appassets.androidplatform.net = empty 404). Tests: patch test 7/7,
+  BundledFontsTest (6).
+Database: unchanged (DATABASE_VERSION 3)
+New settings: none
+New libraries: none (androidx.webkit 1.14.0 was already a dependency). Asset: a second Noto Nastaliq Urdu copy in
+  modules/vidorax-web/.../assets/vidorax-fonts (OFL 1.1, 690,304 bytes; APK +0.69 MB)
+package-lock: unchanged
+Tested: unit 1769/1769, typecheck, lint (0 errors, 82 warnings), patch test 7/7, Kotlin vidorax-web 114/115 (known
+  WebViewSnapshotsTest; vidorax-media won't compile on Windows — please rerun both on the Mac). Device: list above.
+Found, not fixed: CSP font-src can refuse the address; pages can detect VidoraX by that address; font in the APK twice.
 ```
 
 ## B18 — Data saver and performance (#183, #193, #184, #185, #188, #189, #191, #192, #285)
@@ -1514,6 +1579,7 @@ Found, not fixed: browsing data includes other app traffic while the browser is 
 | Reader mode (B15) | No reader button on sites with JavaScript off (Readability runs in the page) |
 | B16 | `setPageLayout(viewTag, textAutosizing, initialScale, algorithmicDarkening)`, `canDarkenPagesAlgorithmically()`: `LayoutAlgorithm.TEXT_AUTOSIZING` / `NORMAL`, `WebView.setInitialScale` (25–500, else 0 = default), `WebSettingsCompat.setAlgorithmicDarkeningAllowed` on Android 13+ when supported. Test `PageLayoutTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `display/PageLayout.kt` |
 | B16 | `setDisplayFilter(viewTag, matrix \| null)`: 4×5 `ColorMatrixColorFilter` as the paint of a hardware layer; none / identity → `LAYER_TYPE_NONE`; `LayerPaint` is the single owner of a tab WebView's layer type + paint (software flag for B18 #189 keeps the filter). Test `LayerPaintTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `display/LayerPaint.kt` |
+| B16 update | **Patch script:** `RNCWebViewHooks.Listener.interceptRequest(view, request)` (default null) + dispatcher; called in the one `shouldInterceptRequest` override right after `observeRequest`; a reversal migrates the previous observe-only patch. **VidoraWeb** `interceptRequest` → `fonts/BundledFonts.kt`: one font at `https://appassets.androidplatform.net/vidorax-fonts/NotoNastaliqUrdu-Regular.ttf` (WebViewAssetLoader, one name, one asset), empty 404 for every other path on that host. Tests: patch test (2 new), `BundledFontsTest` | `scripts/patch-react-native-webview.js` (+ test), `VidoraWebModule.kt`, `fonts/BundledFonts.kt`, `assets/vidorax-fonts/` |
 | B18 | `setBlockNetworkImage(viewTag, block)` (`WebSettings.blockNetworkImage`) and `setSoftwareLayer(viewTag, software)` (through B16's `LayerPaint`; never a forced hardware layer). Test `ImageBlockingTest` | `performance/ImageBlocking.kt`, `display/LayerPaint.kt` |
 | B18 | `getAppTraffic()`: `TrafficStats.getUidRxBytes / getUidTxBytes(myUid)`, `Settings.Global.BOOT_COUNT`, `elapsedRealtime`; null when unsupported. Test `AppTrafficTest` | `performance/AppTraffic.kt` |
 | B18 | `isPowerSaveMode()`: `PowerManager.isPowerSaveMode`. Test `PowerSavingTest` | `performance/PowerSaving.kt` |
@@ -1527,6 +1593,7 @@ Found, not fixed: browsing data includes other app traffic while the browser is 
 | B15 | `@mozilla/readability` 0.6.0 | Apache-2.0 | 155 KB installed; `Readability.js` 90 KB + `Readability-readerable.js` 4 KB, carried as ~99 KB of strings in the JS bundle | Article detection and extraction, run inside the page (vendored by `scripts/dev/generate-readability-source.mjs`) |
 | B15 | `expo-speech` 57.0.3 | MIT | 141 KB installed (small Kotlin module); merged manifest gets `<queries>` for `android.intent.action.TTS_SERVICE`, no permission | Read aloud with the phone's own text-to-speech |
 | B15 | Noto Nastaliq Urdu (font, `assets/fonts/NotoNastaliqUrdu-Regular.ttf`, from google/fonts) | SIL OFL 1.1 (licence in `assets/fonts/NotoNastaliqUrdu-OFL.txt`) | 690,304 bytes (APK +~0.69 MB) | Urdu articles in Nastaliq (reader); B16's page font reuses the asset |
+| B16 update | The same Noto Nastaliq Urdu, a second copy in `modules/vidorax-web/android/src/main/assets/vidorax-fonts/` (OFL beside it) | SIL OFL 1.1 | 690,304 bytes (APK +~0.69 MB more) | Served to web pages by `BundledFonts.kt` (WebView can't reach Metro's `res/` copy) |
 
 ### New settings and defaults
 
@@ -1662,7 +1729,9 @@ Found, not fixed: browsing data includes other app traffic while the browser is 
   system families (bold / italic); read aloud skips `…network` voices.
 - B16: forced dark = `forceDarkOn` plus native algorithmic darkening (13+); text reflow = native text autosizing,
   not CSS; colour-blind choices are corrections (daltonize); filter + night light = one native matrix; WebView props
-  and native calls only after a setting first leaves its default; bundled Nastaliq in pages BLOCKED (patch hook).
+  and native calls only after a setting first leaves its default; bundled Nastaliq in pages BLOCKED (patch hook) —
+  done in the B16 update: Faran's `interceptRequest` hook, one font at one fixed address, empty 404 for the rest of
+  that host, the phone's font first.
 - B18: one pure resolver for every saver effect; picture / layer state per page at request and load start; Battery
   saver default Off; lite = sleep other tabs through B3 + reduced-motion page style; browsing data counted only while
   the browser is in front, minus H6's download total, never across restarts or resets; cache limit checked once per

@@ -2166,7 +2166,8 @@ Based on the local `integration/final-check` (not pushed). One line per package:
 - **B16 Page display.** Force dark (forceDarkOn on 10–12, algorithmic darkening on 13+ while the app is dark; "No
   forced dark on this site"), text size 50–200 % global + per site, force enable zoom, page zoom per site, text reflow
   (native text autosizing), font style (icon fonts kept), Urdu in Nastaliq with the phone's font (on by default;
-  bundled-font path **BLOCKED** on a patch-script hook), colour filters + night light as one native colour matrix on
+  **B16 update:** the bundled font as the fallback, through Faran's `interceptRequest` patch hook — one font at one
+  fixed `appassets.androidplatform.net` address, an empty 404 for the rest of that host), colour filters + night light as one native colour matrix on
   the WebView layer, window-only brightness. Aa panel in the menu; Browser settings → Page display with the per-site
   list. Native: VidoraWeb `setPageLayout`, `setDisplayFilter`. No permission, library or database change.
 - **B18 Data saver and performance.** Block images (+ always-show sites), images on Wi-Fi only, Data saver (pictures
