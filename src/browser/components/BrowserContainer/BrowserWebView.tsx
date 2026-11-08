@@ -62,7 +62,7 @@ import {
   subscribeBrowserRouteVisible,
 } from '@/browser/webview/webview-activity';
 import { clearTabWebViewTag, setTabWebViewTag } from '@/browser/webview/webview-view-tags';
-import { DO_NOT_TRACK_HEADERS, DO_NOT_TRACK_PAGE_SCRIPT } from '@/browser/privacy/privacy-page-script';
+import { DO_NOT_TRACK_PAGE_SCRIPT } from '@/browser/privacy/privacy-page-script';
 import { SPELL_CHECK_OFF_PAGE_SCRIPT } from '@/browser/startup/spell-check';
 import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
 import { tabAudioScript } from '@/browser/tab-sound/tab-audio-script';
@@ -71,6 +71,7 @@ import { readerMode } from '@/browser/reader/reader-mode.service';
 import { applyPageDisplayNative, pageDisplayNative, usePageDisplay } from '@/browser/page-display/use-page-display';
 import { applySaverNative, saverNative, useSaverEffects } from '@/browser/data-saver/data-saver.service';
 import { LITE_PAGE_SCRIPT } from '@/browser/data-saver/data-saver-settings';
+import { webViewSourceFor } from '@/browser/data-saver/source-headers';
 import {
   isJavaScriptAllowed,
   normalizeCookiePolicy,
@@ -141,6 +142,8 @@ export const BrowserWebView = memo(function BrowserWebView({
   // B12: the privacy settings that are WebView props (per profile, B20).
   const cookiePolicy = useSettingsStore((s) => normalizeCookiePolicy(s.cookiePolicy));
   const doNotTrack = useSettingsStore((s) => s.doNotTrack === true);
+  // B18 #184: Save-Data: on while the Data saver setting is on (with the DNT headers, in the source).
+  const saveData = useSettingsStore((s) => s.dataSaver === true);
   // B21 #237: Spell check off — pages get a document-start script that turns it off in their fields.
   const spellCheckOff = useSettingsStore((s) => s.spellCheck === false);
   // B3 #8 / #220: a muted or turned-down tab's next pages start with its sound settings.
@@ -555,10 +558,10 @@ export const BrowserWebView = memo(function BrowserWebView({
     });
   }, [appliedDesktopMode, isActive, scalesPageToFit, tabId, userAgent]);
 
-  // #115: the pages the browser opens itself carry the Do Not Track headers.
+  // #115: the pages the browser opens itself carry the Do Not Track headers; B18 #184 adds Save-Data: on (Data saver).
   const webViewSource = useMemo(
-    () => (doNotTrack ? { uri: sourceUri, headers: { ...DO_NOT_TRACK_HEADERS } } : { uri: sourceUri }),
-    [doNotTrack, sourceUri],
+    () => webViewSourceFor(sourceUri, { doNotTrack, saveData }),
+    [doNotTrack, saveData, sourceUri],
   );
 
   const injectedJavaScript = useMemo(
