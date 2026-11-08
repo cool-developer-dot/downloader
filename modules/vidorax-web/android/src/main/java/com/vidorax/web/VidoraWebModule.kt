@@ -11,6 +11,7 @@ import android.os.Environment
 import android.webkit.CookieManager
 import android.webkit.URLUtil
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import com.facebook.react.bridge.ReactContext
@@ -20,6 +21,7 @@ import com.reactnativecommunity.webview.RNCWebViewModule
 import com.reactnativecommunity.webview.RNCWebViewWrapper
 import com.vidorax.web.display.LayerPaint
 import com.vidorax.web.display.PageLayout
+import com.vidorax.web.fonts.BundledFonts
 import com.vidorax.web.keys.VidoraKeyChannel
 import com.vidorax.web.performance.AppTraffic
 import com.vidorax.web.performance.ImageBlocking
@@ -100,6 +102,9 @@ class VidoraWebModule : Module() {
   private val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
 
+  // B16 #272: the bundled Nastaliq font for pages (one fixed address; see BundledFonts).
+  private val bundledFonts = BundledFonts { appContext.reactContext?.applicationContext?.assets?.open(BundledFonts.ASSET_PATH) }
+
   private val webViewHooks = object : RNCWebViewHooks.Listener {
     // B20: a new WebView joins the active browser profile before react-native-webview sets it up.
     override fun beforeWebViewSetup(webView: RNCWebView) {
@@ -112,6 +117,11 @@ class VidoraWebModule : Module() {
 
     override fun observeRequest(view: WebView?, request: WebResourceRequest) {
       networkObserver.observe(view, request)
+    }
+
+    // Network threads, right after observeRequest (so detection has already seen the request).
+    override fun interceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+      return bundledFonts.intercept(request.url, request.method)
     }
 
     override fun onDownloadStart(

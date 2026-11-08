@@ -253,6 +253,79 @@ test('applying twice is a no-op', (t) => {
   assert.deepEqual(readSources(dir), once);
 });
 
+// B16: the client as left by this script before the interceptRequest hook (observeRequest only).
+const OBSERVE_ONLY_CLIENT = PRISTINE_CLIENT.replace(
+  `            } catch (InterruptedException e) {
+                FLog.e(TAG, "shouldOverrideUrlLoading was interrupted while waiting for result.", e);
+                RNCWebViewModuleImpl.shouldOverrideUrlLoadingLock.removeLock(lockIdentifier);
+                return false;
+            }`,
+  `            } catch (InterruptedException e) {
+                FLog.e(TAG, "shouldOverrideUrlLoading was interrupted while waiting for result.", e);
+                RNCWebViewModuleImpl.shouldOverrideUrlLoadingLock.removeLock(lockIdentifier);
+                return RNCWebViewHooks.cancelsUndecidedNavigation(url);
+            }`,
+).replace(
+  `                            FLog.w(TAG, "Did not receive response to shouldOverrideUrlLoading in time, defaulting to allow loading.");
+                            RNCWebViewModuleImpl.shouldOverrideUrlLoadingLock.removeLock(lockIdentifier);
+                            return false;`,
+  `                            FLog.w(TAG, "Did not receive response to shouldOverrideUrlLoading in time.");
+                            RNCWebViewModuleImpl.shouldOverrideUrlLoadingLock.removeLock(lockIdentifier);
+                            return RNCWebViewHooks.cancelsUndecidedNavigation(url);`,
+).replace(
+  `        return this.shouldOverrideUrlLoading(view, url);
+    }
+`,
+  `        return this.shouldOverrideUrlLoading(view, url);
+    }
+
+    @Override
+    public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+        RNCWebViewHooks.observeRequest(view, request);
+        return super.shouldInterceptRequest(view, request);
+    }
+`,
+);
+
+test('B16: one shouldInterceptRequest override; observeRequest first, then the interceptRequest hook may answer', (t) => {
+  const dir = createPackage(t, { client: PRISTINE_CLIENT, manager: MANAGER_SOURCE });
+  patchReactNativeWebView(dir);
+  const { client, hooks } = readSources(dir);
+
+  assert.equal(occurrences(client, 'public WebResourceResponse shouldInterceptRequest('), 1);
+  assert.match(
+    client,
+    /RNCWebViewHooks\.observeRequest\(view, request\);\s+WebResourceResponse hookResponse = RNCWebViewHooks\.interceptRequest\(view, request\);\s+if \(hookResponse != null\) \{\s+return hookResponse;\s+\}\s+return super\.shouldInterceptRequest\(view, request\);/,
+  );
+  // The Listener method defaults to null (load normally); the dispatcher never lets a failure break the request.
+  assert.match(
+    hooks,
+    /@Nullable\s+default WebResourceResponse interceptRequest\(@NonNull WebView view, @NonNull WebResourceRequest request\) \{\s+return null;\s+\}/,
+  );
+  assert.match(hooks, /import android\.webkit\.WebResourceResponse;/);
+  assert.match(hooks, /logFailure\("interceptRequest", e\);\s+return null;/);
+});
+
+test('B16: sources patched before the interceptRequest hook end up the same as a pristine install', (t) => {
+  const pristine = createPackage(t, { client: PRISTINE_CLIENT, manager: MANAGER_SOURCE });
+  const observeOnly = createPackage(t, { client: OBSERVE_ONLY_CLIENT, manager: MANAGER_SOURCE });
+  assert.equal(occurrences(OBSERVE_ONLY_CLIENT, 'RNCWebViewHooks.observeRequest(view, request);'), 1);
+
+  patchReactNativeWebView(pristine);
+  patchReactNativeWebView(observeOnly);
+
+  const migrated = readSources(observeOnly);
+  assert.deepEqual(migrated, readSources(pristine));
+  assert.equal(occurrences(migrated.client, 'public WebResourceResponse shouldInterceptRequest('), 1);
+  assert.equal(occurrences(migrated.client, 'RNCWebViewHooks.interceptRequest(view, request)'), 1);
+
+  // And a second run (the next npm install) changes nothing.
+  const result = runScript(observeOnly);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Already patched/);
+  assert.deepEqual(readSources(observeOnly), migrated);
+});
+
 test('fails loudly and writes nothing when an anchor is missing', (t) => {
   const manager = MANAGER_SOURCE.replace('            val module =', '            val webViewModule =');
   const dir = createPackage(t, { client: PRISTINE_CLIENT, manager });

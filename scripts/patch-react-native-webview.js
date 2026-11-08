@@ -7,7 +7,8 @@
  * media-detection hooks a player's MediaSource must be created under). B20: a new WebView reaches the hook before
  * react-native-webview sets it up, so it can still be put in the active browser profile (its own cookies and storage).
  * B8: the page's text-selection menu goes through the hooks too (wrapSelectionMenu), so the module can add its items
- * to Android's own menu instead of replacing it.
+ * to Android's own menu instead of replacing it. B16: right after observeRequest, interceptRequest may answer a request
+ * itself (the bundled Nastaliq font; B14's blocking) — one shouldInterceptRequest override, observeRequest first.
  *
  * Runs at postinstall and is idempotent. Every edit is an exact text replacement: when an anchor is missing, for example
  * after upgrading react-native-webview, it exits non-zero rather than shipping a browser without media detection.
@@ -30,6 +31,7 @@ const HOOKS_SOURCE = `package com.reactnativecommunity.webview;
 
 import android.view.ActionMode;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebView;
 
 import androidx.annotation.NonNull;
@@ -65,6 +67,17 @@ public final class RNCWebViewHooks {
          * never block; it cannot provide a response. {@code view} is null for service worker requests.
          */
         void observeRequest(@Nullable WebView view, @NonNull WebResourceRequest request);
+
+        /**
+         * WebView network threads, right after observeRequest, for every request of a WebView (not service workers).
+         * Returns the response to use instead of the network, or null to load normally. Same rules as observeRequest:
+         * fast, thread-safe, no calls to JS or to the WebView; whatever it reads is held natively and set ahead of time.
+         * B16 (the bundled Nastaliq font), B14 (blocking).
+         */
+        @Nullable
+        default WebResourceResponse interceptRequest(@NonNull WebView view, @NonNull WebResourceRequest request) {
+            return null;
+        }
 
         /** Main thread. Returning true means the listener took the download and DownloadManager is skipped. */
         boolean onDownloadStart(
@@ -140,6 +153,20 @@ public final class RNCWebViewHooks {
             current.observeRequest(view, request);
         } catch (RuntimeException e) {
             logFailure("observeRequest", e);
+        }
+    }
+
+    @Nullable
+    public static WebResourceResponse interceptRequest(@NonNull WebView view, @NonNull WebResourceRequest request) {
+        Listener current = listener;
+        if (current == null) {
+            return null;
+        }
+        try {
+            return current.interceptRequest(view, request);
+        } catch (RuntimeException e) {
+            logFailure("interceptRequest", e);
+            return null;
         }
     }
 
@@ -291,12 +318,24 @@ const V1_INTERCEPT = `
     }
 `;
 
+// RNCWebViewClient.java as left by this script before B16 added interceptRequest (observeRequest only).
+
+const OBSERVE_ONLY_INTERCEPT = `
+
+    @Override
+    public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+        RNCWebViewHooks.observeRequest(view, request);
+        return super.shouldInterceptRequest(view, request);
+    }`;
+
 // Replacements that turn v1-patched text back into pristine text before the edits below run.
 const V1_REVERSALS = {
   [CLIENT]: [
     { from: V1_TIMEOUT, to: PRISTINE_TIMEOUT },
     { from: V1_INTERRUPT, to: PRISTINE_INTERRUPT },
     { from: SHOULD_OVERRIDE_WITH_REQUEST + V1_INTERCEPT, to: SHOULD_OVERRIDE_WITH_REQUEST },
+    // B16: the observe-only override goes back to the anchor, so the edit below writes the one override with the hook.
+    { from: SHOULD_OVERRIDE_WITH_REQUEST + OBSERVE_ONLY_INTERCEPT, to: SHOULD_OVERRIDE_WITH_REQUEST },
   ],
 };
 
@@ -321,13 +360,17 @@ const EDITS = {
             }`,
     },
     {
-      name: 'observe requests in shouldInterceptRequest',
+      name: 'observe requests in shouldInterceptRequest, then let the hook answer them',
       from: SHOULD_OVERRIDE_WITH_REQUEST,
       to: `${SHOULD_OVERRIDE_WITH_REQUEST}
 
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         RNCWebViewHooks.observeRequest(view, request);
+        WebResourceResponse hookResponse = RNCWebViewHooks.interceptRequest(view, request);
+        if (hookResponse != null) {
+            return hookResponse;
+        }
         return super.shouldInterceptRequest(view, request);
     }`,
     },
