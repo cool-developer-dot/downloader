@@ -814,6 +814,12 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   export via `netscape-import.ts` and the system pickers, `LinkCheckSheet` over `link-check.ts`). `BookmarksBar` sits in
   `AutoHideHeader`; `BookmarkEditHost` serves the star. Shortcuts: VidoraWeb `pinBookmarkShortcut`; the app start reads
   `consumeShortcutUrl` / `onShortcutOpen` and opens a new tab once App Lock is open.
+- **Reader mode (B15).** `src/browser/reader/`: Readability (vendored as strings, `vendor/readability-source.ts`) runs in
+  the page via `reader-scripts.ts`; answers on the `vidorax-reader` channel go to `readerMode.handleMessage` (first in
+  `BrowserWebView.handleMessage`), are checked (`reader-article.ts`), sanitised and turned into blocks
+  (`reader-sanitize.ts`) and drawn natively by `components/ReaderView.tsx` (a full-screen Modal; `ReaderHost` in
+  `BrowserScreen`). State changes are pure (`reader-mode-state.ts`). Read aloud: `read-aloud.service.ts` over
+  `expo-speech`. Nastaliq: `src/browser/fonts/urdu-font.ts` (expo-font, loaded on first use).
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab

@@ -2158,6 +2158,11 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   (5,000 tested), reading list (own table; B17 hook), Check links (no cookies, Wi-Fi only by default, never deletes),
   tags and notes in search, Add to home screen (pinned shortcut, App Lock first). Native: VidoraWeb
   `pinBookmarkShortcut` and friends. DATABASE_VERSION 3. No permission or library.
+- **B15 Reader mode.** Readability in the page (`isProbablyReaderable` → address bar button + menu item), sanitised
+  article drawn natively over the page (Back keeps the page's place), Follow app / Light / Sepia / Dark, size, font,
+  spacing, pictures (all remembered), Urdu in bundled Noto Nastaliq, Read aloud with expo-speech (offline voices,
+  paragraph highlight, speed, Urdu voice or the phone's speech settings). Libraries: @mozilla/readability 0.6.0
+  (Apache-2.0), expo-speech 57.0.3 (MIT, `<queries>` only); font OFL 1.1. No native code, no database change.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 

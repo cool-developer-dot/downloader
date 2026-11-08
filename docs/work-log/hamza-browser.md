@@ -1105,6 +1105,134 @@ Found, not fixed: B20's backup / export doesn't carry folders, tags, notes or th
   site icon.
 ```
 
+## B15 — Reader mode (#161, #172, #173)
+
+Mega 3. No native code, no database change (`DATABASE_VERSION` stays 3), no permission. Two new libraries and one font
+(below). Testing rule: unit tests, typecheck and lint here; device checks in "Device test list for Faran".
+
+### How it works
+
+- **Readability runs in the page.** The app's JS engine has no DOM, so Mozilla Readability's own source is vendored as
+  string constants (`src/browser/reader/vendor/readability-source.ts`, written by
+  `scripts/dev/generate-readability-source.mjs` from `node_modules/@mozilla/readability`; a unit test fails if the file
+  isn't the generator's output for the installed version). `reader-scripts.ts` wraps it in a function (no page globals)
+  and injects it into the tab in front with `injectJavaScript`; the scripts carry only a request number.
+- **Detection (#161).** 700 ms after a page finishes loading (or its address changes without a load), the page runs
+  `isProbablyReaderable` and answers `{ type: 'state', readerable }`. The answer is kept per tab with the address it was
+  for (without `#fragment`), so the address bar's reader button (`ReaderButton`, next to the clear / spinner slot) and
+  the menu's "Reader mode" item show only for that page. Pages with JavaScript off for their site never answer: no
+  button there.
+- **Extraction.** "Reader mode" runs `new Readability(document.cloneNode(true)).parse()` on a copy of the page (the page
+  isn't changed) and answers title, byline, site name, language, direction and the article HTML (capped at 2,000,000
+  characters; longer articles say so). Answers come on their own channel, `vidorax-reader` (an article is bigger than
+  the browser-chrome channel's 50 KB cap); `BrowserWebView.handleMessage` offers each message to `readerMode` first (a
+  string-prefix check, then the checked parser). Only the newest request of the same tab counts.
+- **Sanitising (#161).** `reader-sanitize.ts`: a whitelist. `script`, `style`, `iframe`, `object`, `embed`, `svg`,
+  `math`, `form` and its fields, `audio` / `video`, `noscript`, `template`, `canvas`, `head` and the like are dropped with
+  everything inside; every attribute goes except a link's `href` and an image's `src` / `alt`, and those only when they
+  are http(s) after removing control and space characters and decoding entities (so `java&#x09;script:` and
+  `&#106;avascript:` are caught); other links become plain text. The result is then turned into blocks (paragraph,
+  heading, list item, quote, code, picture, rule) — **the app never renders HTML**: `ReaderBlocks` draws them with the
+  app's own `Text` / `View` / `expo-image`.
+- **The reader** (`ReaderView`) is a full-screen window over the page, so Back (or ✕) closes it and the page is exactly
+  where it was. Top: site, title, byline, "N min read" (220 words a minute; CJK by characters). Links close the reader
+  and load in the same tab. Pictures can be turned off (Aa sheet) and are cached in memory only (`cachePolicy="memory"`),
+  so they never outlive Clear browsing data or a private tab. Leaving the page (another tab or address) closes it.
+- **Appearance (#172).** The Aa sheet: Follow app (default) / Light / Sepia / Dark (fixed palettes; every text, link and
+  highlight colour at least 4.5:1, checked in a test), text size 14–32, Sans serif / Serif (system families, so bold and
+  italic work), line spacing Compact / Normal / Wide, Show pictures. All remembered in the settings store (Backup, Reset
+  and profiles carry them).
+- **Urdu in Nastaliq (#172).** `isUrduText`: a page that says `ur` is Urdu; `ar` / `fa` / `ps` / `sd` / `ug` / `ku` /
+  `ckb` aren't; otherwise (no language, or the `en` many Urdu templates leave in) Arabic script over half the letters
+  and Urdu's own letters (ٹ ڈ ڑ ں ھ ہ ے ۓ) at least 2 % of it. Urdu articles read right to left and use the bundled
+  **Noto Nastaliq Urdu** (`assets/fonts/NotoNastaliqUrdu-Regular.ttf`, OFL 1.1, licence file beside it), loaded with
+  `expo-font` the first time it is needed (`src/browser/fonts/urdu-font.ts` — `loadNastaliqFont` / `useNastaliqFont`,
+  shared with B16), with extra line height for Nastaliq.
+- **Read aloud (#173).** `read-aloud.service.ts` over `expo-speech` (the phone's own text-to-speech): paragraph by
+  paragraph (headings, paragraphs, list items, quotes; code and pictures skipped; paragraphs over 3,800 characters split
+  at sentence ends), the paragraph being read highlighted and kept on screen, Play / Pause (Android can't pause speech:
+  Pause stops and Play starts that paragraph again), Previous / Next paragraph, speed 0.75–2× (remembered). **Voices
+  whose name says `network` are never picked**, so reading doesn't go online. An Urdu article with no Urdu voice on the
+  phone shows a note with **Speech settings** (`Linking.sendIntent('com.android.settings.TTS_SETTINGS')`) and **Use
+  default voice**. It stops when the app leaves the foreground, the reader closes, or the page changes.
+
+### Files
+
+- New: `src/browser/reader/` (`reader-scripts.ts`, `reader-article.ts`, `reader-sanitize.ts`, `reader-mode-state.ts`,
+  `reader-mode.service.ts`, `read-aloud.ts`, `read-aloud.service.ts`, `reader-settings.ts`, `vendor/readability-source.ts`,
+  `components/{ReaderView,ReaderBlocks,ReaderAppearanceSheet,ReaderButton}.tsx`), `src/browser/fonts/urdu-font.ts`,
+  `scripts/dev/generate-readability-source.mjs`, `assets/fonts/NotoNastaliqUrdu-{Regular.ttf,OFL.txt}`, catalogs
+  `browserReader.{en,ur}.ts`.
+- Changed (additive): `BrowserWebView.tsx` (reader messages first in `handleMessage`), `AddressBar.tsx` (the button),
+  `BrowserScreen.tsx` (`ReaderHost`), menu `types.ts` / `browser-menu-actions.ts` (`reader_mode`), settings store
+  (types, state, partialize, merge), `browser-setting-keys.ts`, `browser-setting-choices.ts`, `en.ts` / `ur.ts`,
+  `package.json` / `package-lock.json`.
+
+### Tests
+
+`reader.test.ts` and `reader-mode-state.test.ts` (41): the sanitiser (scripts / styles / frames / forms / SVG / media
+dropped with contents, nested drops, all attributes and event handlers gone, ten `javascript:` / `data:` / `vbscript:` /
+`file:` / `intent:` link tricks, relative links made absolute and escaped, image `src` rules, stray and unclosed tags,
+`>` inside attribute values); blocks (headings, nested lists, quotes, `pre`, white space and `<br>`); the message parser
+(bounds, types, other channels, oversize); Urdu detection (Urdu / Arabic / Persian / English, a wrong `en`); reading
+time; **both page scripts in `node:vm`** (readerable / not, failure path answers instead of throwing, no page globals,
+only a request number, both compile); the vendored file is current; read aloud (what is read, splitting, previous /
+next, paragraph start, offline voice choice); settings (normalising, size steps, contrast of every palette); reader
+state (stale and other-tab answers ignored, `#fragment` keeps the reader open, tab switch / new address closes it,
+closed tabs dropped, late timeouts ignored). Real extraction on real pages needs a DOM, so it is on the device list.
+
+### Decisions
+
+- Readability runs inside the page (the only place with a DOM); the app keeps only a sanitised, re-built copy and draws
+  it natively — no WebView, no HTML rendering, nothing from the page runs in the app.
+- Its own message channel instead of raising the browser-chrome channel's 50 KB cap.
+- Sans / Serif are the system families (`sans-serif` / `serif`), not the app's Inter, because the app loads Inter only in
+  two weights and article text needs bold and italic.
+- Speech: expo-speech has no "offline only" switch; skipping voices named `…network` is the available way.
+
+### Found, not fixed
+
+- The reader button needs JavaScript on for the site (Readability runs in the page).
+- Reader pictures load through the app (`expo-image`, memory cache), not the WebView, so WebView image blocking doesn't
+  reach them; B18 covers them separately (see B18).
+
+### Device test list for Faran
+
+- [ ] News article (e.g. a BBC / Dawn article): reader button in the address bar after load; not on a home page or
+      search results; menu → Reader mode enabled only on the article
+- [ ] Reader: title, author, site, "N min read"; pictures; tap a link → the reader closes and the link opens in the tab;
+      Back → the page at the same scroll place
+- [ ] Aa: Light / Sepia / Dark / Follow app (switch the app theme), text size − / +, Serif, line spacing, pictures off —
+      close and reopen the reader and the app: all remembered
+- [ ] Urdu article (e.g. BBC Urdu, Express Urdu): right to left, Nastaliq letters, bold headings readable, lines don't
+      overlap at size 32 and line spacing Compact
+- [ ] Read aloud (English): highlight moves paragraph by paragraph and stays on screen; Pause / Play; Previous / Next;
+      speed 0.75 → 2×; airplane mode still reads (offline voice); press Home → it stops
+- [ ] Read aloud (Urdu) without an Urdu voice → the note; Speech settings opens the phone's TTS settings; Use default
+      voice reads. With an Urdu voice installed, the first read right after a cold start uses it
+- [ ] Links inside paragraphs are tappable (paragraph text is selectable — check a tap isn't eaten by selection)
+- [ ] A very long article (e.g. a long Wikipedia page): opens, scrolls smoothly, read aloud works
+- [ ] A site with JavaScript off (B12 exception): no reader button
+- [ ] TalkBack: reader button label, links announced as links, headers, Aa radio groups; font scale 1.3; Urdu UI (RTL)
+- [ ] Merged manifest: expo-speech adds only `<queries>` for `android.intent.action.TTS_SERVICE`, no permission
+
+### Handoff note
+
+```
+B15 Reader mode — done
+Commits: 575d825 (reader), ec9ebef (fix: pure tested state, memory-only pictures), <docs: this commit>
+Native code to review: none
+Database: unchanged (DATABASE_VERSION 3)
+New settings: readerTheme = 'app', readerFontSize = '18', readerFontFamily = 'sans', readerLineSpacing = 'normal',
+  readerImages = true, readerSpeechRate = '1'
+New libraries: @mozilla/readability 0.6.0 (Apache-2.0; 90 KB source, ~99 KB of strings in the JS bundle);
+  expo-speech 57.0.3 (MIT; 141 KB installed; manifest gets <queries> TTS_SERVICE, no permission);
+  font Noto Nastaliq Urdu (OFL 1.1, 690,304 bytes, assets/fonts, licence beside it)
+Tested: unit, typecheck, lint. Device: pending Faran's final pass.
+Hook for B16: src/browser/fonts/urdu-font.ts (NASTALIQ_FONT_ASSET, loadNastaliqFont).
+Found, not fixed: reader needs JavaScript on for the site; reader pictures load through the app (B18 covers them).
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -1117,12 +1245,16 @@ Found, not fixed: B20's backup / export doesn't carry folders, tags, notes or th
 | B21 | `pickStartPageImage(maxSize)` / `clearStartPageImage()`: the system Photo Picker (`MediaStore.ACTION_PICK_IMAGES`, Android 13+ or 11–12 with SDK extension 2) else `ACTION_OPEN_DOCUMENT` `image/*` — no permission, no manifest change — launched through Expo's `RegisterActivityContracts`; the picked image is decoded (sampled), turned upright from EXIF, scaled to ≤ maxSize (480–2560) and written as JPEG 85 to `<filesDir>/start-page/background-<time>.jpg` (temp + rename; older files deleted). Kotlin test `StartPageImagesTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `startpage/StartPageImages.kt`, `startpage/StartPagePhotoPicker.kt` |
 | B3 | `getAppMemory()`: the app process's memory (`Debug.getMemoryInfo` summary: total PSS, Java heap, native heap, graphics) and the device's (`ActivityManager.getMemoryInfo`: available, total, low memory), kB; async (background queue), no permission. Kotlin test `AppMemoryTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `memory/AppMemory.kt` |
 | B9 | `canPinShortcuts()`, `pinBookmarkShortcut(url, title)`, `consumeShortcutUrl()` + event `onShortcutOpen`: `ShortcutManager.requestPinShortcut` (Android 8+, the launcher confirms; no permission, no manifest change); icon = first letter on a colour from the address; one id per address (SHA-1); the shortcut starts the launcher activity with a private action (`com.vidorax.web.action.OPEN_BOOKMARK_SHORTCUT`, not VIEW) and the address, handed to JS once (consumed flag). Kotlin test `BookmarkShortcutsTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `shortcuts/BookmarkShortcuts.kt` |
+| Reader mode (B15) | No reader button on sites with JavaScript off (Readability runs in the page) |
 
 ### New dependencies
 
 | Package | Dependency | Licence | Size | Why |
 | --- | --- | --- | --- | --- |
 | B4 | `tldts` 7.4.18 (+ `tldts-core` 7.4.18, pinned with `overrides` so both are the same release) | MIT | 128 KB minified (`dist/index.cjs.min.js`, the Public Suffix List included); release APK +~0.4 MB with everything else in B4 | Registrable domain (eTLD+1) for the domain highlight, autocomplete and Sort by Site; bundled, no network |
+| B15 | `@mozilla/readability` 0.6.0 | Apache-2.0 | 155 KB installed; `Readability.js` 90 KB + `Readability-readerable.js` 4 KB, carried as ~99 KB of strings in the JS bundle | Article detection and extraction, run inside the page (vendored by `scripts/dev/generate-readability-source.mjs`) |
+| B15 | `expo-speech` 57.0.3 | MIT | 141 KB installed (small Kotlin module); merged manifest gets `<queries>` for `android.intent.action.TTS_SERVICE`, no permission | Read aloud with the phone's own text-to-speech |
+| B15 | Noto Nastaliq Urdu (font, `assets/fonts/NotoNastaliqUrdu-Regular.ttf`, from google/fonts) | SIL OFL 1.1 (licence in `assets/fonts/NotoNastaliqUrdu-OFL.txt`) | 690,304 bytes (APK +~0.69 MB) | Urdu articles in Nastaliq (reader); B16's page font reuses the asset |
 
 ### New settings and defaults
 
@@ -1155,6 +1287,12 @@ Found, not fixed: B20's backup / export doesn't carry folders, tags, notes or th
 | `sitePermissions` | B13 | `'{}'` (no site) | JSON `{ site: { blocked: [location, camera, microphone, notifications], popupsAllowed, updatedAt } }`, ≤ 300 sites / 16,000 characters |
 | `bookmarksBar` | B9 | `false` (today's) | on / off |
 | `linkCheckWifiOnly` | B9 | `true` | on / off |
+| `readerTheme` | B15 | `'app'` (follows the app) | app / light / sepia / dark |
+| `readerFontSize` | B15 | `'18'` | 14, 16, 18, 20, 22, 24, 28, 32 |
+| `readerFontFamily` | B15 | `'sans'` | sans / serif |
+| `readerLineSpacing` | B15 | `'normal'` | compact / normal / wide |
+| `readerImages` | B15 | `true` | on / off |
+| `readerSpeechRate` | B15 | `'1'` | 0.75, 1, 1.25, 1.5, 2 |
 
 ### Found, not fixed
 
@@ -1227,3 +1365,6 @@ Found, not fixed: B20's backup / export doesn't carry folders, tags, notes or th
 - B9: DATABASE_VERSION 3 through `applyBrowserTables` (app and profile databases). The reading list is its own table
   (`bookmarks.url` stays UNIQUE for B20's restore) instead of `kind = 'reading'` rows. The star on a bookmarked page
   opens Edit. Link check sends no cookies. Shortcut icons are letters.
+- B15: Readability runs in the page and the app draws a sanitised, re-built copy with its own views (no HTML
+  rendering); its own `vidorax-reader` channel (articles exceed the chrome channel's 50 KB cap); Sans / Serif are the
+  system families (bold / italic); read aloud skips `…network` voices.
