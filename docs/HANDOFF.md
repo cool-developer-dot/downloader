@@ -2163,6 +2163,12 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   spacing, pictures (all remembered), Urdu in bundled Noto Nastaliq, Read aloud with expo-speech (offline voices,
   paragraph highlight, speed, Urdu voice or the phone's speech settings). Libraries: @mozilla/readability 0.6.0
   (Apache-2.0), expo-speech 57.0.3 (MIT, `<queries>` only); font OFL 1.1. No native code, no database change.
+- **B16 Page display.** Force dark (forceDarkOn on 10–12, algorithmic darkening on 13+ while the app is dark; "No
+  forced dark on this site"), text size 50–200 % global + per site, force enable zoom, page zoom per site, text reflow
+  (native text autosizing), font style (icon fonts kept), Urdu in Nastaliq with the phone's font (on by default;
+  bundled-font path **BLOCKED** on a patch-script hook), colour filters + night light as one native colour matrix on
+  the WebView layer, window-only brightness. Aa panel in the menu; Browser settings → Page display with the per-site
+  list. Native: VidoraWeb `setPageLayout`, `setDisplayFilter`. No permission, library or database change.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 

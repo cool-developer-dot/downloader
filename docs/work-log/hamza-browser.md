@@ -1233,6 +1233,146 @@ Hook for B16: src/browser/fonts/urdu-font.ts (NASTALIQ_FONT_ASSET, loadNastaliqF
 Found, not fixed: reader needs JavaScript on for the site; reader pictures load through the app (B18 covers them).
 ```
 
+## B16 — Page display (#163, #164, #165, #169, #170, #272, #179, #180, #181)
+
+Mega 3. Two native commits (Kotlin tests), no database change (`DATABASE_VERSION` stays 3), no permission, no new
+library (expo-brightness was already in the app). **One part BLOCKED:** the bundled Nastaliq font inside web pages
+(details below); the phone's own Nastaliq path ships. Testing rule: unit tests, typecheck and lint here; device checks
+in "Device test list for Faran".
+
+### What the user sees
+
+| # | Feature | Where | Notes / decisions |
+| --- | --- | --- | --- |
+| #163 | Force dark: Off (default) / On / Follow app; "No forced dark on this site" | Aa panel, Browser settings → Page display | react-native-webview's `forceDarkOn` works on Android 10–12. **For apps targeting API 33+ (this app targets 35+) it does nothing on Android 13+**, so VidoraWeb `setPageLayout` also sets `WebSettingsCompat.setAlgorithmicDarkeningAllowed`. Pages with their own dark theme keep it (`PREFER_WEB_THEME_OVER_USER_AGENT_DARKENING` on 10–12; algorithmic darkening never touches them on 13+). **Platform rule on Android 13+: WebView darkens only while the app's theme is dark**, so there "On" behaves like "Follow app" (logged below) |
+| #164 | Text size 50–200 % | Browser settings (default for every site, with a live preview sample) and the Aa panel (this site; the page changes at once) | WebView `textZoom`. Steps of 10 % |
+| #165 | Force enable zoom; page zoom per site; no on-screen zoom buttons | Aa panel / settings | Force zoom rewrites the page's viewport tag (`user-scalable=no` and a maximum scale below 5 removed; later changes watched). Page zoom per site = WebView `setInitialScale` (Default, 50–300 %), from the next load on that site. Built-in pinch zoom was already on and the zoom buttons already off (`webview-configuration.ts`, unchanged) |
+| #169 | Text reflow | settings / Aa | **Decision: native text autosizing** (`LayoutAlgorithm.TEXT_AUTOSIZING`), not injected CSS: Chromium's own autosizer enlarges text in wide columns using the real layout, and a CSS guess (e.g. `max-width` on paragraphs) breaks many layouts. True "reflow on pinch" doesn't exist in Chromium WebView |
+| #170 | Font style: Page's own (default) / Sans / Serif / Monospace | settings / Aa | Injected style sheet with `!important` on `body` and its descendants **except** `i`, `[class*="icon" i]`, Font Awesome / Material / Glyphicon / Dashicons / Octicon classes, `[aria-hidden="true"]`, `[data-icon]`, SVG, math, code / pre / kbd / samp — icon fonts and code keep their fonts |
+| #272 | Urdu in Nastaliq — on by default (as the card asks) | settings / Aa | Only `:lang(ur)` text and only its Arabic-script letters (`@font-face` `unicode-range`), with the **phone's own** Noto Nastaliq Urdu (`local()`); Latin text inside Urdu keeps a normal font; Arabic / Persian pages are untouched. Without the phone font the page is unchanged. **Bundled-font path BLOCKED** (below) |
+| #179 | Colour filter: None / Grayscale / Protanopia / Deuteranopia / Tritanopia | settings / Aa | A 4×5 colour matrix on the WebView's layer (VidoraWeb `setDisplayFilter` → `LayerPaint`, hardware layer + `ColorMatrixColorFilter`) — **never a CSS filter**. The three colour-blindness choices are **corrections** (daltonize, `I + E·(I − S)`, Machado 2009 simulation matrices), not simulations: they shift confused colours into ones the user can tell apart; greys stay grey (tested) |
+| #180 | Night light with strength 10–100 % | settings / Aa | Blue (and a little green) turned down; multiplied after the colour filter into the same matrix |
+| #181 | Brightness: "Use phone brightness" (default) or a level | settings / Aa | expo-brightness `setBrightnessAsync` = **this app's window only** (no permission; the phone's setting never changes). Applied while the browser is in front; leaving it (or switching back to phone brightness) restores the window exactly as it was (system or the previous level); apply / restore are queued so quick changes can't leave the wrong level |
+| Page display (B16) | Android 13+: forced dark only while the app's theme is dark (WebView rule for apps targeting API 33+) |
+| Page display (B16) | Bundled Nastaliq inside web pages BLOCKED (patch-script hook needed; exact change in the B16 section) |
+| Page display (B16) | Page zoom per site applies from the next load; Nastaliq may touch lines on sites with a tight `line-height` |
+
+- **One Aa panel** (browser menu → Page display): this site's text size, page zoom, "No forced dark on this site",
+  Reset this site; then the every-site choices. **Browser settings → Page display**: the defaults, the text size
+  preview, and "Sites with their own settings" (per site: what's set; Reset; Reset all).
+- **Nothing changes until a setting does**: `textZoom` / `forceDarkOn` are passed to the WebView only after they first
+  differ from the default (removing a prop would give react-native-webview's "unset" value, e.g. `textZoom` 0), and the
+  native layout / colour calls are sent only once a value is non-default for that WebView
+  (`page-display-native.ts`, cached per view tag). The only default-on item is Urdu in Nastaliq (as the card asks).
+- Settings are per browser profile (B20) like every browser setting, and in Backup / Reset.
+
+### BLOCKED — bundled Nastaliq font in web pages (#272)
+
+Needs Faran's OK for a patch-script change. The card allows the bundled font "via WebViewAssetLoader only", and
+WebViewAssetLoader has to answer requests from `WebViewClient.shouldInterceptRequest`; the patch script's hook there
+(`RNCWebViewHooks.observeRequest`) is `void` and can't return a response. The exact change:
+
+1. `scripts/patch-react-native-webview.js`, `RNCWebViewHooks.java` — add to the `Hooks` interface
+   `default @Nullable WebResourceResponse interceptRequest(@Nullable WebView view, @NonNull WebResourceRequest request) { return null; }`
+   and a static `interceptRequest(view, request)` dispatcher that catches and logs failures like `observeRequest`.
+2. Same script, the `RNCWebViewClient.shouldInterceptRequest` replacement — after `RNCWebViewHooks.observeRequest(view,
+   request);` add `WebResourceResponse own = RNCWebViewHooks.interceptRequest(view, request); if (own != null) return own;`.
+3. VidoraWeb: implement `interceptRequest` with `WebViewAssetLoader` (domain `appassets.androidplatform.net`, path
+   `/vidorax-fonts/`, only `NotoNastaliqUrdu-Regular.ttf`, response header `Access-Control-Allow-Origin: *` because a
+   page loads it cross-origin), the font copied to `modules/vidorax-web/android/src/main/assets/vidorax-fonts/`.
+4. `page-display-script.ts`: add `url("https://appassets.androidplatform.net/vidorax-fonts/NotoNastaliqUrdu-Regular.ttf")`
+   after the `local()` sources.
+
+Everything else of #272 ships (phone font, `:lang(ur)` only, Arabic letters only, on by default).
+
+### Native (Faran to review)
+
+- `display/PageLayout.kt` + VidoraWeb `setPageLayout(viewTag, textAutosizing, initialScale, algorithmicDarkening)` and
+  `canDarkenPagesAlgorithmically()`. Test `PageLayoutTest` (4).
+- `display/LayerPaint.kt` + VidoraWeb `setDisplayFilter(viewTag, matrix | null)`: the **one** place a tab WebView's
+  layer type and paint are set (filter → hardware layer with the matrix; none → `LAYER_TYPE_NONE`; a software flag
+  for B18 #189 keeps the filter). Matrix checked (20 finite numbers within ±10). Test `LayerPaintTest` (4).
+- Kotlin on Windows: vidorax-web 98/99 (the known `WebViewSnapshotsTest`), vidorax-media doesn't compile (known) —
+  please rerun both on the Mac.
+
+### Files
+
+- New: `src/browser/page-display/` (`page-display-settings.ts`, `page-display-filters.ts`, `page-display-script.ts`,
+  `page-display-native.ts`, `page-display-requests.ts`, `use-page-display.ts`, `use-page-brightness.ts`,
+  `components/{PageDisplayControls,PageDisplaySheet}.tsx`, `page-display.test.ts`),
+  `src/screens/settings/browser-settings/PageDisplaySettingsSection.tsx`, catalogs `browserPageDisplay.{en,ur}.ts`,
+  `modules/vidorax-web/android/.../display/{PageLayout,LayerPaint}.kt` and tests.
+- Changed (additive): `BrowserWebView.tsx` (props, page script, native apply on bind, forget on unmount),
+  `BrowserScreen.tsx` (`PageDisplayHost`, `usePageBrightness`), menu (`page_display`), `BrowserSettingsScreen.tsx`,
+  settings store, `browser-setting-keys.ts` / `-choices.ts`, `VidoraWebModule.kt`, `VidoraWeb.types.ts`, `en.ts` / `ur.ts`.
+
+### Tests
+
+`page-display.test.ts` (16): ranges and steps; the per-site list (bad hosts, bad values, empty entries dropped,
+update / reset / serialise); resolving (site overrides, "Follow app", "Not on this site", non-web pages); matrices
+(none → no layer, grayscale, the three corrections keep grey and change confused colours, values bounded, night light
+by strength and after the filter); the native-call cache (no call for an untouched WebView, one call per change,
+back-to-default sent, `forget`, older native builds); CSS (only Urdu by default, no bundled `url()`, icon fonts / code
+kept, Urdu rule after the font rule); **the page script in `node:vm`** (one style element updated in place and
+removed, viewport rewrite incl. an existing larger maximum, later changes watched only with force zoom, one global,
+never throws). Kotlin: `PageLayoutTest`, `LayerPaintTest`.
+
+### Found, not fixed
+
+- Android 13+: forced dark only while the app's theme is dark (WebView platform rule for apps targeting 33+); "On"
+  with a light app theme does nothing there.
+- Page zoom per site applies from the next load (WebView `setInitialScale`).
+- Nastaliq inside pages needs the phone's font (bundled path BLOCKED above); Nastaliq's tall letters can touch lines
+  on sites with a tight `line-height` (line heights are left to the site).
+- Once text size has been changed, setting it back to 100 % passes `textZoom` 100 rather than leaving WebView's own
+  default (which may follow the phone's font size).
+
+### Device test list for Faran
+
+- [ ] Force dark On on Android 10–12: a light site (e.g. example.com) goes dark; a site with its own dark theme (e.g.
+      GitHub with dark preference) keeps its theme. Android 13+: with the app theme Dark, On / Follow app darken; with
+      the app Light, Follow app doesn't
+- [ ] "No forced dark on this site" from the Aa panel: that site light, others dark; listed in Sites with their own
+      settings; Reset
+- [ ] Text size: Browser settings 150 % → the preview grows and pages follow; Aa panel on one site 80 % → that page
+      shrinks at once, other sites stay 150 %
+- [ ] Force enable zoom on a site that blocks zoom (many mobile news sites): pinch works; off again → as before
+- [ ] Page zoom 150 % for a site: open another page there → starts zoomed; other sites not
+- [ ] Text reflow on a desktop-layout page (Desktop site on): paragraphs readable without zoom
+- [ ] Font style Serif / Monospace: text changes; icons (e.g. a site using Font Awesome / Material icons) still show
+      as icons, not letters; code blocks keep monospace
+- [ ] Urdu: BBC Urdu / Express Urdu in Nastaliq (phone with the font, e.g. Android 8+ Pixel / Samsung); an Arabic site
+      (e.g. aljazeera.net) unchanged; Urdu in Nastaliq off → back to the site's font
+- [ ] Colour filters: Grayscale, then each correction — the page's colours change, the app's own bars don't; Night
+      light 10 % → 100 % gets warmer; both together. Scrolling and video stay smooth with a filter on (hardware layer)
+- [ ] Brightness: switch off "Use phone brightness", set 20 % → the browser dims; go to Downloads → normal; back →
+      dim; switch on → normal. The phone's brightness slider never moved
+- [ ] Tabs: a second tab and a slept-and-woken tab (B3) get the same text size / filter
+- [ ] TalkBack: steppers (Less / More text size), radio groups, switches; Urdu UI (RTL); font scale 1.3
+- [ ] Merged manifest unchanged (no permission)
+
+### Handoff note
+
+```
+B16 Page display — done (one part BLOCKED)
+Commits: ef7b527 (native: page layout), a8b60e2 (native: colour matrix), 763c32b (page display), <docs: this commit>
+Native code to review: VidoraWeb setPageLayout / canDarkenPagesAlgorithmically (display/PageLayout.kt:
+  TEXT_AUTOSIZING, setInitialScale, setAlgorithmicDarkeningAllowed on 13+) and setDisplayFilter
+  (display/LayerPaint.kt: ColorMatrixColorFilter on a hardware layer; the one place layer type + paint are set,
+  with a software flag for B18). Tests: PageLayoutTest, LayerPaintTest.
+Database: unchanged (DATABASE_VERSION 3)
+New settings: pageForceDark = 'off', pageTextZoom = 100, pageForceZoom = false, pageTextReflow = false,
+  pageFontStyle = 'default', pageUrduNastaliq = true (card), pageColorFilter = 'none', pageNightLight = false,
+  pageNightLightStrength = 50, pageBrightness = -1 (phone's), pageDisplaySites = '{}'
+New libraries: none (expo-brightness was already in the app)
+Tested: unit, typecheck, lint. Device: pending Faran's final pass.
+  Kotlin on Windows: vidorax-web 98/99 (WebViewSnapshotsTest), vidorax-media won't compile — please rerun on the Mac.
+BLOCKED: bundled Nastaliq in web pages — needs Faran's OK for a patch-script change (an interceptRequest hook
+  returning a WebResourceResponse from shouldInterceptRequest, for WebViewAssetLoader); exact change in the work log.
+Found, not fixed: Android 13+ forced dark only while the app is dark (platform); page zoom from the next load;
+  Nastaliq needs the phone's font; tight site line-heights; textZoom 100 after a change vs WebView's own default.
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -1246,6 +1386,8 @@ Found, not fixed: reader needs JavaScript on for the site; reader pictures load 
 | B3 | `getAppMemory()`: the app process's memory (`Debug.getMemoryInfo` summary: total PSS, Java heap, native heap, graphics) and the device's (`ActivityManager.getMemoryInfo`: available, total, low memory), kB; async (background queue), no permission. Kotlin test `AppMemoryTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `memory/AppMemory.kt` |
 | B9 | `canPinShortcuts()`, `pinBookmarkShortcut(url, title)`, `consumeShortcutUrl()` + event `onShortcutOpen`: `ShortcutManager.requestPinShortcut` (Android 8+, the launcher confirms; no permission, no manifest change); icon = first letter on a colour from the address; one id per address (SHA-1); the shortcut starts the launcher activity with a private action (`com.vidorax.web.action.OPEN_BOOKMARK_SHORTCUT`, not VIEW) and the address, handed to JS once (consumed flag). Kotlin test `BookmarkShortcutsTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `shortcuts/BookmarkShortcuts.kt` |
 | Reader mode (B15) | No reader button on sites with JavaScript off (Readability runs in the page) |
+| B16 | `setPageLayout(viewTag, textAutosizing, initialScale, algorithmicDarkening)`, `canDarkenPagesAlgorithmically()`: `LayoutAlgorithm.TEXT_AUTOSIZING` / `NORMAL`, `WebView.setInitialScale` (25–500, else 0 = default), `WebSettingsCompat.setAlgorithmicDarkeningAllowed` on Android 13+ when supported. Test `PageLayoutTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `display/PageLayout.kt` |
+| B16 | `setDisplayFilter(viewTag, matrix \| null)`: 4×5 `ColorMatrixColorFilter` as the paint of a hardware layer; none / identity → `LAYER_TYPE_NONE`; `LayerPaint` is the single owner of a tab WebView's layer type + paint (software flag for B18 #189 keeps the filter). Test `LayerPaintTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `display/LayerPaint.kt` |
 
 ### New dependencies
 
@@ -1293,6 +1435,17 @@ Found, not fixed: reader needs JavaScript on for the site; reader pictures load 
 | `readerLineSpacing` | B15 | `'normal'` | compact / normal / wide |
 | `readerImages` | B15 | `true` | on / off |
 | `readerSpeechRate` | B15 | `'1'` | 0.75, 1, 1.25, 1.5, 2 |
+| `pageForceDark` | B16 | `'off'` (today's) | off / on / app |
+| `pageTextZoom` | B16 | `100` (today's) | 50–200 % in steps of 10 |
+| `pageForceZoom` | B16 | `false` (today's) | on / off |
+| `pageTextReflow` | B16 | `false` (today's) | on / off |
+| `pageFontStyle` | B16 | `'default'` (the page's own — today's) | default / sans / serif / monospace |
+| `pageUrduNastaliq` | B16 | `true` (the card asks for on by default) | on / off |
+| `pageColorFilter` | B16 | `'none'` (today's) | none / grayscale / protanopia / deuteranopia / tritanopia |
+| `pageNightLight` | B16 | `false` (today's) | on / off |
+| `pageNightLightStrength` | B16 | `50` | 10–100 % |
+| `pageBrightness` | B16 | `-1` (the phone's — today's) | -1 or 5–100 % |
+| `pageDisplaySites` | B16 | `'{}'` | per site: text size, page zoom, no forced dark (JSON, ≤ 300 sites) |
 
 ### Found, not fixed
 
@@ -1368,3 +1521,6 @@ Found, not fixed: reader needs JavaScript on for the site; reader pictures load 
 - B15: Readability runs in the page and the app draws a sanitised, re-built copy with its own views (no HTML
   rendering); its own `vidorax-reader` channel (articles exceed the chrome channel's 50 KB cap); Sans / Serif are the
   system families (bold / italic); read aloud skips `…network` voices.
+- B16: forced dark = `forceDarkOn` plus native algorithmic darkening (13+); text reflow = native text autosizing,
+  not CSS; colour-blind choices are corrections (daltonize); filter + night light = one native matrix; WebView props
+  and native calls only after a setting first leaves its default; bundled Nastaliq in pages BLOCKED (patch hook).

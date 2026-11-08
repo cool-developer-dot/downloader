@@ -820,6 +820,13 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   (`reader-sanitize.ts`) and drawn natively by `components/ReaderView.tsx` (a full-screen Modal; `ReaderHost` in
   `BrowserScreen`). State changes are pure (`reader-mode-state.ts`). Read aloud: `read-aloud.service.ts` over
   `expo-speech`. Nastaliq: `src/browser/fonts/urdu-font.ts` (expo-font, loaded on first use).
+- **Page display (B16).** `src/browser/page-display/`: settings + per-site list (`page-display-settings.ts`, setting
+  `pageDisplaySites`), `use-page-display.ts` (per WebView: `textZoom` / `forceDarkOn` props once non-default, the
+  document-start + live page script from `page-display-script.ts`, and native calls through the per-tag cache in
+  `page-display-native.ts`), colour matrices in `page-display-filters.ts`, brightness in `use-page-brightness.ts`
+  (window only; mounted in `BrowserScreen`). Native: VidoraWeb `display/PageLayout.kt` (text autosizing, initial scale,
+  algorithmic darkening) and `display/LayerPaint.kt` (the one owner of a tab WebView's layer type + paint). UI:
+  `PageDisplayHost` (Aa panel) and `PageDisplaySettingsSection` in Browser settings.
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab
