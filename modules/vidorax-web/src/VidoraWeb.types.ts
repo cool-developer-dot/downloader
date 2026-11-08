@@ -366,6 +366,18 @@ export interface VidoraWebModuleApi {
    */
   setDisplayFilter?(viewTag: number, matrix: number[] | null): Promise<boolean>;
   /**
+   * B14 #121 / #114: ad and tracker blocking (through the patch script's interceptRequest hook). Replaces the whole
+   * snapshot: the two switches and the sites where ads and trackers load ("Allow ads on this site"; lowercase hosts,
+   * no `www.`, a site covers its subdomains). The bundled lists are read natively; nothing is blocked until they have
+   * loaded. The page itself, and every video / audio / manifest request, are never blocked. Missing on older native
+   * builds.
+   */
+  setContentBlocking?(ads: boolean, trackers: boolean, allowedSites: string[]): void;
+  /** B14: the page this WebView is loading (its site decides "Allow ads on this site"). Resolves false when gone. */
+  setBlockingPage?(viewTag: number, url: string): Promise<boolean>;
+  /** B14 #121: requests blocked on this WebView's current page (0 when the view is gone). */
+  getBlockedCount?(viewTag: number): Promise<number>;
+  /**
    * B18 #183 / #193 / #184: pictures from the network off (true) or on for the WebView with this view tag
    * (`WebSettings.setBlockNetworkImage`). Resolves false when the view is gone. Missing on older native builds.
    */

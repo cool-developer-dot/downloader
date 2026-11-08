@@ -19,6 +19,8 @@ import com.reactnativecommunity.webview.RNCWebView
 import com.reactnativecommunity.webview.RNCWebViewHooks
 import com.reactnativecommunity.webview.RNCWebViewModule
 import com.reactnativecommunity.webview.RNCWebViewWrapper
+import com.vidorax.web.blocking.ContentBlocker
+import com.vidorax.web.blocking.ContentBlocking
 import com.vidorax.web.display.LayerPaint
 import com.vidorax.web.display.PageLayout
 import com.vidorax.web.fonts.BundledFonts
@@ -68,6 +70,9 @@ private const val ON_SHORTCUT_OPEN = "onShortcutOpen"
 
 // react-native-webview's own download defaults (RNCWebViewManagerImpl).
 private const val DOWNLOADING_MESSAGE = "Downloading"
+
+// B14: "Allow ads on this site" entries taken from JS (the settings list is capped lower).
+private const val MAX_ALLOWED_SITES = 1000
 private val INVALID_FILE_NAME_CHARS = Regex("[\\\\/%\"]")
 
 /** Contract: modules/vidorax-web/src/VidoraWeb.types.ts. */
@@ -105,6 +110,9 @@ class VidoraWebModule : Module() {
   // B16 #272: the bundled Nastaliq font for pages (one fixed address; see BundledFonts).
   private val bundledFonts = BundledFonts { appContext.reactContext?.applicationContext?.assets?.open(BundledFonts.ASSET_PATH) }
 
+  // B14 #121 / #114: ad and tracker blocking (rules from JS ahead of time; bundled lists read natively).
+  private val contentBlocking = ContentBlocking({ name -> appContext.reactContext?.applicationContext?.assets?.open(name) })
+
   private val webViewHooks = object : RNCWebViewHooks.Listener {
     // B20: a new WebView joins the active browser profile before react-native-webview sets it up.
     override fun beforeWebViewSetup(webView: RNCWebView) {
@@ -121,7 +129,7 @@ class VidoraWebModule : Module() {
 
     // Network threads, right after observeRequest (so detection has already seen the request).
     override fun interceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-      return bundledFonts.intercept(request.url, request.method)
+      return bundledFonts.intercept(request.url, request.method) ?: contentBlocking.intercept(view, request)
     }
 
     override fun onDownloadStart(
@@ -395,6 +403,29 @@ class VidoraWebModule : Module() {
       val webView = webViewFor(viewTag) ?: return@AsyncFunction false
       LayerPaint.setColorMatrix(webView, LayerPaint.validMatrix(matrix))
       true
+    }.runOnQueue(Queues.MAIN)
+
+    // B14 #121 / #114: the blocking switches and the "Allow ads on this site" list, replaced as one snapshot.
+    Function("setContentBlocking") { ads: Boolean, trackers: Boolean, allowedSites: List<String> ->
+      val sites = allowedSites.asSequence()
+        .map { it.trim().lowercase(java.util.Locale.ROOT).removePrefix("www.") }
+        .filter { it.isNotEmpty() && it.length <= 253 }
+        .take(MAX_ALLOWED_SITES)
+        .toSet()
+      contentBlocking.setRules(ContentBlocker.Rules(ads, trackers, sites))
+    }
+
+    // B14: the page a tab is loading (its site decides "Allow ads on this site"); the hook also sees main-frame requests.
+    AsyncFunction("setBlockingPage") { viewTag: Int, url: String ->
+      val webView = webViewFor(viewTag) ?: return@AsyncFunction false
+      contentBlocking.setPage(webView, url)
+      true
+    }.runOnQueue(Queues.MAIN)
+
+    // B14 #121: requests blocked on this tab's current page (the lock-icon panel).
+    AsyncFunction("getBlockedCount") { viewTag: Int ->
+      val webView = webViewFor(viewTag) ?: return@AsyncFunction 0
+      contentBlocking.blockedCount(webView)
     }.runOnQueue(Queues.MAIN)
 
     // B18 #183 / #193 / #184: pictures off for this tab (WebSettings.setBlockNetworkImage).
