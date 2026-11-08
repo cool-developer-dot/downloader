@@ -380,6 +380,8 @@ export interface VidoraWebModuleApi {
    * count (-1 before Android 7) and the time since boot; null where the phone doesn't count per-app traffic.
    */
   getAppTraffic?(): AppTrafficReading | null;
+  /** B18 #191: whether the phone's Battery Saver is on (`PowerManager.isPowerSaveMode`). */
+  isPowerSaveMode?(): boolean;
 }
 
 /** B18 #185: `getAppTraffic`. */

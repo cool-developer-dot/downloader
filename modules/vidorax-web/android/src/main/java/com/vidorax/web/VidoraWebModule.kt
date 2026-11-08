@@ -23,6 +23,7 @@ import com.vidorax.web.display.PageLayout
 import com.vidorax.web.keys.VidoraKeyChannel
 import com.vidorax.web.performance.AppTraffic
 import com.vidorax.web.performance.ImageBlocking
+import com.vidorax.web.performance.PowerSaving
 import com.vidorax.web.memory.AppMemory
 import com.vidorax.web.navigation.NavigationMode
 import com.vidorax.web.navigation.WebHistoryWindow
@@ -402,6 +403,11 @@ class VidoraWebModule : Module() {
     // B18 #185: this app's network bytes since the phone started (TrafficStats), with the boot count.
     Function("getAppTraffic") {
       AppTraffic.toMap(AppTraffic.read(context))
+    }
+
+    // B18 #191: the phone's Battery Saver.
+    Function("isPowerSaveMode") {
+      PowerSaving.isOn(context)
     }
 
     OnNewIntent { intent ->
