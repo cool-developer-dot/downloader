@@ -18,6 +18,7 @@ import com.reactnativecommunity.webview.RNCWebView
 import com.reactnativecommunity.webview.RNCWebViewHooks
 import com.reactnativecommunity.webview.RNCWebViewModule
 import com.reactnativecommunity.webview.RNCWebViewWrapper
+import com.vidorax.web.display.LayerPaint
 import com.vidorax.web.display.PageLayout
 import com.vidorax.web.keys.VidoraKeyChannel
 import com.vidorax.web.memory.AppMemory
@@ -374,6 +375,13 @@ class VidoraWebModule : Module() {
     Function("canDarkenPagesAlgorithmically") {
       PageLayout.canDarkenAlgorithmically()
     }
+
+    // B16 #179 / #180: the page's colour filter and night light as one 4x5 colour matrix on the WebView's layer.
+    AsyncFunction("setDisplayFilter") { viewTag: Int, matrix: List<Double>? ->
+      val webView = webViewFor(viewTag) ?: return@AsyncFunction false
+      LayerPaint.setColorMatrix(webView, LayerPaint.validMatrix(matrix))
+      true
+    }.runOnQueue(Queues.MAIN)
 
     OnNewIntent { intent ->
       // B9 #87: a bookmark shortcut tapped while the app runs.

@@ -359,4 +359,10 @@ export interface VidoraWebModuleApi {
   setPageLayout?(viewTag: number, textAutosizing: boolean, initialScale: number, algorithmicDarkening: boolean): Promise<boolean>;
   /** B16 #163: whether this phone's WebView can darken pages (Android 13+); else `forceDarkOn` is what works. */
   canDarkenPagesAlgorithmically?(): boolean;
+  /**
+   * B16 #179 / #180: draws the WebView with this view tag through a 4x5 colour matrix (row-major, 20 numbers, as
+   * Android's ColorMatrix) on its layer — colour filters and night light, never a CSS filter. null (or the identity)
+   * = no filter and no layer. Resolves false when the view is gone. Missing on older native builds.
+   */
+  setDisplayFilter?(viewTag: number, matrix: number[] | null): Promise<boolean>;
 }
