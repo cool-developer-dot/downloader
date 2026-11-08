@@ -68,7 +68,7 @@ import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
 import { tabAudioScript } from '@/browser/tab-sound/tab-audio-script';
 import { SITE_PERMISSION_PAGE_SCRIPT } from '@/browser/site-permissions/site-permission-script';
 import { readerMode } from '@/browser/reader/reader-mode.service';
-import { pageDisplayNative, usePageDisplay } from '@/browser/page-display/use-page-display';
+import { applyPageDisplayNative, pageDisplayNative, usePageDisplay } from '@/browser/page-display/use-page-display';
 import {
   isJavaScriptAllowed,
   normalizeCookiePolicy,
@@ -158,10 +158,6 @@ export const BrowserWebView = memo(function BrowserWebView({
   const javaScriptEnabled = isJavaScriptAllowed(owningTabUrl, javaScriptDefault, javaScriptExceptions);
   // B16: Page display — text size, force dark, the page script, and the native layout / colour filter.
   const pageDisplay = usePageDisplay({ tabId, url: owningTabUrl, webViewRef });
-  const applyPageDisplayRef = useRef(pageDisplay.applyNative);
-  useEffect(() => {
-    applyPageDisplayRef.current = pageDisplay.applyNative;
-  }, [pageDisplay.applyNative]);
 
   const [pullToRefreshEnabled, setPullToRefreshEnabled] = useState(() =>
     computePullToRefreshEnabled(useBrowserStore.getState()),
@@ -238,7 +234,8 @@ export const BrowserWebView = memo(function BrowserWebView({
     }
     nativeViewTagRef.current = tag;
     setTabWebViewTag(tabId, tag);
-    applyPageDisplayRef.current(tag);
+    // B16: the native layout / colour matrix for the page now loading (its own site's values).
+    applyPageDisplayNative(tag, pageUrl);
     applyNativeWebViewActivity(tag, runsPage);
     const previousCleanup = nativeScopeCleanupRef.current;
     nativeScopeCleanupRef.current = registerNativeObservationScope(tag, {
