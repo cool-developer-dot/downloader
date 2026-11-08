@@ -22,6 +22,7 @@ import {
   type OrganizedBookmark,
 } from '@/storage/repositories';
 import { useBookmarksStore } from '@/store/bookmarks';
+import { BookmarkDeleteDialog } from '@/screens/bookmarks/components';
 
 import {
   addToHomeScreen,
@@ -77,6 +78,9 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
     null,
   );
   const [checking, setChecking] = useState(false);
+  // As the previous Bookmarks screen: a confirmation before deleting one bookmark, and Clear all.
+  const [confirmDelete, setConfirmDelete] = useState<OrganizedBookmark | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
   const searching = query.trim().length > 0 || tag != null;
   const rowHeight = bookmarkRowHeight();
@@ -192,8 +196,7 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
           label: t('browserBookmarks.delete'),
           icon: 'delete-outline',
           destructive: true,
-          onPress: () =>
-            void change(() => useBookmarksStore.getState().remove(b.id), t('browserBookmarks.deleted')),
+          onPress: () => setConfirmDelete(b),
         },
       );
     } else {
@@ -222,6 +225,7 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
       },
       { id: 'export', label: t('browserBookmarks.exportBookmarks'), icon: 'export', onPress: () => void exportBookmarks() },
       { id: 'check', label: t('browserBookmarks.checkLinks'), icon: 'link-variant', onPress: () => setChecking(true) },
+      { id: 'clear_all', label: t('bookmarks.clearAllA11y'), icon: 'delete-sweep-outline', destructive: true, onPress: () => setConfirmClear(true) },
     ],
     [t],
   );
@@ -429,6 +433,25 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
         onClose={() => setMoving(null)}
       />
       <LinkCheckSheet visible={checking} onClose={() => setChecking(false)} />
+      <BookmarkDeleteDialog
+        mode="delete"
+        visible={confirmDelete != null}
+        onConfirm={() => {
+          const target = confirmDelete;
+          setConfirmDelete(null);
+          if (target) void change(() => useBookmarksStore.getState().remove(target.id), t('browserBookmarks.deleted'));
+        }}
+        onCancel={() => setConfirmDelete(null)}
+      />
+      <BookmarkDeleteDialog
+        mode="clear"
+        visible={confirmClear}
+        onConfirm={() => {
+          setConfirmClear(false);
+          void change(() => useBookmarksStore.getState().clear(), t('browserBookmarks.deleted'));
+        }}
+        onCancel={() => setConfirmClear(false)}
+      />
       <BookmarkEditHost />
     </SafeAreaScreen>
   );

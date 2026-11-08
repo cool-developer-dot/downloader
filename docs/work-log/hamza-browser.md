@@ -1017,6 +1017,11 @@ device and upgrade checks are in "Device test list for Faran" (B9 is an upgrade-
 | #92 Tags / #93 Notes | Tags and a note in Edit; tag chips above the list (All, #food, …); search covers titles, addresses, hosts, notes and tags; rows show the note and #tags | `searchBookmarks`, `listTags`, `BookmarkRows.tsx` | Tags: trimmed, no commas, ≤ 40 characters, repeats (ignoring case) dropped, ≤ 20 per bookmark |
 | #87 Add to home screen | A bookmark's options → Add to home screen: the launcher's own dialog adds a shortcut (the first letter on a colour); "This phone's launcher can't add shortcuts" when it can't | VidoraWeb `pinBookmarkShortcut` / `consumeShortcutUrl` / `onShortcutOpen` (B9 native), `bookmarks.service.ts` | Tapping the shortcut starts VidoraX with a private action (never the shared-link path); the site opens **in a new tab after App Lock** (`useAppLockStore` unlocked) on the Browser tab. **Decision:** a letter icon, not the site icon — fetching a favicon natively for it would be one more network call |
 
+- **Fix after review (`B9: fix`):** the new screen had dropped two things the previous Bookmarks screen did — the
+  confirmation before deleting one bookmark and "Clear all bookmarks". Both are back (the same `BookmarkDeleteDialog`
+  and strings; Clear all is in the screen's menu and calls the existing store `clear()`, leaving folders, now empty).
+  Also checked: every `INSERT` into `bookmarks` (the star, B20's restore) names its columns, so they work on v3; App Lock
+  locks when the app leaves the foreground, so a shortcut tapped while the app runs still asks for the PIN first.
 - **Strings:** `browserBookmarks.*`. **Accessibility:** every row, chip, crumb and button labelled; ≥ 48 dp; RTL (rows,
   crumbs ‹, indents); TalkBack actions Move up / Move down / options on rows; the reading list's swipe has buttons and
   actions too.
