@@ -131,6 +131,27 @@ export interface SettingsState {
   readerImages: boolean;
   /** B15 #173: read-aloud speed (default '1'). */
   readerSpeechRate: import('@/browser/reader/reader-settings').ReaderSpeechRate;
+  /** B16 #163: force dark 'off' (default — today's) / 'on' / 'app' (follow the app's theme). */
+  pageForceDark: import('@/browser/page-display/page-display-settings').ForceDarkMode;
+  /** B16 #164: page text size in percent, 50–200 (default 100 — today's). */
+  pageTextZoom: number;
+  /** B16 #165: Force enable zoom — pinch zoom on every page (default off — today's). */
+  pageForceZoom: boolean;
+  /** B16 #169: text reflow (WebView text autosizing; default off — today's). */
+  pageTextReflow: boolean;
+  /** B16 #170: page font 'default' (the page's own — today's) / 'sans' / 'serif' / 'monospace'. */
+  pageFontStyle: import('@/browser/page-display/page-display-settings').PageFontStyle;
+  /** B16 #272: Urdu text in Nastaliq (default on, as the card asks). */
+  pageUrduNastaliq: boolean;
+  /** B16 #179: colour filter (default 'none' — today's). */
+  pageColorFilter: import('@/browser/page-display/page-display-settings').ColorFilter;
+  /** B16 #180: night light (default off — today's) and its strength 10–100 % (default 50). */
+  pageNightLight: boolean;
+  pageNightLightStrength: number;
+  /** B16 #181: page brightness 5–100 %; -1 = the phone's (default — today's). */
+  pageBrightness: number;
+  /** B16: per-site text size, zoom and "Not on this site" for force dark, as JSON (default '{}'). */
+  pageDisplaySites: string;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

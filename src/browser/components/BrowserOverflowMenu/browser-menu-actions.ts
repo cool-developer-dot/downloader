@@ -40,6 +40,7 @@ import { findInPage } from '@/browser/find/find-in-page.service';
 import { addPageToReadingList, bookmarkEditRequests } from '@/browser/bookmarks/bookmarks.service';
 import { bookmarkOrganizerRepository } from '@/storage/repositories';
 import { readerMode, useReaderAvailable } from '@/browser/reader/reader-mode.service';
+import { pageDisplayRequests } from '@/browser/page-display/page-display-requests';
 import { useSettingsStore } from '@/store/settings';
 
 import type { BrowserMenuFeedback, BrowserMenuItemModel } from './types';
@@ -407,6 +408,12 @@ export function useBrowserMenuActions({
     readerMode.open();
   }, [onClose]);
 
+  // B16: the Page display (Aa) panel.
+  const handlePageDisplay = useCallback(() => {
+    onClose();
+    pageDisplayRequests.open();
+  }, [onClose]);
+
   // B10 #99: close every tab, clear browsing data and leave the app.
   const showExit = useSettingsStore((s) => s.clearHistoryOnExit === true);
   const handleExit = useCallback(() => {
@@ -504,6 +511,9 @@ export function useBrowserMenuActions({
         case 'reader_mode':
           handleReaderMode();
           break;
+        case 'page_display':
+          handlePageDisplay();
+          break;
         default:
           break;
       }
@@ -531,6 +541,7 @@ export function useBrowserMenuActions({
       handleExit,
       handleFindInPage,
       handleReaderMode,
+      handlePageDisplay,
       handleEditBookmark,
       bookmarked,
       currentUrl,
@@ -717,6 +728,14 @@ export function useBrowserMenuActions({
         accessibilityLabel: readerAvailable ? t('browserReader.menuA11y') : t('browserReader.notArticle'),
         kind: 'action',
         enabled: hasValidPage && readerAvailable,
+      },
+      {
+        id: 'page_display',
+        icon: 'format-size',
+        label: t('browserPageDisplay.menuItem'),
+        accessibilityLabel: t('browserPageDisplay.menuA11y'),
+        kind: 'action',
+        enabled: true,
       },
       {
         id: 'hard_reload',

@@ -60,6 +60,17 @@ import {
   normalizeReaderSpeechRate,
   normalizeReaderTheme,
 } from '@/browser/reader/reader-settings';
+// B16 (Hamza)
+import {
+  normalizeColorFilter,
+  normalizeForceDark,
+  normalizeNightLightStrength,
+  normalizePageBrightness,
+  normalizePageFontStyle,
+  normalizeTextZoom,
+  parseSiteDisplays,
+  serializeSiteDisplays,
+} from '@/browser/page-display/page-display-settings';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -180,6 +191,17 @@ export const useSettingsStore = createStore<SettingsStore>()(
         readerLineSpacing: state.readerLineSpacing,
         readerImages: state.readerImages,
         readerSpeechRate: state.readerSpeechRate,
+        pageForceDark: state.pageForceDark,
+        pageTextZoom: state.pageTextZoom,
+        pageForceZoom: state.pageForceZoom,
+        pageTextReflow: state.pageTextReflow,
+        pageFontStyle: state.pageFontStyle,
+        pageUrduNastaliq: state.pageUrduNastaliq,
+        pageColorFilter: state.pageColorFilter,
+        pageNightLight: state.pageNightLight,
+        pageNightLightStrength: state.pageNightLightStrength,
+        pageBrightness: state.pageBrightness,
+        pageDisplaySites: state.pageDisplaySites,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -343,6 +365,28 @@ export const useSettingsStore = createStore<SettingsStore>()(
           readerImages: typeof raw.readerImages === 'boolean' ? raw.readerImages : current.readerImages,
           readerSpeechRate:
             raw.readerSpeechRate === undefined ? current.readerSpeechRate : normalizeReaderSpeechRate(raw.readerSpeechRate),
+          pageForceDark:
+            raw.pageForceDark === undefined ? current.pageForceDark : normalizeForceDark(raw.pageForceDark),
+          pageTextZoom:
+            raw.pageTextZoom === undefined ? current.pageTextZoom : normalizeTextZoom(raw.pageTextZoom),
+          pageForceZoom: typeof raw.pageForceZoom === 'boolean' ? raw.pageForceZoom : current.pageForceZoom,
+          pageTextReflow: typeof raw.pageTextReflow === 'boolean' ? raw.pageTextReflow : current.pageTextReflow,
+          pageFontStyle:
+            raw.pageFontStyle === undefined ? current.pageFontStyle : normalizePageFontStyle(raw.pageFontStyle),
+          pageUrduNastaliq: typeof raw.pageUrduNastaliq === 'boolean' ? raw.pageUrduNastaliq : current.pageUrduNastaliq,
+          pageColorFilter:
+            raw.pageColorFilter === undefined ? current.pageColorFilter : normalizeColorFilter(raw.pageColorFilter),
+          pageNightLight: typeof raw.pageNightLight === 'boolean' ? raw.pageNightLight : current.pageNightLight,
+          pageNightLightStrength:
+            raw.pageNightLightStrength === undefined
+              ? current.pageNightLightStrength
+              : normalizeNightLightStrength(raw.pageNightLightStrength),
+          pageBrightness:
+            raw.pageBrightness === undefined ? current.pageBrightness : normalizePageBrightness(raw.pageBrightness),
+          pageDisplaySites:
+            typeof raw.pageDisplaySites === 'string'
+              ? serializeSiteDisplays(parseSiteDisplays(raw.pageDisplaySites))
+              : current.pageDisplaySites,
         };
       },
     },

@@ -42,6 +42,8 @@ import { BookmarksBar } from '@/browser/bookmarks/components/BookmarksBar';
 import { BookmarkEditHost } from '@/browser/bookmarks/components/BookmarkSheets';
 import { SitePermissionsHost } from '@/browser/site-permissions/components/SitePermissionsSheet';
 import { ReaderHost } from '@/browser/reader/components/ReaderView';
+import { PageDisplayHost } from '@/browser/page-display/components/PageDisplaySheet';
+import { usePageBrightness } from '@/browser/page-display/use-page-brightness';
 import { FindInPageBar } from '@/browser/find/FindInPageBar';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
 import { useIsWebFullscreen, useWebFullscreenLifecycle } from '@/browser/fullscreen';
@@ -170,6 +172,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   useBrowserRouteLifecycle();
   useBrowserSessionContinuity();
   useBrowserHardwareBack();
+  // B16 #181: the browser's own brightness while it is in front.
+  usePageBrightness();
   const { loadUrl } = useBrowserEngineContext();
   const { t } = useTranslation();
   const [tabSwitcherVisible, setTabSwitcherVisible] = useState(false);
@@ -243,6 +247,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
       <BookmarkEditHost />
       {/* B15 #161: reader mode over the page. */}
       <ReaderHost />
+      {/* B16: the Page display (Aa) panel. */}
+      <PageDisplayHost />
       {addressBarPosition === 'top' ? (
         <AutoHideHeader position="top">
           <BrowserHeader

@@ -68,6 +68,7 @@ import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
 import { tabAudioScript } from '@/browser/tab-sound/tab-audio-script';
 import { SITE_PERMISSION_PAGE_SCRIPT } from '@/browser/site-permissions/site-permission-script';
 import { readerMode } from '@/browser/reader/reader-mode.service';
+import { pageDisplayNative, usePageDisplay } from '@/browser/page-display/use-page-display';
 import {
   isJavaScriptAllowed,
   normalizeCookiePolicy,
@@ -155,6 +156,12 @@ export const BrowserWebView = memo(function BrowserWebView({
   );
   // #135: the site this tab is on decides; the navigation guard reloads through the browser when the next site differs.
   const javaScriptEnabled = isJavaScriptAllowed(owningTabUrl, javaScriptDefault, javaScriptExceptions);
+  // B16: Page display — text size, force dark, the page script, and the native layout / colour filter.
+  const pageDisplay = usePageDisplay({ tabId, url: owningTabUrl, webViewRef });
+  const applyPageDisplayRef = useRef(pageDisplay.applyNative);
+  useEffect(() => {
+    applyPageDisplayRef.current = pageDisplay.applyNative;
+  }, [pageDisplay.applyNative]);
 
   const [pullToRefreshEnabled, setPullToRefreshEnabled] = useState(() =>
     computePullToRefreshEnabled(useBrowserStore.getState()),
@@ -231,6 +238,7 @@ export const BrowserWebView = memo(function BrowserWebView({
     }
     nativeViewTagRef.current = tag;
     setTabWebViewTag(tabId, tag);
+    applyPageDisplayRef.current(tag);
     applyNativeWebViewActivity(tag, runsPage);
     const previousCleanup = nativeScopeCleanupRef.current;
     nativeScopeCleanupRef.current = registerNativeObservationScope(tag, {
@@ -256,6 +264,7 @@ export const BrowserWebView = memo(function BrowserWebView({
       nativeScopeCleanupRef.current = null;
       if (nativeViewTagRef.current != null) {
         forgetNativeWebViewActivity(nativeViewTagRef.current);
+        pageDisplayNative.forget(nativeViewTagRef.current);
       }
       if (tabId) {
         clearTabWebViewTag(tabId, nativeViewTagRef.current);
@@ -559,8 +568,18 @@ export const BrowserWebView = memo(function BrowserWebView({
       // in the page (site-permission-script.ts).
       `${chromeBridge.injectedJavaScriptBeforeContentLoaded}\n${mediaBeforeContent}\n${SITE_PERMISSION_PAGE_SCRIPT}${
         doNotTrack ? `\n${DO_NOT_TRACK_PAGE_SCRIPT}` : ''
-      }${spellCheckOff ? `\n${SPELL_CHECK_OFF_PAGE_SCRIPT}` : ''}${tabAudioStart ? `\n${tabAudioStart}` : ''}`,
-    [chromeBridge.injectedJavaScriptBeforeContentLoaded, doNotTrack, mediaBeforeContent, spellCheckOff, tabAudioStart],
+      }${spellCheckOff ? `\n${SPELL_CHECK_OFF_PAGE_SCRIPT}` : ''}${tabAudioStart ? `\n${tabAudioStart}` : ''}\n${
+        // B16: font style, Urdu in Nastaliq, Force enable zoom (page-display-script.ts).
+        pageDisplay.script
+      }`,
+    [
+      chromeBridge.injectedJavaScriptBeforeContentLoaded,
+      doNotTrack,
+      mediaBeforeContent,
+      pageDisplay.script,
+      spellCheckOff,
+      tabAudioStart,
+    ],
   );
 
   const finalizeLoadEnd = useCallback(
@@ -756,6 +775,9 @@ export const BrowserWebView = memo(function BrowserWebView({
       source={webViewSource}
       style={[styles.webview, { backgroundColor: theme.colors.background }]}
       {...(userAgent ? { userAgent } : {})}
+      // B16 #164 / #163: set only once a Page display setting has differed from its default (today's WebView otherwise).
+      {...(pageDisplay.textZoom != null ? { textZoom: pageDisplay.textZoom } : {})}
+      {...(pageDisplay.forceDarkOn != null ? { forceDarkOn: pageDisplay.forceDarkOn } : {})}
       javaScriptEnabled={config.javaScriptEnabled && javaScriptEnabled}
       domStorageEnabled={config.domStorageEnabled}
       // B12 #113: third-party cookies only with "Allow all cookies" (#112 "Block all" turns the jar off natively).

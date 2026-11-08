@@ -23,6 +23,7 @@ import {
   READER_SPEECH_RATES,
   READER_THEMES,
 } from '@/browser/reader/reader-settings';
+import { COLOR_FILTERS, FORCE_DARK_MODES, PAGE_FONT_STYLES } from '@/browser/page-display/page-display-settings';
 
 /**
  * The allowed values of every browser setting that is a choice (stored as a string in `SettingsState`). Settings
@@ -52,6 +53,10 @@ export const BROWSER_SETTING_CHOICES: Readonly<Record<string, readonly string[]>
   readerFontFamily: READER_FONT_FAMILIES,
   readerLineSpacing: READER_LINE_SPACINGS,
   readerSpeechRate: READER_SPEECH_RATES,
+  // B16 (Hamza)
+  pageForceDark: FORCE_DARK_MODES,
+  pageFontStyle: PAGE_FONT_STYLES,
+  pageColorFilter: COLOR_FILTERS,
 };
 
 /** String settings longer than Backup's usual 500-character cap (lists stored as JSON). */
@@ -60,4 +65,6 @@ export const BROWSER_SETTING_STRING_LIMITS: Readonly<Record<string, number>> = {
   javaScriptExceptions: 16_000,
   // B13 (Hamza)
   sitePermissions: 16_000,
+  // B16 (Hamza)
+  pageDisplaySites: 16_000,
 };

@@ -23,6 +23,8 @@ export type BrowserMenuActionId =
   | 'reading_list_add'
   /** B15 #161 */
   | 'reader_mode'
+  /** B16 */
+  | 'page_display'
   | 'hard_reload'
   | 'scroll_top'
   | 'scroll_bottom'

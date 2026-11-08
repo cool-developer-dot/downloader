@@ -36,6 +36,16 @@ import {
   DEFAULT_READER_SPEECH_RATE,
   DEFAULT_READER_THEME,
 } from '@/browser/reader/reader-settings';
+// B16 (Hamza)
+import {
+  BRIGHTNESS_SYSTEM,
+  DEFAULT_COLOR_FILTER,
+  DEFAULT_FORCE_DARK,
+  DEFAULT_NIGHT_LIGHT_STRENGTH,
+  DEFAULT_PAGE_DISPLAY_SITES_JSON,
+  DEFAULT_PAGE_FONT_STYLE,
+  DEFAULT_TEXT_ZOOM,
+} from '@/browser/page-display/page-display-settings';
 
 export const initialSettingsState: SettingsState = {
   clipboardMonitor: false,
@@ -106,4 +116,15 @@ export const initialSettingsState: SettingsState = {
   readerLineSpacing: DEFAULT_READER_LINE_SPACING,
   readerImages: true,
   readerSpeechRate: DEFAULT_READER_SPEECH_RATE,
+  pageForceDark: DEFAULT_FORCE_DARK,
+  pageTextZoom: DEFAULT_TEXT_ZOOM,
+  pageForceZoom: false,
+  pageTextReflow: false,
+  pageFontStyle: DEFAULT_PAGE_FONT_STYLE,
+  pageUrduNastaliq: true,
+  pageColorFilter: DEFAULT_COLOR_FILTER,
+  pageNightLight: false,
+  pageNightLightStrength: DEFAULT_NIGHT_LIGHT_STRENGTH,
+  pageBrightness: BRIGHTNESS_SYSTEM,
+  pageDisplaySites: DEFAULT_PAGE_DISPLAY_SITES_JSON,
 };

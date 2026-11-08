@@ -49,6 +49,18 @@ export const BROWSER_SETTING_KEYS = [
   'readerLineSpacing',
   'readerImages',
   'readerSpeechRate',
+  // B16 (Hamza)
+  'pageForceDark',
+  'pageTextZoom',
+  'pageForceZoom',
+  'pageTextReflow',
+  'pageFontStyle',
+  'pageUrduNastaliq',
+  'pageColorFilter',
+  'pageNightLight',
+  'pageNightLightStrength',
+  'pageBrightness',
+  'pageDisplaySites',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];
