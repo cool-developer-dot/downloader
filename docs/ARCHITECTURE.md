@@ -840,6 +840,17 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   `browsing-traffic.ts` + `.service.ts` (VidoraWeb `getAppTraffic` minus H6's download total, MMKV
   `vidorax.browsingData.v1`; `BrowsingUsageSection` in Data usage). Cache limit: `cache-limit(.service).ts`.
   `LightweightHome` replaces the start page's content when on. Native: VidoraWeb `performance/*.kt`.
+- **Ad, tracker and site blocking (B14).** `src/browser/blocking/`: pure rules (`blocking-settings.ts` — sites,
+  autoplay policy, the Block-all page script; `site-limits.ts` — site blocker, daily limits, focus; `blocking-native.ts`
+  — the change-only native call cache). `content-blocking.service.ts` sends the switches and allowed sites to VidoraWeb
+  (`setContentBlocking`) and each tab's page (`setBlockingPage`); the native side (`blocking/ContentBlocking.kt`,
+  `ContentBlocker.kt`, `BlockList.kt`) answers in the patch script's interceptRequest hook with the bundled lists
+  (`assets/vidorax-blocklists/`, built by `scripts/dev/generate-blocklists.mjs`), never for a main frame or a media
+  request. `autoplay.service.ts` → `BrowserWebView` (`mediaPlaybackRequiresUserAction` and the Block-all script).
+  `site-blocking.service.ts` holds the profile's lists / limits / focus (tables in `applyBrowserTables`, repository
+  `site-blocking.repository.ts`; `DATABASE_VERSION` 4), counts on-screen time, and is asked by the engine
+  (`loadUrl`, the request guard, load start) before a page opens; a blocked tab shows error `site_blocked`
+  (`SiteBlockedView`) with its WebView paused. UI: `BlockingSettingsSection`, `SiteBlockingControls` in the lock panel.
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
 - **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab

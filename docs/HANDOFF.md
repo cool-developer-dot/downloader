@@ -2178,6 +2178,13 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   (TrafficStats minus downloads, only while browsing), lightweight start page. Native: VidoraWeb
   `setBlockNetworkImage`, `setSoftwareLayer`, `getAppTraffic`, `isPowerSaveMode`, `getWebViewCacheSize`,
   `clearWebViewCache`. Additive seam in B6: `bindAutoScrollSpeedFactor`. No permission, library or database change.
+- **B14 Ad, tracker and site blocking.** Ad blocker and tracker blocker (off by default; bundled EasyList /
+  EasyPrivacy, CC BY-SA 3.0, never downloaded) through B16's interceptRequest hook — never the page itself, never a
+  video / manifest request, never player code; lock icon: blocked count and "Allow ads on this site". Autoplay Allow /
+  Block sound (default, today's) / Block all, global and per site; Data saver → Block all. Site blocker, daily site
+  time limits (blocked until tomorrow), focus mode timer — per profile, surviving restarts, "This site is blocked"
+  before a page loads. Native: VidoraWeb `setContentBlocking`, `setBlockingPage`, `getBlockedCount` (no patch change).
+  DATABASE_VERSION 4 (new tables only), profile database version 2. No permission or library.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 

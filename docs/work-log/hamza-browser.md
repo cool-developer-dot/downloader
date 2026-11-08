@@ -1429,7 +1429,7 @@ case per change; its own "B16: native …" commit.
 
 ```
 B16: update — bundled Nastaliq in web pages (#272 no longer BLOCKED)
-Commits: d88c8b9 (B16: native — interceptRequest hook and bundled Nastaliq), 8661362 (page font fallback), <docs>
+Commits: d88c8b9 (B16: native — interceptRequest hook and bundled Nastaliq), 8661362 (page font fallback), 48f9daa (docs)
 Native code to review: patch script — RNCWebViewHooks.Listener.interceptRequest (default null) + dispatcher; in
   RNCWebViewClient.shouldInterceptRequest, observeRequest first, then interceptRequest (one override; a reversal
   migrates the previous observe-only patch). VidoraWeb interceptRequest → fonts/BundledFonts.kt (WebViewAssetLoader,
@@ -1594,7 +1594,7 @@ re-fetching.
 
 ```
 B18: update — Save-Data header
-Commits: c0ae68e (B18: Save-Data header), <docs>
+Commits: c0ae68e (B18: Save-Data header), 6262f3d (docs)
 Native code to review: none (no patch change, no native re-fetch)
 Database: unchanged (DATABASE_VERSION 3)
 New settings: none (follows dataSaver = false)
@@ -1603,6 +1603,180 @@ Tested: unit 1774/1774, typecheck, lint (0 errors, 82 warnings); new source-head
   both, neither). Device: list above.
 Found, not fixed: only the browser's own loads carry it (as DNT); switching Data saver reloads a tab's first page if it
   has moved on by links (react-native-webview setSource, as DNT).
+```
+
+## B14 — Ad, tracker and site blocking (#121, #114, #187, #218, #276, #277, #278)
+
+Mega 5. One native commit (Kotlin tests) on top of B16's `interceptRequest` hook (**no patch-script change in B14**),
+one database change (**`DATABASE_VERSION` 4**, profile database version 2), no permission, no new library; two bundled
+lists (EasyList / EasyPrivacy, CC BY-SA 3.0). Every switch is off / today's behaviour by default. Testing rule: unit
+tests, typecheck and lint here; device, release and upgrade checks in "Device test list for Faran".
+
+### What the user sees (Browser settings → Ad, tracker and site blocking; the lock-icon panel)
+
+| # | Feature | How | Notes / decisions |
+| --- | --- | --- | --- |
+| #121 | Ad blocker (off by default) + "Sites allowed to show ads"; lock icon → "Blocked on this page: N ads and trackers" and "Allow ads on this site" | Native: `blocking/ContentBlocking.kt` in the interceptRequest hook, after the bundled font | The list ships in the app (`assets/vidorax-blocklists/ads.txt`), read natively when the switch is on; JS sends only the switches and the allowed sites, ahead of time, on a change (`content-blocking.service.ts`); nothing is sent while both switches are off. A blocked request gets an **empty 200** (no network request). **Decision:** "Allow ads on this site" lets **trackers** load there too (one exception per site, like other browsers' shields; the card names ads only) |
+| #114 | Tracker blocker (off by default), its own switch | Same, `trackers.txt` | Each switch works alone (Kotlin test) |
+| #187 / #218 | Autoplay: Allow / Block sound (**default = today's**) / Block all, for every site and per site (lock-icon panel: "Same as all sites" / Allow / Block sound / Block all) | `autoplay.service.ts`, `BrowserWebView` | **Block sound** = WebView's own `mediaPlaybackRequiresUserAction` (already on, unchanged; no script): nothing with sound starts until a tap, muted videos may. **Allow** = that prop off for the page. **Block all** = a document-start page script (`AUTOPLAY_BLOCK_ALL_SCRIPT`): `play()` refused (`NotAllowedError`) and self-started media paused unless the user has just tapped (`navigator.userActivation`, or a tap in the last 5 s); a started element may play again; works with B3's tab-audio wrapper in either order (tested together in `node:vm`). **B18's hook connected:** with Data saver on, `dataSaverWantsNoAutoplay()` makes it Block all unless the site has its own choice. A link to a site with another policy reloads through the browser (as B12's JavaScript setting does), so the prop and script are right from the first load |
+| #276 | Site blocker: the user's list (add by typing, remove) → "This site is blocked" | `site-blocking.service.ts`, `site-limits.ts` (pure) | **Decided in the app before a page loads**, never by the native hook (which never blocks a main frame): the engine's `loadUrl`, the request guard (main frame) and load start (restored tab, reload, back / forward). The tab shows the notice for that address; its WebView is stopped, hidden behind the notice and **paused** (`runsPage` false — the parked-tab `onPause`: media suspended, timers throttled). A site covers its subdomains |
+| #277 | Site time limit: minutes a day (1, 5, 10, 15, 30, 45, 60, 90, 120, 180) per site; "N of M min used today"; used up → blocked until local midnight | same | Time counts only while one of the site's pages is on screen in the browser (app in front, Browser route shown, the tab not showing a block): a tick every 15 s, gaps capped at 20 s (sleep / background never count), saved as whole seconds per local day. When it runs out on the open page, the page is replaced by the notice at once. Days start at zero; older days are pruned |
+| #278 | Focus mode: a timer (1, 5, 15, **25** default, 45, 60, 90, 120 min) that blocks the user's distracting sites until it ends; "End focus mode" asks first; needs at least one site | same | The end time is stored, so it survives restarts; when it ends (or a day starts, or a list changes) every tab showing a block that no longer applies opens its page again |
+| — | Storage per browser profile | `site-blocking-schema.ts`, `site-blocking.queries.ts` / `.repository.ts` | New tables only, in `applyBrowserTables` (app database and every B20 profile database): `site_block_lists` (blocked / focus), `site_time_limits`, `site_time_usage` (day, site, seconds), `focus_session` (one row). `CREATE TABLE IF NOT EXISTS`, nothing altered: safe to run twice (tested). **`DATABASE_VERSION` 3 → 4** (migration step `< 4`); **`BROWSER_PROFILE_DATABASE_VERSION` 1 → 2** (it only records the layout; profile databases apply the tables on every open). The ad allow list and autoplay choices are settings (per profile too, and in Backup / Reset) |
+
+- Strings: `browserBlocking` (en, ur; site names inside Urdu sentences in first-strong isolates, written as escapes).
+- New error code `site_blocked` (`BrowserErrorCode`); `BrowserErrorView` hands it to `SiteBlockedView` (reason, Go
+  home, Blocking settings, and Open once the block has ended).
+
+### Native (Faran to review)
+
+- **No patch-script change.** VidoraWeb `interceptRequest` = `bundledFonts.intercept(...) ?: contentBlocking.intercept(view, request)`.
+- `blocking/ContentBlocker.kt` — pure `decide(url, method, isMainFrame, accept, hasRange, pageHost, rules, adList,
+  trackerList)`: never the main frame; never a request `NetworkMediaClassifier.classify` reports (video files,
+  HLS / DASH manifests, segments, byte ranges, video / audio Accept — what detection and downloads use), whatever its
+  host; never non-http(s), the page's own site (same registrable domain, **approximated** without a Public Suffix
+  List: last two labels, three under `co/com/net/org/gov/edu/ac/…` + a two-letter TLD) or an allowed site; then the
+  ad list, then the tracker list.
+- `blocking/BlockList.kt` — a `HashSet` of hosts + a map host → path prefixes; a lookup walks the request host's
+  parents (a handful of hash lookups).
+- `blocking/ContentBlocking.kt` — one immutable rules snapshot (`AtomicReference`); lists read from assets on a
+  single background thread when a switch needs them, dropped when both are off; nothing blocked until loaded; per
+  WebView (weak map) the page's site and blocked count, reset by its next main-frame request — **except a main-frame
+  request for a media file** (a tapped video link → a download, not a page). JS also names the page on load start
+  (`setBlockingPage`), for redirects and back / forward. Never calls JS or the WebView (the WebView is only a map key).
+- Module: `setContentBlocking(ads, trackers, allowedSites)` (≤ 1,000 sites), `setBlockingPage(viewTag, url)`,
+  `getBlockedCount(viewTag)` (main queue). Contract in `VidoraWeb.types.ts`.
+- Tests: `ContentBlockerTest` (9 — an ad host blocked, main frame never, video / manifest / segment / range never,
+  an exception site allowed, each switch alone, own site, bad input, label matching, the real bundled lists incl. the
+  IMA SDK not listed), `ContentBlockingTest` (6 — empty 200 and the per-page count, a tapped video link keeps the
+  page, the allowed site from the page and from JS, lists loaded only when needed and dropped, nothing blocked before
+  the list loads, a missing list). Kotlin on Windows: vidorax-web 129/130 (the known `WebViewSnapshotsTest`),
+  vidorax-media doesn't compile (known) — please rerun both on the Mac.
+
+### The bundled lists
+
+| List | Source | Licence | Rules | Size | gzip |
+| --- | --- | --- | --- | --- | --- |
+| `ads.txt` | EasyList version 202611081815 (8 Nov 2026) | CC BY-SA 3.0 (the EasyList authors' dual GPL-3.0+ / CC BY-SA 3.0+ licence; **we use the CC BY-SA option** — owner please confirm) | 47,909 | 927,478 bytes | 421,252 bytes |
+| `trackers.txt` | EasyPrivacy version 202611081815 | same | 51,025 | 1,108,944 bytes | 376,881 bytes |
+
+- Built offline from local copies by `scripts/dev/generate-blocklists.mjs` (test: `node --test
+  scripts/dev/generate-blocklists.test.mjs`, 3; not in `npm test`'s glob). Kept: `||host^` (optionally limited to
+  third-party / resource types — the type is ignored, media and pages are never blocked anyway) and plain
+  `||host/path` prefixes; dropped: cosmetic rules, wildcards, rules limited to some sites, `$popup` / `$document`,
+  hosts a generic `@@||host^` allows, and **every rule on the code video players load** (`PLAYER_CODE_HOSTS`: Google
+  IMA SDK `imasdk.googleapis.com`, JW Player `jwpcdn.com` / `jwplatform.com` / `jwplayer.com`, Flowplayer) — an empty
+  answer there can stall a player before it asks for its video.
+- Attribution: `assets/vidorax-blocklists/LICENSE-blocklists.txt` (source, version, licence URI, the changes) and the
+  settings hints name EasyList / EasyPrivacy. Whether it should also appear on the app's Legal / licences screen is the
+  owner's call (not changed).
+- Memory: about 99k strings in hash sets while both switches are on — an estimate of roughly 10 MB of heap, freed
+  when both are off. Not measured here (device check below).
+- APK: +~0.8 MB compressed (the two lists).
+
+### Files
+
+- New: `src/browser/blocking/` (`blocking-settings.ts`, `site-limits.ts`, `blocking-native.ts` — pure;
+  `content-blocking.service.ts`, `autoplay.service.ts`, `site-blocking.service.ts`; `components/SiteBlockedView.tsx`,
+  `components/SiteBlockingControls.tsx`; `blocking.test.ts`), `src/screens/settings/browser-settings/BlockingSettingsSection.tsx`,
+  `src/storage/sqlite/site-blocking-schema.ts`, `src/storage/repositories/site-blocking.{queries,repository}.ts` (+ test),
+  catalogs `browserBlocking.{en,ur}.ts`, `modules/vidorax-web/android/.../blocking/*.kt` + tests,
+  `assets/vidorax-blocklists/`, `scripts/dev/generate-blocklists.mjs` (+ test).
+- Changed (additive; **shared with Faran**): the engine — `useTabScopedBrowserEngine.ts` (`loadUrl`: the block check
+  before the same-page skip; reopening after a block), `useBrowserEngineEvents.ts` (request guard: site block and
+  autoplay policy; load start; no History visit for a blocked page); `BrowserWebView.tsx` (autoplay prop + script,
+  `setBlockingPage`, a blocked tab paused); `BrowserErrorView.tsx`; `SiteInfoHost.tsx` (lock panel); `BrowserScreen.tsx`
+  (start the services); settings store / `browser-setting-keys.ts` / `-choices.ts`; `navigation.types.ts`, `utils/errors.ts`;
+  `en.ts` / `ur.ts`; database constants, `schema.ts`, `migrations.ts`, `browser-database.ts`; `VidoraWebModule.kt`,
+  `VidoraWeb.types.ts`. My own B9 test `bookmark-organizer.test.ts` now follows `DATABASE_VERSION` (was pinned to 3).
+
+### Tests
+
+`blocking.test.ts` (14): sites typed any way, subdomains by label, list cleaning and caps, per-site autoplay; the
+default is today's and the order site → Data saver → global; **the Block-all page script in `node:vm` with B3's tab
+audio in both orders** (nothing plays without a tap, muted autoplay paused, a tap plays through B3's volume, the
+same element replays, installed once, never throws); site blocker, focus (until its end), time limit (used up →
+until midnight, a new day at zero), the clock's caps, local days; native calls only on a change and none while off,
+the blocked count. `site-blocking.queries.test.ts` (3, real SQLite): **v3 → v4** keeps bookmarks, run twice changes
+nothing, fresh install and profile databases get the tables; lists, limits, time used and the focus timer read back
+from a new connection (a restart), prune, remove, end. Kotlin: `ContentBlockerTest` (9), `ContentBlockingTest` (6).
+List generator: 3. Full gate: unit 1791/1791, typecheck, lint 0 errors / 82 warnings, patch test 7/7.
+
+**Video detection with blocking on:** covered by the Kotlin tests (no video / manifest / segment / range request is
+ever blocked, on any host; a tapped video link keeps the page; the IMA SDK and JW Player / Flowplayer plugins are not
+on the lists) — **plus a device check** below ("Video available" on an MP4 page and an HLS page with both blockers on).
+
+### Found, not fixed
+
+- **Pop-up windows (B20 "move tab to window", `BrowserWindowActivity`)** have their own WebView and client: no ad /
+  tracker blocking there, and a blocked tab can be moved to a window (links inside a window aren't checked either).
+  Faran's code — not changed; the fix would be a check in `canMoveTabToWindow` / the window's client.
+- **Service-worker requests** aren't blocked (one hook, WebView requests only; `ServiceWorkerRequests` returns null).
+- Blocked scripts get an empty response with no stand-in: a site that waits for Google Analytics / Tag Manager
+  callbacks can hang (the tracker blocker is off by default; "Allow ads on this site" fixes such a site).
+- Blocked sites, time limits and focus sites live in the profile's database, so **Settings Backup doesn't carry them**
+  (the ad allow list and autoplay choices are settings and do).
+- Reopening a page after its block ended uses `location.assign` when the WebView already had that address; with
+  JavaScript off for that site (B12) it doesn't run (Reload does).
+- Same-site is an approximation (no Public Suffix List natively), e.g. two sites under `blogspot.com` count as one.
+- The blocked count resets on the next main-frame request; a back / forward page restored from the cache keeps the
+  previous count.
+- "Allow ads on this site" and per-site autoplay apply after the page reloads (the panel reloads it).
+
+### Device test list for Faran
+
+- [ ] **Upgrade test** (the card says Yes): seeded 1.1.0 → this release: bookmarks, history, tabs, settings all there;
+      `DATABASE_VERSION` 4 (`adb shell run-as … sqlite3 databases/vidorax.db 'PRAGMA user_version'` on a debug build);
+      a second profile still opens (profile database version 2)
+- [ ] Ad blocker on, a news site with ads (e.g. dawn.com, bbc.com): ads gone, page works; lock icon → "Blocked on this
+      page: N ads and trackers" (N > 0); "Allow ads on this site" → page reloads with ads; other sites still blocked
+- [ ] Tracker blocker alone on a tracker test page (e.g. https://www.whatismybrowser.com or any site with Google
+      Analytics, seen in `chrome://inspect` → Network as failed / empty requests)
+- [ ] **Video detection with both blockers on:** "Video available" on an MP4 page and on an HLS page; a download from
+      each starts; a JW Player / video.js page with pre-roll ads still plays and is detected
+- [ ] Autoplay: a page with autoplay video with sound (Block sound default → doesn't start with sound; muted autoplay
+      may play); Block all → nothing starts until tapped, then plays; Allow → starts by itself; per-site choice from the
+      lock panel overrides the global one; Data saver on → Block all unless the site has its own choice
+- [ ] Site blocker: add a site, open it from the address bar, a bookmark, a link, a restored tab after force-stop →
+      "This site is blocked" each time; remove it → Open
+- [ ] A **1-minute time limit**: browse the site a minute → the notice ("opens again tomorrow"); force-stop, reopen →
+      still blocked; other tabs of the site blocked too; changing the phone's date to tomorrow → opens
+- [ ] A **1-minute focus mode** with one distracting site: blocked; force-stop and reopen during it → still blocked;
+      after it ends → the tab opens its page by itself; End focus mode asks first
+- [ ] A blocked tab plays no sound (a video page blocked mid-play by a limit stops)
+- [ ] Profiles (B20): another profile has its own lists, limits and focus
+- [ ] Urdu (RTL), Dark, TalkBack (switches, radio chips, remove buttons, the notice is announced), font scale 1.3
+- [ ] Memory: `adb shell dumpsys meminfo com.vidorax.fast.videodownloader` with both blockers off and on (lists loaded)
+- [ ] Merged manifest unchanged (no permission); APK size (+~0.8 MB)
+
+### Handoff note
+
+```
+B14 Ad, tracker and site blocking — done
+Commits: 4314cff (B14: native — ad and tracker blocking through the interceptRequest hook), 0ded38a (blocking),
+  <docs: this commit>
+Native code to review: no patch-script change (uses B16's interceptRequest hook, observeRequest still first).
+  VidoraWeb interceptRequest → blocking/ContentBlocking.kt (rules snapshot from JS ahead of time, lists read natively
+  from assets on a background thread, per-WebView page site + blocked count, empty 200 for a blocked request),
+  ContentBlocker.kt (pure decide: never main frame, never NetworkMediaClassifier media/manifest/segment/range, never
+  own or allowed site), BlockList.kt (host-suffix set + path prefixes). Module: setContentBlocking, setBlockingPage,
+  getBlockedCount. Tests: ContentBlockerTest (9), ContentBlockingTest (6).
+Database: DATABASE_VERSION 4 (was 3; new tables site_block_lists, site_time_limits, site_time_usage, focus_session,
+  IF NOT EXISTS only); BROWSER_PROFILE_DATABASE_VERSION 2 (was 1)
+New settings: adBlocker = false, trackerBlocker = false, adAllowedSites = '[]', autoplay = 'sound' (today's),
+  autoplaySites = '{}', focusMinutes = '25'
+New libraries: none. Lists: EasyList / EasyPrivacy 202611081815 (The EasyList authors; CC BY-SA 3.0 option of their
+  dual GPL-3.0+ / CC BY-SA licence — owner to confirm): ads.txt 47,909 rules / 927,478 B, trackers.txt 51,025 rules /
+  1,108,944 B (~0.8 MB gzip). Generator scripts/dev/generate-blocklists.mjs (+ test, run with node --test).
+package-lock: unchanged
+Tested: unit 1791/1791, typecheck, lint (0 errors, 82 warnings), patch test 7/7, generator test 3/3, Kotlin
+  vidorax-web 129/130 (known WebViewSnapshotsTest; vidorax-media won't compile on Windows — please rerun on the Mac).
+  Device, release and upgrade: list above.
+Hooks: connects B18's dataSaverWantsNoAutoplay (Data saver → Block all). Shared files changed additively: the engine
+  hooks, BrowserWebView, BrowserErrorView, SiteInfoHost, the settings store.
+Found, not fixed: pop-up windows (BrowserWindowActivity) are not blocked / not site-checked; service-worker requests
+  not blocked; no stand-in scripts for blocked analytics; site lists not in Settings Backup; reopen via
+  location.assign needs JavaScript; same-site approximated; blocked count kept on a cached back / forward page.
 ```
 
 ## Lists kept for the owner
@@ -1625,6 +1799,7 @@ Found, not fixed: only the browser's own loads carry it (as DNT); switching Data
 | B18 | `getAppTraffic()`: `TrafficStats.getUidRxBytes / getUidTxBytes(myUid)`, `Settings.Global.BOOT_COUNT`, `elapsedRealtime`; null when unsupported. Test `AppTrafficTest` | `performance/AppTraffic.kt` |
 | B18 | `isPowerSaveMode()`: `PowerManager.isPowerSaveMode`. Test `PowerSavingTest` | `performance/PowerSaving.kt` |
 | B18 | `getWebViewCacheSize()` (bytes under `<cacheDir>/WebView`, links not followed, off the main thread), `clearWebViewCache()` (`WebView.clearCache(true)` with a throwaway WebView for the default profile and each B20 profile). Test `WebViewCacheTest` | `performance/WebViewCache.kt` |
+| B14 | **No patch-script change.** `interceptRequest` → `ContentBlocking.intercept` after the bundled font: rules snapshot from JS (`setContentBlocking`), bundled lists read natively, per-WebView page site (`setBlockingPage`) and blocked count (`getBlockedCount`); pure `ContentBlocker.decide` never blocks the main frame or any `NetworkMediaClassifier` media request; empty 200 when blocked. Tests `ContentBlockerTest`, `ContentBlockingTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `blocking/*.kt`, `assets/vidorax-blocklists/` |
 
 ### New dependencies
 
@@ -1635,6 +1810,7 @@ Found, not fixed: only the browser's own loads carry it (as DNT); switching Data
 | B15 | `expo-speech` 57.0.3 | MIT | 141 KB installed (small Kotlin module); merged manifest gets `<queries>` for `android.intent.action.TTS_SERVICE`, no permission | Read aloud with the phone's own text-to-speech |
 | B15 | Noto Nastaliq Urdu (font, `assets/fonts/NotoNastaliqUrdu-Regular.ttf`, from google/fonts) | SIL OFL 1.1 (licence in `assets/fonts/NotoNastaliqUrdu-OFL.txt`) | 690,304 bytes (APK +~0.69 MB) | Urdu articles in Nastaliq (reader); B16's page font reuses the asset |
 | B16 update | The same Noto Nastaliq Urdu, a second copy in `modules/vidorax-web/android/src/main/assets/vidorax-fonts/` (OFL beside it) | SIL OFL 1.1 | 690,304 bytes (APK +~0.69 MB more) | Served to web pages by `BundledFonts.kt` (WebView can't reach Metro's `res/` copy) |
+| B14 | Ad list `ads.txt` (EasyList 202611081815) and tracker list `trackers.txt` (EasyPrivacy 202611081815), adapted (whole-host + path-prefix rules), in `modules/vidorax-web/android/src/main/assets/vidorax-blocklists/` | CC BY-SA 3.0 (the EasyList authors' dual licence, CC option — owner to confirm) | 927,478 + 1,108,944 bytes (47,909 + 51,025 rules; ~0.8 MB gzip) | Ad and tracker blocking, never downloaded |
 
 ### New settings and defaults
 
@@ -1693,6 +1869,12 @@ Found, not fixed: only the browser's own loads carry it (as DNT); switching Data
 | `batterySaver` | B18 | `'off'` (today's) | off / phone / on |
 | `hardwareAcceleration` | B18 | `true` (today's) | on / off |
 | `cacheLimitMb` | B18 | `'0'` (Off — today's) | 0 / 50 / 100 / 250 / 500 |
+| `adBlocker` | B14 | `false` (today's) | on / off |
+| `trackerBlocker` | B14 | `false` (today's) | on / off |
+| `adAllowedSites` | B14 | `'[]'` | JSON list of sites where ads and trackers load (≤ 300) |
+| `autoplay` | B14 | `'sound'` (today's WebView behaviour) | allow / sound / all |
+| `autoplaySites` | B14 | `'{}'` | JSON `{ site: allow / sound / all }` (≤ 300) |
+| `focusMinutes` | B14 | `'25'` | 1 / 5 / 15 / 25 / 45 / 60 / 90 / 120 |
 
 ### Found, not fixed
 
@@ -1724,6 +1906,8 @@ Found, not fixed: only the browser's own loads carry it (as DNT); switching Data
 | Bookmarks (B9) | B20's backup / restore and export don't carry folders, tags, notes or the reading list (B20's format; Faran's) |
 | Bookmarks import (B9) | An address already bookmarked in another folder is skipped (bookmark addresses are unique) |
 | Bookmark shortcuts (B9) | The home-screen icon is a letter on a colour, not the site's icon |
+| Blocking (B14) | Pop-up windows (B20 `BrowserWindowActivity`) aren't ad-blocked or site-checked, and a blocked tab can be moved to one; service-worker requests aren't blocked |
+| Blocking (B14) | No stand-in scripts for blocked analytics (sites waiting for them can hang); site lists, limits and focus aren't in Settings Backup; reopening after a block needs JavaScript on that site when the WebView already had the address |
 
 ### Decisions (all packages)
 
@@ -1778,3 +1962,8 @@ Found, not fixed: only the browser's own loads carry it (as DNT); switching Data
   the browser is in front, minus H6's download total, never across restarts or resets; cache limit checked once per
   start when idle, with a floor; Save-Data skipped (needs a patch hook) — B18 update: sent in the `source` headers
   like DNT, following the Data saver setting (not its network effects); additive auto-scroll seam in B6.
+- B14: ad / tracker blocking natively through B16's interceptRequest hook (no patch change), never the main frame or
+  any media / manifest request, never the code video players load (generator); lists EasyList / EasyPrivacy under the
+  CC BY-SA option; site blocker / time limits / focus decided in the app before a page loads, the tab paused behind
+  the notice; "Allow ads on this site" also allows trackers; autoplay default = today's WebView setting with no
+  script, per-site policy reloads through the browser; site lists in the profile database (DATABASE_VERSION 4).
