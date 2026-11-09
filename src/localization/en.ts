@@ -13,6 +13,7 @@ import { browserBlockingEn } from './catalogs/browserBlocking.en';
 import { browserIncognitoEn } from './catalogs/browserIncognito.en';
 import { browserShareEn } from './catalogs/browserShare.en';
 import { browserDevtoolsEn } from './catalogs/browserDevtools.en';
+import { browserAnnotateEn } from './catalogs/browserAnnotate.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
 import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
@@ -2841,4 +2842,5 @@ export const en = {
   browserIncognito: browserIncognitoEn,
   browserShare: browserShareEn,
   browserDevtools: browserDevtoolsEn,
+  browserAnnotate: browserAnnotateEn,
 } as const;

@@ -76,7 +76,8 @@
         }
       ],
       "expo-screen-orientation",
-      "expo-navigation-bar"
+      "expo-navigation-bar",
+      "expo-background-task"
     ],
     "experiments": {
       "typedRoutes": true,

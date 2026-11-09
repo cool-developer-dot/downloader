@@ -83,6 +83,10 @@ import {
 } from '@/browser/incognito/incognito.service';
 import { FORM_FIELD_SCRIPT } from '@/browser/form-snippets/form-snippets';
 import { devtoolsDocumentStartScript, devtoolsUserAgent, emulatedWidth, userScriptsAtEnd } from '@/browser/devtools/devtools-core';
+import { parseAnnotateMessage } from '@/browser/highlights/highlights-core';
+import { bindHighlightsInjector, onAnchor, onRestored, restoreHighlights } from '@/browser/highlights/highlights.service';
+import { LANGUAGE_MESSAGE_SCRIPT } from '@/browser/language/language-detect';
+import { onPageLanguage } from '@/browser/language/translate-offer.service';
 import {
   bindDevtoolsInjector,
   handleDevtoolsMessage,
@@ -194,6 +198,8 @@ export const BrowserWebView = memo(function BrowserWebView({
   const incognitoVerified = useIncognitoVerified(tabId);
   // B19: Developer tools — while off (the default) nothing of theirs reaches the page (devtoolsDocumentStartScript).
   const devtoolsOn = useSettingsStore((s) => s.devTools === true);
+  // B23 #263: the page's language is read only while the offer is on.
+  const offerTranslate = useSettingsStore((s) => s.offerTranslate !== false);
   const tabDevtools = useTabDevtools(tabId);
   const userScripts = useUserScripts();
   const devtoolsStart = useMemo(
@@ -677,6 +683,11 @@ ${LITE_PAGE_SCRIPT}` : ''}`,
         });
       }
       onLoadEnd(url);
+      // B23 #261: this page's highlights again; #263: its language (for "Translate this page?"). Never in incognito.
+      if (tabId && !incognitoTab && !isBrowserHomeUrl(url)) {
+        void restoreHighlights(tabId, url);
+        if (offerTranslate && isActive) webViewRef.current?.injectJavaScript(LANGUAGE_MESSAGE_SCRIPT);
+      }
       // B19 #199: the user's end-time scripts (each isolated; they check the page address themselves). Nothing while off.
       for (const script of userScriptsAtEnd({ enabled: devtoolsOn, scripts: userScripts, incognito: incognitoTab })) {
         webViewRef.current?.injectJavaScript(`${script}
@@ -687,7 +698,7 @@ true;`);
         pagePreload.afterPageLoad((script) => webViewRef.current?.injectJavaScript(script));
       }
     },
-    [appliedDesktopMode, cacheMode, devtoolsOn, incognitoTab, isActive, onLoadEnd, tabId, userScripts, webViewRef],
+    [appliedDesktopMode, cacheMode, devtoolsOn, incognitoTab, isActive, offerTranslate, onLoadEnd, tabId, userScripts, webViewRef],
   );
 
   useEffect(() => {
@@ -705,6 +716,12 @@ true;`);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- true unmount only (not isActive flips)
   }, []);
+
+  // B23 #261: highlights run their page scripts (anchor request, marking) in this tab.
+  useEffect(() => {
+    if (!tabId) return undefined;
+    return bindHighlightsInjector(tabId, (script) => webViewRef.current?.injectJavaScript(script));
+  }, [tabId, webViewRef]);
 
   // B19: Developer tools run their commands in this tab's page (only while they are on).
   useEffect(() => {
@@ -855,6 +872,14 @@ true;`);
       if (readerMode.handleMessage(tabId, raw)) {
         return;
       }
+      // B23: a highlight's anchor, how many highlights were restored, the page's language.
+      const annotate = parseAnnotateMessage(raw);
+      if (annotate) {
+        if (annotate.kind === 'anchor') onAnchor(tabId, annotate.anchor);
+        else if (annotate.kind === 'restored') onRestored(tabId, annotate.found, annotate.of);
+        else if (isActive && !incognitoTab) onPageLanguage(tabId, tabUrl, annotate);
+        return;
+      }
       // B19: console, network, inspect, source, storage and user-script reports (kept only while the tools are on).
       if (handleDevtoolsMessage(tabId, raw)) {
         return;
@@ -872,7 +897,7 @@ true;`);
       }
       onMediaDetectionMessage(raw);
     },
-    [chromeBridge, isActive, onMediaDetectionMessage, tabId],
+    [chromeBridge, incognitoTab, isActive, onMediaDetectionMessage, tabId, tabUrl],
   );
 
   const config = browserWebViewConfiguration;

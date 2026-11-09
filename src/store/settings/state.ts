@@ -165,4 +165,9 @@ export const initialSettingsState: SettingsState = {
   openInAppNever: DEFAULT_OPEN_IN_APP_NEVER_JSON,
   formSnippets: DEFAULT_FORM_SNIPPETS_JSON,
   devTools: false,
+  pageAlertHours: 6,
+  pageAlertWifiOnly: true,
+  offerTranslate: true,
+  translateNeverLanguages: '[]',
+  translateNeverSites: '[]',
 };

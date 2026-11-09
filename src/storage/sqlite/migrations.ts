@@ -58,6 +58,12 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
       await applyBrowserTables(db);
       await db.execAsync('PRAGMA user_version = 6');
     }
+
+    if (currentVersion < 7) {
+      // B23: highlights and watched pages (new tables only, IF NOT EXISTS; safe to run twice).
+      await applyBrowserTables(db);
+      await db.execAsync('PRAGMA user_version = 7');
+    }
   } catch (error) {
     throw toStorageError(error, 'Failed to migrate local database', 'DATABASE_INIT_FAILED');
   }

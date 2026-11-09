@@ -7,8 +7,9 @@ export const DATABASE_NAME = 'vidorax.db';
  * site-blocking-schema; new tables only).
  * v5 (B22): notes (`applyBrowserTables` → notes-schema; a new table only).
  * v6 (B19): user scripts (`applyBrowserTables` → user-scripts-schema; a new table only).
+ * v7 (B23): highlights and watched pages (`applyBrowserTables` → annotate-schema; new tables only).
  */
-export const DATABASE_VERSION = 6;
+export const DATABASE_VERSION = 7;
 
 export const TABLE_NAMES = {
   browserHistory: 'browser_history',
@@ -31,6 +32,9 @@ export const TABLE_NAMES = {
   notes: 'notes',
   // B19 (Hamza)
   userScripts: 'user_scripts',
+  // B23 (Hamza)
+  highlights: 'highlights',
+  pageWatches: 'page_watches',
 } as const;
 
 export const RECENT_SEARCH_LIMIT = 50;

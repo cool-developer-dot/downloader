@@ -93,6 +93,8 @@ import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
 // B22 (Hamza)
 import { parseNeverSites, serializeNeverSites } from '@/browser/open-in-app/open-in-app';
 import { parseSnippets, serializeSnippets } from '@/browser/form-snippets/form-snippets';
+import { clampAlertHours } from '@/browser/page-alerts/page-alerts-core';
+import { parseStringList } from '@/browser/language/language-detect';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -244,6 +246,11 @@ export const useSettingsStore = createStore<SettingsStore>()(
         openInAppNever: state.openInAppNever,
         formSnippets: state.formSnippets,
         devTools: state.devTools,
+        pageAlertHours: state.pageAlertHours,
+        pageAlertWifiOnly: state.pageAlertWifiOnly,
+        offerTranslate: state.offerTranslate,
+        translateNeverLanguages: state.translateNeverLanguages,
+        translateNeverSites: state.translateNeverSites,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -469,6 +476,17 @@ export const useSettingsStore = createStore<SettingsStore>()(
           formSnippets:
             typeof raw.formSnippets === 'string' ? serializeSnippets(parseSnippets(raw.formSnippets)) : current.formSnippets,
           devTools: typeof raw.devTools === 'boolean' ? raw.devTools : current.devTools,
+          pageAlertHours: raw.pageAlertHours !== undefined ? clampAlertHours(raw.pageAlertHours) : current.pageAlertHours,
+          pageAlertWifiOnly: typeof raw.pageAlertWifiOnly === 'boolean' ? raw.pageAlertWifiOnly : current.pageAlertWifiOnly,
+          offerTranslate: typeof raw.offerTranslate === 'boolean' ? raw.offerTranslate : current.offerTranslate,
+          translateNeverLanguages:
+            typeof raw.translateNeverLanguages === 'string'
+              ? JSON.stringify(parseStringList(raw.translateNeverLanguages))
+              : current.translateNeverLanguages,
+          translateNeverSites:
+            typeof raw.translateNeverSites === 'string'
+              ? JSON.stringify(parseStringList(raw.translateNeverSites))
+              : current.translateNeverSites,
         };
       },
     },

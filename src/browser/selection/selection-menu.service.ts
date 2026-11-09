@@ -12,6 +12,7 @@ import { SELECTION_READ_SCRIPT } from './selection-read-script';
 import { saveNote } from '@/browser/notes/notes.service';
 import { tabIdForViewTag } from '@/browser/webview/webview-view-tags';
 import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
+import { startHighlight } from '@/browser/highlights/highlights.service';
 
 /**
  * B8 #72–#74 — the app's items in a page's text-selection menu. `start()` gives VidoraWeb the translated items and
@@ -44,6 +45,8 @@ function onSelectionAction(event: SelectionActionEvent): void {
     notifyTruncated: () => notify(translate('browserSelection.searchTruncated')),
     // B22 #252: the selected text with its page, from the tab the menu was on.
     saveNote: (text, viewTag) => void saveNote(text, tabIdForViewTag(viewTag)),
+    // B23 #261: the page gives the anchor; the sheet picks the colour and note.
+    highlight: (text, viewTag) => startHighlight(tabIdForViewTag(viewTag), text),
   });
 }
 

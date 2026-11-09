@@ -192,6 +192,16 @@ export interface SettingsState {
   formSnippets: string;
   /** B19: Developer tools (default off — nothing is injected into pages while off). */
   devTools: boolean;
+  /** B23 #289: hours between page-change checks (default 6, at least 1). */
+  pageAlertHours: number;
+  /** B23 #289: check watched pages only on Wi-Fi (default on). */
+  pageAlertWifiOnly: boolean;
+  /** B23 #263: offer "Translate this page?" once per site (default on). */
+  offerTranslate: boolean;
+  /** B23 #263: languages never offered (JSON list of codes, default '[]'). */
+  translateNeverLanguages: string;
+  /** B23 #263: sites never offered (JSON list of hosts, default '[]'). */
+  translateNeverSites: string;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

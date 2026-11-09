@@ -77,6 +77,9 @@ import { isSameDocumentUrl } from '@/media-detection/utils';
 import { useTourTargetRef } from '@/tour/tour-targets';
 import { ensureDevtools } from '@/browser/devtools/devtools.service';
 import { DevtoolsPanel } from '@/browser/devtools/components/DevtoolsPanel';
+import { HighlightsHost } from '@/browser/highlights/components/HighlightsHost';
+import { DrawOnPageHost } from '@/browser/draw/components/DrawOnPageHost';
+import { TranslateOfferBanner } from '@/browser/language/components/TranslateOfferBanner';
 
 /**
  * BrowserScreen orchestrates only:
@@ -307,6 +310,10 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
         <ShareQrHost />
         {/* B19: Menu → Developer tools (only while they are on). */}
         <DevtoolsPanel />
+        {/* B23: the highlight sheets, drawing on a page, and "Translate this page?". */}
+        <HighlightsHost />
+        <DrawOnPageHost />
+        {pageControlsVisible && !tabSwitcherVisible ? <TranslateOfferBanner /> : null}
         <ScrollJumpButton visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
         <AutoScrollControl visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
         <SwipeArrow shared={swipe.shared} bottom={24} />

@@ -107,14 +107,15 @@ describe('B8 #72 search text', () => {
 });
 
 describe('B8 menu items', () => {
-  test('Search and (B22) Save to notes are the app items, titled in the app language', () => {
+  test('Search, (B22) Save to notes and (B23) Highlight are the app items, titled in the app language', () => {
     assert.deepEqual(
       SELECTION_MENU_ITEMS.map((item) => item.id),
-      ['search', 'save_note'],
+      ['search', 'save_note', 'highlight'],
     );
-    assert.deepEqual(buildSelectionMenu(SELECTION_MENU_ITEMS, (key) => (key === 'browserSelection.search' ? 'تلاش' : 'نوٹ')), {
-      ids: ['search', 'save_note'],
-      titles: ['تلاش', 'نوٹ'],
+    const titles: Record<string, string> = { 'browserSelection.search': 'تلاش', 'browserShare.saveToNotes': 'نوٹ', 'browserAnnotate.highlight': 'نمایاں' };
+    assert.deepEqual(buildSelectionMenu(SELECTION_MENU_ITEMS, (key) => titles[key]), {
+      ids: ['search', 'save_note', 'highlight'],
+      titles: ['تلاش', 'نوٹ', 'نمایاں'],
     });
   });
 

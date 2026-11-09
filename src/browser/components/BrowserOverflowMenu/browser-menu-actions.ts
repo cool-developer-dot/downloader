@@ -45,10 +45,15 @@ import { useSettingsStore } from '@/store/settings';
 
 import type { BrowserMenuFeedback, BrowserMenuItemModel } from './types';
 import { isIncognitoAvailable, openIncognitoTab } from '@/browser/incognito/incognito.service';
-import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
+import { isIncognitoInFront, isIncognitoTabId } from '@/browser/incognito/incognito-state';
 import { openQrSheet } from '@/browser/share-qr/share-qr.service';
 import { savePageNote } from '@/browser/notes/notes.service';
 import { openDevtoolsPanel } from '@/browser/devtools/devtools.service';
+import { openPageHighlights } from '@/browser/highlights/highlights.service';
+import { startDrawing } from '@/browser/draw/draw.service';
+import { watchPage } from '@/browser/page-alerts/page-alerts.service';
+import { MAX_WATCHES } from '@/browser/page-alerts/page-alerts-core';
+import { announceMenuNotice } from '@/browser/highlights/menu-notice';
 
 export type UseBrowserMenuActionsOptions = {
   onClose: () => void;
@@ -511,6 +516,45 @@ export function useBrowserMenuActions({
           onClose();
           openDevtoolsPanel(useBrowserStore.getState().activeTabId);
           break;
+        case 'highlights_page':
+          // B23 #261
+          onClose();
+          openPageHighlights(useBrowserStore.getState().activeTabId);
+          break;
+        case 'highlights':
+          onClose();
+          navigation.push(routePaths.highlights);
+          break;
+        case 'draw': {
+          // B23 #279
+          onClose();
+          const tab = useBrowserStore.getState().tabs.find((t) => t.id === useBrowserStore.getState().activeTabId);
+          if (tab) {
+            void startDrawing(tab.id, tab.title).then((ok) => {
+              if (!ok) announceMenuNotice(t('browserAnnotate.drawUnavailable'));
+            });
+          }
+          break;
+        }
+        case 'watch_page': {
+          // B23 #289
+          onClose();
+          const tab = useBrowserStore.getState().tabs.find((t) => t.id === useBrowserStore.getState().activeTabId);
+          if (tab) {
+            void watchPage(tab.id, tab.url, tab.title).then((outcome) => {
+              const key = {
+                watching: 'browserAnnotate.watching',
+                already: 'browserAnnotate.alreadyWatching',
+                cannotWatch: 'browserAnnotate.cannotWatch',
+                failed: 'browserAnnotate.watchFailed',
+                limit: 'browserAnnotate.watchLimit',
+                incognito: 'browserAnnotate.watchIncognito',
+              } as const;
+              announceMenuNotice(t(key[outcome], { max: MAX_WATCHES }));
+            });
+          }
+          break;
+        }
         case 'translate':
           handleTranslate();
           break;
@@ -588,10 +632,13 @@ export function useBrowserMenuActions({
       handleTranslate,
       handleMoveToWindow,
       handleProfile,
+      t,
     ],
   );
 
   const devtoolsOn = useSettingsStore((s) => s.devTools === true);
+  // B23: highlights, drawing and page alerts are left out for an incognito tab.
+  const incognitoInFront = useBrowserStore((s) => isIncognitoTabId(s.activeTabId));
   // B11: incognito needs WebView profiles; that doesn't change while the app runs.
   const incognitoAvailable = useMemo(() => isIncognitoAvailable(), []);
 
@@ -770,6 +817,43 @@ export function useBrowserMenuActions({
         kind: 'action',
         enabled: true,
       },
+      // B23: highlights, drawing and page alerts (not for incognito tabs: nothing of them is kept).
+      ...(incognitoInFront
+        ? []
+        : [
+            {
+              id: 'highlights_page' as const,
+              icon: 'format-color-highlight',
+              label: t('browserAnnotate.onThisPage'),
+              accessibilityLabel: t('browserAnnotate.onThisPageA11y'),
+              kind: 'action' as const,
+              enabled: hasValidPage,
+            },
+            {
+              id: 'draw' as const,
+              icon: 'draw',
+              label: t('browserAnnotate.draw'),
+              accessibilityLabel: t('browserAnnotate.drawA11y'),
+              kind: 'action' as const,
+              enabled: hasValidPage,
+            },
+            {
+              id: 'watch_page' as const,
+              icon: 'bell-ring-outline',
+              label: t('browserAnnotate.watch'),
+              accessibilityLabel: t('browserAnnotate.watchA11y'),
+              kind: 'action' as const,
+              enabled: hasValidPage,
+            },
+          ]),
+      {
+        id: 'highlights',
+        icon: 'marker',
+        label: t('browserAnnotate.allMenu'),
+        accessibilityLabel: t('browserAnnotate.allMenuA11y'),
+        kind: 'action',
+        enabled: true,
+      },
       // B19: only while Developer tools are on.
       ...(devtoolsOn
         ? [
@@ -906,6 +990,7 @@ export function useBrowserMenuActions({
     hasValidPage,
     incognitoAvailable,
     devtoolsOn,
+    incognitoInFront,
     profileLabel,
     readerAvailable,
     t,

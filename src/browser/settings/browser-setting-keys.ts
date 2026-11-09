@@ -86,6 +86,12 @@ export const BROWSER_SETTING_KEYS = [
   'formSnippets',
   // B19 (Hamza)
   'devTools',
+  // B23 (Hamza)
+  'pageAlertHours',
+  'pageAlertWifiOnly',
+  'offerTranslate',
+  'translateNeverLanguages',
+  'translateNeverSites',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

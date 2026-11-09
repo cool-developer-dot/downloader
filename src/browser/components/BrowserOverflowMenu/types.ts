@@ -15,6 +15,11 @@ export type BrowserMenuActionId =
   | 'notes'
   // B19
   | 'devtools'
+  // B23
+  | 'highlights_page'
+  | 'highlights'
+  | 'draw'
+  | 'watch_page'
   | 'reopen_closed_tab'
   | 'duplicate_tab'
   | 'move_to_window'

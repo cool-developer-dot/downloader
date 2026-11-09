@@ -19,9 +19,11 @@ export type SelectionActionPorts = {
   notifyTruncated: () => void;
   /** B22 #252: saves the selected text to notes from the tab with this view (never from an incognito tab). */
   saveNote?: (text: string, viewTag: number) => void;
+  /** B23 #261: highlights the selected text on the tab with this view (never from an incognito tab). */
+  highlight?: (text: string, viewTag: number) => void;
 };
 
-export type SelectionActionOutcome = 'searched' | 'searchedTruncated' | 'limit' | 'savedNote' | 'ignored';
+export type SelectionActionOutcome = 'searched' | 'searchedTruncated' | 'limit' | 'savedNote' | 'highlight' | 'ignored';
 
 export function handleSelectionAction(
   event: SelectionActionEventLike,
@@ -45,6 +47,11 @@ export function handleSelectionAction(
       if (!text || !ports.saveNote) return 'ignored';
       ports.saveNote(text, event.viewTag);
       return 'savedNote';
+    }
+    case 'highlight': {
+      if (!event.text.trim() || !ports.highlight) return 'ignored';
+      ports.highlight(event.text, event.viewTag);
+      return 'highlight';
     }
     default:
       // An item a newer native build or another package added without a handler here: do nothing.
