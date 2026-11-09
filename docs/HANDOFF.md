@@ -2191,6 +2191,12 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   after its WebViews unmount; nothing saved (shouldPersistForTab false); App Lock on return; FLAG_SECURE; download
   notice and the session's own cookies for downloads; violet bar; incognito search engine. Native: patch script
   (cba6715), VidoraWeb (0dedfc5), vidorax-media (4f17008). No permission, library, manifest or database change.
+- **B22 Share, QR and upload.** QR code of the page (share as image, save to the gallery on Android 10+), Scan QR
+  (Google code scanner, no CAMERA; URLs ask first, other schemes text only), file / camera upload checked (camera fixed
+  with an IMAGE_CAPTURE `<queries>` entry), Notes (table per profile, DATABASE_VERSION 5; selection menu and page;
+  Notes screen; never from incognito), Open in app chip (six apps through `<queries>` packages), Form snippets (field
+  kind only, never password / OTP / card). Native 50f0a2d (no patch change). Libraries: qrcode-generator 1.4.4 (MIT),
+  play-services-code-scanner 16.1.0. Merged manifest: no CAMERA.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 

@@ -1921,6 +1921,104 @@ Found, not fixed: Fabric prop delivery to confirm on a device (fails closed); ki
   only when set up.
 ```
 
+## B22 — Share, QR and upload (#249, #30, #254, #255, #252, #273, #274)
+
+Mega 6. One native commit (VidoraWeb + the app manifest), the feature commit. **DATABASE_VERSION 5** (profile database
+version 3). **Manifest changes (by hand, no prebuild):** app `<queries>` — `<package>` entries for the six apps and the
+`android.media.action.IMAGE_CAPTURE` intent; vidorax-web — a `FileProvider` (`<app>.vidorax.web.files`, not exported,
+`cache-path qr/` only). **No permission added:** the regenerated debug merged manifest (`gradle.sh
+:app:processDebugMainManifest`) has **no CAMERA** and the same 40 permission names as B13 logged. New libraries:
+`qrcode-generator` 1.4.4 (npm) and `com.google.android.gms:play-services-code-scanner` 16.1.0 (Gradle). Depends on B8
+(the selection menu's item list) and B11 (the incognito checks). Gate as B11 (2 workers): unit 1807/1807, typecheck,
+lint 0 / 82, patch 10/10, generator 3/3, Kotlin vidorax-web 142/143 (known), vidorax-media not compilable on Windows.
+
+| # | Feature | Notes / decisions |
+| --- | --- | --- |
+| #249 | Menu → **QR code**: the page address as a QR code; Share image; Save to gallery | JS generator `qrcode-generator` (UTF-8, error correction M, ≤ 1,800 characters) drawn with react-native-svg, always dark on white. The PNG is drawn **natively** from the same module matrix (`share/QrImage.kt`) — no view-capture library — shared from the cache through the new FileProvider, saved to Pictures/VidoraX through MediaStore **only on Android 10+** (no permission); below that only Share is offered |
+| #30 | **Scan QR code** in the empty address bar (focused, nothing typed) and on the start page | Google code scanner (Play services shows the camera: **no CAMERA permission**). A URL asks "Open <host>?" first; `javascript:`, `intent:`, `file:`, `data:` and any other non-http(s) address are text only (Copy); plain text offers Search / Copy; without Play services: "Scanning needs Google Play services…" |
+| #254 | File upload | **Checked in react-native-webview's code, unchanged:** one file / several (`EXTRA_ALLOW_MULTIPLE`), accept filters (the chooser's MIME types), Cancel answers the page with no file (no hang). Device checks below |
+| #255 | Camera upload (`accept="image/*" capture`) | Uses the camera **intent** (the app declares no CAMERA, so react-native-webview never asks for it). **Fixed:** on Android 11+ the intent wasn't visible without a `<queries>` entry for `IMAGE_CAPTURE`, so no camera opened and the page's field never answered — the entry is added. No photo taken → the page gets no file |
+| #252 | **Notes**: "Save to notes" in B8's selection menu (the selected text + its page), "Save page to notes" (title + address) and "Notes" in the menu; a Notes screen (`/notes`, also from Browser settings) with search (text, page title, address; `%` / `_` literal), edit, delete (asks), copy, share, open page | Table `notes` per browser profile (`applyBrowserTables`, `CREATE TABLE IF NOT EXISTS`, safe to run twice; **DATABASE_VERSION 4 → 5**, profile database 2 → 3). **Never saved from an incognito tab** (a notice). B8's item list now holds `search`, `save_note` (≤ 4) |
+| #273 | **Open in app** chip for YouTube, Instagram, Facebook, TikTok, X, Google Maps when the app is installed: once per site per app session, "Don't ask for this site", a setting to turn it off (Browser settings → Share, QR and forms) | Detection only through the app manifest's `<queries>` `<package>` entries (never `QUERY_ALL_PACKAGES`); opens the https address with the app's package. **Decision:** not offered in incognito tabs (the app would get the page outside incognito) |
+| #274 | **Form snippets**: Browser settings → Form snippets (≤ 20, ≤ 500 characters); a bar above the keyboard while a page field has focus; a tap inserts at the caret | The document-start script is injected only while the user has snippets; it reports **only the field's kind** (text / email / tel / url / search / textarea or none) — never a value, name or address — and never for password, one-time-code or card fields (type, `autocomplete`, or a name / id saying card, CVC, expiry, OTP, password, PIN). Never filled automatically |
+
+### Native (Faran to review) — no patch-script change
+
+- `share/QrImage.kt` (+ `share/WebFileProvider.kt`, `res/xml/vidorax_web_file_paths.xml`), `scanner/QrScanner.kt`,
+  `apps/AppLinks.kt`; module functions `shareQrImage`, `canSaveQrToGallery`, `saveQrImage`, `scanQrCode`,
+  `isAppInstalled`, `openInApp`. Gradle: `play-services-code-scanner:16.1.0`. Tests `QrImageTest` (4), `AppLinksTest` (2).
+- **Manifest changes:** app `<queries>` (6 apps / 8 packages, IMAGE_CAPTURE); vidorax-web `<provider>`.
+
+### New libraries
+
+| Library | Licence | Size | Why |
+| --- | --- | --- | --- |
+| `qrcode-generator` 1.4.4 (npm, exact) | MIT (Kazuhiko Arase) | 116,754 bytes installed; `qrcode.js` 56,694 bytes in the bundle | QR module matrix in JS |
+| `com.google.android.gms:play-services-code-scanner` 16.1.0 (Gradle) | Google Play services / Android SDK terms (not open source) | small client library; the scanner itself is a Play services module downloaded by Play services | #30 scan with no CAMERA permission |
+
+`package-lock.json`: one new entry (`qrcode-generator`).
+
+### Tests
+
+`share-qr.test.ts` (7): QR size and finder patterns, UTF-8, too long, deterministic, the SVG path; scanned codes
+(addresses ask first, unsafe schemes text only, text); Open in app (only the six, once per site, never-list, not
+installed, setting off); snippets (clean, cap); **the field script in `node:vm`** (kind only, never password / OTP /
+card); **the insert script in `node:vm`** (at the caret, input event, never a password field).
+`notes.queries.test.ts` (2, real SQLite): v4 → v5 keeps data and runs twice; add / list / search / edit / delete.
+`selection.test.ts` (B8, mine): the item list and the Save to notes handler. B14's database test now follows
+`DATABASE_VERSION` (mine).
+
+### Found, not fixed
+
+- A page's camera upload on a phone with **no camera app at all** still never answers the field
+  (react-native-webview's `startPhotoPickerIntent` returns without calling back) — needs a patch change, not allowed in
+  B22; for Faran.
+- Gallery save below Android 10 isn't offered (it would need the storage permission).
+- The scanner needs Google Play services (a message otherwise).
+- Snippets are inserted into the field in front even inside cross-origin frames only if the frame's field is the
+  document's active element (the script runs in the main document: fields inside cross-origin iframes get no bar).
+
+### Device test list for Faran
+
+- [ ] Menu → QR code on Wikipedia: scan it with another phone → same address; Share image → a PNG in the share
+      sheet; Save to gallery (Android 10+) → Pictures/VidoraX; an over-long address → "too long"
+- [ ] Scan QR code: empty address bar icon and start page button; a URL code → "Open <host>?"; a `javascript:` /
+      `intent:` code → text only; a plain text code → Search / Copy; without Play services → the message
+- [ ] **Merged manifest**: no CAMERA (`apkanalyzer manifest permissions app-release.apk`)
+- [ ] w3schools `<input type=file>`: one file, several, an accept filter (images only), Cancel → the page shows no file
+      and the next tap works again
+- [ ] Camera upload (`accept="image/*" capture`): the camera opens, a photo goes to the page; back out of the camera →
+      no file, no crash
+- [ ] Select text → Save to notes; Menu → Save page to notes; Notes: search (Urdu too), edit, delete, copy, share, open
+      page; from an incognito tab → "notes aren't saved"; another profile has its own notes; restart → still there
+- [ ] Open in app with Google Maps installed: https://maps.google.com/?q=Lahore → chip once; "Don't ask for this site";
+      setting off → no chip; not in incognito
+- [ ] Form snippets on a public form: the bar above the keyboard in a name / email field, a tap inserts; never on a
+      password, a one-time-code or a card-number field; nothing typed by itself
+- [ ] Upgrade over the seeded 1.1.0 build: DATABASE_VERSION 5, everything kept; Urdu, Dark, TalkBack, font 1.3
+
+### Handoff note
+
+```
+B22 Share, QR and upload — done
+Depends on: B8 (selection-menu item list: + save_note), B11 (incognito checks for notes and Open in app)
+Commits: 50f0a2d (B22: native — QR image, code scanner, open in app; manifest <queries>), 8bd0f70 (share, QR and
+  upload), <docs: this commit>
+Native code to review: VidoraWeb share/QrImage + WebFileProvider, scanner/QrScanner (play-services-code-scanner
+  16.1.0), apps/AppLinks; functions shareQrImage, canSaveQrToGallery, saveQrImage, scanQrCode, isAppInstalled,
+  openInApp. No patch-script change. Tests QrImageTest 4, AppLinksTest 2.
+Manifest: app <queries> + <package> ×8 (YouTube, Instagram, Facebook, Facebook Lite, TikTok ×2, X, Maps) +
+  IMAGE_CAPTURE intent; vidorax-web <provider> WebFileProvider (not exported, cache qr/ only). Merged manifest: no
+  CAMERA, same 40 permissions.
+Database: DATABASE_VERSION 5 (notes table); profile database version 3
+New settings: openInAppPrompt = true, openInAppNever = '[]', formSnippets = '[]'
+New libraries: qrcode-generator 1.4.4 (MIT, 116,754 B installed); play-services-code-scanner 16.1.0 (Google terms)
+package-lock: + qrcode-generator
+Tested: unit 1807/1807 (2 workers), typecheck, lint 0/82, Kotlin vidorax-web 142/143 (known). Device: list above.
+Found, not fixed: no camera app at all → the page's camera field hangs (needs a patch change); no gallery save below
+  Android 10; scanning needs Play services.
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -2019,6 +2117,9 @@ Found, not fixed: Fabric prop delivery to confirm on a device (fails closed); ki
 | `autoplaySites` | B14 | `'{}'` | JSON `{ site: allow / sound / all }` (≤ 300) |
 | `focusMinutes` | B14 | `'25'` | 1 / 5 / 15 / 25 / 45 / 60 / 90 / 120 |
 | `incognitoSearchEngine` | B11 | `'same'` (the normal engine — today's) | same / google / bing / duckduckgo / yahoo / ecosia / brave |
+| `openInAppPrompt` | B22 | `true` (a chip only) | on / off |
+| `openInAppNever` | B22 | `'[]'` | JSON list of sites (≤ 100) |
+| `formSnippets` | B22 | `'[]'` | JSON list of texts (≤ 20, ≤ 500 characters each) |
 
 ### Found, not fixed
 
@@ -2052,6 +2153,7 @@ Found, not fixed: Fabric prop delivery to confirm on a device (fails closed); ki
 | Bookmark shortcuts (B9) | The home-screen icon is a letter on a colour, not the site's icon |
 | Blocking (B14) | Pop-up windows (B20 `BrowserWindowActivity`) aren't ad-blocked or site-checked, and a blocked tab can be moved to one; service-worker requests aren't blocked |
 | Blocking (B14) | No stand-in scripts for blocked analytics (sites waiting for them can hang); site lists, limits and focus aren't in Settings Backup; reopening after a block needs JavaScript on that site when the WebView already had the address |
+| Share / upload (B22) | A camera upload on a phone with no camera app at all never answers the field (react-native-webview; needs a patch change); no gallery save below Android 10; scanning needs Play services |
 | Incognito (B11) | Fabric delivering the `webProfile` prop is a device check (fails closed); after a kill the session's data stays until the next session's sweep; `cookieProfile` follows the tab in front; Aa per-site / desktop mode changed in incognito are kept; App Lock only when set up |
 
 ### Decisions (all packages)

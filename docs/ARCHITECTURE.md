@@ -862,6 +862,13 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   `RNCWebViewHooks.beforeWebViewSetupInProfile` → VidoraWeb `IncognitoProfiles` → `WebProfiles.applyNamed` (never
   `setActive`). Downloads: `toV2RequestContext` adds `cookieProfile`; vidorax-media `IncognitoWebCookies`. Wipe:
   `deleteIncognitoWebProfile` (profile-service.ts) once the WebViews unmount; the sweep owns the live name.
+- **Share, QR and upload (B22).** `src/browser/share-qr/` (`qr-code.ts` — qrcode-generator matrix, SVG path, scan
+  classification; `share-qr.service.ts`; `ShareQrHost`, `ScanQrButton`), VidoraWeb `share/QrImage.kt` (PNG, MediaStore,
+  `WebFileProvider`), `scanner/QrScanner.kt` (Google code scanner). Notes: `src/browser/notes/notes.service.ts`, table
+  `notes` (`notes-schema.ts`, `notes.queries.ts`, DATABASE_VERSION 5), `screens/notes/NotesScreen.tsx` (`/notes`), B8
+  selection item `save_note`. Open in app: `src/browser/open-in-app/` + VidoraWeb `apps/AppLinks.kt` (app manifest
+  `<queries>` packages). Form snippets: `src/browser/form-snippets/` (field-kind script, insert script, bar above the
+  keyboard); messages handled in `BrowserWebView`.
 - **Browser settings** live in `SettingsState` as primitives (so Settings Backup carries them and Reset restores them);
   `browser/settings/browser-setting-keys.ts` lists them and `browser-settings.audit.test.ts` checks persistence,
   backup and reset; `browser-setting-choices.ts` gives Backup the allowed values of each choice setting.
