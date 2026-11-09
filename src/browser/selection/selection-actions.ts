@@ -17,9 +17,11 @@ export type SelectionActionPorts = {
   openTabAfterCurrent: (url: string, title: string) => boolean;
   /** Tells the user the search used only the first 300 characters. */
   notifyTruncated: () => void;
+  /** B22 #252: saves the selected text to notes from the tab with this view (never from an incognito tab). */
+  saveNote?: (text: string, viewTag: number) => void;
 };
 
-export type SelectionActionOutcome = 'searched' | 'searchedTruncated' | 'limit' | 'ignored';
+export type SelectionActionOutcome = 'searched' | 'searchedTruncated' | 'limit' | 'savedNote' | 'ignored';
 
 export function handleSelectionAction(
   event: SelectionActionEventLike,
@@ -37,6 +39,12 @@ export function handleSelectionAction(
         return 'searchedTruncated';
       }
       return 'searched';
+    }
+    case 'save_note': {
+      const text = event.text.trim();
+      if (!text || !ports.saveNote) return 'ignored';
+      ports.saveNote(text, event.viewTag);
+      return 'savedNote';
     }
     default:
       // An item a newer native build or another package added without a handler here: do nothing.

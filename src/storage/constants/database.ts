@@ -5,8 +5,9 @@ export const DATABASE_NAME = 'vidorax.db';
  * v3 (B9): bookmark folders, tags, notes and order, and the reading list (`applyBrowserTables` → bookmark-organizer-schema).
  * v4 (B14): site blocker and focus lists, daily time limits and time used, the focus timer (`applyBrowserTables` →
  * site-blocking-schema; new tables only).
+ * v5 (B22): notes (`applyBrowserTables` → notes-schema; a new table only).
  */
-export const DATABASE_VERSION = 4;
+export const DATABASE_VERSION = 5;
 
 export const TABLE_NAMES = {
   browserHistory: 'browser_history',
@@ -25,6 +26,8 @@ export const TABLE_NAMES = {
   siteTimeLimits: 'site_time_limits',
   siteTimeUsage: 'site_time_usage',
   focusSession: 'focus_session',
+  // B22 (Hamza)
+  notes: 'notes',
 } as const;
 
 export const RECENT_SEARCH_LIMIT = 50;

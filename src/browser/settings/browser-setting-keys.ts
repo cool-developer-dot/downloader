@@ -80,6 +80,10 @@ export const BROWSER_SETTING_KEYS = [
   'focusMinutes',
   // B11 (Hamza)
   'incognitoSearchEngine',
+  // B22 (Hamza)
+  'openInAppPrompt',
+  'openInAppNever',
+  'formSnippets',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

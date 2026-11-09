@@ -7,16 +7,18 @@
  * id in `selection-menu.service.ts`. Ids follow the native rule `[a-z][A-Za-z0-9_]{0,31}`; at most 4 items.
  */
 
-export type SelectionMenuItemId = 'search';
+export type SelectionMenuItemId = 'search' | 'save_note';
 
 export type SelectionMenuItemDefinition = {
   id: SelectionMenuItemId;
   /** Catalog key of the item's title (shown as is in the menu; 40 characters at most). */
-  labelKey: 'browserSelection.search';
+  labelKey: 'browserSelection.search' | 'browserShare.saveToNotes';
 };
 
 export const SELECTION_MENU_ITEMS: readonly SelectionMenuItemDefinition[] = [
   { id: 'search', labelKey: 'browserSelection.search' },
+  // B22 #252
+  { id: 'save_note', labelKey: 'browserShare.saveToNotes' },
 ];
 
 /** Native caps (SelectionMenu.kt). */

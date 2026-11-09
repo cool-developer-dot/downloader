@@ -11,6 +11,7 @@ import { browserPageDisplayEn } from './catalogs/browserPageDisplay.en';
 import { browserDataSaverEn } from './catalogs/browserDataSaver.en';
 import { browserBlockingEn } from './catalogs/browserBlocking.en';
 import { browserIncognitoEn } from './catalogs/browserIncognito.en';
+import { browserShareEn } from './catalogs/browserShare.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
 import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
@@ -2837,4 +2838,5 @@ export const en = {
   browserDataSaver: browserDataSaverEn,
   browserBlocking: browserBlockingEn,
   browserIncognito: browserIncognitoEn,
+  browserShare: browserShareEn,
 } as const;

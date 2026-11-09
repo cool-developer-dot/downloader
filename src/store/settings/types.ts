@@ -184,6 +184,12 @@ export interface SettingsState {
   focusMinutes: import('@/browser/blocking/site-limits').FocusMinutes;
   /** B11 #111: the search engine for incognito tabs, 'same' (default — the normal engine) or an engine id. */
   incognitoSearchEngine: import('@/browser/incognito/incognito-settings').IncognitoSearchEngine;
+  /** B22 #273: offer "Open in app" for YouTube, Instagram, Facebook, TikTok, X and Maps (default on — a chip only). */
+  openInAppPrompt: boolean;
+  /** B22 #273: sites where "Don't ask for this site" was chosen (JSON list, default '[]'). */
+  openInAppNever: string;
+  /** B22 #274: the user's form snippets (JSON list of texts, default '[]'). */
+  formSnippets: string;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

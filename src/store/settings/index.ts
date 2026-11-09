@@ -90,6 +90,9 @@ import { normalizeFocusMinutesChoice } from '@/browser/blocking/site-limits';
 // B11 (Hamza)
 import { normalizeIncognitoSearchEngine, searchEngineFor } from '@/browser/incognito/incognito-settings';
 import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
+// B22 (Hamza)
+import { parseNeverSites, serializeNeverSites } from '@/browser/open-in-app/open-in-app';
+import { parseSnippets, serializeSnippets } from '@/browser/form-snippets/form-snippets';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -237,6 +240,9 @@ export const useSettingsStore = createStore<SettingsStore>()(
         autoplaySites: state.autoplaySites,
         focusMinutes: state.focusMinutes,
         incognitoSearchEngine: state.incognitoSearchEngine,
+        openInAppPrompt: state.openInAppPrompt,
+        openInAppNever: state.openInAppNever,
+        formSnippets: state.formSnippets,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -454,6 +460,13 @@ export const useSettingsStore = createStore<SettingsStore>()(
             raw.incognitoSearchEngine === undefined
               ? current.incognitoSearchEngine
               : normalizeIncognitoSearchEngine(raw.incognitoSearchEngine),
+          openInAppPrompt: typeof raw.openInAppPrompt === 'boolean' ? raw.openInAppPrompt : current.openInAppPrompt,
+          openInAppNever:
+            typeof raw.openInAppNever === 'string'
+              ? serializeNeverSites(parseNeverSites(raw.openInAppNever))
+              : current.openInAppNever,
+          formSnippets:
+            typeof raw.formSnippets === 'string' ? serializeSnippets(parseSnippets(raw.formSnippets)) : current.formSnippets,
         };
       },
     },

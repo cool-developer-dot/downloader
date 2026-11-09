@@ -107,12 +107,28 @@ describe('B8 #72 search text', () => {
 });
 
 describe('B8 menu items', () => {
-  test('Search is the app item, titled in the app language', () => {
+  test('Search and (B22) Save to notes are the app items, titled in the app language', () => {
     assert.deepEqual(
       SELECTION_MENU_ITEMS.map((item) => item.id),
-      ['search'],
+      ['search', 'save_note'],
     );
-    assert.deepEqual(buildSelectionMenu(SELECTION_MENU_ITEMS, () => 'تلاش'), { ids: ['search'], titles: ['تلاش'] });
+    assert.deepEqual(buildSelectionMenu(SELECTION_MENU_ITEMS, (key) => (key === 'browserSelection.search' ? 'تلاش' : 'نوٹ')), {
+      ids: ['search', 'save_note'],
+      titles: ['تلاش', 'نوٹ'],
+    });
+  });
+
+  test('B22 Save to notes hands the selected text and its view over; nothing for empty text', () => {
+    const saved: [string, number][] = [];
+    const ports = {
+      buildSearchUrl: (q: string) => q,
+      openTabAfterCurrent: () => true,
+      notifyTruncated: () => undefined,
+      saveNote: (text: string, viewTag: number) => void saved.push([text, viewTag]),
+    };
+    assert.equal(handleSelectionAction({ viewTag: 7, itemId: 'save_note', text: '  Badshahi Mosque  ' }, ports), 'savedNote');
+    assert.equal(handleSelectionAction({ viewTag: 7, itemId: 'save_note', text: '   ' }, ports), 'ignored');
+    assert.deepEqual(saved, [['Badshahi Mosque', 7]]);
   });
 
   test('an empty title is left out, long titles are cut, at most 4 items', () => {

@@ -4,6 +4,7 @@ import { DATABASE_VERSION, TABLE_NAMES } from '@/storage/constants';
 
 import { applyBookmarkOrganizerTables } from './bookmark-organizer-schema';
 import { applySiteBlockingTables } from './site-blocking-schema';
+import { applyNotesTables } from './notes-schema';
 
 /**
  * Apply pragmas outside any transaction.
@@ -98,6 +99,8 @@ export async function applyBrowserTables(db: SQLiteDatabase): Promise<void> {
   await applyBookmarkOrganizerTables(db);
   // B14: site blocker / focus lists, time limits and time used, the focus timer (new tables; site-blocking-schema.ts).
   await applySiteBlockingTables(db);
+  // B22: notes (a new table; notes-schema.ts).
+  await applyNotesTables(db);
 }
 
 /**

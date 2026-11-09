@@ -15,6 +15,7 @@ import { useSaverEffects } from '@/browser/data-saver/data-saver.service';
 import { LightweightHome } from '@/browser/data-saver/components/LightweightHome';
 
 import { browserHomeTokens } from './browser-home-tokens';
+import { ScanQrButton } from '@/browser/share-qr/components/ScanQrButton';
 
 export type BrowserHomeViewProps = {
   testID?: string;
@@ -69,6 +70,8 @@ export const BrowserHomeView = memo(function BrowserHomeView({
           accessibilityLabel={t('browser.home.startSubtitle')}>
           {t('browser.home.startSubtitle')}
         </Text>
+        {/* B22 #30 */}
+        <ScanQrButton testID="browser-home-scan" />
       </Box>
 
       <Box

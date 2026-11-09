@@ -9,6 +9,8 @@ import { translate } from '@/localization';
 import { handleSelectionAction } from './selection-actions';
 import { buildSelectionMenu, SELECTION_MENU_ITEMS } from './selection-menu-items';
 import { SELECTION_READ_SCRIPT } from './selection-read-script';
+import { saveNote } from '@/browser/notes/notes.service';
+import { tabIdForViewTag } from '@/browser/webview/webview-view-tags';
 
 /**
  * B8 #72–#74 — the app's items in a page's text-selection menu. `start()` gives VidoraWeb the translated items and
@@ -38,6 +40,8 @@ function onSelectionAction(event: SelectionActionEvent): void {
       return true;
     },
     notifyTruncated: () => notify(translate('browserSelection.searchTruncated')),
+    // B22 #252: the selected text with its page, from the tab the menu was on.
+    saveNote: (text, viewTag) => void saveNote(text, tabIdForViewTag(viewTag)),
   });
 }
 

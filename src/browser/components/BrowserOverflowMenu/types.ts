@@ -9,6 +9,10 @@ export type BrowserMenuActionId =
   | 'new_tab'
   // B11 #104
   | 'new_incognito_tab'
+  // B22 #249 / #252
+  | 'qr_code'
+  | 'save_page_note'
+  | 'notes'
   | 'reopen_closed_tab'
   | 'duplicate_tab'
   | 'move_to_window'

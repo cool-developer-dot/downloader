@@ -49,6 +49,10 @@ import { ensureBrowsingTraffic } from '@/browser/data-saver/browsing-traffic.ser
 import { ensureContentBlocking } from '@/browser/blocking/content-blocking.service';
 import { ensureSiteBlocking } from '@/browser/blocking/site-blocking.service';
 import { ensureIncognito, setTabSwitcherOpen } from '@/browser/incognito/incognito.service';
+import { ensureOpenInApp } from '@/browser/open-in-app/open-in-app.service';
+import { OpenInAppChip } from '@/browser/open-in-app/components/OpenInAppChip';
+import { FormSnippetBar } from '@/browser/form-snippets/components/FormSnippetBar';
+import { ShareQrHost } from '@/browser/share-qr/components/ShareQrHost';
 import { scheduleCacheLimitCheck } from '@/browser/data-saver/cache-limit.service';
 import { FindInPageBar } from '@/browser/find/FindInPageBar';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
@@ -188,6 +192,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   useEffect(() => ensureSiteBlocking(), []);
   // B11: the incognito session (profile, wipe, FLAG_SECURE, App Lock on return, download notice).
   useEffect(() => ensureIncognito(), []);
+  // B22 #273: watches the page in front for the Open in app chip.
+  useEffect(() => ensureOpenInApp(), []);
   useEffect(() => scheduleCacheLimitCheck(), []);
   const { loadUrl } = useBrowserEngineContext();
   const { t } = useTranslation();
@@ -289,6 +295,12 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
         <TabUndoSnackbar visible={pageControlsVisible} bottom={12} />
         <BackgroundTabSnackbar visible={pageControlsVisible} bottom={12} />
         <SiteNoticeBar visible={pageControlsVisible} bottom={12} />
+        {/* B22 #273: "Open in <app>", once per site per session. */}
+        <OpenInAppChip visible={pageControlsVisible} bottom={72} />
+        {/* B22 #274: form snippets above the keyboard while a page field has focus. */}
+        <FormSnippetBar visible={!tabSwitcherVisible} />
+        {/* B22 #249 / #30: the QR code and scan result sheets. */}
+        <ShareQrHost />
         <ScrollJumpButton visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
         <AutoScrollControl visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
         <SwipeArrow shared={swipe.shared} bottom={24} />

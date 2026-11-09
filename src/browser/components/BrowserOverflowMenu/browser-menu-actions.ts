@@ -45,6 +45,8 @@ import { useSettingsStore } from '@/store/settings';
 
 import type { BrowserMenuFeedback, BrowserMenuItemModel } from './types';
 import { isIncognitoAvailable, openIncognitoTab } from '@/browser/incognito/incognito.service';
+import { openQrSheet } from '@/browser/share-qr/share-qr.service';
+import { savePageNote } from '@/browser/notes/notes.service';
 
 export type UseBrowserMenuActionsOptions = {
   onClose: () => void;
@@ -485,6 +487,20 @@ export function useBrowserMenuActions({
         case 'share':
           void handleShare();
           break;
+        case 'qr_code':
+          // B22 #249: this page as a QR code.
+          onClose();
+          openQrSheet(currentUrl, pageTitle);
+          break;
+        case 'save_page_note':
+          // B22 #252
+          onClose();
+          void savePageNote();
+          break;
+        case 'notes':
+          onClose();
+          navigation.push(routePaths.notes);
+          break;
         case 'translate':
           handleTranslate();
           break;
@@ -718,6 +734,30 @@ export function useBrowserMenuActions({
         accessibilityLabel: t('browser.sharePageA11y'),
         kind: 'action',
         enabled: hasValidPage,
+      },
+      {
+        id: 'qr_code',
+        icon: 'qrcode',
+        label: t('browserShare.qrCode'),
+        accessibilityLabel: t('browserShare.qrCodeA11y'),
+        kind: 'action',
+        enabled: hasValidPage,
+      },
+      {
+        id: 'save_page_note',
+        icon: 'note-plus-outline',
+        label: t('browserShare.savePageToNotes'),
+        accessibilityLabel: t('browserShare.savePageToNotes'),
+        kind: 'action',
+        enabled: hasValidPage,
+      },
+      {
+        id: 'notes',
+        icon: 'note-text-outline',
+        label: t('browserShare.notes'),
+        accessibilityLabel: t('browserShare.notesA11y'),
+        kind: 'action',
+        enabled: true,
       },
       {
         id: 'search_site',

@@ -61,6 +61,9 @@ import {
 import { DEFAULT_FOCUS_MINUTES_CHOICE } from '@/browser/blocking/site-limits';
 // B11 (Hamza)
 import { DEFAULT_INCOGNITO_SEARCH_ENGINE } from '@/browser/incognito/incognito-settings';
+// B22 (Hamza)
+import { DEFAULT_OPEN_IN_APP_NEVER_JSON } from '@/browser/open-in-app/open-in-app';
+import { DEFAULT_FORM_SNIPPETS_JSON } from '@/browser/form-snippets/form-snippets';
 
 export const initialSettingsState: SettingsState = {
   clipboardMonitor: false,
@@ -158,4 +161,7 @@ export const initialSettingsState: SettingsState = {
   autoplaySites: DEFAULT_AUTOPLAY_SITES_JSON,
   focusMinutes: DEFAULT_FOCUS_MINUTES_CHOICE,
   incognitoSearchEngine: DEFAULT_INCOGNITO_SEARCH_ENGINE,
+  openInAppPrompt: true,
+  openInAppNever: DEFAULT_OPEN_IN_APP_NEVER_JSON,
+  formSnippets: DEFAULT_FORM_SNIPPETS_JSON,
 };

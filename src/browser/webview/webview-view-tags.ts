@@ -20,3 +20,11 @@ export function clearTabWebViewTag(tabId: string, viewTag: number | null): void 
 export function getTabWebViewTag(tabId: string): number | null {
   return tagsByTab.get(tabId) ?? null;
 }
+
+/** B22: the tab whose WebView has this view tag (a selection-menu tap names only its view). */
+export function tabIdForViewTag(viewTag: number): string | null {
+  for (const [tabId, tag] of tagsByTab) {
+    if (tag === viewTag) return tabId;
+  }
+  return null;
+}

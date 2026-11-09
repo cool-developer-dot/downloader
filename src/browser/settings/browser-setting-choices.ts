@@ -84,4 +84,7 @@ export const BROWSER_SETTING_STRING_LIMITS: Readonly<Record<string, number>> = {
   // B14 (Hamza)
   adAllowedSites: 16_000,
   autoplaySites: 16_000,
+  // B22 (Hamza)
+  openInAppNever: 16_000,
+  formSnippets: 16_000,
 };

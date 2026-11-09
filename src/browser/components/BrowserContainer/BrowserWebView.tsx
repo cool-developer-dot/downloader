@@ -77,6 +77,8 @@ import { useAutoplayPolicy } from '@/browser/blocking/autoplay.service';
 import { applyBlockingPage, blockingNative } from '@/browser/blocking/content-blocking.service';
 import { isIncognitoTabId, liveIncognitoProfile } from '@/browser/incognito/incognito-state';
 import { useIncognitoVerified, verifyIncognitoWebView } from '@/browser/incognito/incognito.service';
+import { FORM_FIELD_SCRIPT } from '@/browser/form-snippets/form-snippets';
+import { bindSnippetInserter, handleFormFieldMessage } from '@/browser/form-snippets/form-snippets.service';
 import {
   isJavaScriptAllowed,
   normalizeCookiePolicy,
@@ -178,6 +180,8 @@ export const BrowserWebView = memo(function BrowserWebView({
   const incognitoTab = isIncognitoTabId(tabId);
   const [incognitoProfile] = useState(() => (incognitoTab ? liveIncognitoProfile() : null));
   const incognitoVerified = useIncognitoVerified(tabId);
+  // B22 #274: the focused-field script only while the user has form snippets (otherwise nothing is injected).
+  const snippetsOn = useSettingsStore((s) => typeof s.formSnippets === 'string' && s.formSnippets.length > 2);
   // B14 #276–#278: a tab showing "This site is blocked" keeps its WebView paused (like a parked tab).
   const siteBlocked = useBrowserStore((s) =>
     (tabId ? s.tabs.find((tab) => tab.id === tabId)?.error?.code : s.error?.code) === 'site_blocked',
@@ -605,10 +609,12 @@ ${AUTOPLAY_BLOCK_ALL_SCRIPT}` : ''
       }\n${
         // B16: font style, Urdu in Nastaliq, Force enable zoom (page-display-script.ts).
         pageDisplay.script
-      }${pageAnimationsOff ? `
+      }${snippetsOn ? `
+${FORM_FIELD_SCRIPT}` : ''}${pageAnimationsOff ? `
 ${LITE_PAGE_SCRIPT}` : ''}`,
     [
       autoplayBlockAll,
+      snippetsOn,
       chromeBridge.injectedJavaScriptBeforeContentLoaded,
       doNotTrack,
       mediaBeforeContent,
@@ -660,6 +666,12 @@ ${LITE_PAGE_SCRIPT}` : ''}`,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- true unmount only (not isActive flips)
   }, []);
+
+  // B22 #274: the tab in front inserts the snippet the user taps into its focused field.
+  useEffect(() => {
+    if (!isActive || !tabId) return undefined;
+    return bindSnippetInserter(tabId, (script) => webViewRef.current?.injectJavaScript(script));
+  }, [isActive, tabId, webViewRef]);
 
   // A fullscreen page that navigates away, crashes or unmounts sends no `fullscreenchange`: forget it here.
   useEffect(() => {
@@ -794,6 +806,10 @@ ${LITE_PAGE_SCRIPT}` : ''}`,
       const raw = event.nativeEvent.data;
       // B15 #161: reader mode's answers have their own channel (articles are larger than the chrome channel's cap).
       if (readerMode.handleMessage(tabId, raw)) {
+        return;
+      }
+      // B22 #274: which kind of field has focus (nothing else comes back from that script).
+      if (handleFormFieldMessage(tabId, raw)) {
         return;
       }
       if (chromeBridge.handleChromeMessage(raw)) {

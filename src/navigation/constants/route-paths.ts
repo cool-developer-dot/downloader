@@ -35,6 +35,8 @@ export const routePaths = {
   watchHistory: '/watch-history',
   bookmarks: '/bookmarks',
   favorites: '/favorites',
+  /** B22 #252: the user's notes (per browser profile). */
+  notes: '/notes',
   /** Videos already on the device, played in VidoraX. */
   deviceVideos: '/device-videos',
 } as const;

@@ -50,11 +50,11 @@ const tables = (sqlite: DatabaseSync) =>
   (sqlite.prepare(`SELECT name FROM sqlite_master WHERE type = 'table'`).all() as { name: string }[]).map((t) => t.name);
 const B14_TABLES = [TABLE_NAMES.siteBlockLists, TABLE_NAMES.siteTimeLimits, TABLE_NAMES.siteTimeUsage, TABLE_NAMES.focusSession];
 
-describe('B14 database (DATABASE_VERSION 4)', () => {
-  test('a v3 database moves to v4: the new tables appear and bookmarks / history stay; running twice changes nothing', async () => {
+describe('B14 database (DATABASE_VERSION 4 and later)', () => {
+  test('a v3 database moves to the current version: the new tables appear and bookmarks / history stay; running twice changes nothing', async () => {
     const { sqlite, db } = openDb();
     await migrateDatabase(db as never);
-    assert.equal(DATABASE_VERSION, 4);
+    assert.ok(DATABASE_VERSION >= 4, 'B14 made it 4; later packages go on (B22: 5)');
     // Back to how a 1.1.0 + B9 phone has it: version 3, with data, without the B14 tables.
     for (const name of B14_TABLES) sqlite.exec(`DROP TABLE ${name}`);
     sqlite.exec('PRAGMA user_version = 3');
@@ -63,22 +63,22 @@ describe('B14 database (DATABASE_VERSION 4)', () => {
       .run();
 
     await migrateDatabase(db as never);
-    assert.equal(version(sqlite), 4);
+    assert.equal(version(sqlite), DATABASE_VERSION);
     for (const name of B14_TABLES) assert.ok(tables(sqlite).includes(name), name);
     await addListSite(db, 'blocked', 'blocked.example', '2026-11-09T00:00:00Z');
 
     sqlite.exec('PRAGMA user_version = 3');
     await migrateDatabase(db as never);
     await applyBrowserTables(db as never);
-    assert.equal(version(sqlite), 4);
+    assert.equal(version(sqlite), DATABASE_VERSION);
     assert.equal((sqlite.prepare(`SELECT COUNT(*) AS n FROM ${TABLE_NAMES.bookmarks}`).get() as { n: number }).n, 1);
     assert.deepEqual((await loadSiteLimits(db, '2026-11-09')).blockedSites, ['blocked.example'], 'kept');
   });
 
-  test('a fresh install gets v4 with the tables; a profile database gets them on open', async () => {
+  test('a fresh install gets the current version with the tables; a profile database gets them on open', async () => {
     const fresh = openDb();
     await migrateDatabase(fresh.db as never);
-    assert.equal(version(fresh.sqlite), 4);
+    assert.equal(version(fresh.sqlite), DATABASE_VERSION);
     const profile = openDb();
     await applyBrowserTables(profile.db as never);
     await applyBrowserTables(profile.db as never);

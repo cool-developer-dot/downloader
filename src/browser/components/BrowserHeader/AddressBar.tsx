@@ -36,6 +36,7 @@ import { OmniboxTrailing } from './OmniboxTrailing';
 import { ReaderButton } from '@/browser/reader/components/ReaderButton';
 import { SecurityIndicator } from './SecurityIndicator';
 import { SuggestionOverlay } from './SuggestionOverlay';
+import { ScanQrButton } from '@/browser/share-qr/components/ScanQrButton';
 
 export type AddressBarProps = {
   /** Future leading slot inside the omnibox (e.g. voice, QR). */
@@ -229,6 +230,8 @@ export const AddressBar = memo(function AddressBar({
           isLoading={isLoading && !isFocused}
           onClear={clear}
         />
+        {/* B22 #30: Scan QR code in the empty address bar. */}
+        <ScanQrButton compact visible={isFocused && !draft.trim()} testID="browser-omnibox-scan" />
         {/* B15 #161: reader mode, only on article pages. */}
         <ReaderButton hidden={isFocused || isLoading} />
         {trailingSlot}

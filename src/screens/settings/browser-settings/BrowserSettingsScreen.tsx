@@ -18,6 +18,7 @@ import { PageDisplaySettingsSection } from './PageDisplaySettingsSection';
 import { DataSaverSettingsSection } from './DataSaverSettingsSection';
 import { BlockingSettingsSection } from './BlockingSettingsSection';
 import { IncognitoSettingsSection } from './IncognitoSettingsSection';
+import { ShareSettingsSection } from './ShareSettingsSection';
 import { NavigationSettingsSection } from './NavigationSettingsSection';
 import { PrivacySettingsSection } from './PrivacySettingsSection';
 import { ProfilesSettingsSection } from './ProfilesSettingsSection';
@@ -59,6 +60,7 @@ export const BrowserSettingsScreen = memo(function BrowserSettingsScreen() {
         <DataSaverSettingsSection />
         <BlockingSettingsSection />
         <IncognitoSettingsSection />
+        <ShareSettingsSection />
         <PrivacySettingsSection />
         <SitePermissionsSection />
         <ProfilesSettingsSection />
