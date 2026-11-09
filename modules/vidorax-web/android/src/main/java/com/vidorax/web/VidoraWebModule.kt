@@ -41,6 +41,7 @@ import com.vidorax.web.profiles.IncognitoProfiles
 import com.vidorax.web.profiles.WebProfiles
 import com.vidorax.web.security.SecureWindow
 import com.vidorax.web.apps.AppLinks
+import com.vidorax.web.devtools.RemoteDebugging
 import com.vidorax.web.scanner.QrScanner
 import com.vidorax.web.share.QrImage
 import com.vidorax.web.selection.SelectionMenu
@@ -422,6 +423,11 @@ class VidoraWebModule : Module() {
     AsyncFunction("openInApp") { app: String, url: String ->
       AppLinks.open(context, app, url)
     }
+
+    // B19 #228: remote debugging (process-wide; off in a new process, never remembered).
+    AsyncFunction("setRemoteDebugging") { enabled: Boolean ->
+      RemoteDebugging.set(enabled)
+    }.runOnQueue(Queues.MAIN)
 
     // B11 #106: no screenshots or recent-apps preview while an incognito tab is on screen.
     AsyncFunction("setWindowSecure") { secure: Boolean ->

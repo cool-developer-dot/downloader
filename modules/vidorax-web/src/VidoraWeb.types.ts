@@ -400,6 +400,8 @@ export interface VidoraWebModuleApi {
   isAppInstalled?(app: string): boolean;
   /** B22 #273: opens an https page in that app. False when not installed or refused. */
   openInApp?(app: string, url: string): Promise<boolean>;
+  /** B19 #228: remote debugging on / off (process-wide; a new app process always starts with it off). */
+  setRemoteDebugging?(enabled: boolean): Promise<boolean>;
   /** B11 #106: FLAG_SECURE on the app window (no screenshots, no recent-apps preview). Resolves the state. */
   setWindowSecure?(secure: boolean): Promise<boolean>;
   /**
