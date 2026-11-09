@@ -1970,7 +1970,7 @@ lint 0 / 82, patch 10/10, generator 3/3, Kotlin vidorax-web 142/143 (known), vid
 | Library | Licence | Size | Why |
 | --- | --- | --- | --- |
 | `qrcode-generator` 1.4.4 (npm, exact) | MIT (Kazuhiko Arase) | 116,754 bytes installed; `qrcode.js` 56,694 bytes in the bundle | QR module matrix in JS |
-| `com.google.android.gms:play-services-code-scanner` 16.1.0 (Gradle) | Google Play services / Android SDK terms (not open source) | small client library; the scanner itself is a Play services module downloaded by Play services | #30 scan with no CAMERA permission |
+| `com.google.android.gms:play-services-code-scanner` 16.1.0 (Gradle) | Google Play services / Android SDK terms (not open source) | AAR 322,479 bytes; pulls ML Kit `barcode-scanning-common` 17.0.0, `common` 18.9.0, `vision-common` 17.0.0; the scanner UI itself is a Play services module Play services downloads | #30 scan with no CAMERA permission |
 
 `package-lock.json`: one new entry (`qrcode-generator`).
 
@@ -1994,8 +1994,24 @@ card); **the insert script in `node:vm`** (at the caret, input event, never a pa
 - Snippets are inserted into the field in front even inside cross-origin frames only if the frame's field is the
   document's active element (the script runs in the main document: fields inside cross-origin iframes get no bar).
 
+### B22: fix (Mega 6, after review) — 2e6731f
+
+- The QR share sheet and the code scanner are wrapped in App Lock's expected-system-screen grace: coming back from them
+  doesn't relock (nor does B11's incognito lock).
+- The form-snippet bar sits at the bottom of the resized app window (the activity uses `adjustResize`), i.e. right above
+  the keyboard (it was a keyboard-height higher).
+- Gate (hamza/browser): unit 1807/1807 (2 workers), typecheck, lint 0 / 82, patch 10/10, generator 3/3, Kotlin
+  vidorax-web 142/143 (known).
+- **Every scanner failure shows "needs Google Play services"** — on a phone that never used the scanner, Play services
+  may still be downloading its module on the first scan; if the first scan fails there, that message is wrong (device
+  check below).
+
 ### Device test list for Faran
 
+- [ ] **First scan on a phone that has never used the Google code scanner** (it may download its module): the scan
+      opens, or the message is accurate
+- [ ] The snippet bar sits right above the keyboard (not floating, not hidden), also with the address bar at the bottom
+- [ ] Return from the QR share sheet / the scanner with App Lock on: no PIN
 - [ ] Menu → QR code on Wikipedia: scan it with another phone → same address; Share image → a PNG in the share
       sheet; Save to gallery (Android 10+) → Pictures/VidoraX; an over-long address → "too long"
 - [ ] Scan QR code: empty address bar icon and start page button; a URL code → "Open <host>?"; a `javascript:` /
