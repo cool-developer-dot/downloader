@@ -43,6 +43,7 @@ import com.vidorax.web.security.SecureWindow
 import com.vidorax.web.apps.AppLinks
 import com.vidorax.web.devtools.RemoteDebugging
 import com.vidorax.web.draw.DrawingExport
+import com.vidorax.web.keyboard.UrduKeyboards
 import com.vidorax.web.widget.SearchWidget
 import com.vidorax.web.devtools.SiteCookies
 import com.vidorax.web.scanner.QrScanner
@@ -277,6 +278,15 @@ class VidoraWebModule : Module() {
       val pending = unclaimedSearchWidgetTap
       unclaimedSearchWidgetTap = false
       pending || SearchWidget.takeSearchTap(appContext.currentActivity?.intent)
+    }
+
+    // B24 #271: whether an Urdu keyboard is on, and Android's keyboard settings.
+    Function("hasUrduKeyboard") {
+      UrduKeyboards.hasUrduKeyboard(context)
+    }
+
+    Function("openKeyboardSettings") {
+      UrduKeyboards.openKeyboardSettings(appContext.currentActivity, context)
     }
 
     Function("consumeShortcutUrl") {

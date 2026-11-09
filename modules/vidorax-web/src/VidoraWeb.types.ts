@@ -410,6 +410,10 @@ export interface VidoraWebModuleApi {
   exportDrawing?(imageUri: string, strokesJson: string, mode: 'save' | 'share', name: string): Promise<boolean>;
   /** B24 #65: true once when the search widget started or brought back the app. */
   consumeSearchWidgetTap?(): boolean;
+  /** B24 #271: an enabled keyboard has an Urdu subtype. */
+  hasUrduKeyboard?(): boolean;
+  /** B24 #271: opens Android's keyboard settings; false when it couldn't. */
+  openKeyboardSettings?(): boolean;
   /** B19 #228: remote debugging on / off (process-wide; a new app process always starts with it off). */
   setRemoteDebugging?(enabled: boolean): Promise<boolean>;
   /** B19 #230: the page's cookies from the tab's own profile (incognito or normal). */
