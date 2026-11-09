@@ -2126,6 +2126,86 @@ Found, not fixed: forgeable page messages (shown only); CSP blocks eval-based us
   unusual paths; user scripts not in Settings Backup.
 ```
 
+## B23 — Annotate and page alerts (#261, #279, #289, #263)
+
+Mega 7. One native commit (Kotlin test), the feature commit. **DATABASE_VERSION 7** (highlights, watched pages;
+profile database version 5). No patch-script change. **Depends on B8** (its selection-menu list and read script) and
+on **B1's page picture** (`snapshotWebView`) — **B17 was never built**, so "built on B17's screenshot" became "built
+on B1's snapshot of the visible page". Gate (2 workers): unit 1837/1837, typecheck, lint 0 / 82, patch 10/10, Kotlin
+vidorax-web 150/151 (the known `WebViewSnapshotsTest`).
+
+| # | Feature | How |
+| --- | --- | --- |
+| #261 | Highlight (4 colours) + optional note from the text-selection menu; restored on the next visit; Menu → Highlights on this page; Menu → Highlights (all: search, share, delete, open the page) | B8's menu gets a third item, `highlight`. B8's read script is changed **additively**: it returns the same text for every item, and for page text also leaves the anchor (exact text as the page's text nodes give it — `Range.toString`, not the rendered selection — plus 32 characters before and after) in `window.__vidoraxSelectionContext`; the Highlight handler asks the page for it once. Table `highlights` per profile (address without `#`). Restore at load end: the best-scoring occurrence (prefix backwards + suffix forwards) is wrapped in `<mark data-vidorax-hl>`; only anchors and colours go into the page, never the note. Text that changed: "n of m couldn't be found". **Never for incognito tabs** (notice; the menu items are left out) |
+| #279 | Draw on page: pen colours (6) and sizes (3), eraser, undo / redo, save to Pictures/VidoraX or share | B1's `snapshotWebView` (visible part, up to 1,440 px wide), copied at once into `<cache>/drawings/` (the tab-preview folder is cleaned by its owner). Strokes in SVG over the picture (PanResponder); the eraser removes whole strokes it touches (undoable). Native `exportDrawing` draws them on the picture: MediaStore Pictures/VidoraX on Android 10+ (Save hidden below), share sheet otherwise (App Lock grace as B22). **Not in incognito** (no copies out of incognito) |
+| #289 | Page change alert: up to 20 pages, every 6 hours by default (1 / 3 / 6 / 12 / 24 h), Wi-Fi only by default, "Page changed: <title>" | `expo-background-task` (one WorkManager worker; registered while there are watches, again when the interval changes), the task defined from `src/entry.js` (a headless start finds it). Each page fetched natively by vidorax-media `fetchPage` with **`useSessionCookies: false, commitCookies: false`** (no cookies sent or stored; public hosts only; 2 MB cap), the visible text taken from the HTML (no scripts / styles / noscript / comments), FNV hash compared. Too little text without JavaScript (< 200 characters) → "can't be watched" when adding, or the row says so later. Notification on its own quiet channel `vidorax_page_alerts`, only while the app's Notifications setting is on and Android allows it; no sound. **Decision: a run checks the watches of the browser profile in use at that time (the last one used)**. Never from incognito |
+| #263 | Language detection + "Translate this page?" once per site: Translate / Never for this language / Never for this site | At load end (tab in front, not incognito, offer on) a small script posts `<html lang>` and 3,000 characters of text. `<html lang>` wins unless it says `en` while the text's script says otherwise (common on Urdu sites). By script: Urdu letters (ٹ ڈ ڑ ں ے ھ ۃ ۓ) → Urdu, else Persian letters (پ چ ژ گ ک ی) → Persian, else Arabic; Cyrillic, Devanagari, CJK / kana, Hangul, Thai, Greek, Hebrew…; Latin text can't be told apart (no offer). Sites offered are kept **in memory for the session only** (nothing about browsing is stored); the Never lists are settings. Translate = the existing `buildTranslatePageUrl` in a new tab |
+
+### Manifest gate
+
+`expo-background-task` and `expo-task-manager` 57.0.22 (the SDK 57 versions) installed with `npx expo install`; no
+manifest entry had to be added by hand (the libraries' own manifests merge in). `expo install` also added
+`"expo-background-task"` to `app.json` plugins — used only by prebuild (iOS Info.plist), which is never run here.
+Debug merged manifest regenerated and diffed against the build without the two libraries:
+
+- **Permissions: 40 → 40, no new name** (the stop rule did not trigger).
+- New components (report only, for Faran):
+  - `expo.modules.taskManager.TaskJobService` (service, not exported, `BIND_JOB_SERVICE`)
+  - `expo.modules.taskManager.TaskBroadcastReceiver` (not exported; `BOOT_COMPLETED`, `MY_PACKAGE_REPLACED`, its own action)
+  - WorkManager 2.9.1: `SystemJobService` (exported, `BIND_JOB_SERVICE`), `SystemAlarmService`, `SystemForegroundService`
+    (not exported), `ForceStopRunnable$BroadcastReceiver`, `ConstraintProxy$BatteryChargingProxy / BatteryNotLowProxy /
+    StorageNotLowProxy / NetworkStateProxy`, `RescheduleReceiver`, `ConstraintProxyUpdateReceiver` (not exported,
+    mostly disabled until used), `diagnostics.DiagnosticsReceiver` (exported, guarded by `android.permission.DUMP`)
+  - `androidx.room.MultiInstanceInvalidationService` (WorkManager's database; not exported)
+
+### Native (Faran to review)
+
+- **e093261** `draw/DrawingExport.kt` + `exportDrawing(imageUri, strokesJson, mode, name)`; FileProvider path
+  `drawings/` added to `vidorax_web_file_paths.xml`. Test `DrawingExportTest` (3). Robolectric here doesn't rasterize
+  Canvas calls (checked: even `drawRect` leaves the bitmap white), so the test records the draw calls; real pixels
+  are on the device list.
+
+### Found, not fixed
+
+- Page-change hashes count any visible text, so pages with clocks, counters or rotating headlines alert often.
+- A notification tap opens the app, not the page. Watches and highlights aren't in Settings Backup (database).
+- Highlights restore at load end only (content added later by scripts isn't searched again); text spanning
+  `<script>`/`<style>` boundaries or changed text isn't marked ("couldn't be found").
+- Draw on page covers the visible part of the page only (B17's full-page screenshot would be needed for more).
+
+### Device test list for Faran (B23)
+
+- [ ] Select text → Highlight → colour + note → marked; reload / revisit → marked again; Highlights on this page;
+      Menu → Highlights: search, share, open, delete (mark removed from an open tab); Urdu page text too
+- [ ] Incognito: Highlight shows the notice; menu has no Highlights on this page / Draw / Watch
+- [ ] Draw: pen colours / sizes, eraser, undo / redo; Save → Pictures/VidoraX in Gallery (Android 10+); Share
+      (no PIN with App Lock); Android 9: no Save button
+- [ ] Watch a news page; `adb shell cmd jobscheduler run -f com.vidorax.app <JOB_ID>` (app in background) after
+      the page changed → "Page changed: <title>"; mobile data with Wi-Fi only → no check; a JS-only page →
+      "can't be watched"; 21st watch → limit notice; force-stop → no checks until opened (documented)
+- [ ] Translate offer on an Arabic, a Persian and an Urdu page in the English app (and an English page in the Urdu
+      app: Latin script → no offer unless `<html lang>`), once per site; Never for this language / site; reset
+- [ ] Upgrade over 1.1.0 + Mega 6: database at 7; merged manifest: 40 permissions; release build
+- [ ] Urdu (RTL), Dark, TalkBack (colour radio buttons, draw tools), font 1.3
+
+### Handoff note
+
+```
+B23 Annotate and page alerts — done (B17 not built: drawing uses B1's page picture)
+Commits: e093261 (B23: native — draw on page export), 213b260 (annotate and page alerts), <docs: this commit>
+Depends on: B8 (selection-menu list + read script), B11 (incognito checks), B1 snapshot
+Native code to review: draw/DrawingExport.kt (exportDrawing; FileProvider path drawings/). Test DrawingExportTest 3.
+  No patch change.
+Manifest: no hand edits; merged manifest 40 permissions (unchanged); new library components listed above
+  (WorkManager, task manager, Room invalidation service).
+Database: DATABASE_VERSION 7 (highlights, page_watches); profile database version 5
+New settings: pageAlertHours 6, pageAlertWifiOnly true, offerTranslate true, translateNeverLanguages '[]',
+  translateNeverSites '[]'
+New libraries: expo-background-task 57.0.22 (MIT, 319 KB installed) + expo-task-manager 57.0.22 (MIT, 444 KB) +
+  unimodules-app-loader 57.0.2 (MIT); Gradle: androidx.work:work-runtime-ktx 2.9.1 (Apache-2.0). package-lock: those 3.
+Tested: unit 1837/1837 (2 workers), typecheck, lint 0/82, Kotlin vidorax-web 150/151 (known). Device: list above.
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -2228,6 +2308,11 @@ Found, not fixed: forgeable page messages (shown only); CSP blocks eval-based us
 | `openInAppNever` | B22 | `'[]'` | JSON list of sites (≤ 100) |
 | `formSnippets` | B22 | `'[]'` | JSON list of texts (≤ 20, ≤ 500 characters each) |
 | `devTools` | B19 | `false` (nothing injected) | on / off |
+| `pageAlertHours` | B23 | `6` | 1 / 3 / 6 / 12 / 24 (clamped 1–168) |
+| `pageAlertWifiOnly` | B23 | `true` | on / off |
+| `offerTranslate` | B23 | `true` | on / off |
+| `translateNeverLanguages` | B23 | `'[]'` | JSON list of language codes |
+| `translateNeverSites` | B23 | `'[]'` | JSON list of hosts |
 
 ### Found, not fixed
 

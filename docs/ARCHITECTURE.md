@@ -875,6 +875,11 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   user scripts from table `user_scripts`, remote debugging in memory), `components/DevtoolsPanel.tsx`;
   `DeveloperSettingsSection`. Native VidoraWeb `devtools/RemoteDebugging.kt`, `devtools/SiteCookies.kt`. While
   `devTools` is off nothing reaches pages.
+- **Annotate and page alerts (B23).** `src/browser/highlights/` (anchors, restore script, sheets; table `highlights`),
+  `src/browser/draw/` (strokes, undo / redo; native `draw/DrawingExport.kt`), `src/browser/page-alerts/` (watches in
+  table `page_watches`, `fetchPage` without cookies, the `expo-background-task` worker defined from
+  `src/bootstrap/define-page-alert-task.ts` via `src/entry.js`), `src/browser/language/` (detection, translate offer).
+  B8's read script also leaves the selection's anchor (additive).
 - **Browser settings** live in `SettingsState` as primitives (so Settings Backup carries them and Reset restores them);
   `browser/settings/browser-setting-keys.ts` lists them and `browser-settings.audit.test.ts` checks persistence,
   backup and reset; `browser-setting-choices.ts` gives Backup the allowed values of each choice setting.

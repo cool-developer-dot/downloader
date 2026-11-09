@@ -2201,6 +2201,9 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   user agent and device widths per tab, remote debugging (in memory, off at next start), storage with cookies from the
   tab's own profile, security panel, user scripts (per profile, isolated, never downloaded, incognito per script).
   Native e7936d3, ecc57fa. DATABASE_VERSION 6. No permission, library or manifest change.
+- **B23 Annotate and page alerts.** Highlights (B8 menu item, text anchors, restored, all-highlights screen), draw on
+  page (B1's picture — B17 not built), page change alerts (expo-background-task, no cookies, Wi-Fi only, 20 pages),
+  language detection + translate offer. Native e093261. DATABASE_VERSION 7. Merged manifest: 40 permissions.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 
