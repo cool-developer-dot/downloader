@@ -84,7 +84,7 @@ import {
 import { FORM_FIELD_SCRIPT } from '@/browser/form-snippets/form-snippets';
 import { devtoolsDocumentStartScript, devtoolsUserAgent, emulatedWidth, userScriptsAtEnd } from '@/browser/devtools/devtools-core';
 import { parseAnnotateMessage } from '@/browser/highlights/highlights-core';
-import { bindHighlightsInjector, onAnchor, onRestored, restoreHighlights } from '@/browser/highlights/highlights.service';
+import { bindHighlightsInjector, onRestored, restoreHighlights } from '@/browser/highlights/highlights.service';
 import { LANGUAGE_MESSAGE_SCRIPT } from '@/browser/language/language-detect';
 import { onPageLanguage } from '@/browser/language/translate-offer.service';
 import {
@@ -872,11 +872,10 @@ true;`);
       if (readerMode.handleMessage(tabId, raw)) {
         return;
       }
-      // B23: a highlight's anchor, how many highlights were restored, the page's language.
+      // B23: how many highlights were restored, the page's language.
       const annotate = parseAnnotateMessage(raw);
       if (annotate) {
-        if (annotate.kind === 'anchor') onAnchor(tabId, annotate.anchor);
-        else if (annotate.kind === 'restored') onRestored(tabId, annotate.found, annotate.of);
+        if (annotate.kind === 'restored') onRestored(tabId, annotate.found, annotate.of);
         else if (isActive && !incognitoTab) onPageLanguage(tabId, tabUrl, annotate);
         return;
       }
