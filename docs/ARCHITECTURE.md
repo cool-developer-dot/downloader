@@ -853,8 +853,15 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   (`SiteBlockedView`) with its WebView paused. UI: `BlockingSettingsSection`, `SiteBlockingControls` in the lock panel.
 - **Browser settings screen** (`src/screens/settings/browser-settings/`, route `/browser-settings`): one section
   component per area; pickers use `ChoiceSheet`.
-- **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`, true for every tab
-  today), so Faran's private tabs can opt out in one place.
+- **What is saved per page** goes through `shouldPersistForTab(tab)` (`tabs/tab-privacy.ts`): false for an incognito
+  tab (B11, id prefix `incog-`), true for every other tab.
+- **Incognito (B11).** `src/browser/incognito/`: `incognito-state.ts` (leaf: id prefix, session name, "incognito in
+  front", the cookie profile for downloads), `incognito.service.ts` (session start / end, fail-closed WebView check,
+  FLAG_SECURE, App Lock on return, download notice). An incognito tab's WebView gets the `webProfile` prop, read by
+  the patched new-architecture `RNCWebViewManager.createViewInstance` and handed to
+  `RNCWebViewHooks.beforeWebViewSetupInProfile` → VidoraWeb `IncognitoProfiles` → `WebProfiles.applyNamed` (never
+  `setActive`). Downloads: `toV2RequestContext` adds `cookieProfile`; vidorax-media `IncognitoWebCookies`. Wipe:
+  `deleteIncognitoWebProfile` (profile-service.ts) once the WebViews unmount; the sweep owns the live name.
 - **Browser settings** live in `SettingsState` as primitives (so Settings Backup carries them and Reset restores them);
   `browser/settings/browser-setting-keys.ts` lists them and `browser-settings.audit.test.ts` checks persistence,
   backup and reset; `browser-setting-choices.ts` gives Backup the allowed values of each choice setting.

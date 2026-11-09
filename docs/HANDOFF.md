@@ -2185,6 +2185,12 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   time limits (blocked until tomorrow), focus mode timer — per profile, surviving restarts, "This site is blocked"
   before a page loads. Native: VidoraWeb `setContentBlocking`, `setBlockingPage`, `getBlockedCount` (no patch change).
   DATABASE_VERSION 4 (new tables only), profile database version 2. No permission or library.
+- **B11 Incognito.** New incognito tab (menu, switcher; listed apart), Open in incognito, a new temporary WebView
+  profile per session (`vidorax-incog<session>`, never active) chosen per WebView from a `webProfile` prop (patched
+  new-arch manager → beforeWebViewSetupInProfile), fail closed until confirmed; wipe on close by deleting that profile
+  after its WebViews unmount; nothing saved (shouldPersistForTab false); App Lock on return; FLAG_SECURE; download
+  notice and the session's own cookies for downloads; violet bar; incognito search engine. Native: patch script
+  (cba6715), VidoraWeb (0dedfc5), vidorax-media (4f17008). No permission, library, manifest or database change.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 

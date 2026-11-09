@@ -1779,6 +1779,148 @@ Found, not fixed: pop-up windows (BrowserWindowActivity) are not blocked / not s
   location.assign needs JavaScript; same-site approximated; blocked count kept on a cached back / forward page.
 ```
 
+## B11 — Incognito (#104, #52, #109, #105, #106, #107, #108, #111)
+
+Mega 6, following Faran's rules exactly. One patch-script commit, two native commits (VidoraWeb, vidorax-media), the
+feature commit. No database change (`DATABASE_VERSION` stays 4), **no manifest change, no permission, no library**.
+Testing rule: unit tests, typecheck and lint here; device, release and upgrade checks in "Device test list for Faran".
+Gate: `node --import ./scripts/test/register-app-modules.mjs --test --test-concurrency=2 "src/**/*.test.ts"
+"modules/**/*.test.ts"` (2 workers: 1797/1797), typecheck, lint (0 errors / 82 warnings), patch test 10/10, generator
+test 3/3, Kotlin vidorax-web 136/137 (known `WebViewSnapshotsTest`), vidorax-media not compilable on Windows (known).
+
+### How the session works (Faran's rules)
+
+| Rule | How |
+| --- | --- |
+| A new temporary profile per session, never reused | `newIncognitoProfileName`: `vidorax-incog` + time (base 36) + 8 random characters (≤ 32 after `vidorax-`, B20's rule); a new name every session, even after a restart, so data WebView hasn't finished deleting can never reappear (test: 2,000 names, all different) |
+| Never `setActive` (global) | VidoraWeb `startIncognitoProfile(name)` creates the profile and registers it as the live session only (`IncognitoProfiles`); vidorax-media `setIncognitoCookieProfile(name)` resolves its jar for downloads. `WebProfiles.setActive` / `setCookieProfile` are never called for incognito |
+| Profile chosen in beforeWebViewSetup, per WebView | An incognito tab's `<WebView>` gets the initial prop `webProfile`; the **patched new-architecture `RNCWebViewManager`** reads it in the 4-argument `createViewInstance(reactTag, context, initialProps, stateWrapper)` into a pending slot; `RNCWebViewHooks.beforeWebViewSetup` hands it to `beforeWebViewSetupInProfile` → `IncognitoProfiles.apply` → `WebProfiles.applyNamed(webView, name)` (as B20's windows do). Normal tabs pass nothing and use the active profile exactly as before |
+| Fail closed | The incognito WebView loads nothing but `about:blank` until `getWebViewProfileName(viewTag)` returns the session's name; anything else closes the tab with "Incognito isn't available on this phone". Without WebView profile support (MULTI_PROFILE) incognito isn't offered at all. RN WebView's `incognito` prop is never used |
+| Downloads | Media found in an incognito tab carries `cookieProfile` (the session name) in its request context; vidorax-media sends that session's cookies, never `ActiveWebCookies`'; an ended session gets none. WebView downloads from an incognito tab are all claimed natively (never react-native-webview's own DownloadManager path with the default jar): videos / risky files go to JS with the session; others go to DownloadManager with the incognito jar (`startSystemDownloadInProfile`). Pasted-link analysis from an incognito tab sends and stores no cookies. No other download rule changed |
+| Deleting the profile | Last incognito tab closed → the session ends (no more jar for downloads, `endIncognitoProfile`), the tabs' WebViews unmount, then `deleteIncognitoWebProfile(name)` (profile-service.ts) tries after 0.3 s, 1 s and 3 s and otherwise falls back to `deleteWebProfileSoon` (next start). A profile switch / guest mode closes and wipes incognito first (`performSwitch`). `sweepOrphanWebProfiles` owns the live name. App killed: incognito tabs are never saved, so none are restored; the leftover profile is deleted by the sweep, which now also runs 2 s after the next incognito session starts (WebView is loaded then) and when Profiles opens |
+
+### #109 Wipe on close — what goes and how
+
+- **Cookies, site storage (localStorage, IndexedDB…), cache, service workers:** all live only in the session's own
+  WebView profile and are deleted with it (`ProfileStore.deleteProfile`). `clearAllSiteData()` is **not** used (it
+  targets the active jar).
+- **Tab state:** incognito tabs are never written to the tab envelope (`shouldPersistForTab`; the saved active tab is
+  the last normal one), never to closed tabs (not even in memory for Undo), never to tab previews, session last page /
+  scroll positions, history, recent searches, the reading list, B13 permission records or B14 time used (counted in
+  memory only, so limits still apply). Closing them clears them from memory.
+- **Downloads** made from incognito stay in the library (#107 says so).
+
+### What the user sees
+
+| # | Feature | Notes / decisions |
+| --- | --- | --- |
+| #104 | Menu → "New incognito tab"; tab switcher → "New incognito tab"; incognito tabs listed apart (their own section, "Close incognito tabs") | Drag reorder turns off in the switcher while incognito tabs exist (positions would mix the two lists); Move up / down still work |
+| #52 | Link long-press → "Open in incognito" | From an incognito tab, "Open in new tab" and "Open in background" open incognito tabs |
+| #109 | Wipe on close | Above |
+| #105 | App Lock (PIN / fingerprint) when coming back to an incognito tab after leaving the app — at once, no grace period | Also when switching to an incognito tab after the app was left. Without App Lock set up there is nothing to ask (logged) |
+| #106 | FLAG_SECURE while an incognito tab is in front, or the switcher listing incognito tabs is open, the browser is shown and the app is in front | One native owner (`SecureWindow`), only clears what it set |
+| #107 | "This download stays in your library after incognito closes" | For engine downloads and DownloadManager downloads |
+| #108 | A fixed violet bar (#2B2140) with the incognito icon, the same in Light / Dark and Urdu; the switcher section in the same colour | Text contrast > 7:1 |
+| #111 | Browser settings → Incognito → search engine: "Same as normal tabs" (default) or one of the engines | Resolved when the search is typed (the tab in front) |
+| — | Lock icon panel in an incognito tab: connection + certificate and a note; the normal profile's cookie / storage figures, Clear site data and per-site settings are hidden (they act on the normal profile) | |
+
+### Native (Faran to review)
+
+- **Patch script (cba6715):** `RNCWebViewManager.java` (new architecture) — override of the 4-argument
+  `createViewInstance` (pending `webProfile` set before `super`, cleared in `finally`); `RNCWebViewHooks` — import
+  `ReactStylesDiffMap`, `webProfileProp(props)`, `setPendingWebProfile`, the pending slot (main thread), the
+  `beforeWebViewSetup` dispatcher taking it once, new default Listener method `beforeWebViewSetupInProfile` (default:
+  `beforeWebViewSetup`). The new-architecture manager is patched when the package ships new-architecture sources
+  (13.16.1 does); a missing file / anchor then fails. 3 new patch-test cases (10/10). Real `node_modules`: patched, a
+  second run says "Already patched". The old-architecture manager is not patched (the app builds with
+  `newArchEnabled=true`).
+- **VidoraWeb (0dedfc5):** `profiles/IncognitoProfiles.kt`, `security/SecureWindow.kt`; module functions
+  `isIncognitoSupported`, `startIncognitoProfile`, `endIncognitoProfile`, `getWebViewProfileName`,
+  `startSystemDownloadInProfile`, `setWindowSecure`, event `onIncognitoDownload`; `beforeWebViewSetupInProfile`;
+  `onDownloadStart` claims incognito downloads; `setCookiesEnabled` also sets the live incognito jar; a debug log line
+  when the prop arrives. Tests `IncognitoProfilesTest` (4 — incl. the prop from `ReactStylesDiffMap` reaching the hook
+  through the real dispatcher), `SecureWindowTest` (3).
+- **vidorax-media (4f17008):** `RequestContext.cookieProfile` (+ record, stored name only), marker = session name,
+  `SessionCookieInterceptor` → `CookieSource.cookiesFor(url, profile)`, `net/IncognitoWebCookies.kt`,
+  `setIncognitoCookieProfile`. Test `IncognitoCookiesTest` (5) — **not run here** (vidorax-media tests don't compile on
+  Windows); please run on the Mac.
+
+### Files
+
+- New: `src/browser/incognito/` (`incognito-state.ts` — leaf, no imports; `incognito.service.ts`;
+  `incognito-settings.ts`; `incognito-theme.ts`; `components/IncognitoIcon.tsx`; `incognito.test.ts`),
+  `actions/builtins/open-in-incognito.action.ts`, `profiles/web-profile-sweep.ts`, `tabs/saved-active-tab.ts`,
+  `IncognitoSettingsSection.tsx`, catalogs `browserIncognito.{en,ur}.ts`; native files above.
+- Changed (additive; **shared with Faran**): `profile-service.ts` (wrapper, sweep, switch), `BrowserWebView.tsx`,
+  tab store / operations / persistence / privacy, `session-persistence.service.ts`, `useAddressBar.ts`,
+  `useBrowserLongPressActions.ts`, menu, tab switcher, header, `SiteInfoHost.tsx`, `BrowserScreen.tsx`,
+  `enqueue-request.ts`, `handoff.ts`, `native-network.adapter.ts`, `direct-analysis` / `batch-add` services,
+  bookmarks service, site-permissions service, B14 site-blocking service, settings store / keys / choices, `en.ts` /
+  `ur.ts`, `VidoraWeb.types.ts`, `VidoraMedia.types.ts`.
+
+### Found, not fixed
+
+- **Fabric prop delivery is a device check:** that Fabric hands the undeclared `webProfile` prop to `initialProps`
+  isn't provable here; if it doesn't, every incognito tab closes itself with "isn't available" (fail closed, never a
+  leak) — see the device list (debug log line `B11 webProfile prop received`).
+- After the app is killed, the session's data stays on disk until the next incognito session (sweep after 2 s) or
+  Browser settings → Profiles; it is never restored or reused.
+- `cookieProfile` follows the tab in front (detection and downloads follow it); a download started after switching
+  away from an incognito tab mid-flow would use the normal jar for its first requests.
+- Changes made in an incognito tab to Page display (Aa) per-site values or desktop mode are kept in the profile (the
+  lock-panel per-site settings are hidden); bookmarks can be added from incognito on purpose (the user's explicit
+  choice, as in other browsers).
+- App Lock asks only if App Lock is set up.
+- vidorax-media's new test not run on Windows.
+
+### Device test list for Faran
+
+- [ ] **Prop and profile:** debug build, open an incognito tab → logcat `B11 webProfile prop received; incognito
+      profile joined=true`; the tab loads (blank start page → typed site). If it closes with "isn't available", the
+      prop didn't arrive (report)
+- [ ] Sign in to a site in a normal tab; open it in incognito → **not** signed in; sign in there → the normal tab is
+      still the first account; close all incognito tabs, open a new one → signed out again (new profile)
+- [ ] `adb shell run-as com.vidorax.fast.videodownloader ls app_webview*/ ` (or the WebView profiles folder) during a
+      session shows the `vidorax-incog…` profile; after closing the last incognito tab (wait ~5 s) it is gone
+- [ ] Kill the app with an incognito tab open → reopen: no incognito tab restored, the normal tab in front; open a new
+      incognito tab → after ~2 s the old profile folder is gone
+- [ ] Nothing kept: history, Reopen closed tab, tab previews, the start page's recent searches, reading list ("Incognito:
+      nothing is saved"), Site permissions list, B14 time used after restart
+- [ ] #105 App Lock on: leave the app from an incognito tab, come back → PIN / fingerprint at once (no grace); from a
+      normal tab, come back → normal grace; switch to the incognito tab → PIN
+- [ ] #106 screenshot (power + volume) on an incognito tab → blocked; recent apps → blank preview; switcher open with
+      incognito tabs → blocked; a normal tab with the switcher closed → screenshots work again
+- [ ] #107 download a video and a PDF from an incognito tab → the notice each time; both finish (a site needing the
+      incognito session's cookies works); after closing incognito the files stay in the library
+- [ ] #108 the violet bar and switcher section in Light, Dark, Urdu (RTL); TalkBack reads "Incognito tab"
+- [ ] #111 incognito search engine DuckDuckGo: a search in incognito uses it, normal tabs Google
+- [ ] Profile switch / guest mode with incognito tabs open → they close first, the profile is deleted
+- [ ] A phone with an old WebView (no profile support) → no incognito item anywhere
+- [ ] Release build; merged manifest unchanged (no permission)
+
+### Handoff note
+
+```
+B11 Incognito — done
+Commits: cba6715 (B11: native — webProfile prop, patch script), 0dedfc5 (B11: native — VidoraWeb), 4f17008 (B11:
+  native — vidorax-media cookie source), 85159ba (incognito), <docs: this commit>
+Native code to review: patch script — RNCWebViewManager (new arch) 4-argument createViewInstance override +
+  RNCWebViewHooks webProfileProp / setPendingWebProfile / pending slot / dispatcher / default Listener method
+  beforeWebViewSetupInProfile. VidoraWeb — IncognitoProfiles, SecureWindow, startIncognitoProfile, endIncognitoProfile,
+  getWebViewProfileName, startSystemDownloadInProfile, setWindowSecure, isIncognitoSupported, onIncognitoDownload,
+  incognito downloads claimed in onDownloadStart. vidorax-media — RequestContext.cookieProfile, IncognitoWebCookies,
+  setIncognitoCookieProfile, interceptor by marker name. Tests: patch 10/10, IncognitoProfilesTest 4,
+  SecureWindowTest 3, IncognitoCookiesTest 5 (run on the Mac).
+Manifest: unchanged. Database: unchanged (DATABASE_VERSION 4).
+New settings: incognitoSearchEngine = 'same'
+New libraries: none. package-lock: unchanged
+Tested: unit 1797/1797 (2 workers), typecheck, lint 0 errors / 82 warnings, Kotlin vidorax-web 136/137 (known), vidorax-
+  media won't compile on Windows (known). Device: list above.
+Found, not fixed: Fabric prop delivery to confirm on a device (fails closed); killed-app leftovers until the next
+  session's sweep; cookieProfile follows the tab in front; Aa per-site / desktop mode kept from incognito; App Lock
+  only when set up.
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -1800,6 +1942,7 @@ Found, not fixed: pop-up windows (BrowserWindowActivity) are not blocked / not s
 | B18 | `isPowerSaveMode()`: `PowerManager.isPowerSaveMode`. Test `PowerSavingTest` | `performance/PowerSaving.kt` |
 | B18 | `getWebViewCacheSize()` (bytes under `<cacheDir>/WebView`, links not followed, off the main thread), `clearWebViewCache()` (`WebView.clearCache(true)` with a throwaway WebView for the default profile and each B20 profile). Test `WebViewCacheTest` | `performance/WebViewCache.kt` |
 | B14 | **No patch-script change.** `interceptRequest` → `ContentBlocking.intercept` after the bundled font: rules snapshot from JS (`setContentBlocking`), bundled lists read natively, per-WebView page site (`setBlockingPage`) and blocked count (`getBlockedCount`); pure `ContentBlocker.decide` never blocks the main frame or any `NetworkMediaClassifier` media request; empty 200 when blocked. Tests `ContentBlockerTest`, `ContentBlockingTest` | `VidoraWeb.types.ts`, `VidoraWebModule.kt`, `blocking/*.kt`, `assets/vidorax-blocklists/` |
+| B11 | **Patch script:** new-architecture `RNCWebViewManager` 4-argument `createViewInstance` override reading the `webProfile` prop; `RNCWebViewHooks` pending slot, `webProfileProp`, `setPendingWebProfile`, default Listener method `beforeWebViewSetupInProfile`. **VidoraWeb:** `IncognitoProfiles` (temporary profile, never active, joined per WebView), `SecureWindow` (FLAG_SECURE), incognito downloads claimed, `getWebViewProfileName`. **vidorax-media:** `RequestContext.cookieProfile`, `IncognitoWebCookies`, interceptor by marker name. Tests `IncognitoProfilesTest`, `SecureWindowTest`, `IncognitoCookiesTest`, patch test (3 new) | `scripts/patch-react-native-webview.js` (+ test), `VidoraWebModule.kt`, `profiles/IncognitoProfiles.kt`, `security/SecureWindow.kt`, vidorax-media `net/`, `model/`, `bridge/`, `engine/DownloadStore.kt` |
 
 ### New dependencies
 
@@ -1875,6 +2018,7 @@ Found, not fixed: pop-up windows (BrowserWindowActivity) are not blocked / not s
 | `autoplay` | B14 | `'sound'` (today's WebView behaviour) | allow / sound / all |
 | `autoplaySites` | B14 | `'{}'` | JSON `{ site: allow / sound / all }` (≤ 300) |
 | `focusMinutes` | B14 | `'25'` | 1 / 5 / 15 / 25 / 45 / 60 / 90 / 120 |
+| `incognitoSearchEngine` | B11 | `'same'` (the normal engine — today's) | same / google / bing / duckduckgo / yahoo / ecosia / brave |
 
 ### Found, not fixed
 
@@ -1908,6 +2052,7 @@ Found, not fixed: pop-up windows (BrowserWindowActivity) are not blocked / not s
 | Bookmark shortcuts (B9) | The home-screen icon is a letter on a colour, not the site's icon |
 | Blocking (B14) | Pop-up windows (B20 `BrowserWindowActivity`) aren't ad-blocked or site-checked, and a blocked tab can be moved to one; service-worker requests aren't blocked |
 | Blocking (B14) | No stand-in scripts for blocked analytics (sites waiting for them can hang); site lists, limits and focus aren't in Settings Backup; reopening after a block needs JavaScript on that site when the WebView already had the address |
+| Incognito (B11) | Fabric delivering the `webProfile` prop is a device check (fails closed); after a kill the session's data stays until the next session's sweep; `cookieProfile` follows the tab in front; Aa per-site / desktop mode changed in incognito are kept; App Lock only when set up |
 
 ### Decisions (all packages)
 
@@ -1967,3 +2112,8 @@ Found, not fixed: pop-up windows (BrowserWindowActivity) are not blocked / not s
   CC BY-SA option; site blocker / time limits / focus decided in the app before a page loads, the tab paused behind
   the notice; "Allow ads on this site" also allows trackers; autoplay default = today's WebView setting with no
   script, per-site policy reloads through the browser; site lists in the profile database (DATABASE_VERSION 4).
+- B11 (Faran's rules): one temporary WebView profile per session (`vidorax-incog<session>`, never reused, never
+  active), chosen per WebView in beforeWebViewSetup from the `webProfile` prop (patched new-arch manager), fail closed
+  until native confirms it; wipe = deleting that profile after the WebViews unmount (not clearAllSiteData);
+  downloads carry the session's cookie profile; incognito tabs identified by the `incog-` id prefix; the lock panel
+  hides the normal profile's data and per-site settings in incognito.
