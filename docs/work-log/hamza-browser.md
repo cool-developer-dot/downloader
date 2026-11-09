@@ -1873,6 +1873,22 @@ test 3/3, Kotlin vidorax-web 136/137 (known `WebViewSnapshotsTest`), vidorax-med
 - App Lock asks only if App Lock is set up.
 - vidorax-media's new test not run on Windows.
 
+### B11: fix (Mega 6, after review) — bfb1769
+
+- **#106:** FLAG_SECURE no longer drops when the app leaves — Android takes the recent-apps picture while the app is
+  being hidden, so the flag now follows only "incognito tab in front, or the switcher listing incognito tabs open, and
+  the browser shown".
+- **Nothing copied out of incognito:** Bookmark all tabs skips incognito tabs; Duplicate tab, Translate page and the
+  selection menu's Search open incognito tabs when started from an incognito tab.
+- **#105:** no PIN after a system screen VidoraX opened itself (App Lock's expected-system-screen grace, as B21's
+  photo picker). A page's own file chooser is opened by react-native-webview and isn't wrapped, so returning from it to
+  an incognito tab asks for the PIN (logged).
+- **A remounted incognito WebView** (B3 tab sleep, the mount pool) is checked again before its page loads.
+- Gate (B11 branch): unit 1797/1797 (2 workers), typecheck, lint 0 / 82, patch 10/10, Kotlin vidorax-web 136/137
+  (known). Device checks added: recent apps shows a blank card for an incognito tab; Duplicate / Translate / selection
+  Search from an incognito tab stay incognito; Bookmark all tabs leaves incognito tabs out; returning from the QR share
+  sheet doesn't ask for the PIN.
+
 ### Device test list for Faran
 
 - [ ] **Prop and profile:** debug build, open an incognito tab → logcat `B11 webProfile prop received; incognito
