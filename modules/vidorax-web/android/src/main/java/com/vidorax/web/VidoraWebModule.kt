@@ -43,6 +43,7 @@ import com.vidorax.web.security.SecureWindow
 import com.vidorax.web.apps.AppLinks
 import com.vidorax.web.devtools.RemoteDebugging
 import com.vidorax.web.draw.DrawingExport
+import com.vidorax.web.widget.SearchWidget
 import com.vidorax.web.devtools.SiteCookies
 import com.vidorax.web.scanner.QrScanner
 import com.vidorax.web.share.QrImage
@@ -77,6 +78,7 @@ private const val ON_SELECTION_ACTION = "onSelectionAction"
 private const val ON_SHORTCUT_OPEN = "onShortcutOpen"
 // B11 #107: a download from an incognito tab that went to Android's DownloadManager (JS shows the notice).
 private const val ON_INCOGNITO_DOWNLOAD = "onIncognitoDownload"
+private const val ON_SEARCH_WIDGET = "onSearchWidget"
 
 // react-native-webview's own download defaults (RNCWebViewManagerImpl).
 private const val DOWNLOADING_MESSAGE = "Downloading"
@@ -94,6 +96,10 @@ class VidoraWebModule : Module() {
   @Volatile private var hasWebDownloadListeners = false
   @Volatile private var hasSharedTextListeners = false
   @Volatile private var hasShortcutListeners = false
+
+  // B24 #65: a search-widget tap while JS was not listening, handed out by consumeSearchWidgetTap.
+  @Volatile private var hasSearchWidgetListeners = false
+  @Volatile private var unclaimedSearchWidgetTap = false
 
   // B9 #87: a bookmark shortcut tapped while JS was not listening, handed out by consumeShortcutUrl.
   private val unclaimedShortcutUrl = AtomicReference<String?>(null)
@@ -203,7 +209,7 @@ class VidoraWebModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("VidoraWeb")
 
-    Events(ON_NETWORK_MEDIA, ON_WEB_DOWNLOAD, ON_SHARED_TEXT, ON_CAPTURED_KEY, ON_BROWSER_WINDOW, ON_SELECTION_ACTION, ON_SHORTCUT_OPEN, ON_INCOGNITO_DOWNLOAD)
+    Events(ON_NETWORK_MEDIA, ON_WEB_DOWNLOAD, ON_SHARED_TEXT, ON_CAPTURED_KEY, ON_BROWSER_WINDOW, ON_SELECTION_ACTION, ON_SHORTCUT_OPEN, ON_INCOGNITO_DOWNLOAD, ON_SEARCH_WIDGET)
 
     OnCreate {
       RNCWebViewHooks.setListener(webViewHooks)
@@ -223,6 +229,8 @@ class VidoraWebModule : Module() {
     OnStartObserving(ON_SHARED_TEXT) { hasSharedTextListeners = true }
     OnStartObserving(ON_SHORTCUT_OPEN) { hasShortcutListeners = true }
     OnStopObserving(ON_SHORTCUT_OPEN) { hasShortcutListeners = false }
+    OnStartObserving(ON_SEARCH_WIDGET) { hasSearchWidgetListeners = true }
+    OnStopObserving(ON_SEARCH_WIDGET) { hasSearchWidgetListeners = false }
     OnStopObserving(ON_SHARED_TEXT) { hasSharedTextListeners = false }
     // B6 #240: keys are only ever taken while JS listens for them.
     OnStartObserving(ON_CAPTURED_KEY) {
@@ -263,6 +271,13 @@ class VidoraWebModule : Module() {
     AsyncFunction("pinBookmarkShortcut") { url: String, title: String ->
       BookmarkShortcuts.pin(context, url, title)
     }.runOnQueue(Queues.MAIN)
+
+    // B24 #65: whether the app was started (or brought back) by the search widget; once per tap.
+    Function("consumeSearchWidgetTap") {
+      val pending = unclaimedSearchWidgetTap
+      unclaimedSearchWidgetTap = false
+      pending || SearchWidget.takeSearchTap(appContext.currentActivity?.intent)
+    }
 
     Function("consumeShortcutUrl") {
       unclaimedShortcutUrl.getAndSet(null) ?: BookmarkShortcuts.takeShortcutUrl(appContext.currentActivity?.intent)
@@ -626,6 +641,11 @@ class VidoraWebModule : Module() {
     }.runOnQueue(Queues.MAIN)
 
     OnNewIntent { intent ->
+      // B24 #65: the search widget (before the bookmark shortcut and shared text).
+      if (SearchWidget.takeSearchTap(intent)) {
+        if (hasSearchWidgetListeners) sendEvent(ON_SEARCH_WIDGET, emptyMap<String, Any>()) else unclaimedSearchWidgetTap = true
+        return@OnNewIntent
+      }
       // B9 #87: a bookmark shortcut tapped while the app runs.
       BookmarkShortcuts.takeShortcutUrl(intent)?.let { url ->
         if (hasShortcutListeners) sendEvent(ON_SHORTCUT_OPEN, mapOf("url" to url)) else unclaimedShortcutUrl.set(url)

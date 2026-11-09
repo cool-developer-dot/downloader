@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- B24 #65 search widget. -->
+<resources>
+  <string name="vidorax_search_widget_label">VidoraX search</string>
+  <string name="vidorax_search_widget_description">Opens a new tab ready to type</string>
+  <string name="vidorax_search_widget_hint">Search or type a web address</string>
+  <color name="vidorax_search_widget_background">#F2FFFFFF</color>
+  <color name="vidorax_search_widget_text">#FF5F6368</color>
+  <color name="vidorax_search_widget_icon">#FF1A73E8</color>
+</resources>

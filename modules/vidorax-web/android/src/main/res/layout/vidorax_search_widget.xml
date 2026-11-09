@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- B24 #65 search widget: one bar; the whole bar is the tap target. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+  android:id="@+id/vidorax_search_widget_bar"
+  android:layout_width="match_parent"
+  android:layout_height="match_parent"
+  android:minHeight="48dp"
+  android:background="@drawable/vidorax_search_widget_background"
+  android:gravity="center_vertical"
+  android:layoutDirection="locale"
+  android:orientation="horizontal"
+  android:paddingStart="16dp"
+  android:paddingEnd="16dp"
+  android:contentDescription="@string/vidorax_search_widget_hint">
+
+  <ImageView
+    android:layout_width="24dp"
+    android:layout_height="24dp"
+    android:importantForAccessibility="no"
+    android:src="@drawable/vidorax_search_widget_icon" />
+
+  <TextView
+    android:layout_width="0dp"
+    android:layout_height="wrap_content"
+    android:layout_marginStart="12dp"
+    android:layout_weight="1"
+    android:ellipsize="end"
+    android:maxLines="1"
+    android:text="@string/vidorax_search_widget_hint"
+    android:textAlignment="viewStart"
+    android:textColor="@color/vidorax_search_widget_text"
+    android:textSize="16sp" />
+</LinearLayout>

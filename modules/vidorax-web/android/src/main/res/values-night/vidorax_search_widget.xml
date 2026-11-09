@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- B24 #65 search widget: dark theme. -->
+<resources>
+  <color name="vidorax_search_widget_background">#F2303134</color>
+  <color name="vidorax_search_widget_text">#FFE8EAED</color>
+  <color name="vidorax_search_widget_icon">#FF8AB4F8</color>
+</resources>

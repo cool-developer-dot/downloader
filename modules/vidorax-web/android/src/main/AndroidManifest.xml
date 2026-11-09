@@ -23,5 +23,21 @@
         android:name="android.support.FILE_PROVIDER_PATHS"
         android:resource="@xml/vidorax_web_file_paths" />
     </provider>
+
+    <!--
+      B24 #65 search widget (4x1, resizable): a tap opens a new tab with the address bar focused, after App Lock.
+      Not exported (only the launcher's widget host talks to it); no permission.
+    -->
+    <receiver
+      android:name="com.vidorax.web.widget.SearchWidgetProvider"
+      android:exported="false"
+      android:label="@string/vidorax_search_widget_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/vidorax_search_widget_info" />
+    </receiver>
   </application>
 </manifest>

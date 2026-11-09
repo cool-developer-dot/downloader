@@ -193,6 +193,8 @@ export type VidoraWebEvents = {
   onBrowserWindow: (event: BrowserWindowEvent) => void;
   /** B9 #87: a bookmark's home-screen shortcut was tapped while the app was running (`url` is http(s)). */
   onShortcutOpen: (event: { url: string }) => void;
+  /** B24 #65: the search widget was tapped while the app was running. */
+  onSearchWidget: () => void;
   /** B11 #107: an incognito tab's download went to Android's DownloadManager (`started` false: refused, session over). */
   onIncognitoDownload: (event: { viewTag: number; started: boolean }) => void;
   /** B8: see SelectionActionEvent. The menu shows the app's items only while something listens. */
@@ -406,6 +408,8 @@ export interface VidoraWebModuleApi {
    * the share sheet (`'share'`). Resolves whether it worked.
    */
   exportDrawing?(imageUri: string, strokesJson: string, mode: 'save' | 'share', name: string): Promise<boolean>;
+  /** B24 #65: true once when the search widget started or brought back the app. */
+  consumeSearchWidgetTap?(): boolean;
   /** B19 #228: remote debugging on / off (process-wide; a new app process always starts with it off). */
   setRemoteDebugging?(enabled: boolean): Promise<boolean>;
   /** B19 #230: the page's cookies from the tab's own profile (incognito or normal). */
