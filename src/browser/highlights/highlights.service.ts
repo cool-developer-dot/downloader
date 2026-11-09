@@ -156,7 +156,7 @@ export async function deleteHighlight(h: Highlight): Promise<void> {
   await annotateRepository.deleteHighlight(h.id).catch(() => false);
   // Off any open tab showing that page.
   for (const tab of useBrowserStore.getState().tabs) {
-    if (pageKey(tab.url) === h.pageUrl) injectors.get(tab.id)?.(removeHighlightScript(h.id));
+    if (pageKey(tab.url) === h.pageUrl) injectors.get(tab.id)?.(removeHighlightScript({ id: h.id, exact: h.text, prefix: h.prefix, suffix: h.suffix, color: h.color }));
   }
   emit();
 }
