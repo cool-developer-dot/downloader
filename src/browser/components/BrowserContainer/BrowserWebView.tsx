@@ -76,7 +76,11 @@ import { AUTOPLAY_BLOCK_ALL_SCRIPT, autoplayNeedsTap } from '@/browser/blocking/
 import { useAutoplayPolicy } from '@/browser/blocking/autoplay.service';
 import { applyBlockingPage, blockingNative } from '@/browser/blocking/content-blocking.service';
 import { isIncognitoTabId, liveIncognitoProfile } from '@/browser/incognito/incognito-state';
-import { useIncognitoVerified, verifyIncognitoWebView } from '@/browser/incognito/incognito.service';
+import {
+  forgetIncognitoWebView,
+  useIncognitoVerified,
+  verifyIncognitoWebView,
+} from '@/browser/incognito/incognito.service';
 import {
   isJavaScriptAllowed,
   normalizeCookiePolicy,
@@ -297,6 +301,8 @@ export const BrowserWebView = memo(function BrowserWebView({
       }
       if (tabId) {
         clearTabWebViewTag(tabId, nativeViewTagRef.current);
+        // B11: a later WebView for this incognito tab (after sleep / the mount pool) is checked again.
+        forgetIncognitoWebView(tabId);
       }
       // A queued scroll inject must never reach a WebView that is going away.
       scrollPositionService.cancelRestore(tabId);

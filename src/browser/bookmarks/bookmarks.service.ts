@@ -6,6 +6,7 @@ import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
 import { useBrowserStore } from '@/browser/stores';
 import { isValidBrowserPageUrl } from '@/browser/utils';
 import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
+import { shouldPersistForTab } from '@/browser/tabs/tab-privacy';
 import { translate } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import { useAppLockStore } from '@/security/app-lock/app-lock.store';
@@ -85,7 +86,8 @@ const pad = (n: number) => String(n).padStart(2, '0');
 export async function bookmarkAllTabs(now: Date = new Date()): Promise<void> {
   const pages = useBrowserStore
     .getState()
-    .tabs.filter((tab) => isValidBrowserPageUrl(tab.url))
+    // B11: incognito tabs are never bookmarked in bulk (nothing from them is kept).
+    .tabs.filter((tab) => isValidBrowserPageUrl(tab.url) && shouldPersistForTab(tab))
     .map((tab) => ({ url: tab.url, title: tab.title || tab.url }));
   if (pages.length === 0) {
     notify(translate('browserBookmarks.bookmarkAllNone'));

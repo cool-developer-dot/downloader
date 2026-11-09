@@ -9,6 +9,7 @@ import { translate } from '@/localization';
 import { handleSelectionAction } from './selection-actions';
 import { buildSelectionMenu, SELECTION_MENU_ITEMS } from './selection-menu-items';
 import { SELECTION_READ_SCRIPT } from './selection-read-script';
+import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
 
 /**
  * B8 #72–#74 — the app's items in a page's text-selection menu. `start()` gives VidoraWeb the translated items and
@@ -29,7 +30,8 @@ function onSelectionAction(event: SelectionActionEvent): void {
     openTabAfterCurrent: (url, title) => {
       const store = useBrowserStore.getState();
       // Inserted right after the tab in front (B6's background-tab plan), then shown.
-      const outcome = store.openTabInBackground(url, { title });
+      // B11: a search from an incognito page opens in incognito.
+      const outcome = store.openTabInBackground(url, { title, ...(isIncognitoInFront() ? { incognito: true } : {}) });
       if (outcome.status !== 'CREATED') {
         announceTabsLimitReached();
         return false;
