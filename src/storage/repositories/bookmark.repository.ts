@@ -19,6 +19,7 @@ import {
   getBrowserDatabase as getDatabase,
   withBrowserDatabaseTransaction as withDatabaseTransaction,
 } from '../sqlite/browser-database';
+import { foldedLikePattern, foldedSql, needsUrduFold } from './urdu-fold-sql';
 
 interface BookmarkRow {
   id: string;
@@ -60,6 +61,14 @@ function buildSearchClause(query: string | undefined): {
   }
 
   const like = `%${normalized}%`;
+
+  // B24 #271: an Urdu / Arabic-script query also matches titles typed with the other letter forms or diacritics.
+  if (needsUrduFold(normalized)) {
+    return {
+      clause: `WHERE (${foldedSql('title')} LIKE ? ESCAPE '\\' OR url LIKE ? OR hostname LIKE ?)`,
+      params: [foldedLikePattern(normalized), like, like],
+    };
+  }
 
   return {
     clause: `WHERE (title LIKE ? OR url LIKE ? OR hostname LIKE ?)`,

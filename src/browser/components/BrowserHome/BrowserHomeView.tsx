@@ -16,6 +16,7 @@ import { LightweightHome } from '@/browser/data-saver/components/LightweightHome
 
 import { browserHomeTokens } from './browser-home-tokens';
 import { ScanQrButton } from '@/browser/share-qr/components/ScanQrButton';
+import { StartPageCards } from '@/browser/calendar/components/StartPageCards';
 
 export type BrowserHomeViewProps = {
   testID?: string;
@@ -92,6 +93,8 @@ export const BrowserHomeView = memo(function BrowserHomeView({
           testID="browser-quick-access-grid"
         />
       </Box>
+      {/* B24 #269 / #270: dates and prayer times (each only when switched on). */}
+      <StartPageCards />
     </ScrollView>
   );
 

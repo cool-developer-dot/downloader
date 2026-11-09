@@ -202,6 +202,18 @@ export interface SettingsState {
   translateNeverLanguages: string;
   /** B23 #263: sites never offered (JSON list of hosts, default '[]'). */
   translateNeverSites: string;
+  /** B24 #269: Gregorian + Hijri dates on the start page (default off: the start page as it was). */
+  showHijriCalendar: boolean;
+  /** B24 #269: days added to the Hijri date (−2…2, default 0). */
+  hijriAdjust: number;
+  /** B24 #270: prayer times on the start page (default off). */
+  showPrayerTimes: boolean;
+  /** B24 #270: the city (bundled list id, default 'lahore'). */
+  prayerCity: string;
+  /** B24 #270: hand-typed "lat, lng" (default '': the city). */
+  prayerCoords: string;
+  /** B24 #270: Asr juristic method (default 'hanafi'). */
+  prayerAsr: 'hanafi' | 'shafi';
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

@@ -15,23 +15,23 @@ export const LANGUAGE_MESSAGE_SCRIPT = `(function () {
 })();
 true;`;
 
-const URDU_LETTERS = /[ٹڈڑںےھۃۓ]/g;
-const PERSIAN_LETTERS = /[پچژگکی]/g;
+const URDU_LETTERS = /[\u0679\u0688\u0691\u06BA\u06D2\u06BE\u06C3\u06D3]/g;
+const PERSIAN_LETTERS = /[\u067E\u0686\u0698\u06AF\u06A9\u06CC]/g;
 
 const SCRIPTS: { lang: string; re: RegExp }[] = [
-  { lang: 'arabic-script', re: /[؀-ۿݐ-ݿﭐ-﷿ﹰ-﻿]/g },
-  { lang: 'ja', re: /[぀-ヿ]/g },
-  { lang: 'ko', re: /[가-힯ᄀ-ᇿ]/g },
-  { lang: 'zh', re: /[一-鿿]/g },
-  { lang: 'ru', re: /[Ѐ-ӿ]/g },
-  { lang: 'hi', re: /[ऀ-ॿ]/g },
-  { lang: 'bn', re: /[ঀ-৿]/g },
-  { lang: 'pa', re: /[਀-੿]/g },
-  { lang: 'ta', re: /[஀-௿]/g },
-  { lang: 'th', re: /[฀-๿]/g },
-  { lang: 'el', re: /[Ͱ-Ͽ]/g },
-  { lang: 'he', re: /[֐-׿]/g },
-  { lang: 'latin', re: /[A-Za-zÀ-ɏ]/g },
+  { lang: 'arabic-script', re: /[\u0600-\u06FF\u0750-\u077F\uFB50-\uFDFF\uFE70-\uFEFF]/g },
+  { lang: 'ja', re: /[\u3040-\u30FF]/g },
+  { lang: 'ko', re: /[\uAC00-\uD7AF\u1100-\u11FF]/g },
+  { lang: 'zh', re: /[\u4E00-\u9FFF]/g },
+  { lang: 'ru', re: /[\u0400-\u04FF]/g },
+  { lang: 'hi', re: /[\u0900-\u097F]/g },
+  { lang: 'bn', re: /[\u0980-\u09FF]/g },
+  { lang: 'pa', re: /[\u0A00-\u0A7F]/g },
+  { lang: 'ta', re: /[\u0B80-\u0BFF]/g },
+  { lang: 'th', re: /[\u0E00-\u0E7F]/g },
+  { lang: 'el', re: /[\u0370-\u03FF]/g },
+  { lang: 'he', re: /[\u0590-\u05FF]/g },
+  { lang: 'latin', re: /[A-Za-z\u00C0-\u024F]/g },
 ];
 
 const count = (text: string, re: RegExp) => text.match(re)?.length ?? 0;
@@ -53,7 +53,7 @@ export function languageFromText(sample: string): string | null {
   if (!best || best.n < 20) return null;
   if (best.lang === 'latin') return null;
   // Japanese pages mix kana with kanji: any amount of kana is Japanese.
-  if (best.lang === 'zh' && count(text, /[぀-ヿ]/g) >= 10) return 'ja';
+  if (best.lang === 'zh' && count(text, /[\u3040-\u30FF]/g) >= 10) return 'ja';
   if (best.lang !== 'arabic-script') return best.lang;
   if (count(text, URDU_LETTERS) >= 3) return 'ur';
   if (count(text, PERSIAN_LETTERS) >= 3) return 'fa';

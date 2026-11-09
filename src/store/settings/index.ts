@@ -95,6 +95,8 @@ import { parseNeverSites, serializeNeverSites } from '@/browser/open-in-app/open
 import { parseSnippets, serializeSnippets } from '@/browser/form-snippets/form-snippets';
 import { clampAlertHours } from '@/browser/page-alerts/page-alerts-core';
 import { parseStringList } from '@/browser/language/language-detect';
+import { clampHijriAdjust } from '@/browser/calendar/hijri';
+import { cityById } from '@/browser/prayer/prayer-times';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -251,6 +253,12 @@ export const useSettingsStore = createStore<SettingsStore>()(
         offerTranslate: state.offerTranslate,
         translateNeverLanguages: state.translateNeverLanguages,
         translateNeverSites: state.translateNeverSites,
+        showHijriCalendar: state.showHijriCalendar,
+        hijriAdjust: state.hijriAdjust,
+        showPrayerTimes: state.showPrayerTimes,
+        prayerCity: state.prayerCity,
+        prayerCoords: state.prayerCoords,
+        prayerAsr: state.prayerAsr,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -487,6 +495,12 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.translateNeverSites === 'string'
               ? JSON.stringify(parseStringList(raw.translateNeverSites))
               : current.translateNeverSites,
+          showHijriCalendar: typeof raw.showHijriCalendar === 'boolean' ? raw.showHijriCalendar : current.showHijriCalendar,
+          hijriAdjust: raw.hijriAdjust !== undefined ? clampHijriAdjust(raw.hijriAdjust) : current.hijriAdjust,
+          showPrayerTimes: typeof raw.showPrayerTimes === 'boolean' ? raw.showPrayerTimes : current.showPrayerTimes,
+          prayerCity: typeof raw.prayerCity === 'string' && cityById(raw.prayerCity) ? raw.prayerCity : current.prayerCity,
+          prayerCoords: typeof raw.prayerCoords === 'string' ? raw.prayerCoords.slice(0, 60) : current.prayerCoords,
+          prayerAsr: raw.prayerAsr === 'shafi' || raw.prayerAsr === 'hanafi' ? raw.prayerAsr : current.prayerAsr,
         };
       },
     },

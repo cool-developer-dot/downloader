@@ -14,6 +14,7 @@ import { browserIncognitoUr } from './catalogs/browserIncognito.ur';
 import { browserShareUr } from './catalogs/browserShare.ur';
 import { browserDevtoolsUr } from './catalogs/browserDevtools.ur';
 import { browserAnnotateUr } from './catalogs/browserAnnotate.ur';
+import { browserUrduUr } from './catalogs/browserUrdu.ur';
 import { browserProfilesUr } from './catalogs/browserProfiles.ur';
 import { browserPrivacyUr } from './catalogs/browserPrivacy.ur';
 import { browserAddressUr } from './catalogs/browserAddress.ur';
@@ -2847,4 +2848,5 @@ export const ur: CatalogStrings<typeof en> = {
   browserShare: browserShareUr,
   browserDevtools: browserDevtoolsUr,
   browserAnnotate: browserAnnotateUr,
+  browserUrdu: browserUrduUr,
 };

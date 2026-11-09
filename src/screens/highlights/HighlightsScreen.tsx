@@ -11,6 +11,7 @@ import { matchesHighlightQuery } from '@/browser/highlights/highlights-core';
 import { listAllHighlights, useHighlightsVersion } from '@/browser/highlights/highlights.service';
 import { loadUrlActiveTab } from '@/browser/services';
 import { useTheme } from '@/hooks/use-theme';
+import { foldSearchText } from '@/utils/search-text';
 import { useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import type { Highlight } from '@/storage/repositories/annotate.repository';
@@ -33,7 +34,7 @@ export const HighlightsScreen = memo(function HighlightsScreen() {
     };
   }, [changes]);
 
-  const shown = useMemo(() => all.filter((h) => matchesHighlightQuery(h, query)), [all, query]);
+  const shown = useMemo(() => all.filter((h) => matchesHighlightQuery(h, query, foldSearchText)), [all, query]);
 
   return (
     <SafeAreaScreen

@@ -12,6 +12,7 @@ import type {
   BrowserSecurityLevel,
   NavigationIntent,
 } from '@/browser/types';
+import { normalizeAddressDigits } from '@/utils/text-direction';
 
 const IPV4_HOST =
   /^(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?(?:\/.*)?$/;
@@ -189,7 +190,8 @@ const SITE_OPERATOR = /^site:[^\s/]+(?:\s|$)/i;
  * Pure function — no store, no WebView, no side effects.
  */
 export function classifyNavigationInput(rawInput: string): NavigationIntent {
-  const trimmed = rawInput.trim();
+  // B24 #271: an address typed with Eastern digits (۱۹۲.۱۶۸.۱.۱) is the same address; Urdu words stay a search.
+  const trimmed = normalizeAddressDigits(rawInput.trim());
 
   if (!trimmed) {
     return { kind: 'empty' };

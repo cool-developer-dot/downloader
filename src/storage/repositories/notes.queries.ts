@@ -1,4 +1,5 @@
 import { TABLE_NAMES } from '@/storage/constants';
+import { foldedLikePattern, foldedSql, needsUrduFold } from './urdu-fold-sql';
 
 /**
  * B22 #252 — the notes SQL, over a minimal database interface (tests run it on `node:sqlite` with the app's schema;
@@ -33,6 +34,19 @@ function likePattern(query: string): string {
 /** Newest first; with `query`, notes whose text, page title or address contain it (any case). */
 export async function listNotes(db: NotesDb, query = '', limit = 500): Promise<Note[]> {
   const q = query.trim();
+  // B24 #271: an Urdu / Arabic-script query matches the other letter forms, diacritics and digits too.
+  if (q && needsUrduFold(q)) {
+    const rowsUrdu = await db.getAllAsync<Row>(
+      `SELECT * FROM ${TABLE_NAMES.notes}
+       WHERE ${foldedSql('text')} LIKE ? ESCAPE '\\' OR ${foldedSql('page_title')} LIKE ? ESCAPE '\\' OR page_url LIKE ? ESCAPE '\\'
+       ORDER BY updated_at DESC LIMIT ?`,
+      foldedLikePattern(q),
+      foldedLikePattern(q),
+      likePattern(q),
+      limit,
+    );
+    return rowsUrdu.map(toNote);
+  }
   const rows = q
     ? await db.getAllAsync<Row>(
         `SELECT * FROM ${TABLE_NAMES.notes}

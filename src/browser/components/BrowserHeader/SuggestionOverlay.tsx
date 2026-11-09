@@ -40,6 +40,7 @@ import { useSearchEngineDefinition } from '@/browser/hooks/useSearchEngineDefini
 
 import { OmniboxTrailing } from './OmniboxTrailing';
 import { SuggestionItem } from './SuggestionItem';
+import { inputDirectionStyle } from '@/utils/text-direction';
 
 export type SuggestionOverlayProps = {
   visible: boolean;
@@ -90,7 +91,7 @@ export const SuggestionOverlay = memo(function SuggestionOverlay({
   testID = 'suggestion-overlay',
 }: SuggestionOverlayProps) {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { t, rtl } = useTranslation();
   const insets = useSafeAreaInsets();
   const window = useWindowDimensions();
   const progress = useSharedValue(0);
@@ -231,6 +232,8 @@ export const SuggestionOverlay = memo(function SuggestionOverlay({
           color: theme.colors.textPrimary,
           fontSize: theme.typography.bodySmall.fontSize,
           fontFamily: theme.typography.body.fontFamily,
+          // B24 #271: caret and alignment follow what is typed (an Urdu search right, an address left).
+          ...inputDirectionStyle(inputValue ?? query, rtl.isRtl),
         }}
       />
       <OmniboxTrailing showClear={showClear} isLoading={false} onClear={onClear} />

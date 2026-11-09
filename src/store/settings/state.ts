@@ -170,4 +170,10 @@ export const initialSettingsState: SettingsState = {
   offerTranslate: true,
   translateNeverLanguages: '[]',
   translateNeverSites: '[]',
+  showHijriCalendar: false,
+  hijriAdjust: 0,
+  showPrayerTimes: false,
+  prayerCity: 'lahore',
+  prayerCoords: '',
+  prayerAsr: 'hanafi',
 };

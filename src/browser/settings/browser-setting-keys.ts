@@ -92,6 +92,13 @@ export const BROWSER_SETTING_KEYS = [
   'offerTranslate',
   'translateNeverLanguages',
   'translateNeverSites',
+  // B24 (Hamza)
+  'showHijriCalendar',
+  'hijriAdjust',
+  'showPrayerTimes',
+  'prayerCity',
+  'prayerCoords',
+  'prayerAsr',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

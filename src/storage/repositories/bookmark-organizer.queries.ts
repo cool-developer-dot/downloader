@@ -1,4 +1,5 @@
 import { TABLE_NAMES } from '@/storage/constants';
+import { foldedLikePattern, foldedSql, needsUrduFold } from './urdu-fold-sql';
 
 /**
  * B9 — the SQL of bookmark folders, order, tags, notes, the bookmarks bar, import / export and the reading list, as
@@ -408,7 +409,15 @@ export async function searchBookmarks(db: OrganizerDb, query: string, tag: strin
   const q = query.trim();
   const params: Param[] = [];
   const where: string[] = [];
-  if (q) {
+  if (q && needsUrduFold(q)) {
+    // B24 #271: Urdu matching (letter forms, diacritics, Eastern digits) in title, note and tags.
+    const like = `%${q}%`;
+    const folded = foldedLikePattern(q);
+    where.push(
+      `(${foldedSql('b.title')} LIKE ? ESCAPE '\\' OR b.url LIKE ? OR b.hostname LIKE ? OR ${foldedSql('b.note')} LIKE ? ESCAPE '\\' OR EXISTS (SELECT 1 FROM ${T} t WHERE t.bookmark_id = b.id AND ${foldedSql('t.tag')} LIKE ? ESCAPE '\\'))`,
+    );
+    params.push(folded, like, like, folded, folded);
+  } else if (q) {
     const like = `%${q}%`;
     where.push(
       `(b.title LIKE ? OR b.url LIKE ? OR b.hostname LIKE ? OR b.note LIKE ? OR EXISTS (SELECT 1 FROM ${T} t WHERE t.bookmark_id = b.id AND t.tag LIKE ?))`,
