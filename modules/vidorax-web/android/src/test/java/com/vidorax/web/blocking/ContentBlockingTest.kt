@@ -95,6 +95,21 @@ class ContentBlockingTest {
   }
 
   @Test
+  fun whileOffAResourceRequestCostsNothing() {
+    val view = WebView(RuntimeEnvironment.getApplication())
+    val untouchable = object : WebResourceRequest {
+      override fun getUrl(): Uri = Uri.parse("https://adserver.example/ad.js")
+      override fun isForMainFrame() = false
+      override fun isRedirect() = false
+      override fun hasGesture() = false
+      override fun getMethod() = "GET"
+      override fun getRequestHeaders(): Map<String, String> = throw AssertionError("headers read while blocking is off")
+    }
+    assertNull(blocking.intercept(view, untouchable))
+    assertTrue(opened.isEmpty())
+  }
+
+  @Test
   fun nothingIsBlockedUntilTheListHasLoaded() {
     val queued = mutableListOf<Runnable>()
     val slow = ContentBlocking({ name -> lists[name]?.byteInputStream() }, Executor { queued += it })

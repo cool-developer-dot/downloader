@@ -56,6 +56,8 @@ internal class ContentBlocking(
 
   /** Network threads (the hook). Null = load normally. */
   fun intercept(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+    // Both switches off (the default): nothing to do for a resource — no header walk, no lookup.
+    if (!request.isForMainFrame && !rules.get().enabled) return null
     val url = request.url?.toString() ?: return null
     var accept: String? = null
     var hasRange = false
