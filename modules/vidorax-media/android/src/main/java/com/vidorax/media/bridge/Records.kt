@@ -32,6 +32,7 @@ data class RequestContextRecord(
   @Field val origin: String? = null,
   @Field val headers: Map<String, String>? = null,
   @Field val useCookies: Boolean = false,
+  @Field val cookieProfile: String? = null,
 ) : Record {
   fun toModel() = RequestContext(
     userAgent = userAgent.nonBlank(),
@@ -40,6 +41,8 @@ data class RequestContextRecord(
     // Cookies only ever come from CookieManager.
     headers = headers.orEmpty().filterKeys { !it.equals("Cookie", ignoreCase = true) },
     useCookies = useCookies,
+    // B11: only an incognito session name; anything else is dropped (today's request).
+    cookieProfile = cookieProfile?.takeIf { com.vidorax.media.net.IncognitoWebCookies.isIncognitoName(it) },
   )
 }
 

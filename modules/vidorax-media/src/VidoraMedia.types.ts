@@ -68,6 +68,11 @@ export interface RequestContext {
   headers?: Record<string, string>;
   /** Attach `CookieManager.getCookie(requestUrl)` to every request (snapshot at enqueue, refreshed on retry). */
   useCookies: boolean;
+  /**
+   * B11: the incognito session (`vidorax-incog<session>`) the media was found in: its cookie jar instead of the active
+   * profile's (none once the session has ended). Absent for every other request.
+   */
+  cookieProfile?: string;
 }
 
 /**
@@ -817,6 +822,11 @@ export interface VidoraMediaModuleApi {
    * (`Default` or `vidorax-<id>`; anything else resolves false and changes nothing). Missing on older native builds.
    */
   setCookieProfile?(name: string): Promise<boolean>;
+  /**
+   * B11: the live incognito session's jar for downloads from an incognito tab (`cookieProfile`); null when it ends.
+   * Never changes the active profile. Missing on older native builds.
+   */
+  setIncognitoCookieProfile?(name: string | null): Promise<boolean>;
 
   // Downloads
   /** Rejects with ERR_ALREADY_DOWNLOADED for a video already saved; see `enqueueUnique`. */

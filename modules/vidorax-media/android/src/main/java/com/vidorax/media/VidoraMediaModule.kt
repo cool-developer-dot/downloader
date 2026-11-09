@@ -184,6 +184,11 @@ class VidoraMediaModule : Module() {
       com.vidorax.media.net.ActiveWebCookies.use(name)
     }.runOnQueue(expo.modules.kotlin.functions.Queues.MAIN)
 
+    // B11: the live incognito session's jar for downloads started in an incognito tab (null ends it). Never global.
+    AsyncFunction("setIncognitoCookieProfile") { name: String? ->
+      com.vidorax.media.net.IncognitoWebCookies.use(name)
+    }.runOnQueue(expo.modules.kotlin.functions.Queues.MAIN)
+
     AsyncFunction("pause") Coroutine { id: String -> engine.pause(id) }
 
     AsyncFunction("resume") Coroutine { id: String -> engine.resume(id) }

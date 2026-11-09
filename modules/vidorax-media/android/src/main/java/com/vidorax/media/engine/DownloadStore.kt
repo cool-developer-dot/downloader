@@ -329,6 +329,8 @@ internal object RequestContextJson {
     context.referer?.let { json.put("referer", it) }
     context.origin?.let { json.put("origin", it) }
     json.put("useCookies", context.useCookies)
+    // B11: the session's name (never a cookie value), so a resumed download never falls back to another jar.
+    context.cookieProfile?.let { json.put("cookieProfile", it) }
     val headers = JSONObject()
     for ((name, value) in context.headers) {
       if (name.lowercase() !in SECRET_HEADERS) headers.put(name, value)
@@ -352,6 +354,8 @@ internal object RequestContextJson {
       origin = json.optString("origin").ifBlank { null },
       headers = headers,
       useCookies = json.optBoolean("useCookies", false),
+      cookieProfile = json.optString("cookieProfile").ifBlank { null }
+        ?.takeIf { com.vidorax.media.net.IncognitoWebCookies.isIncognitoName(it) },
     )
   }
 }

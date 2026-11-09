@@ -12,6 +12,11 @@ data class RequestContext(
    * (net/DownloadCredentials) — set by the engine for each request, never stored (RequestContextJson leaves it out).
    */
   val authKey: String? = null,
+  /**
+   * B11: the incognito session (`vidorax-incog<session>`) the media was found in — its jar is used instead of the
+   * active profile's ([com.vidorax.media.net.IncognitoWebCookies]); null for every other download (today's).
+   */
+  val cookieProfile: String? = null,
 )
 
 data class ProbeRequest(

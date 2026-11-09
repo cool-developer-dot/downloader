@@ -182,7 +182,8 @@ internal class HttpClient(client: OkHttpClient, private val policy: UrlPolicy = 
     // Session-bound media only answers to the session it was issued to. The cookie itself is never carried in
     // the request context or the store; the interceptor reads it from the WebView jar per hop, at send time.
     if (ctx.useCookies) {
-      builder.header(SessionCookieInterceptor.MARKER, "1")
+      // B11: an incognito download names its session; every other download is "1" (the active profile's jar).
+      builder.header(SessionCookieInterceptor.MARKER, ctx.cookieProfile ?: "1")
     }
     // #299: the download's own Basic sign-in, over https to its pinned origin only (net/DownloadCredentials).
     if (signIn) DownloadCredentials.authorizationFor(ctx.authKey, url)?.let { builder.header("Authorization", it) }
