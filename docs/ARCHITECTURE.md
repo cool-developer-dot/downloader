@@ -885,6 +885,10 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   `src/browser/calendar/` (Hijri: Intl Umm al-Qura if it works, else tabular; start-page cards and month view),
   `src/browser/prayer/` (adhan, cities), `src/browser/urdu/search-widget.service.ts`. Native VidoraWeb
   `widget/SearchWidget*.kt` (receiver in the module manifest), `keyboard/UrduKeyboards.kt`.
+- **Capture, print and PDF (B17).** `src/browser/capture/` (screenshot / full page through `exportDrawing`, print,
+  offline pages in table `saved_pages`, the PDF choice, image download through the existing handoff), screens
+  `saved-pages` and `pdf-viewer`. Native VidoraWeb `print/`, `offline/` (archive + read-only viewer activity),
+  `capture/FullPageCapture.kt`, `pdf/` (the `pdf` download hint, fetch, PdfRenderer).
 - **Browser settings** live in `SettingsState` as primitives (so Settings Backup carries them and Reset restores them);
   `browser/settings/browser-setting-keys.ts` lists them and `browser-settings.audit.test.ts` checks persistence,
   backup and reset; `browser-setting-choices.ts` gives Backup the allowed values of each choice setting.

@@ -2208,6 +2208,10 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   SQL searches, "Add Urdu keyboard" hint; Gregorian + Hijri and prayer times on the start page (off by default; adhan
   4.4.6, MIT); the 4×1 search widget (receiver in the vidorax-web manifest). Native d596da5, 959294e. No database
   change.
+- **B17 Capture, print and PDF.** Screenshot and stitched full-page capture (Pictures/VidoraX or share), Print /
+  Save as PDF, Save page offline (read-only viewer activity, per profile, reading-list copies), in-app PDF viewer and
+  open choice (PDFs now come to JS first), Download image. Native a5994b0, a474790, 0964d8e, c390a73.
+  DATABASE_VERSION 8. Merged manifest: 40 permissions.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 

@@ -2302,6 +2302,83 @@ New libraries: adhan 4.4.6 (MIT; 1,002 KB installed, about 39 KB of code in the 
 Tested: unit 1848/1848 (2 workers), typecheck, lint 0/82, Kotlin vidorax-web 154/155 (known). Device: list above.
 ```
 
+## B17 — Capture, print and PDF (#174, #175, #176, #177, #178, #264, #265, #280)
+
+Mega 4 (run last). Four native commits (Kotlin tests), the feature commit. **DATABASE_VERSION 8** (saved pages;
+profile database version 6). No patch-script change, no library. Gate (2 workers): unit 1856/1856, typecheck, lint
+0 / 82, patch 10/10, Kotlin vidorax-web 164/165 (the known `WebViewSnapshotsTest`). Merged manifest: **40
+permissions**, plus the new viewer activity.
+
+| # | Feature | How |
+| --- | --- | --- |
+| #174 | Screenshot of the visible page; save to Pictures/VidoraX or share | B1's `snapshotWebView` (up to 1,440 px), copied into `<cache>/drawings/`, exported by B23's `exportDrawing` with no strokes (MediaStore on Android 10+, no permission; Save hidden below 10) |
+| #175 | Full-page capture, one picture; a clear message when too long | **Stitched scrolled captures**, not `enableSlowWholeDocumentDraw()` (that must be set before any WebView exists and makes every WebView draw its whole document — slower scrolling and more memory in every tab). The page scrolls one screen at a time and is put back. Above 12,000 px tall (after scaling to 720 px wide): "too long, take a screenshot". A page no taller than the screen (or one that scrolls an inner element): "only the visible part" |
+| #176 / #177 | Save as PDF and Print | One menu item, "Print or save as PDF": Android's print dialog (`createPrintDocumentAdapter`), where "Save as PDF" is a destination. No permission |
+| #178 | Save page offline; "Saved pages" with delete; read-only, no network; per profile; never incognito | `WebView.saveWebArchive` → `<filesDir>/offline-pages/<profile>/<id>.mht`; table `saved_pages`. Opened in **VidoraWeb's own viewer activity**: JavaScript off, network loads blocked, content access off, file access only for that archive (canonical path checked), every navigation refused, not exported, closes when the app leaves the screen (so a return goes through App Lock). B20's profile delete and the guest's end delete the profile's folder |
+| B9 hook | Reading-list offline copies | Saving a page that is on the reading list sets `setReadingOfflineCopy(id, 'vidorax://offline/<savedPageId>')`; the reading list opens that in the viewer (the page online when the copy is gone); deleting the saved page clears it |
+| #264 | In-app PDF viewer | `PdfRenderer`: every page's size read at open (fixed list layout, no jumps), each page drawn only when the list shows it (`windowSize` 3, PNG per page), zoom by steps 1× / 1.5× / 2× / 3× (drawn again wider, capped 2,400 px; Android's ScrollView has no pinch zoom), page number. Password-protected PDFs: a message. The cached PDF and page pictures are deleted when the viewer closes |
+| #265 | PDF open choice + "Remember my choice" | VidoraWeb sends PDF downloads (type or `.pdf` name) to JS as hint `pdf` while the choice is on — normal **and incognito** tabs — instead of straight to DownloadManager. Open in VidoraX: fetched with the **tab's own cookies** (incognito jar included; looked up again per redirect hop), http(s), 5 redirects, 100 MB, `%PDF-` checked. Download: the existing handoff, unchanged. Open with another app: Android's chooser. `pdfOpenChoice` = 'ask' (Browser settings → Capture and PDF) |
+| #280 | Long-press → "Download image" | The long-press script also reports an image's `currentSrc` (http(s) only; `data:` / `blob:` pictures can't be downloaded); "Download image" goes through the **existing system-download handoff** (`downloadThroughSystem` → `handOffToSystemDownloader`; B11: the incognito session's jar). No download rule changed |
+| B23 | Draw on page on B17's capture | Left as it is: switching is more than one line |
+
+**Incognito:** Screenshot, Full-page capture, Print / Save as PDF and Save page offline are hidden for incognito tabs
+(no copies out of incognito, as B11's fix and Draw on page). "Download image" and PDFs work, with the incognito jar.
+
+### Native (Faran to review)
+
+- **a5994b0** `print/PagePrint.kt` — `printPage`. Test `PagePrintTest`.
+- **a474790** `offline/OfflinePages.kt`, `offline/OfflinePageActivity.kt` (activity declared in the vidorax-web
+  manifest) — `saveOfflinePage`, `openOfflinePage`, `deleteOfflinePage`, `deleteOfflineProfile`. Test
+  `OfflinePagesTest` (3).
+- **0964d8e** `capture/FullPageCapture.kt` — `captureFullPage`; `exportDrawing` keeps no second copy without strokes.
+  Test `FullPageCaptureTest` (3; Robolectric here doesn't draw, so the slice plan is tested and pixels are on the device
+  list).
+- **c390a73** `pdf/PdfFiles.kt`, `pdf/PdfDocuments.kt` — the `pdf` hint in `onDownloadStart` and
+  `startIncognitoDownload`, `fetchPdf`, `openPdf`, `renderPdfPage`, `closePdf`, `deletePdf`, `openPdfExternally`. Test
+  `PdfFilesTest` (3: detection, caps, redirect cookies per host).
+
+### Manifest
+
+`modules/vidorax-web/android/src/main/AndroidManifest.xml`: `<activity android:name="com.vidorax.web.offline.OfflinePageActivity"
+android:exported="false" …>`. Merged manifest regenerated: 40 permissions, no new name.
+
+### Found, not fixed / for Faran and the owner
+
+- **Open question:** the offline viewer is a WebView with file access (only for the one archive, JavaScript and
+  network off), outside `webview-configuration.ts`, whose rule forbids file access for the browser's WebViews. Keep
+  it, or render archives another way?
+- Full-page capture: the page visibly scrolls; sticky headers repeat in each screen; lazy-loaded pictures may be
+  blank in later screens.
+- A PDF fetched for the viewer stays in the cache if the app is killed while it is open (deleted on close otherwise).
+- "Download image" sends a generic mobile user agent, not the WebView's own.
+
+### Device test list for Faran (B17)
+
+- [ ] Screenshot and full-page capture of Wikipedia → Pictures/VidoraX in Photos, and Share; a very long page → "too
+      long"; a page that scrolls inside itself → "only the visible part"; zoomed page
+- [ ] Print or save as PDF → the print preview; Save as PDF to Downloads
+- [ ] Save page offline → Saved pages → open in airplane mode (no network, links do nothing); delete; a reading-list
+      page saved → its row opens the copy; delete a profile / end guest → its files are gone
+- [ ] PDF links: each choice, Remember (Settings resets it); a 50-page PDF scrolls smoothly, zoom, page number; a
+      password PDF; a PDF from an incognito tab (signed-in site) opens with the incognito cookies
+- [ ] Long-press an image (and an image inside a link) → Download image; in incognito
+- [ ] Incognito: no Screenshot / Full page / Print / Save offline in the menu; Urdu, Dark, TalkBack; release build
+
+### Handoff note
+
+```
+B17 Capture, print and PDF — done
+Commits: a5994b0 (native print), a474790 (native web archive + viewer), 0964d8e (native full-page), c390a73 (native
+  PDF), 22b77cc (feature), <docs: this commit>
+Native code to review: print/PagePrint.kt, offline/OfflinePages.kt + OfflinePageActivity.kt, capture/FullPageCapture.kt,
+  pdf/PdfFiles.kt + PdfDocuments.kt; the "pdf" download hint. Tests 1 + 3 + 3 + 3. No patch change.
+Manifest: OfflinePageActivity (vidorax-web, not exported). Merged manifest: 40 permissions.
+Database: DATABASE_VERSION 8 (saved_pages); profile database version 6
+New settings: pdfOpenChoice 'ask'
+New libraries: none. package-lock: unchanged
+Tested: unit 1856/1856 (2 workers), typecheck, lint 0/82, Kotlin vidorax-web 164/165 (known). Device: list above.
+```
+
 ## Closing — all 18 packages (Mega 7)
 
 Hamza's 18 browser packages, as they stand on `hamza/browser` (the combined branch, linear history). **16 built, 2 not
@@ -2524,6 +2601,7 @@ Feature items (details in each package's list):
 | `prayerCity` | B24 | `'lahore'` | one of 20 bundled cities |
 | `prayerCoords` | B24 | `''` | "lat, lng" (overrides the city when valid) |
 | `prayerAsr` | B24 | `'hanafi'` | `'hanafi'` / `'shafi'` |
+| `pdfOpenChoice` | B17 | `'ask'` | `'ask'` / `'viewer'` / `'download'` / `'external'` |
 
 ### Found, not fixed
 
