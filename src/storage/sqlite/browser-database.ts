@@ -15,10 +15,10 @@ import { applyBrowserTables, configureDatabasePragmas } from './schema';
 
 /**
  * `PRAGMA user_version` of a profile database. 1: B20's tables (+ B9's, added on open). 2 (B14): the site-blocking
- * tables. 3 (B22): notes. 4 (B19): user scripts. 5 (B23): highlights, watched pages. The browser tables are applied
- * on every open whatever the number, so it only records the layout.
+ * tables. 3 (B22): notes. 4 (B19): user scripts. 5 (B23): highlights, watched pages. 6 (B17): saved pages. The
+ * browser tables are applied on every open whatever the number, so it only records the layout.
  */
-export const BROWSER_PROFILE_DATABASE_VERSION = 5;
+export const BROWSER_PROFILE_DATABASE_VERSION = 6;
 
 const profileDatabases = new Map<string, Promise<SQLite.SQLiteDatabase>>();
 

@@ -15,6 +15,12 @@ export type BrowserMenuActionId =
   | 'notes'
   // B19
   | 'devtools'
+  // B17
+  | 'screenshot'
+  | 'full_page'
+  | 'print_page'
+  | 'save_offline'
+  | 'saved_pages'
   // B23
   | 'highlights_page'
   | 'highlights'

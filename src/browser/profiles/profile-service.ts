@@ -62,6 +62,7 @@ import {
   isIncognitoProfileName,
   liveIncognitoProfile,
 } from '@/browser/incognito/incognito-state';
+import { deleteOfflinePagesOf } from '@/browser/capture/offline-files';
 
 /** The native side of a profile change; replaceable in tests. */
 export type ProfileNativePort = {
@@ -199,6 +200,8 @@ async function wipeProfileData(id: string): Promise<void> {
   }
   deleteProfileSettings(id);
   tabSnapshots.deleteProfile(id);
+  // B17 #178: the profile's saved (offline) pages.
+  deleteOfflinePagesOf(id);
   if (id === GUEST_PROFILE_ID) {
     // The next guest session gets a new WebView profile, whatever WebView still has to finish deleting.
     endGuestSession();

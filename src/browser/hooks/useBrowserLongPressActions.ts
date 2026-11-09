@@ -14,6 +14,7 @@ import { useBrowserStore } from '@/browser/stores';
 import { backgroundTabNotice } from '@/browser/tabs/background-tab-notice';
 import { useTranslation } from '@/localization';
 import { isIncognitoInFront, liveIncognitoProfile } from '@/browser/incognito/incognito-state';
+import { downloadImage } from '@/browser/capture/image-download';
 
 function isActionableLink(url: string): boolean {
   const trimmed = url.trim().toLowerCase();
@@ -46,7 +47,7 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
   }, []);
 
   const present = useCallback((next: BrowserLinkLongPressPayload) => {
-    if (!isActionableLink(next.href)) {
+    if (!isActionableLink(next.href) && !next.imageSrc) {
       return;
     }
     setPayload(next);
@@ -54,7 +55,8 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
   }, [t]);
 
   const context: BrowserActionContext | null = useMemo(() => {
-    if (!payload) {
+    // B17 #280: an image without a link has no link actions, only "Download image".
+    if (!payload || !isActionableLink(payload.href)) {
       return null;
     }
     return {
@@ -87,11 +89,23 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
   }, [payload]);
 
   const actions: ActionSheetItem[] = useMemo(() => {
+    const image: ActionSheetItem[] = payload?.imageSrc
+      ? [
+          {
+            id: 'download_image',
+            label: t('browserCapture.downloadImage'),
+            icon: 'download',
+            onPress: () => {
+              void downloadImage(payload.imageSrc!, payload.pageUrl);
+            },
+          },
+        ]
+      : [];
     if (!context) {
-      return [];
+      return image;
     }
 
-    return browserActionRegistry.resolve(context).map((action) => {
+    return [...browserActionRegistry.resolve(context).map((action) => {
       const enabled = action.enabled !== false;
       return {
         id: action.id,
@@ -104,13 +118,13 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
             }
           : undefined,
       };
-    });
-  }, [context, t]);
+    }), ...image];
+  }, [context, payload, t]);
 
   return {
     visible: payload != null,
     title: t('browser.linkActions.title'),
-    subtitle: payload?.href ?? '',
+    subtitle: payload?.href || payload?.imageSrc || '',
     actions,
     present,
     dismiss,

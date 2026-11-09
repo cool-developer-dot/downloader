@@ -39,6 +39,10 @@ export const routePaths = {
   notes: '/notes',
   /** B23 #261: every highlight (per browser profile). */
   highlights: '/highlights',
+  /** B17 #178: pages saved for reading offline (per browser profile). */
+  savedPages: '/saved-pages',
+  /** B17 #264: the in-app PDF viewer (?path=<cache file>&title=). */
+  pdfViewer: '/pdf-viewer',
   /** Videos already on the device, played in VidoraX. */
   deviceVideos: '/device-videos',
 } as const;

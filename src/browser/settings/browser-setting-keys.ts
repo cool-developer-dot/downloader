@@ -99,6 +99,8 @@ export const BROWSER_SETTING_KEYS = [
   'prayerCity',
   'prayerCoords',
   'prayerAsr',
+  // B17 (Hamza)
+  'pdfOpenChoice',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

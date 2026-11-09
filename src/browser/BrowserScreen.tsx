@@ -80,6 +80,8 @@ import { DevtoolsPanel } from '@/browser/devtools/components/DevtoolsPanel';
 import { HighlightsHost } from '@/browser/highlights/components/HighlightsHost';
 import { DrawOnPageHost } from '@/browser/draw/components/DrawOnPageHost';
 import { TranslateOfferBanner } from '@/browser/language/components/TranslateOfferBanner';
+import { CaptureHost } from '@/browser/capture/components/CaptureHost';
+import { ensurePdfChoice } from '@/browser/capture/pdf.service';
 
 /**
  * BrowserScreen orchestrates only:
@@ -201,6 +203,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   useEffect(() => ensureOpenInApp(), []);
   // B19: the profile's user scripts and the tools' state.
   useEffect(() => ensureDevtools(), []);
+  // B17 #265: PDF links come to the open choice.
+  useEffect(() => ensurePdfChoice(), []);
   useEffect(() => scheduleCacheLimitCheck(), []);
   const { loadUrl } = useBrowserEngineContext();
   const { t } = useTranslation();
@@ -312,6 +316,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
         <DevtoolsPanel />
         {/* B23: the highlight sheets, drawing on a page, and "Translate this page?". */}
         <HighlightsHost />
+        {/* B17: the page-picture sheet and the PDF open choice. */}
+        <CaptureHost />
         <DrawOnPageHost />
         {pageControlsVisible && !tabSwitcherVisible ? <TranslateOfferBanner /> : null}
         <ScrollJumpButton visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />

@@ -214,6 +214,8 @@ export interface SettingsState {
   prayerCoords: string;
   /** B24 #270: Asr juristic method (default 'hanafi'). */
   prayerAsr: 'hanafi' | 'shafi';
+  /** B17 #265: what a PDF link does (default 'ask': Open in VidoraX / Download / Open with another app). */
+  pdfOpenChoice: 'ask' | 'viewer' | 'download' | 'external';
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

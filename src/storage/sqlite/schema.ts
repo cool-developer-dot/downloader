@@ -7,6 +7,7 @@ import { applySiteBlockingTables } from './site-blocking-schema';
 import { applyNotesTables } from './notes-schema';
 import { applyUserScriptsTables } from './user-scripts-schema';
 import { applyAnnotateTables } from './annotate-schema';
+import { applySavedPagesTables } from './saved-pages-schema';
 
 /**
  * Apply pragmas outside any transaction.
@@ -107,6 +108,8 @@ export async function applyBrowserTables(db: SQLiteDatabase): Promise<void> {
   await applyUserScriptsTables(db);
   // B23: highlights and watched pages (new tables; annotate-schema.ts).
   await applyAnnotateTables(db);
+  // B17: saved pages (a new table; saved-pages-schema.ts).
+  await applySavedPagesTables(db);
 }
 
 /**

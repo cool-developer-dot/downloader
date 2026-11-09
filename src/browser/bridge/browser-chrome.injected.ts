@@ -51,6 +51,25 @@ export function buildBrowserChromeInjectedScript(): string {
     return null;
   }
 
+  // B17 #280: the picture under a long press (its current source), for "Download image".
+  function closestImage(node) {
+    var el = node;
+    for (var i = 0; el && i < 4; i++) {
+      if (el.tagName && el.tagName.toLowerCase() === 'img') return el;
+      el = el.parentElement || el.parentNode;
+    }
+    return null;
+  }
+
+  function imageSrcOf(image) {
+    try {
+      var src = image ? String(image.currentSrc || image.src || '') : '';
+      return (src.indexOf('http://') === 0 || src.indexOf('https://') === 0) && src.length <= 8192 ? src : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
   function safeHref(anchor) {
     try {
       var href = anchor.href;
@@ -78,46 +97,52 @@ export function buildBrowserChromeInjectedScript(): string {
     touchMoved = false;
   }
 
-  function emitLongPress(anchor, x, y) {
-    var href = safeHref(anchor);
-    if (!href) return;
-    var text = (anchor.innerText || anchor.textContent || '').trim().slice(0, 500);
+  function emitLongPress(anchor, x, y, image) {
+    var href = anchor ? safeHref(anchor) : null;
+    var imageSrc = imageSrcOf(image);
+    if (!href && !imageSrc) return;
+    var text = anchor ? (anchor.innerText || anchor.textContent || '').trim().slice(0, 500) : '';
     post('link_long_press', {
-      href: href,
+      href: href || '',
       text: text,
       x: x || 0,
       y: y || 0,
-      pageUrl: location.href
+      pageUrl: location.href,
+      imageSrc: imageSrc
     });
   }
 
   function onContextMenu(event) {
     var anchor = closestAnchor(event.target);
-    if (!anchor) return;
-    var href = safeHref(anchor);
-    if (!href) return;
+    var image = closestImage(event.target);
+    if (anchor && !safeHref(anchor)) anchor = null;
+    if (!anchor && !imageSrcOf(image)) return;
     try { event.preventDefault(); } catch (e) {}
     try { event.stopPropagation(); } catch (e) {}
     emitLongPress(
       anchor,
       event.clientX || 0,
-      event.clientY || 0
+      event.clientY || 0,
+      image
     );
   }
 
   function onTouchStart(event) {
     if (!event.touches || event.touches.length !== 1) return;
     var anchor = closestAnchor(event.target);
-    if (!anchor || !safeHref(anchor)) return;
+    var image = closestImage(event.target);
+    if (anchor && !safeHref(anchor)) anchor = null;
+    if (!anchor && !imageSrcOf(image)) return;
     var touch = event.touches[0];
     startX = touch.clientX || 0;
     startY = touch.clientY || 0;
     touchMoved = false;
-    pressTarget = anchor;
+    pressTarget = anchor || image;
+    var pressImage = image;
     if (pressTimer) clearTimeout(pressTimer);
     pressTimer = setTimeout(function() {
       if (!pressTarget || touchMoved) return;
-      emitLongPress(pressTarget, startX, startY);
+      emitLongPress(anchor, startX, startY, pressImage);
       pressTarget = null;
     }, LONG_PRESS_MS);
   }

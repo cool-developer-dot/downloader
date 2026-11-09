@@ -22,6 +22,7 @@ import { ShareSettingsSection } from './ShareSettingsSection';
 import { DeveloperSettingsSection } from './DeveloperSettingsSection';
 import { AnnotateSettingsSection } from './AnnotateSettingsSection';
 import { UrduSettingsSection } from './UrduSettingsSection';
+import { CaptureSettingsSection } from './CaptureSettingsSection';
 import { NavigationSettingsSection } from './NavigationSettingsSection';
 import { PrivacySettingsSection } from './PrivacySettingsSection';
 import { ProfilesSettingsSection } from './ProfilesSettingsSection';
@@ -65,6 +66,7 @@ export const BrowserSettingsScreen = memo(function BrowserSettingsScreen() {
         <IncognitoSettingsSection />
         <ShareSettingsSection />
         <UrduSettingsSection />
+        <CaptureSettingsSection />
         <AnnotateSettingsSection />
         <DeveloperSettingsSection />
         <PrivacySettingsSection />

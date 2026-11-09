@@ -51,4 +51,6 @@ export type BrowserLinkLongPressPayload = {
   x: number;
   y: number;
   pageUrl: string;
+  /** B17 #280: the long-pressed image's http(s) address (with or without a link). */
+  imageSrc?: string;
 };

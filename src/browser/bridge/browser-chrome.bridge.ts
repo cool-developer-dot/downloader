@@ -3,6 +3,7 @@ import {
   type BrowserChromeEnvelope,
   type BrowserChromeMessageType,
 } from './browser-chrome.channel';
+import { downloadableImageSrc } from '@/browser/capture/capture-core';
 
 /** The page script's own caps (page-link-grabber.ts); repeated here so the bridge never imports app services. */
 const PAGE_LINKS_MAX_RAW = 400;
@@ -233,14 +234,17 @@ export function parseBrowserChromeMessage(
       return { type: 'find_result', payload: { requestId, current, total, capped: payload.capped === true } };
     }
     case 'link_long_press': {
-      const href = optionalString(payload.href, 8_192);
-      const pageUrl = optionalString(payload.pageUrl, 8_192) ?? href;
-      if (!href || !pageUrl) {
+      const href = optionalString(payload.href, 8_192) || null;
+      // B17 #280: an image long-pressed (with or without a link): its http(s) address for "Download image".
+      const imageSrc = downloadableImageSrc(payload.imageSrc);
+      const pageUrl = optionalString(payload.pageUrl, 8_192) ?? href ?? imageSrc;
+      if ((!href && !imageSrc) || !pageUrl) {
         return null;
       }
       // Mirror inject + action-sheet scheme allowlist (defense in depth).
-      const lower = href.toLowerCase();
+      const lower = (href ?? '').toLowerCase();
       if (
+        href &&
         !lower.startsWith('http://') &&
         !lower.startsWith('https://') &&
         !lower.startsWith('mailto:') &&
@@ -253,7 +257,7 @@ export function parseBrowserChromeMessage(
       const y = finiteNumber(payload.y) ?? 0;
       return {
         type: 'link_long_press',
-        payload: { href, text, x, y, pageUrl },
+        payload: { href: href ?? '', text, x, y, pageUrl, ...(imageSrc ? { imageSrc } : {}) },
       };
     }
     case 'fullscreen': {

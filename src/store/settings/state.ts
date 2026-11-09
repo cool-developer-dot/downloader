@@ -176,4 +176,5 @@ export const initialSettingsState: SettingsState = {
   prayerCity: 'lahore',
   prayerCoords: '',
   prayerAsr: 'hanafi',
+  pdfOpenChoice: 'ask',
 };

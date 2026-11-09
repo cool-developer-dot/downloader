@@ -15,6 +15,7 @@ import { browserShareEn } from './catalogs/browserShare.en';
 import { browserDevtoolsEn } from './catalogs/browserDevtools.en';
 import { browserAnnotateEn } from './catalogs/browserAnnotate.en';
 import { browserUrduEn } from './catalogs/browserUrdu.en';
+import { browserCaptureEn } from './catalogs/browserCapture.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
 import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
@@ -2845,4 +2846,5 @@ export const en = {
   browserDevtools: browserDevtoolsEn,
   browserAnnotate: browserAnnotateEn,
   browserUrdu: browserUrduEn,
+  browserCapture: browserCaptureEn,
 } as const;

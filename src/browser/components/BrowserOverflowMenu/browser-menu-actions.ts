@@ -54,6 +54,8 @@ import { startDrawing } from '@/browser/draw/draw.service';
 import { watchPage } from '@/browser/page-alerts/page-alerts.service';
 import { MAX_WATCHES } from '@/browser/page-alerts/page-alerts-core';
 import { announceMenuNotice } from '@/browser/highlights/menu-notice';
+import { captureFullPage, captureScreenshot, printPage } from '@/browser/capture/capture.service';
+import { saveOffline } from '@/browser/capture/offline-pages.service';
 
 export type UseBrowserMenuActionsOptions = {
   onClose: () => void;
@@ -516,6 +518,27 @@ export function useBrowserMenuActions({
           onClose();
           openDevtoolsPanel(useBrowserStore.getState().activeTabId);
           break;
+        case 'screenshot':
+          // B17 #174 / #175 / #176 / #177 / #178
+          onClose();
+          void captureScreenshot();
+          break;
+        case 'full_page':
+          onClose();
+          void captureFullPage();
+          break;
+        case 'print_page':
+          onClose();
+          void printPage();
+          break;
+        case 'save_offline':
+          onClose();
+          void saveOffline();
+          break;
+        case 'saved_pages':
+          onClose();
+          navigation.push(routePaths.savedPages);
+          break;
         case 'highlights_page':
           // B23 #261
           onClose();
@@ -814,6 +837,23 @@ export function useBrowserMenuActions({
         icon: 'note-text-outline',
         label: t('browserShare.notes'),
         accessibilityLabel: t('browserShare.notesA11y'),
+        kind: 'action',
+        enabled: true,
+      },
+      // B17: pictures, printouts and offline copies (not for incognito tabs: no copies out of incognito).
+      ...(incognitoInFront
+        ? []
+        : [
+            { id: 'screenshot' as const, icon: 'cellphone-screenshot', label: t('browserCapture.screenshot'), accessibilityLabel: t('browserCapture.screenshotA11y'), kind: 'action' as const, enabled: hasValidPage },
+            { id: 'full_page' as const, icon: 'image-size-select-actual', label: t('browserCapture.fullPage'), accessibilityLabel: t('browserCapture.fullPageA11y'), kind: 'action' as const, enabled: hasValidPage },
+            { id: 'print_page' as const, icon: 'printer-outline', label: t('browserCapture.print'), accessibilityLabel: t('browserCapture.printA11y'), kind: 'action' as const, enabled: hasValidPage },
+            { id: 'save_offline' as const, icon: 'content-save-outline', label: t('browserCapture.saveOffline'), accessibilityLabel: t('browserCapture.saveOfflineA11y'), kind: 'action' as const, enabled: hasValidPage },
+          ]),
+      {
+        id: 'saved_pages',
+        icon: 'archive-outline',
+        label: t('browserCapture.savedPages'),
+        accessibilityLabel: t('browserCapture.savedPagesA11y'),
         kind: 'action',
         enabled: true,
       },

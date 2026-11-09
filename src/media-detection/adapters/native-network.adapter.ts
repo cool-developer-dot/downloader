@@ -162,6 +162,26 @@ async function identifyUnnamedDownload(event: WebDownloadEvent): Promise<string 
   }
 }
 
+/**
+ * B17 #280: a file the user asked to download (a long-pressed image) through the same system-download handoff as
+ * the WebView's own downloads (B11: an incognito tab's session cookies). No download rule changes.
+ */
+export function downloadThroughSystem(input: { url: string; userAgent: string; viewTag: number; webProfile?: string | null }): Promise<void> {
+  return handOffToSystemDownloader(
+    {
+      viewTag: input.viewTag,
+      url: input.url,
+      userAgent: input.userAgent,
+      contentDisposition: null,
+      mimeType: null,
+      contentLength: null,
+      hint: 'unknown',
+      ...(input.webProfile ? { webProfile: input.webProfile } : {}),
+    },
+    'download_image',
+  );
+}
+
 async function handOffToSystemDownloader(event: WebDownloadEvent, reason: string): Promise<void> {
   logGeneralNetworkTrace('RESOURCE_REJECTED', {
     rejectionReason: reason,
@@ -197,6 +217,12 @@ async function handOffToSystemDownloader(event: WebDownloadEvent, reason: string
  * phone's Downloads folder. What turns out not to be a video, or has no tab, goes back to the system downloader.
  */
 export async function handleWebDownload(event: WebDownloadEvent): Promise<void> {
+  if (event.hint === 'pdf') {
+    // B17 #265: a PDF, sent here only for the open choice; Download hands it to the system downloader as before.
+    const { routePdfDownload } = await import('@/browser/capture/pdf.service');
+    await routePdfDownload(event, () => handOffToSystemDownloader(event, 'download_pdf'));
+    return;
+  }
   if (event.hint === 'risky') {
     // H17: an app or program file, routed here natively only for the warning; never a video candidate.
     await routeRiskyDownload(event, confirmSystemDownload, () => handOffToSystemDownloader(event, 'download_risky'));

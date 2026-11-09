@@ -37,6 +37,7 @@ import { BookmarkEditHost, FolderNameSheet, FolderPickerSheet } from './componen
 import { LinkCheckSheet } from './components/LinkCheckSheet';
 import { ReadingListView } from './components/ReadingListView';
 import { SortableRows } from './components/SortableRows';
+import { openReadingListUri } from '@/browser/capture/offline-pages.service';
 
 type Row = { id: string; kind: 'folder'; folder: BookmarkFolder } | { id: string; kind: 'bookmark'; bookmark: OrganizedBookmark };
 
@@ -304,7 +305,10 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
         />
       </View>
       {tab === 'reading' ? (
-        <ReadingListView onOpen={openInBrowser} />
+        <ReadingListView
+          // B17 #178: a row with an offline copy opens it read-only (the page online when the copy is gone).
+          onOpen={(uri) => void openReadingListUri(uri, openInBrowser)}
+        />
       ) : (
         <View style={{ flex: 1 }}>
           <View style={{ paddingHorizontal: 16, gap: 8 }}>

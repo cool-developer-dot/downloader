@@ -97,6 +97,7 @@ import { clampAlertHours } from '@/browser/page-alerts/page-alerts-core';
 import { parseStringList } from '@/browser/language/language-detect';
 import { clampHijriAdjust } from '@/browser/calendar/hijri';
 import { cityById } from '@/browser/prayer/prayer-times';
+import { isPdfChoice } from '@/browser/capture/capture-core';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -259,6 +260,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         prayerCity: state.prayerCity,
         prayerCoords: state.prayerCoords,
         prayerAsr: state.prayerAsr,
+        pdfOpenChoice: state.pdfOpenChoice,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -501,6 +503,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
           prayerCity: typeof raw.prayerCity === 'string' && cityById(raw.prayerCity) ? raw.prayerCity : current.prayerCity,
           prayerCoords: typeof raw.prayerCoords === 'string' ? raw.prayerCoords.slice(0, 60) : current.prayerCoords,
           prayerAsr: raw.prayerAsr === 'shafi' || raw.prayerAsr === 'hanafi' ? raw.prayerAsr : current.prayerAsr,
+          pdfOpenChoice: raw.pdfOpenChoice !== undefined && isPdfChoice(raw.pdfOpenChoice) ? raw.pdfOpenChoice : current.pdfOpenChoice,
         };
       },
     },
