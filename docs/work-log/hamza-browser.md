@@ -2379,6 +2379,52 @@ New libraries: none. package-lock: unchanged
 Tested: unit 1856/1856 (2 workers), typecheck, lint 0/82, Kotlin vidorax-web 164/165 (known). Device: list above.
 ```
 
+## B2 — Tab groups and timeline (#6, #258, #259, #288)
+
+Mega 4 (run last). JavaScript only: no native code, no patch change, no manifest change, no database change, no
+library. **Saved tab data: schema 3.** Gate (2 workers): unit 1866/1866, typecheck, lint 0 / 82, patch 10/10, Kotlin
+vidorax-web 164/165 (the known `WebViewSnapshotsTest`).
+
+| # | Feature | How |
+| --- | --- | --- |
+| #6 | Groups: from a tab's menu ("Add to group": a new group or an existing one), a name and one of 8 colours, collapse / expand, move tabs in and out, ungroup, close a group, saved across restarts | `tabs/tab-groups.ts` (pure) + `tab-groups-state.ts` + `tab-groups.service.ts`. Groups are a layer over B1's list (the store is unchanged): a group shows as **one block where its first tab is**, its tabs in B1's order or sort (pinned tabs first, as the list has them). Each tab is still a `TabCard`, so pins, B3's sound and sleep, B6's background tabs, B14's blocked state and B11's lock / FLAG_SECURE are untouched. **Closing a group** closes each tab through the store's own `closeTab` (closed tabs recorded; B11's incognito session ends with its last tab) |
+| — | Not done: **dropping a tab onto another** | It would have to live inside B1's reorder drag. Rather than risk B1's drag, groups are made from the tab's menu; with groups shown the list has no drag (Move up / down stays in the menu when no groups are shown) |
+| #258 | Group by site; optional "tabs opened from a page join its group" | Tab switcher menu → Group by site: ungrouped normal tabs of the same site (host without `www.`, two or more) become one group per site. Setting `groupTabsFromOpener` (off): a new tab that isn't a start page, opened while a grouped tab is in front, joins that group (same kind only) |
+| #259 | Timeline: open and recently closed tabs by Today / Yesterday / Earlier | Tab switcher menu → Timeline: open tabs by last use, closed tabs (B1's closed-tabs list) by closing time, by the phone's calendar day. Old saves without times get B1's existing fallback (created = now, last used = created) |
+| #288 | Group history: the last 10 closed groups; restore | MMKV per profile (`browserClosedGroups`, wiped with the profile like closed tabs). Restore opens the group's tabs as a group again; at the 10-tab limit it opens what fits and says "Restored n of m" |
+| saved data | New version; read old saves by their fields | `BROWSER_TABS_SCHEMA_VERSION` 3: the envelope gains `groups` (id, name, color, collapsed) and each tab `groupId`. Reading never looks at the number: old saves (schema 1 / 2) have no groups; unknown fields and broken parts are ignored. Tested: an old save, a new save round-trip, unknown fields |
+| incognito | Never saved in groups, the timeline or group history; grouped only within the incognito list for the session | Incognito tabs join only incognito groups (and normal only normal); incognito groups live in memory, are left out of the save, never enter group history, and their tabs never appear in the timeline |
+
+### Found, not fixed
+
+- Drop-a-tab-onto-another to group (above). Reordering within a shown group isn't possible (Move up / down works
+  when no groups are shown).
+- Group by site uses the host without `www.` (not the registrable domain: `m.dawn.com` and `dawn.com` are two sites).
+
+### Device test list for Faran (B2)
+
+- [ ] 10 tabs: two groups (one via Group by site), names in Urdu, colours; collapse / expand; move a tab out and in;
+      a pinned tab inside a group; a muted / sleeping tab inside a group; force-stop and reopen: exactly as before
+- [ ] Close a group → Recently closed groups → Restore; with 9 tabs open, restore a 3-tab group → "Restored 1 of 3"
+- [ ] Timeline: Today / Yesterday / Earlier with open and closed tabs; no incognito tab there
+- [ ] Incognito: group two incognito tabs; they never join a normal group; after a restart no incognito group
+- [ ] Setting "Tabs opened from a page join its group": open a link in a new tab from a grouped tab
+- [ ] TalkBack on group headers (expanded / collapsed), colour radios; Urdu (RTL); Dark; B1's drag still works with
+      no groups
+
+### Handoff note
+
+```
+B2 Tab groups and timeline — done (except drop-onto-tab, see above)
+Commits: 43edc8c (feature), <docs: this commit>
+Native code: none. Patch: none. Manifest: none.
+Saved tab data: BROWSER_TABS_SCHEMA_VERSION 3 (groups + groupId), read by fields; MMKV browserClosedGroups (per profile)
+Database: no change (DATABASE_VERSION 8)
+New settings: groupTabsFromOpener = false
+New libraries: none
+Tested: unit 1866/1866 (2 workers), typecheck, lint 0/82, Kotlin vidorax-web 164/165 (known). Device: list above.
+```
+
 ## Closing — all 18 packages (Mega 7)
 
 Hamza's 18 browser packages, as they stand on `hamza/browser` (the combined branch, linear history). **16 built, 2 not
@@ -2602,6 +2648,7 @@ Feature items (details in each package's list):
 | `prayerCoords` | B24 | `''` | "lat, lng" (overrides the city when valid) |
 | `prayerAsr` | B24 | `'hanafi'` | `'hanafi'` / `'shafi'` |
 | `pdfOpenChoice` | B17 | `'ask'` | `'ask'` / `'viewer'` / `'download'` / `'external'` |
+| `groupTabsFromOpener` | B2 | `false` | on / off |
 
 ### Found, not fixed
 

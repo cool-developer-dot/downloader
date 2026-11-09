@@ -2212,6 +2212,8 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   Save as PDF, Save page offline (read-only viewer activity, per profile, reading-list copies), in-app PDF viewer and
   open choice (PDFs now come to JS first), Download image. Native a5994b0, a474790, 0964d8e, c390a73.
   DATABASE_VERSION 8. Merged manifest: 40 permissions.
+- **B2 Tab groups and timeline.** Groups (menu, 8 colours, collapse, close, group by site, opener option), timeline,
+  the last 10 closed groups; tab envelope schema 3 read by fields; incognito groups never saved. No native code.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 
