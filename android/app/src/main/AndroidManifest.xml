@@ -58,6 +58,20 @@
       <action android:name="android.intent.action.VIEW"/>
       <data android:scheme="mailto"/>
     </intent>
+    <!-- B22 #255: a page's camera upload (accept="image/*" capture) opens the system camera through this intent;
+         without it Android 11+ finds no camera app and the page's file field never answers. No CAMERA permission. -->
+    <intent>
+      <action android:name="android.media.action.IMAGE_CAPTURE"/>
+    </intent>
+    <!-- B22 #273 "Open in app": exactly these apps (never QUERY_ALL_PACKAGES). -->
+    <package android:name="com.google.android.youtube"/>
+    <package android:name="com.instagram.android"/>
+    <package android:name="com.facebook.katana"/>
+    <package android:name="com.facebook.lite"/>
+    <package android:name="com.zhiliaoapp.musically"/>
+    <package android:name="com.ss.android.ugc.trill"/>
+    <package android:name="com.twitter.android"/>
+    <package android:name="com.google.android.apps.maps"/>
   </queries>
   <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="true" android:theme="@style/AppTheme" android:supportsRtl="true" android:enableOnBackInvokedCallback="false" android:fullBackupContent="@xml/secure_store_backup_rules" android:dataExtractionRules="@xml/secure_store_data_extraction_rules">
     <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="vidorax_download_events"/>

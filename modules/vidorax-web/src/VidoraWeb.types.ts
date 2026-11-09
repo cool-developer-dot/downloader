@@ -388,6 +388,18 @@ export interface VidoraWebModuleApi {
     mimeType: string | null,
     profile: string,
   ): Promise<boolean>;
+  /** B22 #249: shares the QR code (rows of '1' / '0', from qr-code.ts) as a PNG image. False when it couldn't. */
+  shareQrImage?(rows: string[], title: string): Promise<boolean>;
+  /** B22 #249: whether saving to the gallery needs no permission here (Android 10+, MediaStore). */
+  canSaveQrToGallery?(): boolean;
+  /** B22 #249: saves the QR code to Pictures/VidoraX (Android 10+ only). */
+  saveQrImage?(rows: string[], name: string): Promise<boolean>;
+  /** B22 #30: the Google code scanner (no CAMERA permission in VidoraX). */
+  scanQrCode?(): Promise<{ status: 'scanned' | 'cancelled' | 'unavailable'; text: string | null }>;
+  /** B22 #273: whether one of youtube, instagram, facebook, tiktok, x, maps is installed (manifest `<queries>`). */
+  isAppInstalled?(app: string): boolean;
+  /** B22 #273: opens an https page in that app. False when not installed or refused. */
+  openInApp?(app: string, url: string): Promise<boolean>;
   /** B11 #106: FLAG_SECURE on the app window (no screenshots, no recent-apps preview). Resolves the state. */
   setWindowSecure?(secure: boolean): Promise<boolean>;
   /**

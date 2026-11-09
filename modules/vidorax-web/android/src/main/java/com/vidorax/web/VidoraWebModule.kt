@@ -40,6 +40,9 @@ import com.vidorax.web.privacy.SitePrivacy
 import com.vidorax.web.profiles.IncognitoProfiles
 import com.vidorax.web.profiles.WebProfiles
 import com.vidorax.web.security.SecureWindow
+import com.vidorax.web.apps.AppLinks
+import com.vidorax.web.scanner.QrScanner
+import com.vidorax.web.share.QrImage
 import com.vidorax.web.selection.SelectionMenu
 import com.vidorax.web.shortcuts.BookmarkShortcuts
 import com.vidorax.web.selection.SelectionMenuCallback
@@ -371,6 +374,53 @@ class VidoraWebModule : Module() {
     AsyncFunction("startSystemDownloadInProfile") { url: String, userAgent: String?, contentDisposition: String?, mimeType: String?, profile: String ->
       val jar = IncognitoProfiles.liveCookies(profile) ?: return@AsyncFunction false
       startSystemDownload(url, userAgent, contentDisposition, mimeType, jar)
+    }
+
+    // B22 #249: the page's QR code (rows of '0' / '1' from JS) shared as a PNG image.
+    AsyncFunction("shareQrImage") { rows: List<String>, title: String ->
+      val bitmap = QrImage.render(rows, 12) ?: return@AsyncFunction false
+      val file = QrImage.writeToCache(context, bitmap)
+      bitmap.recycle()
+      val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.vidorax.web.files", file)
+      val send = Intent(Intent.ACTION_SEND)
+        .setType("image/png")
+        .putExtra(Intent.EXTRA_STREAM, uri)
+        .putExtra(Intent.EXTRA_TITLE, title.take(120))
+        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      val chooser = Intent.createChooser(send, title.take(120)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+      val activity = appContext.currentActivity
+      try {
+        if (activity != null) activity.startActivity(chooser)
+        else context.startActivity(chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+      } catch (_: ActivityNotFoundException) {
+        false
+      }
+    }
+
+    // B22 #249: Pictures/VidoraX through MediaStore (Android 10+ only — no permission).
+    Function("canSaveQrToGallery") {
+      QrImage.canSaveToGallery()
+    }
+
+    AsyncFunction("saveQrImage") { rows: List<String>, name: String ->
+      val bitmap = QrImage.render(rows, 12) ?: return@AsyncFunction false
+      val safe = name.replace(Regex("[^A-Za-z0-9 ._-]"), "_").take(80).ifBlank { "VidoraX QR" }
+      QrImage.saveToGallery(context, bitmap, "$safe.png").also { bitmap.recycle() }
+    }
+
+    // B22 #30: the Google code scanner (no CAMERA permission). { status: scanned | cancelled | unavailable, text }.
+    AsyncFunction("scanQrCode") { promise: Promise ->
+      QrScanner.scan(context) { promise.resolve(it) }
+    }
+
+    // B22 #273: whether an app (youtube, instagram, facebook, tiktok, x, maps) is installed, and opening a page in it.
+    Function("isAppInstalled") { app: String ->
+      AppLinks.installedPackage(app) { AppLinks.isInstalled(context, it) } != null
+    }
+
+    AsyncFunction("openInApp") { app: String, url: String ->
+      AppLinks.open(context, app, url)
     }
 
     // B11 #106: no screenshots or recent-apps preview while an incognito tab is on screen.

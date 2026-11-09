@@ -12,5 +12,16 @@
       android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density"
       android:windowSoftInputMode="adjustResize"
       android:theme="@android:style/Theme.Material.NoActionBar" />
+
+    <!-- B22 #249: shares the QR image (only <cacheDir>/qr/). Not exported; no permission. -->
+    <provider
+      android:name="com.vidorax.web.share.WebFileProvider"
+      android:authorities="${applicationId}.vidorax.web.files"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/vidorax_web_file_paths" />
+    </provider>
   </application>
 </manifest>
