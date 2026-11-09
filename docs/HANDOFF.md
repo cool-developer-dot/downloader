@@ -2197,6 +2197,10 @@ Based on the local `integration/final-check` (not pushed). One line per package:
   Notes screen; never from incognito), Open in app chip (six apps through `<queries>` packages), Form snippets (field
   kind only, never password / OTP / card). Native 50f0a2d (no patch change). Libraries: qrcode-generator 1.4.4 (MIT),
   play-services-code-scanner 16.1.0. Merged manifest: no CAMERA.
+- **B19 Developer tools.** Off by default (nothing injected); console, network (Resource Timing), inspect, view source,
+  user agent and device widths per tab, remote debugging (in memory, off at next start), storage with cookies from the
+  tab's own profile, security panel, user scripts (per profile, isolated, never downloaded, incognito per script).
+  Native e7936d3, ecc57fa. DATABASE_VERSION 6. No permission, library or manifest change.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 

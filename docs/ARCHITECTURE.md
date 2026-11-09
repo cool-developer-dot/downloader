@@ -869,6 +869,12 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   selection item `save_note`. Open in app: `src/browser/open-in-app/` + VidoraWeb `apps/AppLinks.kt` (app manifest
   `<queries>` packages). Form snippets: `src/browser/form-snippets/` (field-kind script, insert script, bar above the
   keyboard); messages handled in `BrowserWebView`.
+- **Developer tools (B19).** `src/browser/devtools/`: `devtools-core.ts` (pure: user agents / device presets, match
+  patterns, `.user.js` headers, the gated `devtoolsDocumentStartScript` / `userScriptsAtEnd`, message parsing),
+  `devtools-commands.ts` (page commands run on request), `devtools.service.ts` (per-tab state in memory, `runInPage`,
+  user scripts from table `user_scripts`, remote debugging in memory), `components/DevtoolsPanel.tsx`;
+  `DeveloperSettingsSection`. Native VidoraWeb `devtools/RemoteDebugging.kt`, `devtools/SiteCookies.kt`. While
+  `devTools` is off nothing reaches pages.
 - **Browser settings** live in `SettingsState` as primitives (so Settings Backup carries them and Reset restores them);
   `browser/settings/browser-setting-keys.ts` lists them and `browser-settings.audit.test.ts` checks persistence,
   backup and reset; `browser-setting-choices.ts` gives Backup the allowed values of each choice setting.

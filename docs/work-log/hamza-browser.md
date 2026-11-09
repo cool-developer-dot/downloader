@@ -2051,6 +2051,81 @@ Found, not fixed: no camera app at all → the page's camera field hangs (needs 
   Android 10; scanning needs Play services.
 ```
 
+## B19 — Developer tools (#223, #224, #222, #225, #226, #227, #228, #230, #231, #199)
+
+Mega 7. Two native commits (Kotlin tests), the feature commit. **DATABASE_VERSION 6** (user scripts; profile database
+version 4). No patch-script change, no manifest change, no permission, no library. Gate (2 workers): unit 1822/1822,
+typecheck, lint 0 / 82, patch 10/10, Kotlin vidorax-web 147/148 (the known `WebViewSnapshotsTest`).
+
+**Off by default, and off means nothing at all:** Browser settings → Developer → "Developer tools" (`devTools` =
+false). While off, `devtoolsDocumentStartScript` returns `''`, `userScriptsAtEnd` returns `[]`, the user agent is the
+tab's own, `runInPage` refuses and page messages are dropped. Tested (`devtools.test.ts`), including a source check
+that `BrowserWebView` reaches devtools code only through those gated builders.
+
+| # | Feature | How |
+| --- | --- | --- |
+| #223 | Console: messages and errors from page start, 500 per tab, level filter (All / error / warn / log), Clear; an input line | Document-start capture of `console.*`, `error`, `unhandledrejection` (each cut to 2,000 characters, batched). The input runs **in the page only** (indirect `eval` there); the result or error comes back as text. Cleared when a new page starts |
+| #224 | Network | Resource Timing (navigation + resources: address, type, size, time, status where the browser gives it). The panel says plainly that headers and bodies aren't shown |
+| #222 | Inspect element | "Select an element": the panel steps aside, the next tap on the page selects instead of clicking (outlined), the panel comes back on Inspect with tag, id, classes, size, key styles and the HTML (cut to 4,000 characters, copy); Parent / First child / Next. Read-only: only the outline is added (removed on Stop or closing the panel) |
+| #225 | View source | `fetch(location.href)` inside the page (same cookies), sent in parts of 200,000 characters up to 2 MB ("only the first 2 MB"); line numbers, search (matching lines), wrap, copy |
+| #226 | User agent per tab: Default, Desktop (= the tab's desktop mode, B6), iPhone, iPad, Custom | Kept per tab in memory; applied by reloading after the new user agent is committed |
+| #227 | Device widths 360 / 412 / 768 / 1280 / 1440 with the matching user agent (Android phone, iPad, desktop); Rotate swaps width and height; Reset | A document-start viewport tag `width=N` (kept if the page adds its own) + the user agent; reload |
+| #228 | Remote debugging with the card's warning | Native `setWebContentsDebuggingEnabled`, **in memory only** — never a setting, so the next app start has it off; turning the tools off turns it off |
+| #230 | Storage: cookies (values hidden until tapped), localStorage, sessionStorage; delete one; Clear this site (asks) | Cookies read **natively from the tab's own profile** (incognito session's jar, the WebView's B20 profile, or the default jar). Deleting a cookie expires it on the host and parent domains, `/` and each prefix of the page path (getCookie gives no domain or path — said in the panel) |
+| #231 | Security: protocol, certificate (issued to / by, valid), mixed content | `getPageCertificate(tabId)` (B12) and Resource Timing (`http:` items on an `https:` page) |
+| #199 | User scripts: name, match patterns, run at page start / end, on / off, also in incognito (off by default), a plain editor, import of a `.user.js` file; the panel shows which ran | Table `user_scripts` per profile. The import reads the header as text; `@require` / `@resource` are **ignored and counted, never downloaded**. Each script runs **isolated**: matched against `location.href` in the page (the document-start script also runs on later link navigations), inside `new Function` + try / catch, so a broken script never stops the rest of the injected code (tested in `node:vm`). Pages whose CSP forbids `unsafe-eval` refuse them (reported "failed") |
+
+### Native (Faran to review)
+
+- **e7936d3** `devtools/RemoteDebugging.kt` — `setRemoteDebugging(enabled)` → `WebView.setWebContentsDebuggingEnabled`
+  (main thread, process-wide). react-native-webview's debug builds still turn it on for every WebView (unchanged).
+  Test `RemoteDebuggingTest`.
+- **ecc57fa** `devtools/SiteCookies.kt` — `getTabCookies(viewTag, url)`, `deleteTabCookie(viewTag, url, name | null)`
+  on the tab's own jar (an ended incognito session: none, never the default jar). Test `SiteCookiesTest` (3).
+
+### Found, not fixed
+
+- Page messages can be forged by the page (they are only shown, size-bounded, and dropped while the tools are off).
+- User scripts and the console line can't run on pages whose CSP forbids eval; cookies on unusual paths may survive a
+  delete; source of pages that refuse a second fetch shows empty; sizes come from Resource Timing (cross-origin items
+  without `Timing-Allow-Origin` show no size).
+- Settings Backup doesn't carry user scripts (database, like B14's lists).
+
+### Device test list for Faran (B19)
+
+- [ ] Tools off: a debug build's `chrome://inspect` page shows no `__vidoraxConsole` on pages; on: Menu → Developer tools
+- [ ] Console on a page with errors (e.g. a test page calling `console.error` / throwing): messages appear; `1+1` → 2;
+      `document.title` → the title; a syntax error shows the error
+- [ ] Network on Wikipedia: list with types / sizes / times; Security on an https page with an http image → mixed content
+- [ ] Inspect: Select, tap a heading → its info; Parent / First child; Stop removes the outline
+- [ ] Source of a large page (2 MB note), search, wrap, copy
+- [ ] User agents on https://httpbin.org/user-agent (Default / Desktop / iPhone / iPad / Custom); widths 360 → 1440,
+      Rotate, Reset
+- [ ] Remote debugging: warning, then `adb forward tcp:9222 localabstract:webview_devtools_remote_<pid>` +
+      `curl localhost:9222/json` lists pages; restart the app → off
+- [ ] Storage on a site with localStorage: values hidden until tapped; delete one; Clear this site (signed out); in an
+      incognito tab only the incognito cookies show
+- [ ] A user script recolouring example.com (start and end), import a `.user.js` with `@require` (ignored note), the
+      panel lists what ran; not in incognito unless allowed; a broken script doesn't break the page
+- [ ] Urdu (RTL), Dark, TalkBack (tabs, radio chips), font 1.3; release build; merged manifest unchanged
+
+### Handoff note
+
+```
+B19 Developer tools — done
+Commits: e7936d3 (B19: native — remote debugging), ecc57fa (B19: native — tab cookies), 67b9e67 (developer tools),
+  <docs: this commit>
+Native code to review: devtools/RemoteDebugging.kt (setRemoteDebugging, in memory only), devtools/SiteCookies.kt
+  (getTabCookies / deleteTabCookie on the tab's own profile jar). Tests RemoteDebuggingTest 1, SiteCookiesTest 3.
+  No patch change, no manifest change.
+Database: DATABASE_VERSION 6 (user_scripts); profile database version 4
+New settings: devTools = false
+New libraries: none. package-lock: unchanged
+Tested: unit 1822/1822 (2 workers), typecheck, lint 0/82, Kotlin vidorax-web 147/148 (known). Device: list above.
+Found, not fixed: forgeable page messages (shown only); CSP blocks eval-based user scripts / console; cookies on
+  unusual paths; user scripts not in Settings Backup.
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -2152,6 +2227,7 @@ Found, not fixed: no camera app at all → the page's camera field hangs (needs 
 | `openInAppPrompt` | B22 | `true` (a chip only) | on / off |
 | `openInAppNever` | B22 | `'[]'` | JSON list of sites (≤ 100) |
 | `formSnippets` | B22 | `'[]'` | JSON list of texts (≤ 20, ≤ 500 characters each) |
+| `devTools` | B19 | `false` (nothing injected) | on / off |
 
 ### Found, not fixed
 
