@@ -42,6 +42,7 @@ import com.vidorax.web.profiles.WebProfiles
 import com.vidorax.web.security.SecureWindow
 import com.vidorax.web.apps.AppLinks
 import com.vidorax.web.devtools.RemoteDebugging
+import com.vidorax.web.devtools.SiteCookies
 import com.vidorax.web.scanner.QrScanner
 import com.vidorax.web.share.QrImage
 import com.vidorax.web.selection.SelectionMenu
@@ -427,6 +428,22 @@ class VidoraWebModule : Module() {
     // B19 #228: remote debugging (process-wide; off in a new process, never remembered).
     AsyncFunction("setRemoteDebugging") { enabled: Boolean ->
       RemoteDebugging.set(enabled)
+    }.runOnQueue(Queues.MAIN)
+
+    // B19 #230: the cookies of this tab's page, from the tab's own profile (incognito or normal). Names and values.
+    AsyncFunction("getTabCookies") { viewTag: Int, url: String ->
+      val webView = webViewFor(viewTag) ?: return@AsyncFunction emptyList<Map<String, String>>()
+      if (!isHttpUrl(url)) return@AsyncFunction emptyList<Map<String, String>>()
+      val jar = SiteCookies.jarFor(webView) ?: return@AsyncFunction emptyList<Map<String, String>>()
+      SiteCookies.read(jar, url).map { mapOf("name" to it.name, "value" to it.value) }
+    }.runOnQueue(Queues.MAIN)
+
+    // B19 #230: expires one cookie (or all with name null) in the tab's own profile; resolves how many are left.
+    AsyncFunction("deleteTabCookie") { viewTag: Int, url: String, name: String? ->
+      val webView = webViewFor(viewTag) ?: return@AsyncFunction -1
+      if (!isHttpUrl(url)) return@AsyncFunction -1
+      val jar = SiteCookies.jarFor(webView) ?: return@AsyncFunction -1
+      SiteCookies.delete(jar, url, name)
     }.runOnQueue(Queues.MAIN)
 
     // B11 #106: no screenshots or recent-apps preview while an incognito tab is on screen.

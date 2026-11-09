@@ -402,6 +402,10 @@ export interface VidoraWebModuleApi {
   openInApp?(app: string, url: string): Promise<boolean>;
   /** B19 #228: remote debugging on / off (process-wide; a new app process always starts with it off). */
   setRemoteDebugging?(enabled: boolean): Promise<boolean>;
+  /** B19 #230: the page's cookies from the tab's own profile (incognito or normal). */
+  getTabCookies?(viewTag: number, url: string): Promise<{ name: string; value: string }[]>;
+  /** B19 #230: expires one cookie (all with null) in the tab's own profile; resolves how many are left (-1: gone). */
+  deleteTabCookie?(viewTag: number, url: string, name: string | null): Promise<number>;
   /** B11 #106: FLAG_SECURE on the app window (no screenshots, no recent-apps preview). Resolves the state. */
   setWindowSecure?(secure: boolean): Promise<boolean>;
   /**
