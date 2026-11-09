@@ -243,6 +243,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         openInAppPrompt: state.openInAppPrompt,
         openInAppNever: state.openInAppNever,
         formSnippets: state.formSnippets,
+        devTools: state.devTools,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -467,6 +468,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
               : current.openInAppNever,
           formSnippets:
             typeof raw.formSnippets === 'string' ? serializeSnippets(parseSnippets(raw.formSnippets)) : current.formSnippets,
+          devTools: typeof raw.devTools === 'boolean' ? raw.devTools : current.devTools,
         };
       },
     },

@@ -6,8 +6,9 @@ export const DATABASE_NAME = 'vidorax.db';
  * v4 (B14): site blocker and focus lists, daily time limits and time used, the focus timer (`applyBrowserTables` →
  * site-blocking-schema; new tables only).
  * v5 (B22): notes (`applyBrowserTables` → notes-schema; a new table only).
+ * v6 (B19): user scripts (`applyBrowserTables` → user-scripts-schema; a new table only).
  */
-export const DATABASE_VERSION = 5;
+export const DATABASE_VERSION = 6;
 
 export const TABLE_NAMES = {
   browserHistory: 'browser_history',
@@ -28,6 +29,8 @@ export const TABLE_NAMES = {
   focusSession: 'focus_session',
   // B22 (Hamza)
   notes: 'notes',
+  // B19 (Hamza)
+  userScripts: 'user_scripts',
 } as const;
 
 export const RECENT_SEARCH_LIMIT = 50;

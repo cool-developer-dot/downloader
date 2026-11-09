@@ -190,6 +190,8 @@ export interface SettingsState {
   openInAppNever: string;
   /** B22 #274: the user's form snippets (JSON list of texts, default '[]'). */
   formSnippets: string;
+  /** B19: Developer tools (default off — nothing is injected into pages while off). */
+  devTools: boolean;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

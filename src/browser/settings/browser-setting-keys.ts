@@ -84,6 +84,8 @@ export const BROWSER_SETTING_KEYS = [
   'openInAppPrompt',
   'openInAppNever',
   'formSnippets',
+  // B19 (Hamza)
+  'devTools',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

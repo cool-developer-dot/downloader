@@ -5,6 +5,7 @@ import { DATABASE_VERSION, TABLE_NAMES } from '@/storage/constants';
 import { applyBookmarkOrganizerTables } from './bookmark-organizer-schema';
 import { applySiteBlockingTables } from './site-blocking-schema';
 import { applyNotesTables } from './notes-schema';
+import { applyUserScriptsTables } from './user-scripts-schema';
 
 /**
  * Apply pragmas outside any transaction.
@@ -101,6 +102,8 @@ export async function applyBrowserTables(db: SQLiteDatabase): Promise<void> {
   await applySiteBlockingTables(db);
   // B22: notes (a new table; notes-schema.ts).
   await applyNotesTables(db);
+  // B19: user scripts (a new table; user-scripts-schema.ts).
+  await applyUserScriptsTables(db);
 }
 
 /**

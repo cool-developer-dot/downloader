@@ -82,6 +82,14 @@ import {
   verifyIncognitoWebView,
 } from '@/browser/incognito/incognito.service';
 import { FORM_FIELD_SCRIPT } from '@/browser/form-snippets/form-snippets';
+import { devtoolsDocumentStartScript, devtoolsUserAgent, emulatedWidth, userScriptsAtEnd } from '@/browser/devtools/devtools-core';
+import {
+  bindDevtoolsInjector,
+  handleDevtoolsMessage,
+  resetTabPage,
+  useTabDevtools,
+  useUserScripts,
+} from '@/browser/devtools/devtools.service';
 import { bindSnippetInserter, handleFormFieldMessage } from '@/browser/form-snippets/form-snippets.service';
 import {
   isJavaScriptAllowed,
@@ -184,6 +192,14 @@ export const BrowserWebView = memo(function BrowserWebView({
   const incognitoTab = isIncognitoTabId(tabId);
   const [incognitoProfile] = useState(() => (incognitoTab ? liveIncognitoProfile() : null));
   const incognitoVerified = useIncognitoVerified(tabId);
+  // B19: Developer tools — while off (the default) nothing of theirs reaches the page (devtoolsDocumentStartScript).
+  const devtoolsOn = useSettingsStore((s) => s.devTools === true);
+  const tabDevtools = useTabDevtools(tabId);
+  const userScripts = useUserScripts();
+  const devtoolsStart = useMemo(
+    () => devtoolsDocumentStartScript({ enabled: devtoolsOn, tab: tabDevtools, scripts: userScripts, incognito: incognitoTab }),
+    [devtoolsOn, incognitoTab, tabDevtools, userScripts],
+  );
   // B22 #274: the focused-field script only while the user has form snippets (otherwise nothing is injected).
   const snippetsOn = useSettingsStore((s) => typeof s.formSnippets === 'string' && s.formSnippets.length > 2);
   // B14 #276–#278: a tab showing "This site is blocked" keeps its WebView paused (like a parked tab).
@@ -568,10 +584,20 @@ export const BrowserWebView = memo(function BrowserWebView({
     executeDesktopReload(desktopMode, 'activate_reconcile');
   }, [appliedDesktopMode, desktopMode, executeDesktopReload, isActive, tabLoading]);
 
+  // B19 #226 / #227: a user agent chosen in Developer tools (or an emulated device's) wins while the tools are on.
+  const devtoolsUa = devtoolsUserAgent(tabDevtools, devtoolsOn);
   const userAgent = useMemo(
-    () => resolveWebViewUserAgentForTab({ desktopMode: appliedDesktopMode }),
-    [appliedDesktopMode],
+    () => devtoolsUa ?? resolveWebViewUserAgentForTab({ desktopMode: appliedDesktopMode }),
+    [appliedDesktopMode, devtoolsUa],
   );
+  // B19: after the new user agent / page width has been committed, the page loads again with it.
+  const devtoolsLoadKey = `${devtoolsUa ?? ''}|${devtoolsOn ? (emulatedWidth(tabDevtools.device) ?? '') : ''}`;
+  const devtoolsLoadKeyRef = useRef(devtoolsLoadKey);
+  useEffect(() => {
+    if (devtoolsLoadKeyRef.current === devtoolsLoadKey) return;
+    devtoolsLoadKeyRef.current = devtoolsLoadKey;
+    if (!isBrowserHomeUrl(tabUrl)) reload();
+  }, [devtoolsLoadKey, reload, tabUrl]);
 
   /** Per-tab viewport: Desktop → wide+overview; Mobile → no leftover desktop viewport. */
   const scalesPageToFit = useMemo(
@@ -615,11 +641,13 @@ ${AUTOPLAY_BLOCK_ALL_SCRIPT}` : ''
       }\n${
         // B16: font style, Urdu in Nastaliq, Force enable zoom (page-display-script.ts).
         pageDisplay.script
-      }${snippetsOn ? `
+      }${devtoolsStart ? `
+${devtoolsStart}` : ''}${snippetsOn ? `
 ${FORM_FIELD_SCRIPT}` : ''}${pageAnimationsOff ? `
 ${LITE_PAGE_SCRIPT}` : ''}`,
     [
       autoplayBlockAll,
+      devtoolsStart,
       snippetsOn,
       chromeBridge.injectedJavaScriptBeforeContentLoaded,
       doNotTrack,
@@ -649,12 +677,17 @@ ${LITE_PAGE_SCRIPT}` : ''}`,
         });
       }
       onLoadEnd(url);
+      // B19 #199: the user's end-time scripts (each isolated; they check the page address themselves). Nothing while off.
+      for (const script of userScriptsAtEnd({ enabled: devtoolsOn, scripts: userScripts, incognito: incognitoTab })) {
+        webViewRef.current?.injectJavaScript(`${script}
+true;`);
+      }
       // B6 #55: the page in front names its next page → fetch it ahead (Preload pages).
       if (isActive && !isBrowserHomeUrl(url)) {
         pagePreload.afterPageLoad((script) => webViewRef.current?.injectJavaScript(script));
       }
     },
-    [appliedDesktopMode, cacheMode, isActive, onLoadEnd, tabId, webViewRef],
+    [appliedDesktopMode, cacheMode, devtoolsOn, incognitoTab, isActive, onLoadEnd, tabId, userScripts, webViewRef],
   );
 
   useEffect(() => {
@@ -672,6 +705,12 @@ ${LITE_PAGE_SCRIPT}` : ''}`,
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- true unmount only (not isActive flips)
   }, []);
+
+  // B19: Developer tools run their commands in this tab's page (only while they are on).
+  useEffect(() => {
+    if (!devtoolsOn || !tabId) return undefined;
+    return bindDevtoolsInjector(tabId, (script) => webViewRef.current?.injectJavaScript(script));
+  }, [devtoolsOn, tabId, webViewRef]);
 
   // B22 #274: the tab in front inserts the snippet the user taps into its focused field.
   useEffect(() => {
@@ -693,6 +732,8 @@ ${LITE_PAGE_SCRIPT}` : ''}`,
     (event: WebViewNavigationEvent | WebViewErrorEvent) => {
       webFullscreen.onPageGone(tabId ?? useBrowserStore.getState().activeTabId, 'navigation');
       onLoadStart(event.nativeEvent.url);
+      // B19: the old page's console, network list etc. go with it.
+      if (tabId) resetTabPage(tabId);
       const target = (event.nativeEvent as { target?: number }).target;
       bindNativeScope(typeof target === 'number' ? target : nativeViewTagRef.current, event.nativeEvent.url);
     },
@@ -812,6 +853,10 @@ ${LITE_PAGE_SCRIPT}` : ''}`,
       const raw = event.nativeEvent.data;
       // B15 #161: reader mode's answers have their own channel (articles are larger than the chrome channel's cap).
       if (readerMode.handleMessage(tabId, raw)) {
+        return;
+      }
+      // B19: console, network, inspect, source, storage and user-script reports (kept only while the tools are on).
+      if (handleDevtoolsMessage(tabId, raw)) {
         return;
       }
       // B22 #274: which kind of field has focus (nothing else comes back from that script).

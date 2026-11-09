@@ -36,23 +36,23 @@ function openDb() {
 
 const version = (sqlite: DatabaseSync) => (sqlite.prepare('PRAGMA user_version').get() as { user_version: number }).user_version;
 
-describe('B22 notes (DATABASE_VERSION 5)', () => {
+describe('B22 notes (DATABASE_VERSION 5 and later)', () => {
   test('a v4 database gets the notes table, keeps its data, and running it twice changes nothing', async () => {
     const { sqlite, db } = openDb();
     await migrateDatabase(db as never);
-    assert.equal(DATABASE_VERSION, 5);
+    assert.ok(DATABASE_VERSION >= 5, 'B22 made it 5; later packages go on (B19: 6)');
     sqlite.exec(`DROP TABLE ${TABLE_NAMES.notes}`);
     sqlite.exec('PRAGMA user_version = 4');
     sqlite
       .prepare(`INSERT INTO ${TABLE_NAMES.bookmarks} (id, url, title, hostname, created_at, updated_at) VALUES ('b1', 'https://a.test/', 'A', 'a.test', 'x', 'x')`)
       .run();
     await migrateDatabase(db as never);
-    assert.equal(version(sqlite), 5);
+    assert.equal(version(sqlite), DATABASE_VERSION);
     await insertNote(db, { id: 'n1', text: 'kept', pageUrl: '', pageTitle: '' }, '2026-11-09T10:00:00Z');
     sqlite.exec('PRAGMA user_version = 4');
     await migrateDatabase(db as never);
     await applyBrowserTables(db as never);
-    assert.equal(version(sqlite), 5);
+    assert.equal(version(sqlite), DATABASE_VERSION);
     assert.equal((await listNotes(db)).length, 1);
     assert.equal((sqlite.prepare(`SELECT COUNT(*) AS n FROM ${TABLE_NAMES.bookmarks}`).get() as { n: number }).n, 1);
   });

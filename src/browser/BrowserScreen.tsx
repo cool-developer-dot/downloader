@@ -75,6 +75,8 @@ import { SiteInfoHost } from '@/browser/components/SiteInfo/SiteInfoHost';
 import { logPageFlow, safePageHostname } from '@/media-detection/services/page-flow-diagnostics.service';
 import { isSameDocumentUrl } from '@/media-detection/utils';
 import { useTourTargetRef } from '@/tour/tour-targets';
+import { ensureDevtools } from '@/browser/devtools/devtools.service';
+import { DevtoolsPanel } from '@/browser/devtools/components/DevtoolsPanel';
 
 /**
  * BrowserScreen orchestrates only:
@@ -194,6 +196,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   useEffect(() => ensureIncognito(), []);
   // B22 #273: watches the page in front for the Open in app chip.
   useEffect(() => ensureOpenInApp(), []);
+  // B19: the profile's user scripts and the tools' state.
+  useEffect(() => ensureDevtools(), []);
   useEffect(() => scheduleCacheLimitCheck(), []);
   const { loadUrl } = useBrowserEngineContext();
   const { t } = useTranslation();
@@ -301,6 +305,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
         <FormSnippetBar visible={!tabSwitcherVisible} />
         {/* B22 #249 / #30: the QR code and scan result sheets. */}
         <ShareQrHost />
+        {/* B19: Menu → Developer tools (only while they are on). */}
+        <DevtoolsPanel />
         <ScrollJumpButton visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
         <AutoScrollControl visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
         <SwipeArrow shared={swipe.shared} bottom={24} />

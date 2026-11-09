@@ -48,6 +48,7 @@ import { isIncognitoAvailable, openIncognitoTab } from '@/browser/incognito/inco
 import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
 import { openQrSheet } from '@/browser/share-qr/share-qr.service';
 import { savePageNote } from '@/browser/notes/notes.service';
+import { openDevtoolsPanel } from '@/browser/devtools/devtools.service';
 
 export type UseBrowserMenuActionsOptions = {
   onClose: () => void;
@@ -505,6 +506,11 @@ export function useBrowserMenuActions({
           onClose();
           navigation.push(routePaths.notes);
           break;
+        case 'devtools':
+          // B19: the panel for the tab in front.
+          onClose();
+          openDevtoolsPanel(useBrowserStore.getState().activeTabId);
+          break;
         case 'translate':
           handleTranslate();
           break;
@@ -585,6 +591,7 @@ export function useBrowserMenuActions({
     ],
   );
 
+  const devtoolsOn = useSettingsStore((s) => s.devTools === true);
   // B11: incognito needs WebView profiles; that doesn't change while the app runs.
   const incognitoAvailable = useMemo(() => isIncognitoAvailable(), []);
 
@@ -763,6 +770,19 @@ export function useBrowserMenuActions({
         kind: 'action',
         enabled: true,
       },
+      // B19: only while Developer tools are on.
+      ...(devtoolsOn
+        ? [
+            {
+              id: 'devtools' as const,
+              icon: 'code-tags',
+              label: t('browserDevtools.menu'),
+              accessibilityLabel: t('browserDevtools.menuA11y'),
+              kind: 'action' as const,
+              enabled: hasValidPage,
+            },
+          ]
+        : []),
       {
         id: 'search_site',
         icon: 'text-search',
@@ -885,6 +905,7 @@ export function useBrowserMenuActions({
     hasClosedTabs,
     hasValidPage,
     incognitoAvailable,
+    devtoolsOn,
     profileLabel,
     readerAvailable,
     t,

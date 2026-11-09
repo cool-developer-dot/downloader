@@ -13,6 +13,8 @@ export type BrowserMenuActionId =
   | 'qr_code'
   | 'save_page_note'
   | 'notes'
+  // B19
+  | 'devtools'
   | 'reopen_closed_tab'
   | 'duplicate_tab'
   | 'move_to_window'

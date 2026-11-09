@@ -164,4 +164,5 @@ export const initialSettingsState: SettingsState = {
   openInAppPrompt: true,
   openInAppNever: DEFAULT_OPEN_IN_APP_NEVER_JSON,
   formSnippets: DEFAULT_FORM_SNIPPETS_JSON,
+  devTools: false,
 };
