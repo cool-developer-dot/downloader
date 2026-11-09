@@ -8,7 +8,7 @@ import { foldedLikePattern, foldedSql, needsUrduFold } from '@/storage/repositor
 import { titleUrlHostSearchClause } from '@/storage/repositories/title-url-search';
 import { splitHighlight } from '@/browser/history/history-highlight';
 import { classifyNavigationInput } from '@/browser/utils/url';
-import { firstStrongDirection, inputDirectionStyle, normalizeAddressDigits, toUrduDigits } from '@/utils/text-direction';
+import { fieldForcesLtr, firstStrongDirection, inputDirectionStyle, normalizeAddressDigits, toUrduDigits } from '@/utils/text-direction';
 
 import { clampHijriAdjust, intlHijriWorks, makeHijriConverter, monthGrid, tabularHijri } from './hijri.ts';
 import {
@@ -31,6 +31,26 @@ describe('B24 #271 Urdu input', () => {
     assert.deepEqual(inputDirectionStyle('اردو', false), { textAlign: 'right', writingDirection: 'rtl' });
     assert.deepEqual(inputDirectionStyle('', true), { textAlign: 'right', writingDirection: 'rtl' });
     assert.equal(toUrduDigits('12:05'), '۱۲:۰۵');
+  });
+
+  test('PIN, password, number, phone, URL and e-mail fields stay left-to-right (B24 fix)', () => {
+    for (const props of [
+      { secureTextEntry: true },
+      { keyboardType: 'number-pad' },
+      { keyboardType: 'phone-pad' },
+      { keyboardType: 'email-address' },
+      { keyboardType: 'url' },
+      { keyboardType: 'decimal-pad' },
+      { inputMode: 'numeric' },
+      { textContentType: 'oneTimeCode' },
+      { autoComplete: 'email' },
+      { autoComplete: 'password' },
+    ]) {
+      assert.ok(fieldForcesLtr(props), JSON.stringify(props));
+    }
+    assert.ok(!fieldForcesLtr({}), 'an ordinary field follows its text');
+    assert.ok(!fieldForcesLtr({ keyboardType: 'default', autoComplete: 'off' }));
+    assert.ok(!fieldForcesLtr({ keyboardType: 'web-search' }), 'the address bar follows what is typed');
   });
 
   test('an address typed with Eastern digits opens; Urdu words and mixed text are searches, correctly encoded', () => {

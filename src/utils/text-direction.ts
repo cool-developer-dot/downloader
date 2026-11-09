@@ -29,6 +29,27 @@ export function inputDirectionStyle(
   return dir === 'rtl' ? { textAlign: 'right', writingDirection: 'rtl' } : { textAlign: 'left', writingDirection: 'ltr' };
 }
 
+const LTR_KEYBOARDS = new Set(['number-pad', 'numeric', 'decimal-pad', 'phone-pad', 'email-address', 'url', 'visible-password', 'numbers-and-punctuation', 'ascii-capable-number-pad']);
+const LTR_INPUT_MODES = new Set(['numeric', 'decimal', 'tel', 'email', 'url']);
+const LTR_CONTENT = /^(password|newPassword|new-password|current-password|oneTimeCode|one-time-code|sms-otp|emailAddress|email|username|URL|url|telephoneNumber|tel|creditCardNumber|cc-number|cc-csc|cc-exp|postal-code|postalCode)$/;
+
+/**
+ * B24 fix: PIN, password, number, phone, URL and e-mail fields stay left-to-right in Urdu whatever is typed (their
+ * text is Latin letters, digits and symbols). Decided from the field's own props.
+ */
+export function fieldForcesLtr(props: {
+  keyboardType?: string | null;
+  inputMode?: string | null;
+  secureTextEntry?: boolean | null;
+  textContentType?: string | null;
+  autoComplete?: string | null;
+}): boolean {
+  if (props.secureTextEntry) return true;
+  if (props.keyboardType && LTR_KEYBOARDS.has(props.keyboardType)) return true;
+  if (props.inputMode && LTR_INPUT_MODES.has(props.inputMode)) return true;
+  return LTR_CONTENT.test(props.textContentType ?? '') || LTR_CONTENT.test(props.autoComplete ?? '');
+}
+
 /** 0–9 as Urdu (Extended Arabic-Indic) digits, for the Urdu app's dates and times. */
 export function toUrduDigits(text: string): string {
   return text.replace(/[0-9]/g, (d) => String.fromCharCode(0x06f0 + Number(d)));
