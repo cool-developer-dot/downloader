@@ -21,6 +21,7 @@ import {
   type NativeMediaCandidate,
   type NativeMediaCandidateEvent,
 } from './native-network.contract';
+import { notifyIncognitoDownload } from '@/browser/incognito/incognito-state';
 
 export type { NativeMediaCandidate, NativeMediaCandidateEvent };
 export { processNativeMediaCandidateEvent } from './native-network.contract';
@@ -168,6 +169,21 @@ async function handOffToSystemDownloader(event: WebDownloadEvent, reason: string
     observationSource: 'webview-download',
   });
   try {
+    // B11: from an incognito tab, DownloadManager gets that session's cookies (never another profile's).
+    if (event.webProfile) {
+      const web = getVidoraWeb();
+      const started = web.startSystemDownloadInProfile
+        ? await web.startSystemDownloadInProfile(
+            event.url,
+            event.userAgent,
+            event.contentDisposition,
+            event.mimeType,
+            event.webProfile,
+          )
+        : false;
+      if (started) notifyIncognitoDownload();
+      return;
+    }
     await getVidoraWeb().startSystemDownload(event.url, event.userAgent, event.contentDisposition, event.mimeType);
   } catch {
     // The system downloader could not be reached; nothing else can take the file.

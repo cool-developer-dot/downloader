@@ -182,6 +182,8 @@ export interface SettingsState {
   autoplaySites: string;
   /** B14 #278: the focus timer last chosen, minutes as text (default '25'). */
   focusMinutes: import('@/browser/blocking/site-limits').FocusMinutes;
+  /** B11 #111: the search engine for incognito tabs, 'same' (default — the normal engine) or an engine id. */
+  incognitoSearchEngine: import('@/browser/incognito/incognito-settings').IncognitoSearchEngine;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

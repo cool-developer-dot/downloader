@@ -10,6 +10,7 @@ import type {
   PersistedBrowserSession,
 } from './session.types';
 import { stripSensitiveAuthQueryParams } from './session-url-sanitizer';
+import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
 
 /** B20: each browser profile has its own session (and so its own scroll positions). */
 function sessionKey(): string {
@@ -300,6 +301,8 @@ export function getPersistedScrollForUrl(url: string): number {
  * Persists a browsing snapshot. Only `successful: true` updates lastSuccessful*.
  */
 export function persistBrowserSession(input: BrowserSessionSnapshotInput): void {
+  // B11: an incognito tab's page and scroll place are never saved.
+  if (isIncognitoInFront()) return;
   const previous = getCachedBrowserSession() ?? EMPTY_SESSION;
   const rawUrl = input.url.trim();
   const url = isBrowserHomeUrl(rawUrl)
@@ -334,6 +337,7 @@ export function persistBrowserSession(input: BrowserSessionSnapshotInput): void 
 }
 
 export function updatePersistedScrollPosition(url: string, scrollY: number): void {
+  if (isIncognitoInFront()) return;
   const safeUrl = stripSensitiveAuthQueryParams(url);
   if (!isRestorableBrowserUrl(safeUrl)) {
     return;

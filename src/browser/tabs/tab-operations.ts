@@ -1,6 +1,7 @@
 import { BROWSER_HOMEPAGE } from '@/browser/constants';
 import { MAX_OPEN_TABS } from './constants';
 import { createHomeTab } from './tab-factory';
+import { createIncognitoTabId } from './tab-id';
 import { reconcileMountPool } from './mount-pool';
 import type {
   BrowserTab,
@@ -20,7 +21,7 @@ export function selectActiveTab(snapshot: TabEngineSnapshot): BrowserTab | null 
 
 export function createTabOperation(
   snapshot: TabEngineSnapshot,
-  options?: { url?: string; title?: string },
+  options?: { url?: string; title?: string; incognito?: boolean },
 ): { result: CreateTabResult; next: TabEngineSnapshot } {
   if (snapshot.tabs.length >= MAX_OPEN_TABS) {
     return {
@@ -35,6 +36,8 @@ export function createTabOperation(
       url: options?.url ?? BROWSER_HOMEPAGE,
       title: options?.title ?? (options?.url ? '' : undefined),
       lastActiveAt: now,
+      // B11: an incognito tab is told apart by its id.
+      ...(options?.incognito ? { id: createIncognitoTabId() } : {}),
     });
 
     const tabs = [...snapshot.tabs, tab];

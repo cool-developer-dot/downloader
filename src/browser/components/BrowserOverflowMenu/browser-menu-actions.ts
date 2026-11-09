@@ -44,6 +44,7 @@ import { pageDisplayRequests } from '@/browser/page-display/page-display-request
 import { useSettingsStore } from '@/store/settings';
 
 import type { BrowserMenuFeedback, BrowserMenuItemModel } from './types';
+import { isIncognitoAvailable, openIncognitoTab } from '@/browser/incognito/incognito.service';
 
 export type UseBrowserMenuActionsOptions = {
   onClose: () => void;
@@ -110,6 +111,12 @@ export function useBrowserMenuActions({
       AccessibilityInfo.announceForAccessibility(t('browser.tabsLimitReached'));
     }
   }, [onClose, onFeedback, t]);
+
+  // B11 #104: a new incognito tab in front (its own temporary profile; nothing is kept).
+  const handleNewIncognitoTab = useCallback(() => {
+    onClose();
+    void openIncognitoTab();
+  }, [onClose]);
 
   // B1 #3: the last closed tab comes back at its old place, in front.
   const handleReopenClosedTab = useCallback(() => {
@@ -442,6 +449,9 @@ export function useBrowserMenuActions({
         case 'new_tab':
           handleNewTab();
           break;
+        case 'new_incognito_tab':
+          handleNewIncognitoTab();
+          break;
         case 'reopen_closed_tab':
           handleReopenClosedTab();
           break;
@@ -532,6 +542,7 @@ export function useBrowserMenuActions({
       handleGrabLinks,
       handleHistory,
       handleNewTab,
+      handleNewIncognitoTab,
       handleOpenExternal,
       handleRecentDownloads,
       handleRecentlyWatched,
@@ -553,6 +564,9 @@ export function useBrowserMenuActions({
       handleProfile,
     ],
   );
+
+  // B11: incognito needs WebView profiles; that doesn't change while the app runs.
+  const incognitoAvailable = useMemo(() => isIncognitoAvailable(), []);
 
   const items = useMemo((): BrowserMenuItemModel[] => {
     const addBookmarkLabel = bookmarked
@@ -636,6 +650,14 @@ export function useBrowserMenuActions({
         kind: 'action',
         enabled: true,
         showDividerBefore: true,
+      },
+      {
+        id: 'new_incognito_tab',
+        icon: 'incognito',
+        label: t('browserIncognito.newTab'),
+        accessibilityLabel: incognitoAvailable ? t('browserIncognito.newTabA11y') : t('browserIncognito.unavailable'),
+        kind: 'action',
+        enabled: incognitoAvailable,
       },
       {
         id: 'reopen_closed_tab',
@@ -818,6 +840,7 @@ export function useBrowserMenuActions({
     desktopMode,
     hasClosedTabs,
     hasValidPage,
+    incognitoAvailable,
     profileLabel,
     readerAvailable,
     t,

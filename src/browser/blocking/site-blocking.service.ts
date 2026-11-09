@@ -6,6 +6,7 @@ import { useBrowserStore } from '@/browser/stores';
 import { isBrowserRouteVisible } from '@/browser/webview/webview-activity';
 import { siteBlockingRepository, type SiteListName } from '@/storage/repositories/site-blocking.repository';
 import { subscribeActiveProfile } from '@/storage/profile/active-profile';
+import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
 
 import {
   EMPTY_SITE_LIMITS,
@@ -166,7 +167,10 @@ function tick(now: number = Date.now()): void {
   const probe = `https://${site}/`;
   const before = siteBlockReason(probe, state, now);
   state = withUsage(state, site, whole, now);
-  void siteBlockingRepository.addTimeUsed(localDayKey(now), site, whole).catch(() => undefined);
+  // B11: time on an incognito tab counts toward the limit, in memory only (no record of the visit).
+  if (!isIncognitoInFront()) {
+    void siteBlockingRepository.addTimeUsed(localDayKey(now), site, whole).catch(() => undefined);
+  }
   emit();
   if (!before && siteBlockReason(probe, state, now)) enforce(now);
 }

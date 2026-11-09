@@ -26,7 +26,7 @@ export interface BrowserActions {
   setDesktopMode: (enabled: boolean, options?: { source?: 'user' | 'platform'; tabId?: string }) => void;
 
   /** Phase 3B tab engine */
-  createTab: (options?: { url?: string; title?: string }) => CreateTabResult;
+  createTab: (options?: { url?: string; title?: string; incognito?: boolean }) => CreateTabResult;
   /** `record: false` (B20 #16, a tab moved to its own window): not kept for Reopen closed tab, no Undo. */
   closeTab: (tabId: string, options?: { record?: boolean }) => CloseTabResult;
   switchTab: (tabId: string) => SwitchTabResult;

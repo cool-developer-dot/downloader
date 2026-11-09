@@ -25,6 +25,7 @@ import {
 import { analyzePastedLink } from '@/media-detection/direct-analyzer/resolve-direct-page';
 
 import { enqueueBrowserMediaDownload } from './browser-media-download.service';
+import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
 
 /** The same bounds the browser's direct analysis uses for a pasted link. */
 const TAB_FETCH_TIMEOUT_MS = 6_000;
@@ -59,8 +60,9 @@ export async function addLinkFromBatch(url: string, signal: AbortSignal): Promis
           url: pageUrl,
           // Mobile reads use the WebView's own User-Agent (omitted); the desktop retry asks for the desktop site.
           userAgent: mode === 'desktop' ? buildBrowserUserAgent({ desktop: true }) : undefined,
-          useSessionCookies: true,
-          commitCookies,
+          // B11: a link opened from an incognito tab is read without (and never stores) the normal profile's cookies.
+          useSessionCookies: !isIncognitoInFront(),
+          commitCookies: commitCookies && !isIncognitoInFront(),
           timeoutMs: mode === 'tab' ? TAB_FETCH_TIMEOUT_MS : OTHER_FETCH_TIMEOUT_MS,
           maxBytes: PAGE_MAX_BYTES,
         };

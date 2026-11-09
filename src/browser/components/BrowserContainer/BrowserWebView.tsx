@@ -39,7 +39,7 @@ import { openIntentOrExternal } from '@/browser/navigation/external-navigation.s
 import { useTranslation } from '@/localization';
 
 import type { BrowserChromeBridgeBindings } from '@/browser/hooks';
-import { browserUserAgentMode } from '@/browser/constants';
+import { BROWSER_WEBVIEW_BLANK, browserUserAgentMode } from '@/browser/constants';
 import { resolveWebViewUserAgentForTab } from '@/browser/constants/user-agent';
 import { useBrowserEngineContext } from '@/browser/engine';
 import { webFullscreen } from '@/browser/fullscreen/web-fullscreen.runtime';
@@ -75,6 +75,8 @@ import { webViewSourceFor } from '@/browser/data-saver/source-headers';
 import { AUTOPLAY_BLOCK_ALL_SCRIPT, autoplayNeedsTap } from '@/browser/blocking/blocking-settings';
 import { useAutoplayPolicy } from '@/browser/blocking/autoplay.service';
 import { applyBlockingPage, blockingNative } from '@/browser/blocking/content-blocking.service';
+import { isIncognitoTabId, liveIncognitoProfile } from '@/browser/incognito/incognito-state';
+import { useIncognitoVerified, verifyIncognitoWebView } from '@/browser/incognito/incognito.service';
 import {
   isJavaScriptAllowed,
   normalizeCookiePolicy,
@@ -171,6 +173,11 @@ export const BrowserWebView = memo(function BrowserWebView({
   // B14 #187 / #218: the autoplay policy for this tab's site ('sound' = today's WebView setting, no script).
   const autoplayPolicy = useAutoplayPolicy(owningTabUrl);
   const autoplayBlockAll = autoplayPolicy === 'all';
+  // B11: an incognito tab's WebView is created in the session's profile (the `webProfile` prop, read natively when the
+  // view is created — it can't change later) and loads nothing but a blank page until that is confirmed (fail closed).
+  const incognitoTab = isIncognitoTabId(tabId);
+  const [incognitoProfile] = useState(() => (incognitoTab ? liveIncognitoProfile() : null));
+  const incognitoVerified = useIncognitoVerified(tabId);
   // B14 #276–#278: a tab showing "This site is blocked" keeps its WebView paused (like a parked tab).
   const siteBlocked = useBrowserStore((s) =>
     (tabId ? s.tabs.find((tab) => tab.id === tabId)?.error?.code : s.error?.code) === 'site_blocked',
@@ -257,6 +264,8 @@ export const BrowserWebView = memo(function BrowserWebView({
     applySaverNative(tag, pageUrl);
     // B14: the page's site, for "Allow ads on this site" (only while ad or tracker blocking is on).
     applyBlockingPage(tag, pageUrl);
+    // B11: confirm an incognito WebView is in the session's profile before its page loads.
+    if (tabId && isIncognitoTabId(tabId)) void verifyIncognitoWebView(tabId, tag);
     applyNativeWebViewActivity(tag, runsPage);
     const previousCleanup = nativeScopeCleanupRef.current;
     nativeScopeCleanupRef.current = registerNativeObservationScope(tag, {
@@ -573,8 +582,9 @@ export const BrowserWebView = memo(function BrowserWebView({
 
   // #115: the pages the browser opens itself carry the Do Not Track headers; B18 #184 adds Save-Data: on (Data saver).
   const webViewSource = useMemo(
-    () => webViewSourceFor(sourceUri, { doNotTrack, saveData }),
-    [doNotTrack, saveData, sourceUri],
+    () =>
+      incognitoVerified ? webViewSourceFor(sourceUri, { doNotTrack, saveData }) : { uri: BROWSER_WEBVIEW_BLANK },
+    [doNotTrack, incognitoVerified, saveData, sourceUri],
   );
 
   const injectedJavaScript = useMemo(
@@ -810,6 +820,8 @@ ${LITE_PAGE_SCRIPT}` : ''}`,
       ref={webViewRef}
       testID={testID}
       source={webViewSource}
+      // B11: read once, natively, when the WebView is created (RNCWebViewManager → beforeWebViewSetup); normal tabs omit it.
+      {...(incognitoProfile ? ({ webProfile: incognitoProfile } as object) : {})}
       style={[styles.webview, { backgroundColor: theme.colors.background }]}
       {...(userAgent ? { userAgent } : {})}
       // B16 #164 / #163: set only once a Page display setting has differed from its default (today's WebView otherwise).

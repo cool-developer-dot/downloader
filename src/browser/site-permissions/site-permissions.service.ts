@@ -1,5 +1,6 @@
 import { resolvePopupNavigation } from '@/browser/navigation/popup-navigation.service';
 import { siteKey } from '@/browser/privacy/privacy-settings';
+import { isIncognitoTabId } from '@/browser/incognito/incognito-state';
 import { loadUrlForTab } from '@/browser/services/active-tab-navigation.service';
 import { useBrowserStore } from '@/browser/stores';
 import { useSettingsStore } from '@/store/settings';
@@ -79,7 +80,10 @@ function tabUrl(tabId: string | null): string {
 export function onSitePermissionRequest(kind: SitePermissionKind, fromTabId: string | null, isActive: boolean): void {
   const site = siteKey(tabUrl(fromTabId));
   if (!site) return;
-  write(recordBlocked(read(), site, kind, Date.now()));
+  // B11: refused the same way, but an incognito tab's site is not added to the list.
+  if (!isIncognitoTabId(fromTabId ?? useBrowserStore.getState().activeTabId)) {
+    write(recordBlocked(read(), site, kind, Date.now()));
+  }
   if (isActive) siteNotice.show({ kind: 'permission', site, permission: kind, shownAt: Date.now() });
 }
 

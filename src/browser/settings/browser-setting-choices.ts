@@ -27,6 +27,7 @@ import { COLOR_FILTERS, FORCE_DARK_MODES, PAGE_FONT_STYLES } from '@/browser/pag
 import { BATTERY_SAVER_MODES, CACHE_LIMITS } from '@/browser/data-saver/data-saver-settings';
 import { AUTOPLAY_POLICIES } from '@/browser/blocking/blocking-settings';
 import { FOCUS_MINUTE_CHOICES } from '@/browser/blocking/site-limits';
+import { INCOGNITO_SEARCH_ENGINES } from '@/browser/incognito/incognito-settings';
 
 /**
  * The allowed values of every browser setting that is a choice (stored as a string in `SettingsState`). Settings
@@ -66,6 +67,8 @@ export const BROWSER_SETTING_CHOICES: Readonly<Record<string, readonly string[]>
   // B14 (Hamza)
   autoplay: AUTOPLAY_POLICIES,
   focusMinutes: FOCUS_MINUTE_CHOICES,
+  // B11 (Hamza)
+  incognitoSearchEngine: INCOGNITO_SEARCH_ENGINES,
 };
 
 /** String settings longer than Backup's usual 500-character cap (lists stored as JSON). */

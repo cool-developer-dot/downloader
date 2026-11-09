@@ -7,6 +7,8 @@ export type BrowserMenuActionId =
   | 'continue_watching'
   | 'recently_watched'
   | 'new_tab'
+  // B11 #104
+  | 'new_incognito_tab'
   | 'reopen_closed_tab'
   | 'duplicate_tab'
   | 'move_to_window'

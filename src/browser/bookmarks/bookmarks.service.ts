@@ -5,6 +5,7 @@ import { getVidoraWeb, isVidoraWebAvailable } from '@modules/vidorax-web';
 import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
 import { useBrowserStore } from '@/browser/stores';
 import { isValidBrowserPageUrl } from '@/browser/utils';
+import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
 import { translate } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import { useAppLockStore } from '@/security/app-lock/app-lock.store';
@@ -104,6 +105,11 @@ export async function bookmarkAllTabs(now: Date = new Date()): Promise<void> {
 /** #89 from the menu or a link's long-press. */
 export async function addPageToReadingList(url: string, title: string): Promise<void> {
   if (!isValidBrowserPageUrl(url)) return;
+  // B11: nothing from an incognito tab is kept, the reading list included.
+  if (isIncognitoInFront()) {
+    notify(translate('browserIncognito.notSaved'));
+    return;
+  }
   const outcome = await change(() => bookmarkOrganizerRepository.addToReadingList(url, title));
   if (outcome === 'added') notify(translate('browserBookmarks.readingAdded'));
   else if (outcome === 'exists') notify(translate('browserBookmarks.readingExists'));

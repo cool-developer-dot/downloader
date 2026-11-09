@@ -13,6 +13,7 @@ import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
 import { useBrowserStore } from '@/browser/stores';
 import { backgroundTabNotice } from '@/browser/tabs/background-tab-notice';
 import { useTranslation } from '@/localization';
+import { isIncognitoInFront, liveIncognitoProfile } from '@/browser/incognito/incognito-state';
 
 function isActionableLink(url: string): boolean {
   const trimmed = url.trim().toLowerCase();
@@ -62,14 +63,20 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
       pageUrl: payload.pageUrl,
       title: payload.text,
       openInNewTab: (url: string) => {
+        // B11: a link opened from an incognito tab stays in incognito (its session is live: the tab exists).
+        const incognito = isIncognitoInFront() && liveIncognitoProfile() != null;
         openLinkInNewTab(url, {
-          createTab: (options) => useBrowserStore.getState().createTab(options),
+          createTab: (options) =>
+            useBrowserStore.getState().createTab({ ...options, ...(incognito ? { incognito: true } : {}) }),
           onLimitReached: announceTabsLimitReached,
         });
       },
       openInBackground: (url: string, title?: string) => {
         if (!canOpenInNewTab(url)) return;
-        const outcome = useBrowserStore.getState().openTabInBackground(url.trim(), { title });
+        const incognito = isIncognitoInFront() && liveIncognitoProfile() != null;
+        const outcome = useBrowserStore
+          .getState()
+          .openTabInBackground(url.trim(), { title, ...(incognito ? { incognito: true } : {}) });
         if (outcome.status === 'LIMIT_REACHED') {
           announceTabsLimitReached();
           return;

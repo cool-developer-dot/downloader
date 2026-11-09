@@ -26,6 +26,7 @@ import { normalizePinnedOrder } from './tab-list-ops';
 import type { BrowserTab, PersistedBrowserTabsEnvelope } from './types';
 import { coldStartMountPool } from './mount-pool';
 import { shouldPersistForTab } from './tab-privacy';
+import { savedActiveTabId } from './saved-active-tab';
 
 function sanitizeEnvelope(raw: unknown): PersistedBrowserTabsEnvelope | null {
   const parsed = parseTabsEnvelope(raw, {
@@ -161,12 +162,11 @@ export function persistTabEngineState(input: {
   tabs: BrowserTab[];
   activeTabId: string;
 }): void {
+  const kept = input.tabs.filter(shouldPersistForTab);
   const envelope: PersistedBrowserTabsEnvelope = {
     schemaVersion: BROWSER_TABS_SCHEMA_VERSION,
-    activeTabId: input.activeTabId,
-    tabs: envelopeTabsForWrite(
-      normalizePinnedOrder(input.tabs.filter(shouldPersistForTab)).map(toPersistedTabMetadata),
-    ),
+    activeTabId: savedActiveTabId(input.activeTabId, kept),
+    tabs: envelopeTabsForWrite(normalizePinnedOrder(kept).map(toPersistedTabMetadata)),
     updatedAt: Date.now(),
   };
   scheduleWrite(envelope);

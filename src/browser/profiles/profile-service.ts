@@ -56,6 +56,12 @@ import {
   type ProfileNameCheck,
 } from './profile-registry';
 import { deleteProfileSettings, loadProfileSettings, saveProfileSettings } from './profile-settings';
+import { orphanWebProfileNames, ownedWebProfileNames } from './web-profile-sweep';
+import {
+  endIncognitoBeforeProfileChange,
+  isIncognitoProfileName,
+  liveIncognitoProfile,
+} from '@/browser/incognito/incognito-state';
 
 /** The native side of a profile change; replaceable in tests. */
 export type ProfileNativePort = {
@@ -158,6 +164,30 @@ async function deleteWebProfileSoon(name: string): Promise<void> {
   setPendingDeletes(deleted ? pendingDeletes().filter((p) => p !== name) : [...pendingDeletes(), name]);
 }
 
+/**
+ * B11 #109: deletes an ended incognito session's WebView profile (its cookies, storage, cache and service workers).
+ * The session's WebViews are being unmounted, which finishes after the React commit, so it tries again after each of
+ * `delays`; if WebView still holds it, the delete waits for the next start ({@link deleteWebProfileSoon}). Only
+ * `vidorax-incog…` names, and never the live session's.
+ */
+export async function deleteIncognitoWebProfile(
+  name: string,
+  delays: readonly number[] = [300, 1000, 3000],
+  wait: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+): Promise<boolean> {
+  if (!isIncognitoProfileName(name) || name === liveIncognitoProfile()) return false;
+  for (const delay of delays) {
+    await wait(delay);
+    if (name === liveIncognitoProfile()) return false;
+    if (await port.deleteWebProfile(name).catch(() => false)) {
+      setPendingDeletes(pendingDeletes().filter((p) => p !== name));
+      return true;
+    }
+  }
+  await deleteWebProfileSoon(name);
+  return false;
+}
+
 /** Everything a profile kept on the phone, except its entry in the list. Never for the default profile. */
 async function wipeProfileData(id: string): Promise<void> {
   if (id === DEFAULT_PROFILE_ID) return;
@@ -211,6 +241,8 @@ async function exclusive<T>(task: () => Promise<T>): Promise<T | 'busy'> {
 }
 
 async function performSwitch(to: string): Promise<void> {
+  // B11: the tab list is replaced below; a live incognito session is closed and wiped first, never dropped.
+  await endIncognitoBeforeProfileChange();
   const from = getActiveProfileId();
   flushTabEnginePersistence();
   flushBrowserSessionPersistence();
@@ -366,11 +398,13 @@ export async function ensureBrowserProfiles(): Promise<void> {
 export async function sweepOrphanWebProfiles(): Promise<void> {
   if (running) return;
   const names = await port.getWebProfileNames().catch(() => [] as string[]);
-  const owned = new Set(useProfilesStore.getState().profiles.map((p) => webProfileName(p.id)));
-  owned.add(webProfileName(getActiveProfileId()));
-  for (const name of names) {
-    if (name !== 'Default' && name.startsWith('vidorax-') && !owned.has(name)) {
-      await deleteWebProfileSoon(name);
-    }
+  // B11: the live incognito session's profile is owned too; a sweep never touches it mid-session.
+  const owned = ownedWebProfileNames(
+    useProfilesStore.getState().profiles.map((p) => webProfileName(p.id)),
+    webProfileName(getActiveProfileId()),
+    liveIncognitoProfile(),
+  );
+  for (const name of orphanWebProfileNames(names, owned)) {
+    await deleteWebProfileSoon(name);
   }
 }

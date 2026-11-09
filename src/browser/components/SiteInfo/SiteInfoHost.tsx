@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useEffect, useState, type ReactNode } from 'react';
 import { Modal, Pressable as RNPressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { PageCertificate } from '@modules/vidorax-web';
@@ -40,6 +40,7 @@ import { siteInfoRequests } from './site-info-requests';
 import { sitePermissionsSheet } from '@/browser/site-permissions/site-permissions.service';
 import { blockedCountForTab } from '@/browser/blocking/content-blocking.service';
 import { SiteBlockingControls } from '@/browser/blocking/components/SiteBlockingControls';
+import { isIncognitoTabId } from '@/browser/incognito/incognito-state';
 
 type Details = { certificate: PageCertificate | null; cookies: number; storage: number; blocked: number };
 
@@ -56,6 +57,9 @@ export const SiteInfoHost = memo(function SiteInfoHost() {
   const [details, setDetails] = useState<Details | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const activeTabId = useBrowserStore((s) => s.activeTabId);
+  // B11: in an incognito tab the site's data lives in the session's own profile (wiped on close), and nothing set here
+  // is kept — the normal profile's figures, Clear site data and per-site settings don't belong here.
+  const incognito = isIncognitoTabId(activeTabId);
   const url = useBrowserStore((s) => s.currentUrl);
   const securityFailed = useBrowserStore((s) => isSecurityFailure(s.error?.code));
   const javaScriptDefault = useSettingsStore((s) => s.javaScript !== false);
@@ -209,6 +213,18 @@ export const SiteInfoHost = memo(function SiteInfoHost() {
               </Box>
             ) : null}
             <Divider />
+            {incognito ? (
+              <Box row rtlRow gap={12} style={{ alignItems: 'flex-start' }} testID="browser-site-info-incognito">
+                <Icon name="incognito" size={22} color="secondary" />
+                <Text
+                  variant="bodySmall"
+                  color="textSecondary"
+                  style={{ flex: 1, minWidth: 0, textAlign: rtl.textAlign }}>
+                  {t('browserIncognito.siteInfoNote')}
+                </Text>
+              </Box>
+            ) : (
+              <SiteDataControls>
             <Row
               label={t('browserPrivacy.cookiesForSite')}
               value={
@@ -243,9 +259,11 @@ export const SiteInfoHost = memo(function SiteInfoHost() {
               blocked={details ? details.blocked : null}
               onChanged={() => setTimeout(() => reloadForTab(activeTabId), 50)}
             />
+              </SiteDataControls>
+            )}
             <Box row rtlRow gap={8} style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
               {/* B13 #116: this site's permissions (location, camera, mic, notifications, pop-ups). */}
-              {site ? (
+              {site && !incognito ? (
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={t('browserSitePermissions.siteSettingsA11y', { site })}
@@ -272,6 +290,7 @@ export const SiteInfoHost = memo(function SiteInfoHost() {
                   {t('browserPrivacy.privacySettings')}
                 </Text>
               </Pressable>
+              {incognito ? null : (
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={t('browserPrivacy.clearSiteData')}
@@ -282,6 +301,7 @@ export const SiteInfoHost = memo(function SiteInfoHost() {
                   {t('browserPrivacy.clearSiteData')}
                 </Text>
               </Pressable>
+              )}
             </Box>
           </ScrollView>
         </View>
@@ -300,6 +320,11 @@ export const SiteInfoHost = memo(function SiteInfoHost() {
     </Modal>
   );
 });
+
+/** The normal profile's site data and per-site settings (hidden in an incognito tab). */
+function SiteDataControls({ children }: { children: ReactNode }) {
+  return <>{children}</>;
+}
 
 const Row = memo(function Row({ label, value, selectable = false }: { label: string; value: string; selectable?: boolean }) {
   const { rtl } = useTranslation();

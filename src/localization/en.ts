@@ -10,6 +10,7 @@ import { browserReaderEn } from './catalogs/browserReader.en';
 import { browserPageDisplayEn } from './catalogs/browserPageDisplay.en';
 import { browserDataSaverEn } from './catalogs/browserDataSaver.en';
 import { browserBlockingEn } from './catalogs/browserBlocking.en';
+import { browserIncognitoEn } from './catalogs/browserIncognito.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
 import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
@@ -2835,4 +2836,5 @@ export const en = {
   // B18 (Hamza)
   browserDataSaver: browserDataSaverEn,
   browserBlocking: browserBlockingEn,
+  browserIncognito: browserIncognitoEn,
 } as const;

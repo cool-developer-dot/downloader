@@ -59,6 +59,8 @@ import {
   DEFAULT_AUTOPLAY_SITES_JSON,
 } from '@/browser/blocking/blocking-settings';
 import { DEFAULT_FOCUS_MINUTES_CHOICE } from '@/browser/blocking/site-limits';
+// B11 (Hamza)
+import { DEFAULT_INCOGNITO_SEARCH_ENGINE } from '@/browser/incognito/incognito-settings';
 
 export const initialSettingsState: SettingsState = {
   clipboardMonitor: false,
@@ -155,4 +157,5 @@ export const initialSettingsState: SettingsState = {
   autoplay: DEFAULT_AUTOPLAY,
   autoplaySites: DEFAULT_AUTOPLAY_SITES_JSON,
   focusMinutes: DEFAULT_FOCUS_MINUTES_CHOICE,
+  incognitoSearchEngine: DEFAULT_INCOGNITO_SEARCH_ENGINE,
 };

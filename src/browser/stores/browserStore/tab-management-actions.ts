@@ -6,7 +6,7 @@ import type { ClosedTabEntry } from '@/browser/tabs/closed-tabs';
 import { MAX_MOUNTED_WEBVIEWS, MAX_OPEN_TABS } from '@/browser/tabs/constants';
 import { applyMountStates, reconcileMountPool } from '@/browser/tabs/mount-pool';
 import { createHomeTab, createTabFromPersisted } from '@/browser/tabs/tab-factory';
-import { createTabId } from '@/browser/tabs/tab-id';
+import { createIncognitoTabId, createTabId } from '@/browser/tabs/tab-id';
 import { moveTabBy, moveTabTo, setTabPinned, type ClosedTabSlot } from '@/browser/tabs/tab-list-ops';
 import { planBackgroundTab, planCloseMany, planDuplicate, planRestore } from '@/browser/tabs/tab-management-plans';
 import { shouldPersistForTab } from '@/browser/tabs/tab-privacy';
@@ -44,7 +44,7 @@ export interface TabManagementActions {
    * B6 #51: opens `url` in a new tab behind the one in front (which stays in front). `title` (the link's text) names
    * it in the tab switcher until its page reports its own title.
    */
-  openTabInBackground: (url: string, options?: { title?: string }) => BackgroundTabOutcome;
+  openTabInBackground: (url: string, options?: { title?: string; incognito?: boolean }) => BackgroundTabOutcome;
   setTabPinned: (tabId: string, pinned: boolean) => void;
   moveTab: (tabId: string, toIndex: number) => void;
   moveTabBy: (tabId: string, delta: -1 | 1) => void;
@@ -109,6 +109,8 @@ export function recordClosedTabs(
   slots: readonly ClosedTabSlot<BrowserTab>[],
   meta: { replacementHomeTabId: string | null; activeTabId?: string; openTabs?: readonly BrowserTab[] },
 ): string | null {
+  // B11: an incognito tab is never remembered (not for Reopen closed tab, not for Undo, not in memory).
+  slots = slots.filter(({ tab }) => shouldPersistForTab(tab));
   if (slots.length === 0) return null;
   const batchId = createTabId();
   const closedAt = Date.now();
@@ -248,7 +250,14 @@ export function createTabManagementActions(
         state.tabs,
         state.activeTabId,
         { maxTabs: MAX_OPEN_TABS, mountedCount: state.mountedTabIds.length, maxMounted: MAX_MOUNTED_WEBVIEWS },
-        () => createHomeTab({ url, title: options?.title?.trim().slice(0, 120) ?? '', lastActiveAt: Date.now() }),
+        () =>
+          createHomeTab({
+            url,
+            title: options?.title?.trim().slice(0, 120) ?? '',
+            lastActiveAt: Date.now(),
+            // B11: a link opened in the background from an incognito tab stays incognito.
+            ...(options?.incognito ? { id: createIncognitoTabId() } : {}),
+          }),
       );
       if (plan.status === 'LIMIT_REACHED') {
         return { status: 'LIMIT_REACHED', max: MAX_OPEN_TABS };

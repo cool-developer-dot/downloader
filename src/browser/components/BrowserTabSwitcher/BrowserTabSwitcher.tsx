@@ -46,6 +46,10 @@ import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
 import { TabVolumeSheet } from '@/browser/tab-sound/components/TabVolumeSheet';
 import { bookmarkAllTabs } from '@/browser/bookmarks/bookmarks.service';
 import { readableTabUrl, tabDisplaySite, tabDisplayTitle, tabSiteKey } from './tab-display';
+import { isIncognitoTabId } from '@/browser/incognito/incognito-state';
+import { closeAllIncognitoTabs, isIncognitoAvailable, openIncognitoTab } from '@/browser/incognito/incognito.service';
+import { INCOGNITO_COLORS } from '@/browser/incognito/incognito-theme';
+import { IncognitoIcon } from '@/browser/incognito/components/IncognitoIcon';
 
 export type BrowserTabSwitcherProps = {
   visible: boolean;
@@ -174,6 +178,21 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
     },
     [t],
   );
+
+  // B11 #104: a new incognito tab from the switcher.
+  const handleNewIncognitoTab = useCallback(() => {
+    void openIncognitoTab().then((outcome) => {
+      if (outcome === 'opened') onClose();
+      else if (outcome === 'limit') onLimitReached?.();
+    });
+  }, [onClose, onLimitReached]);
+  const incognitoAvailable = useMemo(() => isIncognitoAvailable(), []);
+  // B11: incognito tabs are listed apart, after the normal ones, in their own look.
+  const normalTabs = useMemo(() => filtered.filter((tab) => !isIncognitoTabId(tab.id)), [filtered]);
+  const incognitoTabs = useMemo(() => filtered.filter((tab) => isIncognitoTabId(tab.id)), [filtered]);
+  const hasIncognito = useMemo(() => tabs.some((tab) => isIncognitoTabId(tab.id)), [tabs]);
+  const noMove = useCallback(() => false, []);
+  const noop = useCallback(() => undefined, []);
 
   const handleNewTab = useCallback(() => {
     const result = useBrowserStore.getState().createTab();
@@ -395,18 +414,75 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
               </Text>
             </Box>
           ) : (
-            <SortableTabList
-              tabs={filtered}
-              activeTabId={activeTabId}
-              dragEnabled={dragEnabled}
-              pinnedCount={pinned}
-              canMove={canMove}
-              onSelect={handleSelect}
-              onClose={handleCloseTab}
-              onOptions={setOptionsTabId}
-              onMove={handleMove}
-              onMoveBy={handleMoveBy}
-            />
+            <>
+              <SortableTabList
+                tabs={normalTabs}
+                activeTabId={activeTabId}
+                // Dragging uses positions in this list; with incognito tabs in between, Move up / down only.
+                dragEnabled={dragEnabled && !hasIncognito}
+                pinnedCount={pinned}
+                canMove={canMove}
+                onSelect={handleSelect}
+                onClose={handleCloseTab}
+                onOptions={setOptionsTabId}
+                onMove={handleMove}
+                onMoveBy={handleMoveBy}
+              />
+              {incognitoTabs.length > 0 ? (
+                <View
+                  testID="browser-tab-switcher-incognito"
+                  style={{
+                    marginHorizontal: 12,
+                    marginTop: 8,
+                    paddingVertical: 8,
+                    borderRadius: theme.radius.lg,
+                    backgroundColor: INCOGNITO_COLORS.surface,
+                  }}>
+                  <Box row rtlRow center gap={8} px={12} style={{ minHeight: 48 }}>
+                    <IncognitoIcon size={22} />
+                    <Box flex={1} style={{ minWidth: 0 }}>
+                      <Text
+                        variant="label"
+                        accessibilityRole="header"
+                        style={{ color: INCOGNITO_COLORS.text, textAlign: rtl.textAlign }}>
+                        {t('browserIncognito.sectionTitle')}
+                      </Text>
+                      <Text variant="caption" style={{ color: INCOGNITO_COLORS.muted, textAlign: rtl.textAlign }}>
+                        {t('browserIncognito.sectionHint')}
+                      </Text>
+                    </Box>
+                    <Pressable
+                      testID="browser-tab-switcher-close-incognito"
+                      accessibilityRole="button"
+                      accessibilityLabel={t('browserIncognito.closeAllA11y')}
+                      onPress={() => void closeAllIncognitoTabs()}
+                      style={{
+                        minHeight: 48,
+                        minWidth: 48,
+                        paddingHorizontal: 8,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                      }}>
+                      <Text variant="caption" style={{ color: INCOGNITO_COLORS.text }}>
+                        {t('browserIncognito.closeAll')}
+                      </Text>
+                    </Pressable>
+                  </Box>
+                  <SortableTabList
+                    tabs={incognitoTabs}
+                    activeTabId={activeTabId}
+                    dragEnabled={false}
+                    pinnedCount={0}
+                    canMove={noMove}
+                    onSelect={handleSelect}
+                    onClose={handleCloseTab}
+                    onOptions={setOptionsTabId}
+                    onMove={noop}
+                    onMoveBy={noop}
+                  />
+                </View>
+              ) : null}
+            </>
           )}
 
           <Box px={16} pt={8}>
@@ -429,6 +505,28 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
                 {t('browser.newTab')}
               </Text>
             </Pressable>
+            {incognitoAvailable ? (
+              <Pressable
+                testID="browser-tab-switcher-new-incognito-tab"
+                accessibilityRole="button"
+                accessibilityLabel={t('browserIncognito.newTabA11y')}
+                onPress={handleNewIncognitoTab}
+                style={{
+                  minHeight: 48,
+                  marginTop: 8,
+                  borderRadius: theme.radius.lg,
+                  backgroundColor: INCOGNITO_COLORS.surface,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: rtl.rowDirection,
+                  gap: 8,
+                }}>
+                <IncognitoIcon size={20} />
+                <Text variant="label" style={{ color: INCOGNITO_COLORS.text }}>
+                  {t('browserIncognito.newTab')}
+                </Text>
+              </Pressable>
+            ) : null}
           </Box>
           {/* Over the New tab button: see TabUndoSnackbar's `bottom`. */}
           <TabUndoSnackbar

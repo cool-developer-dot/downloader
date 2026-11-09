@@ -48,6 +48,7 @@ import { ensureDataSaver } from '@/browser/data-saver/data-saver.service';
 import { ensureBrowsingTraffic } from '@/browser/data-saver/browsing-traffic.service';
 import { ensureContentBlocking } from '@/browser/blocking/content-blocking.service';
 import { ensureSiteBlocking } from '@/browser/blocking/site-blocking.service';
+import { ensureIncognito, setTabSwitcherOpen } from '@/browser/incognito/incognito.service';
 import { scheduleCacheLimitCheck } from '@/browser/data-saver/cache-limit.service';
 import { FindInPageBar } from '@/browser/find/FindInPageBar';
 import { BrowserEngineProvider, useBrowserEngineContext } from '@/browser/engine';
@@ -185,10 +186,14 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   // B14: ad / tracker rules to the native blocker; the site blocker, time limits and focus mode.
   useEffect(() => ensureContentBlocking(), []);
   useEffect(() => ensureSiteBlocking(), []);
+  // B11: the incognito session (profile, wipe, FLAG_SECURE, App Lock on return, download notice).
+  useEffect(() => ensureIncognito(), []);
   useEffect(() => scheduleCacheLimitCheck(), []);
   const { loadUrl } = useBrowserEngineContext();
   const { t } = useTranslation();
   const [tabSwitcherVisible, setTabSwitcherVisible] = useState(false);
+  // B11 #106: the switcher lists incognito tabs, so it is covered by FLAG_SECURE too while it's open.
+  useEffect(() => setTabSwitcherOpen(tabSwitcherVisible), [tabSwitcherVisible]);
   useWebFullscreenLifecycle(tabSwitcherVisible);
   const webFullscreenActive = useIsWebFullscreen();
   // B6: Volume keys scroll the page (setting); swipes on the toolbar / page edges go back and forward.

@@ -87,6 +87,9 @@ import {
   serializeSiteList,
 } from '@/browser/blocking/blocking-settings';
 import { normalizeFocusMinutesChoice } from '@/browser/blocking/site-limits';
+// B11 (Hamza)
+import { normalizeIncognitoSearchEngine, searchEngineFor } from '@/browser/incognito/incognito-settings';
+import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
 
 const MIN_CONCURRENT = 1;
 const MAX_CONCURRENT = 4;
@@ -233,6 +236,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         autoplay: state.autoplay,
         autoplaySites: state.autoplaySites,
         focusMinutes: state.focusMinutes,
+        incognitoSearchEngine: state.incognitoSearchEngine,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -446,6 +450,10 @@ export const useSettingsStore = createStore<SettingsStore>()(
               : current.autoplaySites,
           focusMinutes:
             raw.focusMinutes === undefined ? current.focusMinutes : normalizeFocusMinutesChoice(raw.focusMinutes),
+          incognitoSearchEngine:
+            raw.incognitoSearchEngine === undefined
+              ? current.incognitoSearchEngine
+              : normalizeIncognitoSearchEngine(raw.incognitoSearchEngine),
         };
       },
     },
@@ -468,7 +476,12 @@ bindSearchShortcutsReader(() => {
 bindSearchSettingsReader(() => {
   const state = useSettingsStore.getState();
   return {
-    engine: normalizeSearchEngineId(state.searchEngine),
+    // B11 #111: a search typed in an incognito tab uses the incognito engine when one is chosen.
+    engine: searchEngineFor(
+      normalizeSearchEngineId(state.searchEngine),
+      normalizeIncognitoSearchEngine(state.incognitoSearchEngine),
+      isIncognitoInFront(),
+    ),
     safeSearch: normalizeSafeSearch(state.safeSearch),
     language: normalizeSearchLanguage(state.searchLanguage),
     region: normalizeSearchRegion(state.searchRegion),

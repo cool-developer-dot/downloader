@@ -36,6 +36,7 @@ import { formatDisplayUrl, isBrowserHomeUrl } from '@/browser/utils';
 import { translate } from '@/localization';
 import { useRecentSearchesStore } from '@/store/recent-searches';
 import { useSettingsStore } from '@/store/settings';
+import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
 
 /**
  * Premium omnibox controller.
@@ -162,7 +163,8 @@ export function useAddressBar() {
 
       dismissEditing();
 
-      if (options?.recordSearchQuery?.trim()) {
+      // B11: a search typed in an incognito tab is never kept.
+      if (options?.recordSearchQuery?.trim() && !isIncognitoInFront()) {
         void recordRecentSearch(options.recordSearchQuery.trim());
       }
       return true;

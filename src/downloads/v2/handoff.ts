@@ -16,6 +16,7 @@ import { ensureGalleryPermission } from './gallery-permission';
 import { attachSubtitleChoice } from './subtitle-store';
 import { ensureDownloadNotificationPermission } from './notification-permission';
 import { projectV2Download, type V2DownloadEntry } from './projection';
+import { notifyIncognitoDownload } from '@/browser/incognito/incognito-state';
 
 /**
  * DUPLICATE outcomes: the user asked for a video they already have, so nothing new was started. Never a failure —
@@ -243,6 +244,8 @@ export async function handOffVerifiedVariant(
       }
       return duplicate;
     }
+    // B11 #107: started from an incognito tab (its session's cookies): it stays in the library afterwards.
+    if (decision.request.request.cookieProfile) notifyIncognitoDownload();
     const record = result.record;
     // H19: the stream's subtitles, chosen by Download Settings (off by default), are fetched once it completed.
     void attachSubtitleChoice(deps.engine, record.id, decision.request);

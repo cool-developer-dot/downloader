@@ -45,6 +45,7 @@ import { translate } from '@/localization/translate';
 import { useDownloadsStore } from '@/store/downloads';
 
 import { browserMediaActionService } from './browser-media-action.service';
+import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
 
 /** The tab's navigation waits at most this long for the first page fetch. */
 const TAB_FETCH_TIMEOUT_MS = 6_000;
@@ -466,8 +467,9 @@ export function startDirectAnalysis(input: {
         const request: PageFetchRequest = {
           url,
           userAgent: userAgentFor(mode, tabDesktop),
-          useSessionCookies: true,
-          commitCookies,
+          // B11: a link opened from an incognito tab is read without (and never stores) the normal profile's cookies.
+          useSessionCookies: !isIncognitoInFront(),
+          commitCookies: commitCookies && !isIncognitoInFront(),
           timeoutMs: mode === 'tab' ? TAB_FETCH_TIMEOUT_MS : OTHER_FETCH_TIMEOUT_MS,
           maxBytes: PAGE_MAX_BYTES,
         };
@@ -655,7 +657,8 @@ export async function refreshStaleDirectSource(input: {
           engine.fetchPage!({
             url,
             userAgent: userAgentFor(mode, record.tabDesktop),
-            useSessionCookies: true,
+            // B11: a link opened from an incognito tab is read without (and never stores) the normal profile's cookies.
+            useSessionCookies: !isIncognitoInFront(),
             commitCookies: false,
             timeoutMs: OTHER_FETCH_TIMEOUT_MS,
             maxBytes: PAGE_MAX_BYTES,

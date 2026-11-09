@@ -5,6 +5,7 @@ import { openInBackgroundAction } from './open-in-background.action';
 import { openInNewTabAction } from './open-in-new-tab.action';
 import { shareLinkAction } from './share-link.action';
 import { addToReadingListAction } from './add-to-reading-list.action';
+import { openInIncognitoAction } from './open-in-incognito.action';
 
 let defaultsRegistered = false;
 
@@ -21,5 +22,7 @@ export function registerDefaultBrowserActions(): void {
   browserActionRegistry.register(openExternalAction);
   // B9 #89
   browserActionRegistry.register(addToReadingListAction);
+  // B11 #52
+  browserActionRegistry.register(openInIncognitoAction);
   defaultsRegistered = true;
 }

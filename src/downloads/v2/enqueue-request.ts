@@ -3,6 +3,7 @@ import type { EnqueueRequest, RequestContext, SiteId } from '@modules/vidorax-me
 import type { DownloadQualityOption } from '@/downloads/quality/types';
 import type { MediaRequestContext } from '@/downloads/types/request-context';
 import { isLikelyMediaSegment } from '@/media-detection/services/false-positive.filter';
+import { incognitoCookieProfile } from '@/browser/incognito/incognito-state';
 
 /** Why a verified browser variant is not handed to the v2 engine. */
 export type V2HandoffRejection =
@@ -217,7 +218,15 @@ export function toV2RequestContext(ctx: MediaRequestContext | null, pageUrl: str
     ...(origin ? { origin } : {}),
     ...(Object.keys(headers).length > 0 ? { headers } : {}),
     useCookies: Boolean(ctx?.cookiesRequired || ctx?.hasCookies),
+    // B11: media found in an incognito tab uses that session's cookie jar, never the normal profile's.
+    ...cookieProfileField(),
   };
+}
+
+/** B11: the incognito session while an incognito tab is in front (detection and downloads follow the tab in front). */
+function cookieProfileField(): { cookieProfile?: string } {
+  const cookieProfile = incognitoCookieProfile();
+  return cookieProfile ? { cookieProfile } : {};
 }
 
 function positiveBytes(option: DownloadQualityOption): number | undefined {

@@ -10,6 +10,7 @@ import { browserReaderUr } from './catalogs/browserReader.ur';
 import { browserPageDisplayUr } from './catalogs/browserPageDisplay.ur';
 import { browserDataSaverUr } from './catalogs/browserDataSaver.ur';
 import { browserBlockingUr } from './catalogs/browserBlocking.ur';
+import { browserIncognitoUr } from './catalogs/browserIncognito.ur';
 import { browserProfilesUr } from './catalogs/browserProfiles.ur';
 import { browserPrivacyUr } from './catalogs/browserPrivacy.ur';
 import { browserAddressUr } from './catalogs/browserAddress.ur';
@@ -2839,4 +2840,5 @@ export const ur: CatalogStrings<typeof en> = {
   // B18 (Hamza)
   browserDataSaver: browserDataSaverUr,
   browserBlocking: browserBlockingUr,
+  browserIncognito: browserIncognitoUr,
 };
