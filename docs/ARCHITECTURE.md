@@ -889,6 +889,9 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   offline pages in table `saved_pages`, the PDF choice, image download through the existing handoff), screens
   `saved-pages` and `pdf-viewer`. Native VidoraWeb `print/`, `offline/` (archive + read-only viewer activity),
   `capture/FullPageCapture.kt`, `pdf/` (the `pdf` download hint, fetch, PdfRenderer).
+- **Tab groups and timeline (B2).** `src/browser/tabs/tab-groups.ts` (pure: groups, layout, group by site, save
+  parsing, timeline, group history), `tab-groups-state.ts` (read by tab persistence), `tab-groups.service.ts`, the
+  switcher's `TabGroupsUI.tsx`. Saved with the tabs (envelope schema 3); B1's store is unchanged.
 - **Browser settings** live in `SettingsState` as primitives (so Settings Backup carries them and Reset restores them);
   `browser/settings/browser-setting-keys.ts` lists them and `browser-settings.audit.test.ts` checks persistence,
   backup and reset; `browser-setting-choices.ts` gives Backup the allowed values of each choice setting.
