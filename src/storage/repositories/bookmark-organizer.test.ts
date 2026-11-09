@@ -223,6 +223,10 @@ describe('B9 folders, order, tags, notes (real SQLite)', () => {
     assert.deepEqual([inFolder.title, inFolder.url, inFolder.note, inFolder.tags], ['Lahore food', 'https://p.test/food', 'Try the nihari لاہور', ['a b', 'food', 'travel']]);
     assert.deepEqual((await searchBookmarks(db, 'nihari', null)).map((b) => b.id), ['p']);
     assert.deepEqual((await searchBookmarks(db, 'TRAVEL', null)).map((b) => b.id), ['p']);
+    // B24 #271: Urdu as typed, and typed with Arabic ه (folded to ہ) — runs the folded SQL.
+    assert.deepEqual((await searchBookmarks(db, 'لاہور', null)).map((b) => b.id), ['p']);
+    assert.deepEqual((await searchBookmarks(db, 'لاهور', null)).map((b) => b.id), ['p']);
+    assert.deepEqual((await searchBookmarks(db, 'کراچی', null)).map((b) => b.id), []);
     assert.deepEqual((await searchBookmarks(db, '', 'food')).map((b) => b.id), ['p']);
     assert.deepEqual((await listTags(db)).map((t) => t.tag), ['a b', 'food', 'travel']);
   });

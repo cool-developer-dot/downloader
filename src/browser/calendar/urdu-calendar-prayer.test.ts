@@ -5,6 +5,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { applyBrowserTables } from '@/storage/sqlite/schema';
 import { listNotes, insertNote } from '@/storage/repositories/notes.queries';
 import { foldedLikePattern, foldedSql, needsUrduFold } from '@/storage/repositories/urdu-fold-sql';
+import { titleUrlHostSearchClause } from '@/storage/repositories/title-url-search';
 import { splitHighlight } from '@/browser/history/history-highlight';
 import { classifyNavigationInput } from '@/browser/utils/url';
 import { firstStrongDirection, inputDirectionStyle, normalizeAddressDigits, toUrduDigits } from '@/utils/text-direction';
@@ -59,6 +60,21 @@ describe('B24 #271 Urdu input', () => {
     assert.deepEqual(find('محمد'), ['مُحَمَّد علی جناح'], 'diacritics ignored');
     assert.deepEqual(find('2026'.replace(/\d/g, (d) => String.fromCharCode(0x06f0 + Number(d)))), ['سال ۲۰۲۶ کا بجٹ']);
     assert.deepEqual(find('٪'), [], 'a sign that is no letter matches nothing here');
+  });
+
+  test('the History / bookmarks clause runs on SQLite, Urdu folded and English as before', () => {
+    const sqlite = new DatabaseSync(':memory:');
+    sqlite.exec('CREATE TABLE h (title TEXT, url TEXT, hostname TEXT)');
+    sqlite.prepare('INSERT INTO h VALUES (?, ?, ?)').run('پاكستان كى خبريں', 'https://ur.example/news', 'ur.example');
+    sqlite.prepare('INSERT INTO h VALUES (?, ?, ?)').run('Pakistan News', 'https://en.example/news', 'en.example');
+    const run = (q: string) => {
+      const { clause, params } = titleUrlHostSearchClause(q);
+      return (sqlite.prepare(`SELECT title FROM h ${clause}`).all(...params) as { title: string }[]).map((r) => r.title);
+    };
+    assert.deepEqual(run('پاکستان کی'), ['پاكستان كى خبريں']);
+    assert.deepEqual(run('pakistan'), ['Pakistan News']);
+    assert.deepEqual(run('example'), ['پاكستان كى خبريں', 'Pakistan News']);
+    assert.deepEqual(titleUrlHostSearchClause('  '), { clause: '', params: [] });
   });
 
   test('notes search folds Urdu; other searches unchanged', async () => {
