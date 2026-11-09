@@ -25,6 +25,16 @@
     </provider>
 
     <!--
+      B17 #178: a saved page, read-only (no JavaScript, no network, only that archive). Not exported; closes when the
+      app leaves the screen. No permission.
+    -->
+    <activity
+      android:name="com.vidorax.web.offline.OfflinePageActivity"
+      android:exported="false"
+      android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density"
+      android:theme="@android:style/Theme.DeviceDefault" />
+
+    <!--
       B24 #65 search widget (4x1, resizable): a tap opens a new tab with the address bar focused, after App Lock.
       Not exported (only the launcher's widget host talks to it); no permission.
     -->

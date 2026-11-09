@@ -410,6 +410,12 @@ export interface VidoraWebModuleApi {
   exportDrawing?(imageUri: string, strokesJson: string, mode: 'save' | 'share', name: string): Promise<boolean>;
   /** B17 #176 / #177: Android's print dialog (printers and Save as PDF) for this tab's page. */
   printPage?(viewTag: number, title: string, url: string): Promise<boolean>;
+  /** B17 #178: saves the page as a web archive for `profile` under `id`; resolves its size in bytes (0 = failed). */
+  saveOfflinePage?(viewTag: number, profile: string, id: string): Promise<number>;
+  /** B17 #178: opens a saved page read-only; resolves when the viewer closes (false: couldn't open). */
+  openOfflinePage?(profile: string, id: string, title: string): Promise<boolean>;
+  deleteOfflinePage?(profile: string, id: string): boolean;
+  deleteOfflineProfile?(profile: string): boolean;
   /** B24 #65: true once when the search widget started or brought back the app. */
   consumeSearchWidgetTap?(): boolean;
   /** B24 #271: an enabled keyboard has an Urdu subtype. */

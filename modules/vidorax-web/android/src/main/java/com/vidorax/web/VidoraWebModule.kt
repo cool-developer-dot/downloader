@@ -44,6 +44,8 @@ import com.vidorax.web.apps.AppLinks
 import com.vidorax.web.devtools.RemoteDebugging
 import com.vidorax.web.draw.DrawingExport
 import com.vidorax.web.print.PagePrint
+import com.vidorax.web.offline.OfflinePageActivity
+import com.vidorax.web.offline.OfflinePages
 import com.vidorax.web.keyboard.UrduKeyboards
 import com.vidorax.web.widget.SearchWidget
 import com.vidorax.web.devtools.SiteCookies
@@ -81,6 +83,7 @@ private const val ON_SHORTCUT_OPEN = "onShortcutOpen"
 // B11 #107: a download from an incognito tab that went to Android's DownloadManager (JS shows the notice).
 private const val ON_INCOGNITO_DOWNLOAD = "onIncognitoDownload"
 private const val ON_SEARCH_WIDGET = "onSearchWidget"
+private const val OFFLINE_VIEWER_REQUEST = 6517
 
 // react-native-webview's own download defaults (RNCWebViewManagerImpl).
 private const val DOWNLOADING_MESSAGE = "Downloading"
@@ -99,6 +102,8 @@ class VidoraWebModule : Module() {
   @Volatile private var hasSharedTextListeners = false
   @Volatile private var hasShortcutListeners = false
 
+  // B17 #178: the openOfflinePage call waiting for its viewer to close.
+  private var pendingOfflineViewer: Promise? = null
 
   // B24 #65: a search-widget tap while JS was not listening, handed out by consumeSearchWidgetTap.
   @Volatile private var hasSearchWidgetListeners = false
@@ -476,6 +481,44 @@ class VidoraWebModule : Module() {
       val activity = appContext.currentActivity ?: return@AsyncFunction false
       PagePrint.print(activity, webView, PagePrint.jobName(title, url))
     }.runOnQueue(Queues.MAIN)
+
+    // B17 #178: Save page offline — a web archive in <filesDir>/offline-pages/<profile>/<id>.mht; resolves its size.
+    AsyncFunction("saveOfflinePage") { viewTag: Int, profile: String, id: String, promise: Promise ->
+      val webView = webViewFor(viewTag) ?: return@AsyncFunction promise.resolve(0)
+      val target = OfflinePages.archiveFile(context.filesDir, profile, id) ?: return@AsyncFunction promise.resolve(0)
+      OfflinePages.save(webView, target) { size -> promise.resolve(size.toDouble()) }
+    }.runOnQueue(Queues.MAIN)
+
+    // B17 #178: a saved page, read-only (OfflinePageActivity); resolves when the viewer closes.
+    AsyncFunction("openOfflinePage") { profile: String, id: String, title: String, promise: Promise ->
+      val file = OfflinePages.archiveFile(context.filesDir, profile, id)
+      val activity = appContext.currentActivity
+      if (file == null || !file.isFile || activity == null) return@AsyncFunction promise.resolve(false)
+      pendingOfflineViewer?.resolve(true)
+      pendingOfflineViewer = promise
+      try {
+        activity.startActivityForResult(OfflinePageActivity.intent(context, file, title), OFFLINE_VIEWER_REQUEST)
+      } catch (_: Exception) {
+        pendingOfflineViewer = null
+        promise.resolve(false)
+      }
+    }.runOnQueue(Queues.MAIN)
+
+    OnActivityResult { _, payload ->
+      if (payload.requestCode == OFFLINE_VIEWER_REQUEST) {
+        pendingOfflineViewer?.resolve(true)
+        pendingOfflineViewer = null
+      }
+    }
+
+    Function("deleteOfflinePage") { profile: String, id: String ->
+      OfflinePages.delete(OfflinePages.archiveFile(context.filesDir, profile, id))
+    }
+
+    // B17 #178: a deleted browser profile (or the guest that ended) takes its saved pages with it.
+    Function("deleteOfflineProfile") { profile: String ->
+      OfflinePages.deleteProfile(context.filesDir, profile)
+    }
 
     // B22 #30: the Google code scanner (no CAMERA permission). { status: scanned | cancelled | unavailable, text }.
     AsyncFunction("scanQrCode") { promise: Promise ->
