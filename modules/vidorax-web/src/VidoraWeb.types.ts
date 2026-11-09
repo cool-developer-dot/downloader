@@ -57,6 +57,8 @@ export interface WebDownloadEvent {
   mimeType: string | null;
   contentLength: number | null;
   hint: Extract<NetworkMediaHint, 'manifest-hls' | 'manifest-dash' | 'progressive' | 'unknown'> | 'risky';
+  /** B11: set for a download from an incognito tab — its session's profile (the engine uses that jar). */
+  webProfile?: string;
 }
 
 export interface SharedTextEvent {
@@ -191,6 +193,8 @@ export type VidoraWebEvents = {
   onBrowserWindow: (event: BrowserWindowEvent) => void;
   /** B9 #87: a bookmark's home-screen shortcut was tapped while the app was running (`url` is http(s)). */
   onShortcutOpen: (event: { url: string }) => void;
+  /** B11 #107: an incognito tab's download went to Android's DownloadManager (`started` false: refused, session over). */
+  onIncognitoDownload: (event: { viewTag: number; started: boolean }) => void;
   /** B8: see SelectionActionEvent. The menu shows the app's items only while something listens. */
   onSelectionAction: (event: SelectionActionEvent) => void;
 };
@@ -365,6 +369,27 @@ export interface VidoraWebModuleApi {
    * = no filter and no layer. Resolves false when the view is gone. Missing on older native builds.
    */
   setDisplayFilter?(viewTag: number, matrix: number[] | null): Promise<boolean>;
+  /** B11 #104: whether incognito is possible (WebView profiles: its own cookies, storage and cache). */
+  isIncognitoSupported?(): boolean;
+  /**
+   * B11: starts the incognito session's temporary profile `vidorax-incog<session>` (never made active) before its
+   * first WebView mounts with the `webProfile` prop. False without WebView profiles or for a bad name.
+   */
+  startIncognitoProfile?(name: string): Promise<boolean>;
+  /** B11 #109: the session ended (its jar is no longer used); delete the profile with `deleteWebProfile` after. */
+  endIncognitoProfile?(name: string): Promise<boolean>;
+  /** B11: the WebView profile this tab's WebView is really in ("Default" or "vidorax-…"); null when it is gone. */
+  getWebViewProfileName?(viewTag: number): Promise<string | null>;
+  /** B11 #107: a claimed incognito download handed to DownloadManager with that session's cookies. */
+  startSystemDownloadInProfile?(
+    url: string,
+    userAgent: string | null,
+    contentDisposition: string | null,
+    mimeType: string | null,
+    profile: string,
+  ): Promise<boolean>;
+  /** B11 #106: FLAG_SECURE on the app window (no screenshots, no recent-apps preview). Resolves the state. */
+  setWindowSecure?(secure: boolean): Promise<boolean>;
   /**
    * B14 #121 / #114: ad and tracker blocking (through the patch script's interceptRequest hook). Replaces the whole
    * snapshot: the two switches and the sites where ads and trackers load ("Allow ads on this site"; lowercase hosts,

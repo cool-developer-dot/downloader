@@ -37,7 +37,9 @@ import com.vidorax.web.network.NetworkMediaObserver
 import com.vidorax.web.network.ServiceWorkerRequests
 import com.vidorax.web.network.WebDownloadRoute
 import com.vidorax.web.privacy.SitePrivacy
+import com.vidorax.web.profiles.IncognitoProfiles
 import com.vidorax.web.profiles.WebProfiles
+import com.vidorax.web.security.SecureWindow
 import com.vidorax.web.selection.SelectionMenu
 import com.vidorax.web.shortcuts.BookmarkShortcuts
 import com.vidorax.web.selection.SelectionMenuCallback
@@ -67,6 +69,8 @@ private const val ON_CAPTURED_KEY = "onCapturedKey"
 private const val ON_BROWSER_WINDOW = "onBrowserWindow"
 private const val ON_SELECTION_ACTION = "onSelectionAction"
 private const val ON_SHORTCUT_OPEN = "onShortcutOpen"
+// B11 #107: a download from an incognito tab that went to Android's DownloadManager (JS shows the notice).
+private const val ON_INCOGNITO_DOWNLOAD = "onIncognitoDownload"
 
 // react-native-webview's own download defaults (RNCWebViewManagerImpl).
 private const val DOWNLOADING_MESSAGE = "Downloading"
@@ -119,6 +123,14 @@ class VidoraWebModule : Module() {
       WebProfiles.apply(webView)
     }
 
+    // B11: an incognito tab's WebView (its webProfile prop) joins the live incognito profile, never the active one.
+    // An unknown name leaves it in the active profile; JS checks getWebViewProfileName before loading and closes it.
+    override fun beforeWebViewSetupInProfile(webView: RNCWebView, webProfile: String) {
+      val joined = IncognitoProfiles.apply(webView, webProfile)
+      if (!joined) WebProfiles.apply(webView)
+      android.util.Log.d("VidoraWeb", "B11 webProfile prop received; incognito profile joined=$joined")
+    }
+
     override fun onWebViewCreated(webView: RNCWebView) {
       ServiceWorkerRequests.install()
     }
@@ -140,6 +152,12 @@ class VidoraWebModule : Module() {
       mimeType: String?,
       contentLength: Long,
     ): Boolean {
+      // B11: every download from an incognito tab is claimed here, so it never falls through to react-native-webview's
+      // own DownloadManager path (WebView's default cookie jar).
+      val incognito = IncognitoProfiles.nameOf(webView)
+      if (incognito != null && isHttpUrl(url)) {
+        return startIncognitoDownload(webView, incognito, url, userAgent, contentDisposition, mimeType, contentLength)
+      }
       if (!hasWebDownloadListeners || !isHttpUrl(url)) {
         return false
       }
@@ -179,7 +197,7 @@ class VidoraWebModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("VidoraWeb")
 
-    Events(ON_NETWORK_MEDIA, ON_WEB_DOWNLOAD, ON_SHARED_TEXT, ON_CAPTURED_KEY, ON_BROWSER_WINDOW, ON_SELECTION_ACTION, ON_SHORTCUT_OPEN)
+    Events(ON_NETWORK_MEDIA, ON_WEB_DOWNLOAD, ON_SHARED_TEXT, ON_CAPTURED_KEY, ON_BROWSER_WINDOW, ON_SELECTION_ACTION, ON_SHORTCUT_OPEN, ON_INCOGNITO_DOWNLOAD)
 
     OnCreate {
       RNCWebViewHooks.setListener(webViewHooks)
@@ -317,6 +335,47 @@ class VidoraWebModule : Module() {
     // B12 privacy controls, for the active browser profile (see SitePrivacy).
     AsyncFunction("setCookiesEnabled") { enabled: Boolean ->
       SitePrivacy.setCookiesEnabled(enabled)
+      // B11: a live incognito session follows "Block all cookies" too.
+      IncognitoProfiles.setAcceptCookies(enabled)
+    }.runOnQueue(Queues.MAIN)
+
+    // B11 #104: incognito needs WebView profiles (its own cookies, storage and cache); without them there is none.
+    Function("isIncognitoSupported") {
+      WebProfiles.isSupported()
+    }
+
+    // B11: the session's temporary profile, before its first WebView mounts (never made active).
+    AsyncFunction("startIncognitoProfile") { name: String ->
+      IncognitoProfiles.start(name, acceptCookies = WebProfiles.cookies().acceptCookie())
+    }.runOnQueue(Queues.MAIN)
+
+    // B11 #109: the session ended; JS deletes the profile (deleteWebProfile) once its WebViews are gone.
+    AsyncFunction("endIncognitoProfile") { name: String ->
+      IncognitoProfiles.end(name)
+      true
+    }.runOnQueue(Queues.MAIN)
+
+    // B11: the WebView profile a tab's WebView really is in ("Default", "vidorax-…"), or null when it is gone.
+    AsyncFunction("getWebViewProfileName") { viewTag: Int ->
+      val webView = webViewFor(viewTag) ?: return@AsyncFunction null
+      IncognitoProfiles.nameOf(webView) ?: if (WebProfiles.isSupported()) {
+        @android.annotation.SuppressLint("RequiresFeature")
+        val name = androidx.webkit.WebViewCompat.getProfile(webView).name
+        name
+      } else {
+        com.vidorax.web.profiles.WebProfileNames.DEFAULT
+      }
+    }.runOnQueue(Queues.MAIN)
+
+    // B11 #107: a claimed incognito download that isn't a video goes to DownloadManager with the incognito jar.
+    AsyncFunction("startSystemDownloadInProfile") { url: String, userAgent: String?, contentDisposition: String?, mimeType: String?, profile: String ->
+      val jar = IncognitoProfiles.liveCookies(profile) ?: return@AsyncFunction false
+      startSystemDownload(url, userAgent, contentDisposition, mimeType, jar)
+    }
+
+    // B11 #106: no screenshots or recent-apps preview while an incognito tab is on screen.
+    AsyncFunction("setWindowSecure") { secure: Boolean ->
+      SecureWindow.set(appContext.currentActivity, secure)
     }.runOnQueue(Queues.MAIN)
 
     AsyncFunction("getCertificate") { viewTag: Int ->
@@ -559,7 +618,13 @@ class VidoraWebModule : Module() {
    * own DownloadListener would have started it (cookies, User-Agent, public Downloads folder, the storage permission
    * prompt below Android 10). Used when JS finds that a claimed download is not a video after all.
    */
-  private fun startSystemDownload(url: String, userAgent: String?, contentDisposition: String?, mimeType: String?): Boolean {
+  private fun startSystemDownload(
+    url: String,
+    userAgent: String?,
+    contentDisposition: String?,
+    mimeType: String?,
+    cookies: CookieManager = WebProfiles.cookies(),
+  ): Boolean {
     if (!isHttpUrl(url)) return false
     val module = (appContext.reactContext as? ReactContext)?.getNativeModule(RNCWebViewModule::class.java) ?: return false
     val request = try {
@@ -568,7 +633,7 @@ class VidoraWebModule : Module() {
       return false
     }
     val fileName = URLUtil.guessFileName(url, contentDisposition, mimeType).replace(INVALID_FILE_NAME_CHARS, "_")
-    WebProfiles.cookies().getCookie(url)?.let { request.addRequestHeader("Cookie", it) }
+    cookies.getCookie(url)?.let { request.addRequestHeader("Cookie", it) }
     request.addRequestHeader("User-Agent", userAgent ?: WebSettings.getDefaultUserAgent(context))
     request.setTitle(fileName)
     request.setDescription("$DOWNLOADING_MESSAGE $fileName")
@@ -579,6 +644,46 @@ class VidoraWebModule : Module() {
     if (module.grantFileDownloaderPermissions(DOWNLOADING_MESSAGE, null)) {
       module.downloadFile(DOWNLOADING_MESSAGE)
     }
+    return true
+  }
+
+  /**
+   * B11: a download from an incognito tab. Videos and risky files go to JS as usual (with the session, for the
+   * engine's cookies and the #107 notice); anything else, or with nobody listening, goes to DownloadManager with the
+   * incognito jar right here — never the default jar.
+   */
+  private fun startIncognitoDownload(
+    webView: RNCWebView,
+    profile: String,
+    url: String,
+    userAgent: String?,
+    contentDisposition: String?,
+    mimeType: String?,
+    contentLength: Long,
+  ): Boolean {
+    val viewTag = RNCWebViewWrapper.getReactTagFromWebView(webView)
+    val route = WebDownloadRoute.of(url, mimeType, contentDisposition)
+    if (hasWebDownloadListeners && route != WebDownloadRoute.System) {
+      val hint = if (route is WebDownloadRoute.Detect) route.hint.value else WebDownloadRoute.RISKY_HINT
+      sendEvent(
+        ON_WEB_DOWNLOAD,
+        mapOf(
+          "viewTag" to viewTag,
+          "url" to url,
+          "userAgent" to (userAgent ?: webView.settings.userAgentString),
+          "contentDisposition" to contentDisposition?.takeIf { it.isNotBlank() },
+          "mimeType" to mimeType?.takeIf { it.isNotBlank() },
+          "contentLength" to contentLength.takeIf { it > 0 },
+          "hint" to hint,
+          "webProfile" to profile,
+        ),
+      )
+      return true
+    }
+    val jar = IncognitoProfiles.liveCookies(profile)
+    // No live jar (the session just ended): refuse rather than send another profile's cookies.
+    if (jar != null) startSystemDownload(url, userAgent ?: webView.settings.userAgentString, contentDisposition, mimeType, jar)
+    sendEvent(ON_INCOGNITO_DOWNLOAD, mapOf("viewTag" to viewTag, "started" to (jar != null)))
     return true
   }
 
