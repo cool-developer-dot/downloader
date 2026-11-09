@@ -56,7 +56,7 @@ export interface WebDownloadEvent {
   contentDisposition: string | null;
   mimeType: string | null;
   contentLength: number | null;
-  hint: Extract<NetworkMediaHint, 'manifest-hls' | 'manifest-dash' | 'progressive' | 'unknown'> | 'risky';
+  hint: Extract<NetworkMediaHint, 'manifest-hls' | 'manifest-dash' | 'progressive' | 'unknown'> | 'risky' | 'pdf';
   /** B11: set for a download from an incognito tab — its session's profile (the engine uses that jar). */
   webProfile?: string;
 }
@@ -418,6 +418,15 @@ export interface VidoraWebModuleApi {
   openOfflinePage?(profile: string, id: string, title: string): Promise<boolean>;
   deleteOfflinePage?(profile: string, id: string): boolean;
   deleteOfflineProfile?(profile: string): boolean;
+  /** B17 #265: PDF downloads come as `onWebDownload` with hint `pdf` while on. */
+  setPdfChoiceEnabled?(enabled: boolean): void;
+  /** B17 #264: fetches a PDF with the tab's own cookies into the cache (status ok / notPdf / tooLarge / …). */
+  fetchPdf?(viewTag: number, url: string, userAgent: string | null): Promise<{ status: string; path?: string }>;
+  openPdf?(path: string): Promise<{ status: 'ok' | 'protected' | 'failed'; id?: number; pages?: [number, number][] }>;
+  renderPdfPage?(id: number, index: number, width: number): Promise<string | null>;
+  closePdf?(id: number): void;
+  deletePdf?(path: string): boolean;
+  openPdfExternally?(url: string): boolean;
   /** B24 #65: true once when the search widget started or brought back the app. */
   consumeSearchWidgetTap?(): boolean;
   /** B24 #271: an enabled keyboard has an Urdu subtype. */

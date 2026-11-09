@@ -47,6 +47,8 @@ import com.vidorax.web.print.PagePrint
 import com.vidorax.web.capture.FullPageCapture
 import com.vidorax.web.offline.OfflinePageActivity
 import com.vidorax.web.offline.OfflinePages
+import com.vidorax.web.pdf.PdfDocuments
+import com.vidorax.web.pdf.PdfFiles
 import com.vidorax.web.keyboard.UrduKeyboards
 import com.vidorax.web.widget.SearchWidget
 import com.vidorax.web.devtools.SiteCookies
@@ -85,6 +87,7 @@ private const val ON_SHORTCUT_OPEN = "onShortcutOpen"
 private const val ON_INCOGNITO_DOWNLOAD = "onIncognitoDownload"
 private const val ON_SEARCH_WIDGET = "onSearchWidget"
 private const val OFFLINE_VIEWER_REQUEST = 6517
+private const val PDF_HINT = "pdf"
 
 // react-native-webview's own download defaults (RNCWebViewManagerImpl).
 private const val DOWNLOADING_MESSAGE = "Downloading"
@@ -103,6 +106,8 @@ class VidoraWebModule : Module() {
   @Volatile private var hasSharedTextListeners = false
   @Volatile private var hasShortcutListeners = false
 
+  // B17 #265: PDF downloads go to JS for the open choice while this is on (setPdfChoiceEnabled).
+  @Volatile private var pdfChoiceEnabled = false
   // B17 #178: the openOfflinePage call waiting for its viewer to close.
   private var pendingOfflineViewer: Promise? = null
 
@@ -187,7 +192,8 @@ class VidoraWebModule : Module() {
       val hint = when (val route = WebDownloadRoute.of(url, mimeType, contentDisposition)) {
         is WebDownloadRoute.Detect -> route.hint.value
         WebDownloadRoute.Warn -> WebDownloadRoute.RISKY_HINT
-        WebDownloadRoute.System -> return false
+        // B17 #265: a PDF goes to JS for the open choice (Download hands it back to DownloadManager as before).
+        WebDownloadRoute.System -> if (pdfChoiceEnabled && PdfFiles.isPdf(url, mimeType, contentDisposition)) PDF_HINT else return false
       }
       sendEvent(
         ON_WEB_DOWNLOAD,
@@ -540,6 +546,68 @@ class VidoraWebModule : Module() {
       OfflinePages.deleteProfile(context.filesDir, profile)
     }
 
+    // B17 #265: PDF downloads go to JavaScript (hint "pdf") for the open choice while this is on.
+    Function("setPdfChoiceEnabled") { enabled: Boolean ->
+      pdfChoiceEnabled = enabled
+    }
+
+    // B17 #264: the PDF for the in-app viewer, fetched with this tab's own cookies into <cache>/pdf/.
+    AsyncFunction("fetchPdf") { viewTag: Int, url: String, userAgent: String?, promise: Promise ->
+      val webView = webViewFor(viewTag)
+      if (webView == null || !PdfFiles.isHttp(url)) return@AsyncFunction promise.resolve(mapOf("status" to "failed"))
+      val jar = SiteCookies.jarFor(webView)
+      // An incognito tab whose session ended has no jar: no cookies at all (never another profile's).
+      val cookies = if (IncognitoProfiles.nameOf(webView) != null && jar == null) null else jar
+      val ua = userAgent ?: webView.settings.userAgentString
+      val target = PdfFiles.cacheFile(context.cacheDir, url)
+      Thread {
+        val result = PdfFiles.fetch(url, ua, cookies, target)
+        promise.resolve(
+          when (result) {
+            is PdfFiles.Fetch.Done -> mapOf("status" to "ok", "path" to result.file.path)
+            is PdfFiles.Fetch.Failed -> mapOf("status" to result.reason)
+          },
+        )
+      }.start()
+    }.runOnQueue(Queues.MAIN)
+
+    AsyncFunction("openPdf") { path: String ->
+      val file = java.io.File(path)
+      if (!PdfFiles.isInCache(context.cacheDir, file) || !file.isFile) return@AsyncFunction mapOf("status" to "failed")
+      when (val opened = PdfDocuments.open(file)) {
+        is PdfDocuments.Open.Ok -> mapOf("status" to "ok", "id" to opened.id, "pages" to opened.pages.map { listOf(it.first, it.second) })
+        PdfDocuments.Open.Protected -> mapOf("status" to "protected")
+        PdfDocuments.Open.Failed -> mapOf("status" to "failed")
+      }
+    }
+
+    AsyncFunction("renderPdfPage") { id: Int, index: Int, width: Int ->
+      PdfDocuments.render(context.cacheDir, id, index, width)?.let { "file://${it.path}" }
+    }
+
+    Function("closePdf") { id: Int ->
+      PdfDocuments.close(context.cacheDir, id)
+    }
+
+    Function("deletePdf") { path: String ->
+      val file = java.io.File(path)
+      PdfFiles.isInCache(context.cacheDir, file) && file.delete()
+    }
+
+    // B17 #265: "Open with another app" — the PDF's address to the apps that view PDFs (Android's chooser).
+    Function("openPdfExternally") { url: String ->
+      if (!PdfFiles.isHttp(url)) return@Function false
+      val view = Intent(Intent.ACTION_VIEW).setDataAndType(Uri.parse(url), "application/pdf")
+      val chooser = Intent.createChooser(view, null)
+      val activity = appContext.currentActivity
+      try {
+        if (activity != null) activity.startActivity(chooser) else context.startActivity(chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        true
+      } catch (_: Exception) {
+        false
+      }
+    }
+
     // B22 #30: the Google code scanner (no CAMERA permission). { status: scanned | cancelled | unavailable, text }.
     AsyncFunction("scanQrCode") { promise: Promise ->
       QrScanner.scan(context) { promise.resolve(it) }
@@ -870,8 +938,10 @@ class VidoraWebModule : Module() {
   ): Boolean {
     val viewTag = RNCWebViewWrapper.getReactTagFromWebView(webView)
     val route = WebDownloadRoute.of(url, mimeType, contentDisposition)
-    if (hasWebDownloadListeners && route != WebDownloadRoute.System) {
-      val hint = if (route is WebDownloadRoute.Detect) route.hint.value else WebDownloadRoute.RISKY_HINT
+    // B17 #265: an incognito PDF gets the same choice (with this session's profile, so its cookies are used).
+    val pdf = route == WebDownloadRoute.System && pdfChoiceEnabled && PdfFiles.isPdf(url, mimeType, contentDisposition)
+    if (hasWebDownloadListeners && (route != WebDownloadRoute.System || pdf)) {
+      val hint = if (pdf) PDF_HINT else if (route is WebDownloadRoute.Detect) route.hint.value else WebDownloadRoute.RISKY_HINT
       sendEvent(
         ON_WEB_DOWNLOAD,
         mapOf(
