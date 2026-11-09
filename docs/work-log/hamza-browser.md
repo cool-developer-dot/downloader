@@ -2425,10 +2425,10 @@ New libraries: none
 Tested: unit 1866/1866 (2 workers), typecheck, lint 0/82, Kotlin vidorax-web 164/165 (known). Device: list above.
 ```
 
-## Closing — all 18 packages (Mega 7)
+## Closing — all 18 packages (final, after the Mega 4 run)
 
-Hamza's 18 browser packages, as they stand on `hamza/browser` (the combined branch, linear history). **16 built, 2 not
-built.** Every per-package branch below is on origin, pushed without force. All BLOCKED items are in each package's
+Hamza's 18 browser packages, as they stand on `hamza/browser` (the combined branch, linear history). **All 18
+built.** Every per-package branch is on origin, pushed without force. BLOCKED / not-done items are in each package's
 section; the open ones are repeated here.
 
 ### Packages, branches and status
@@ -2436,103 +2436,109 @@ section; the open ones are repeated here.
 | # | Package | Mega | Branch (origin) | Tip | Status | BLOCKED / open |
 | --- | --- | --- | --- | --- | --- | --- |
 | 1 | B8 Selected text | 1 | `hamza/B8-selected-text` | `26d50b1` | Done | — |
-| 2 | B10 History | 1 | `hamza/B10-history` | `20a2cbe` | Done (its fix `0560084` rides in the B7 branch) | — |
-| 3 | B21 Startup and customization | 1 | `hamza/B21-startup` | `3f1b2ec` | Done (fixes `a2a2996`, `cd8ea31` ride in the B7 branch) | — |
+| 2 | B10 History | 1 | `hamza/B10-history` | `20a2cbe` | Done (its fix rides in the B7 branch) | — |
+| 3 | B21 Startup and customization | 1 | `hamza/B21-startup` | `3f1b2ec` | Done (two fixes ride in the B7 branch) | — |
 | 4 | B7 Find in page | 1 | `hamza/B7-find-in-page` | `cd8ea31` | Done | — |
 | 5 | B3 Tab sound and sleep | 2 | `hamza/B3-tab-sound` | `92cb8a3` | Done | — |
 | 6 | B13 Site permissions | 2 | `hamza/B13-site-permissions` | `6a4b2eb` | Done | — |
-| 7 | B9 Bookmarks | 2 | `hamza/B9-bookmarks` | `e64e0ca` | Done | Reading-list offline copies wait for B17 (hook `setReadingOfflineCopy`) |
-| 8 | B15 Reader mode | 3 | `hamza/B15-reader` | `3550891` | Done | — |
-| 9 | B16 Page display | 3 | `hamza/B16-page-display` | `b7c31c3` | Done (fixes `c3b4ade`, `03454cc` ride in the B18 branch) | — |
+| 7 | B9 Bookmarks | 2 | `hamza/B9-bookmarks` | `e64e0ca` | Done (reading-list offline copies arrive with B17) | — |
+| 8 | B15 Reader mode | 3 | `hamza/B15-reader` | `a927748` | Done (+ `.gitattributes` fix) | — |
+| 9 | B16 Page display | 3 | `hamza/B16-page-display` | `b7c31c3` | Done (two fixes ride in the B18 branch) | — |
 | 10 | B18 Data saver and performance | 3 | `hamza/B18-data-saver` | `e0011eb` | Done | — |
-| — | B16 update: bundled Nastaliq (patch hook) | 5 | `hamza/B16-font` | `48f9daa` | Done | — |
+| — | B16 update: bundled Nastaliq | 5 | `hamza/B16-font` | `48f9daa` | Done | — |
 | — | B18 update: Save-Data header | 5 | `hamza/B18-save-data` | `6262f3d` | Done | — |
-| 11 | B14 Ad, tracker and site blocking | 5 | `hamza/B14-blocking` | `a64a7b0` | Done (speed fix added in Mega 7) | — |
+| 11 | B14 Ad, tracker and site blocking | 5 | `hamza/B14-blocking` | `a64a7b0` | Done | — |
 | 12 | B11 Incognito | 6 | `hamza/B11-incognito` | `48ce20a` | Done | The incognito profile prop reaching native (fails closed) — device check |
 | 13 | B22 Share, QR and upload | 6 | `hamza/B22-share-qr` | `181f286` | Done | Camera upload on a phone with no camera app at all (needs a patch change) |
 | 14 | B19 Developer tools | 7 | `hamza/B19-devtools` | `2fe8a03` | Done | — |
-| 15 | B23 Annotate and page alerts | 7 | `hamza/B23-annotate` | `f88fcd4` | Done (Draw on page uses B1's page picture: B17 missing) | Owner: highlights / page-detectability question below |
-| 16 | B24 Urdu, calendar and widgets | 7 | `hamza/B24-urdu-widgets` | `125dd26` | Done | — |
-| 17 | B17 Capture, print and PDF | — | none | — | **Not built** | Never assigned: no Mega in these sessions covered it |
-| 18 | B2 Tab groups and timeline | — | none | — | **Not built** | Never assigned |
+| 15 | B23 Annotate and page alerts | 7 | `hamza/B23-annotate` | `09ba22b` | Done (+ B8 and B23 privacy fixes) | — |
+| 16 | B24 Urdu, calendar and widgets | 7 | `hamza/B24-urdu-widgets` | `a4b64c2` | Done (+ LTR field fix) | — |
+| 17 | B17 Capture, print and PDF | 4 (run last) | `hamza/B17-capture` | `cec6b7b` | Done | Owner: the offline viewer's file access (below) |
+| 18 | B2 Tab groups and timeline | 4 (run last) | `hamza/B2-tab-groups` | `12311e3` | Done except drop-a-tab-onto-another | Drop-onto-tab not built (B1's drag) |
 
-**B17 and B2:** no commit for either exists anywhere in this clone — searched every ref, the reflogs, dangling
-commits (`git fsck`), stashes and worktrees, plus the session transcripts. Those have prompts for Megas 1, 2, 3, 5,
-6 and 7, and **none for a Mega 4**. Owner: was Mega 4 run somewhere else? If not, B17 and B2 are still to do. B9's
-reading-list offline copies and B23's full-page drawing wait for B17.
+**How the branches were made:** each points at the package's last commit in the linear history (no cherry-picks),
+except where a later fix was cherry-picked onto its package branch. Where a fix fixes code added by a later package,
+it went to that package's branch: "B8: fix — clear selection context" fixes B23's addition to B8's read script, so it
+is on `hamza/B23-annotate`, not on the B8 branch (which has no such code).
 
-**How the Mega 1–4 branches were made (Mega 7):** each points at the package's last commit in the linear history
-(no cherry-picks), so their content is exactly what was built and checked on `hamza/browser`, with no duplicate SHAs.
-At each tip: typecheck clean and unit tests passing. The B15, B16 and B18 tips each showed one failure in a fresh
-checkout: the vendored-Readability byte test, because Windows checked the file out with CRLF line endings. With the
-committed bytes it passes (found, not fixed: a `.gitattributes` rule for that file).
+**Fresh checkouts:** B15's `.gitattributes` (eol=lf for the vendored Readability file) makes that test pass in a fresh
+Windows checkout (verified on `hamza/B15-reader`). Branches cut before it (B16, B18, B14, B11, B22, B19, B23, B24 as
+pushed) still fail that one byte test in a fresh Windows checkout until B15 is merged first; the code is fine.
 
 **The same change under two SHAs** (merge cleanly; the content is identical):
 
 - B14 speed fix: `a64a7b0` (B14 branch) = `8ab83f1` (browser)
 - B11 fixes: `bfb1769` + `48ce20a` (B11 branch) = `319d9e2` + `623ec3c` (browser)
 - B23 task fix: `f88fcd4` (B23 branch) = `5356cc4` (browser)
+- B15 fix: `a927748` (B15 branch) = `cb8deb5` (browser)
+- B8 fix: `fbf606c` (B23 branch) = `dbfefe0` (browser); B23 fix: `09ba22b` (B23 branch) = `453efa0` (browser)
+- B24 fix: `a4b64c2` (B24 branch) = `ad2b5ea` (browser)
 
 ### Merge order
 
-Merging `hamza/browser` alone brings in everything. Package by package, in this order (each includes the previous
-ones):
+Merging `hamza/browser` alone brings in everything. Package by package (each includes the previous ones):
 
 B8 → B10 → B21 → B7 → B3 → B13 → B9 → B15 → B16-page-display → B18-data-saver → B16-font → B18-save-data → B14 →
-B11 → B22 → B19 → B23 → B24
+B11 → B22 → B19 → B23 → B24 → **B17 → B2**
 
-Dependencies: B23 depends on B8 (selection menu, read script) and on B1's snapshot (B17 not built). B22 depends on B8
-and B11. B14 and B16-font depend on the Mega 5 `interceptRequest` patch hook. B11 depends on the B11 patch change.
+Dependencies: B22 needs B8 and B11; B23 needs B8 and B1's snapshot; B17 needs B23 (`exportDrawing`), B9 (the
+reading-list hook) and B11 (incognito jars); B2 needs B1 and B11. B14 and B16-font need the Mega 5 `interceptRequest`
+patch hook; B11 needs the B11 patch change.
 
-### Open questions for the owner
+### Database and saved data
 
-1. **Page detectability (B19, B23).**
-   - B23's restored highlights are `<mark data-vidorax-hl>` elements, so the page's own scripts can see which
-     passages the user highlighted.
-   - B8's read script leaves `window.__vidoraxSelectionContext` (the page's own text) until Highlight reads it.
-   - With Developer tools on, `window.__vidoraxConsole` is set.
-   - None of these hands app data to the page, but a page can notice VidoraX and read the user's highlight
-     choices. The card (marks on the page) and the "never hand app data to a page" rule pull in opposite
-     directions here; decide whether to keep it, or draw highlights outside the page DOM (not possible without a
-     patch change).
-2. **Defaults that change what existing users see:**
-   - `offerTranslate` is on, so a "Translate this page?" banner appears once per site.
-   - B24's text direction applies to **every** `TextField` in the app, not only the browser's.
-   - Everything else new defaults to today's behaviour.
-3. **B17 / B2** (above).
+`DATABASE_VERSION` 8 (B9 3 → B22 5 → B19 6 → B23 7 → B17 8); profile databases version 6. Tab envelope schema 3 (B2),
+read by its fields. Every migration is `IF NOT EXISTS` and tested twice over the previous version.
+
+### Open questions for Faran and the owner
+
+1. **The offline viewer (B17)** is a WebView with file access (only for the one archive; JavaScript and network off;
+   not exported; closes when the app leaves the screen), outside `webview-configuration.ts`, whose rule forbids file
+   access for the browser's WebViews. Keep it, or show archives another way?
+2. **PDFs now come to JavaScript first (B17):** the WebView's PDF downloads go to the open choice (Ask by default)
+   instead of straight to DownloadManager; Download hands them back unchanged.
+3. **Page detectability:** fixed for highlights (plain `<mark>`, only a colour) and the selection anchor (no page
+   variable). Still visible to a page: `window.__vidoraxConsole` while Developer tools are on (B19), the
+   `vidorax_annotate` message type B23's scripts post, and B1's `__VIDORAX_BROWSER_CHROME__` guard.
+4. **Defaults that change what existing users see:** "Translate this page?" (B23, once per site); PDF links ask
+   (B17). Everything else new defaults to today's behaviour.
+5. **B2 drop-a-tab-onto-another** to group was not built (it would live inside B1's reorder drag); groups come from
+   the tab's menu.
 
 ### Combined device test checklist (Faran's final pass)
 
 Shared steps, done once:
 
-- [ ] One **release build** (`gradle.sh :app:assembleRelease`) installed over the seeded **1.1.0** build: the
-      database upgrades straight to **version 7** (profile databases to 5) with history, bookmarks, notes and
-      settings kept
-- [ ] **Merged manifest:** 40 permissions; new components only those listed in B22 (FileProvider, `<queries>`),
-      B23 (WorkManager, task manager, Room invalidation service) and B24 (search widget receiver)
+- [ ] One **release build** installed over the seeded **1.1.0** build: the database upgrades straight to **version 8**
+      (profile databases to 6), tabs (schema 1/2 save) open as they were, history, bookmarks, notes and settings kept
+- [ ] **Merged manifest:** 40 permissions; new components only those listed in B22 (FileProvider, `<queries>`), B23
+      (WorkManager, task manager, Room invalidation service), B24 (search widget receiver) and B17 (offline viewer
+      activity)
 - [ ] One pass in **Urdu (RTL), Dark, TalkBack and font 1.3** over every new screen and sheet below
-- [ ] **Cold start**, start from a launch link, and one forced background task run (`adb shell cmd jobscheduler
-      run -f <package> <JOB_ID>`) — checks the task definition in `src/entry.js`
+- [ ] **Cold start**, start from a launch link, and one forced background task run (`adb shell cmd jobscheduler run -f
+      <package> <JOB_ID>`)
 
 Feature items (details in each package's list):
 
-- [ ] B8 / B10 / B21 / B7: selection Search / Save to notes / Highlight; history search, highlight (English and
-      Urdu), clear by range, export; startup options, toolbar, background photo; find in page
-- [ ] B3 / B13 / B9: tab sound and sleep, memory monitor; site permissions and pop-ups; bookmarks folders, import /
-      export, reading list, home-screen shortcut (with App Lock)
-- [ ] B15 / B16 / B18: reader mode and read aloud; force dark, text size, Nastaliq (bundled font in pages); data
-      saver, Save-Data header, lite mode, cache limit
-- [ ] B14: ad / tracker blocking on a news site; site blocking; with both blockers off, pages load as before
-- [ ] B11: incognito prop log line, separate logins, profile deleted after the last incognito tab, nothing saved
-      anywhere, FLAG_SECURE, App Lock on return, downloads with incognito cookies, violet bar
-- [ ] B22: QR share / save / scan, file and camera upload, notes, Open in app (Maps), form snippets
-- [ ] B19: tools off = nothing injected; console, network, inspect, source, user agents and widths, remote debugging
-      (off after restart), storage (incognito shows only its cookies), security, user scripts
-- [ ] B23: highlight and restore, all highlights; draw → Pictures/VidoraX and share; watch a page and force the job;
-      translate offer on Arabic / Persian / Urdu pages; nothing of these in incognito
-- [ ] B24: field direction (address bar, Notes, **PIN, numeric and URL fields in Urdu**), Eastern-digit address,
-      Urdu search in History / Bookmarks / Notes, "Add Urdu keyboard"; calendar (Intl or arithmetic, ±2, month view);
-      prayer times vs a published Lahore timetable; search widget light / dark / Urdu, with App Lock
+- [ ] B8 / B10 / B21 / B7: selection Search / Save to notes / Highlight (and no `__vidoraxSelectionContext` on the
+      page); history search and highlight (English, Urdu); startup options; find in page
+- [ ] B3 / B13 / B9: tab sound and sleep; site permissions and pop-ups; bookmarks, reading list (with an offline copy),
+      home-screen shortcut with App Lock
+- [ ] B15 / B16 / B18: reader mode and read aloud; force dark, text size, Nastaliq; data saver, Save-Data, lite mode
+- [ ] B14: ad / tracker / site blocking; with both off, pages load as before
+- [ ] B11: incognito prop log, separate logins, profile deleted, nothing saved, FLAG_SECURE, App Lock, incognito cookies
+      for downloads, PDFs and Download image
+- [ ] B22: QR share / save / scan, uploads, notes, Open in app, snippets
+- [ ] B19: tools off = nothing injected; console, network, inspect, source, user agents, remote debugging, storage,
+      security, user scripts
+- [ ] B23: highlight and restore (the mark has only a style attribute), all highlights; draw; page alerts (forced job);
+      translate offer
+- [ ] B24: field direction (address bar, Notes; PIN, number, URL and e-mail fields stay left-to-right in Urdu), Urdu
+      searches, "Add Urdu keyboard", calendar, prayer times, search widget with App Lock
+- [ ] B17: screenshot and full-page capture (Wikipedia → Photos), print preview and Save as PDF, offline page in
+      airplane mode, every PDF choice and a 50-page PDF, Download image (also incognito)
+- [ ] B2: groups across 10 tabs through a force-stop, Urdu names, closed-group restore at the limit, timeline, incognito
+      groups never saved, B1's drag with no groups
 
 ## Lists kept for the owner
 
