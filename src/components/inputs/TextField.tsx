@@ -13,7 +13,7 @@ import { Pressable } from '@/components/base/Pressable';
 import { Text } from '@/components/base/Text';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
-import { inputDirectionStyle } from '@/utils/text-direction';
+import { fieldForcesLtr, inputDirectionStyle } from '@/utils/text-direction';
 import { spellCheckInputProps } from '@/browser/startup/spell-check';
 import { useSettingsStore } from '@/store/settings';
 
@@ -126,7 +126,10 @@ export const TextField = memo(
                 paddingVertical: theme.spacing[12],
               },
               // B24 #271: caret and alignment follow the text typed (Urdu right, English left; empty: the app's).
-              inputDirectionStyle(typeof value === 'string' ? value : '', rtl.isRtl),
+              // B24 fix: PIN, password, number, phone, URL and e-mail fields always left-to-right.
+              fieldForcesLtr(rest)
+                ? { textAlign: 'left', writingDirection: 'ltr' }
+                : inputDirectionStyle(typeof value === 'string' ? value : '', rtl.isRtl),
               inputStyle,
             ]}
             // B21 #237: Spell check off turns off the keyboard's suggestions and checking; a field's own props win.
