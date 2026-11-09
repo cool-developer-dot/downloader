@@ -2172,6 +2172,14 @@ Debug merged manifest regenerated and diffed against the build without the two l
 - Highlights restore at load end only (content added later by scripts isn't searched again); text spanning
   `<script>`/`<style>` boundaries or changed text isn't marked ("couldn't be found").
 - Draw on page covers the visible part of the page only (B17's full-page screenshot would be needed for more).
+- **For the owner:** restored highlights are `<mark>` elements a page's scripts can see, and B8's read script leaves
+  the selection's anchor in a page variable until Highlight reads it — no app data goes into the page, but a page can
+  tell which passages were highlighted (Closing section, open question 1).
+- `offerTranslate` is on by default: existing users see the offer once per site.
+- WorkManager brings `androidx.room` in (its own database; `MultiInstanceInvalidationService` in the merged
+  manifest). `unimodules-app-loader` 57.0.2: 93 KB installed.
+- Fix after the docs (`5356cc4`, on the B23 branch as `f88fcd4`): the task definition loads only the task libraries
+  at app start; the rest loads inside the task.
 
 ### Device test list for Faran (B23)
 
@@ -2255,6 +2263,10 @@ Debug merged manifest after it: 40 permissions (no new name); `SearchWidgetProvi
 - Prayer times for hand-typed coordinates use the phone's time zone (a place in another zone shows phone-local
   times). High-latitude places use adhan's default rule.
 - The URL column isn't folded (addresses are matched as typed); diacritics outside the folded set still count.
+- The field direction applies to every `TextField` in the app (PIN, numbers and URLs in the Urdu app follow their
+  text: left) — on the device list.
+- Fix after the docs (`125dd26`): the History / bookmarks clause moved to `title-url-search.ts` (same SQL), and the
+  Urdu SQL of History and both bookmark searches now runs in tests.
 
 ### Device test list for Faran (B24)
 
@@ -2289,6 +2301,115 @@ New libraries: adhan 4.4.6 (MIT; 1,002 KB installed, about 39 KB of code in the 
   package-lock: that one entry.
 Tested: unit 1848/1848 (2 workers), typecheck, lint 0/82, Kotlin vidorax-web 154/155 (known). Device: list above.
 ```
+
+## Closing — all 18 packages (Mega 7)
+
+Hamza's 18 browser packages, as they stand on `hamza/browser` (the combined branch, linear history). **16 built, 2 not
+built.** Every per-package branch below is on origin, pushed without force. All BLOCKED items are in each package's
+section; the open ones are repeated here.
+
+### Packages, branches and status
+
+| # | Package | Mega | Branch (origin) | Tip | Status | BLOCKED / open |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | B8 Selected text | 1 | `hamza/B8-selected-text` | `26d50b1` | Done | — |
+| 2 | B10 History | 1 | `hamza/B10-history` | `20a2cbe` | Done (its fix `0560084` rides in the B7 branch) | — |
+| 3 | B21 Startup and customization | 1 | `hamza/B21-startup` | `3f1b2ec` | Done (fixes `a2a2996`, `cd8ea31` ride in the B7 branch) | — |
+| 4 | B7 Find in page | 1 | `hamza/B7-find-in-page` | `cd8ea31` | Done | — |
+| 5 | B3 Tab sound and sleep | 2 | `hamza/B3-tab-sound` | `92cb8a3` | Done | — |
+| 6 | B13 Site permissions | 2 | `hamza/B13-site-permissions` | `6a4b2eb` | Done | — |
+| 7 | B9 Bookmarks | 2 | `hamza/B9-bookmarks` | `e64e0ca` | Done | Reading-list offline copies wait for B17 (hook `setReadingOfflineCopy`) |
+| 8 | B15 Reader mode | 3 | `hamza/B15-reader` | `3550891` | Done | — |
+| 9 | B16 Page display | 3 | `hamza/B16-page-display` | `b7c31c3` | Done (fixes `c3b4ade`, `03454cc` ride in the B18 branch) | — |
+| 10 | B18 Data saver and performance | 3 | `hamza/B18-data-saver` | `e0011eb` | Done | — |
+| — | B16 update: bundled Nastaliq (patch hook) | 5 | `hamza/B16-font` | `48f9daa` | Done | — |
+| — | B18 update: Save-Data header | 5 | `hamza/B18-save-data` | `6262f3d` | Done | — |
+| 11 | B14 Ad, tracker and site blocking | 5 | `hamza/B14-blocking` | `a64a7b0` | Done (speed fix added in Mega 7) | — |
+| 12 | B11 Incognito | 6 | `hamza/B11-incognito` | `48ce20a` | Done | The incognito profile prop reaching native (fails closed) — device check |
+| 13 | B22 Share, QR and upload | 6 | `hamza/B22-share-qr` | `181f286` | Done | Camera upload on a phone with no camera app at all (needs a patch change) |
+| 14 | B19 Developer tools | 7 | `hamza/B19-devtools` | `2fe8a03` | Done | — |
+| 15 | B23 Annotate and page alerts | 7 | `hamza/B23-annotate` | `f88fcd4` | Done (Draw on page uses B1's page picture: B17 missing) | Owner: highlights / page-detectability question below |
+| 16 | B24 Urdu, calendar and widgets | 7 | `hamza/B24-urdu-widgets` | `125dd26` | Done | — |
+| 17 | B17 Capture, print and PDF | — | none | — | **Not built** | Never assigned: no Mega in these sessions covered it |
+| 18 | B2 Tab groups and timeline | — | none | — | **Not built** | Never assigned |
+
+**B17 and B2:** no commit for either exists anywhere in this clone — searched every ref, the reflogs, dangling
+commits (`git fsck`), stashes and worktrees, plus the session transcripts. Those have prompts for Megas 1, 2, 3, 5,
+6 and 7, and **none for a Mega 4**. Owner: was Mega 4 run somewhere else? If not, B17 and B2 are still to do. B9's
+reading-list offline copies and B23's full-page drawing wait for B17.
+
+**How the Mega 1–4 branches were made (Mega 7):** each points at the package's last commit in the linear history
+(no cherry-picks), so their content is exactly what was built and checked on `hamza/browser`, with no duplicate SHAs.
+At each tip: typecheck clean and unit tests passing. The B15, B16 and B18 tips each showed one failure in a fresh
+checkout: the vendored-Readability byte test, because Windows checked the file out with CRLF line endings. With the
+committed bytes it passes (found, not fixed: a `.gitattributes` rule for that file).
+
+**The same change under two SHAs** (merge cleanly; the content is identical):
+
+- B14 speed fix: `a64a7b0` (B14 branch) = `8ab83f1` (browser)
+- B11 fixes: `bfb1769` + `48ce20a` (B11 branch) = `319d9e2` + `623ec3c` (browser)
+- B23 task fix: `f88fcd4` (B23 branch) = `5356cc4` (browser)
+
+### Merge order
+
+Merging `hamza/browser` alone brings in everything. Package by package, in this order (each includes the previous
+ones):
+
+B8 → B10 → B21 → B7 → B3 → B13 → B9 → B15 → B16-page-display → B18-data-saver → B16-font → B18-save-data → B14 →
+B11 → B22 → B19 → B23 → B24
+
+Dependencies: B23 depends on B8 (selection menu, read script) and on B1's snapshot (B17 not built). B22 depends on B8
+and B11. B14 and B16-font depend on the Mega 5 `interceptRequest` patch hook. B11 depends on the B11 patch change.
+
+### Open questions for the owner
+
+1. **Page detectability (B19, B23).**
+   - B23's restored highlights are `<mark data-vidorax-hl>` elements, so the page's own scripts can see which
+     passages the user highlighted.
+   - B8's read script leaves `window.__vidoraxSelectionContext` (the page's own text) until Highlight reads it.
+   - With Developer tools on, `window.__vidoraxConsole` is set.
+   - None of these hands app data to the page, but a page can notice VidoraX and read the user's highlight
+     choices. The card (marks on the page) and the "never hand app data to a page" rule pull in opposite
+     directions here; decide whether to keep it, or draw highlights outside the page DOM (not possible without a
+     patch change).
+2. **Defaults that change what existing users see:**
+   - `offerTranslate` is on, so a "Translate this page?" banner appears once per site.
+   - B24's text direction applies to **every** `TextField` in the app, not only the browser's.
+   - Everything else new defaults to today's behaviour.
+3. **B17 / B2** (above).
+
+### Combined device test checklist (Faran's final pass)
+
+Shared steps, done once:
+
+- [ ] One **release build** (`gradle.sh :app:assembleRelease`) installed over the seeded **1.1.0** build: the
+      database upgrades straight to **version 7** (profile databases to 5) with history, bookmarks, notes and
+      settings kept
+- [ ] **Merged manifest:** 40 permissions; new components only those listed in B22 (FileProvider, `<queries>`),
+      B23 (WorkManager, task manager, Room invalidation service) and B24 (search widget receiver)
+- [ ] One pass in **Urdu (RTL), Dark, TalkBack and font 1.3** over every new screen and sheet below
+- [ ] **Cold start**, start from a launch link, and one forced background task run (`adb shell cmd jobscheduler
+      run -f <package> <JOB_ID>`) — checks the task definition in `src/entry.js`
+
+Feature items (details in each package's list):
+
+- [ ] B8 / B10 / B21 / B7: selection Search / Save to notes / Highlight; history search, highlight (English and
+      Urdu), clear by range, export; startup options, toolbar, background photo; find in page
+- [ ] B3 / B13 / B9: tab sound and sleep, memory monitor; site permissions and pop-ups; bookmarks folders, import /
+      export, reading list, home-screen shortcut (with App Lock)
+- [ ] B15 / B16 / B18: reader mode and read aloud; force dark, text size, Nastaliq (bundled font in pages); data
+      saver, Save-Data header, lite mode, cache limit
+- [ ] B14: ad / tracker blocking on a news site; site blocking; with both blockers off, pages load as before
+- [ ] B11: incognito prop log line, separate logins, profile deleted after the last incognito tab, nothing saved
+      anywhere, FLAG_SECURE, App Lock on return, downloads with incognito cookies, violet bar
+- [ ] B22: QR share / save / scan, file and camera upload, notes, Open in app (Maps), form snippets
+- [ ] B19: tools off = nothing injected; console, network, inspect, source, user agents and widths, remote debugging
+      (off after restart), storage (incognito shows only its cookies), security, user scripts
+- [ ] B23: highlight and restore, all highlights; draw → Pictures/VidoraX and share; watch a page and force the job;
+      translate offer on Arabic / Persian / Urdu pages; nothing of these in incognito
+- [ ] B24: field direction (address bar, Notes, **PIN, numeric and URL fields in Urdu**), Eastern-digit address,
+      Urdu search in History / Bookmarks / Notes, "Add Urdu keyboard"; calendar (Intl or arithmetic, ±2, month view);
+      prayer times vs a published Lahore timetable; search widget light / dark / Urdu, with App Lock
 
 ## Lists kept for the owner
 
