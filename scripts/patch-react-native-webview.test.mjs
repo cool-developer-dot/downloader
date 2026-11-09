@@ -161,7 +161,27 @@ const VIEW_SOURCE = `    @Override
     }
 `;
 
-function createPackage(t, { client, manager, view = VIEW_SOURCE }) {
+// B11: excerpt of react-native-webview 13.16.1 android/src/newarch/.../RNCWebViewManager.java around the anchor.
+const NEWARCH_DIR = path.join('android', 'src', 'newarch', 'com', 'reactnativecommunity', 'webview');
+const NEWARCH_MANAGER = 'RNCWebViewManager.java';
+const NEWARCH_MANAGER_SOURCE = `    @NonNull
+    @Override
+    public String getName() {
+        return RNCWebViewManagerImpl.NAME;
+    }
+
+    @NonNull
+    @Override
+    protected RNCWebViewWrapper createViewInstance(@NonNull ThemedReactContext context) {
+        return mRNCWebViewManagerImpl.createViewInstance(context);
+    }
+
+    @Override
+    @ReactProp(name = "allowFileAccess")
+    public void setAllowFileAccess(RNCWebViewWrapper view, boolean value) {
+`;
+
+function createPackage(t, { client, manager, view = VIEW_SOURCE, newarch = null }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rnwv-patch-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.mkdirSync(path.join(dir, SOURCE_DIR), { recursive: true });
@@ -169,8 +189,14 @@ function createPackage(t, { client, manager, view = VIEW_SOURCE }) {
   fs.writeFileSync(path.join(dir, SOURCE_DIR, CLIENT), client);
   fs.writeFileSync(path.join(dir, SOURCE_DIR, MANAGER), manager);
   fs.writeFileSync(path.join(dir, SOURCE_DIR, VIEW), view);
+  if (newarch != null) {
+    fs.mkdirSync(path.join(dir, NEWARCH_DIR), { recursive: true });
+    fs.writeFileSync(path.join(dir, NEWARCH_DIR, NEWARCH_MANAGER), newarch);
+  }
   return dir;
 }
+
+const readNewarch = (dir) => fs.readFileSync(path.join(dir, NEWARCH_DIR, NEWARCH_MANAGER), 'utf8');
 
 function readSources(dir) {
   const read = (name) => {
@@ -324,6 +350,59 @@ test('B16: sources patched before the interceptRequest hook end up the same as a
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Already patched/);
   assert.deepEqual(readSources(observeOnly), migrated);
+});
+
+test('B11: the new-architecture manager hands the initial webProfile prop to beforeWebViewSetup', (t) => {
+  const dir = createPackage(t, { client: PRISTINE_CLIENT, manager: MANAGER_SOURCE, newarch: NEWARCH_MANAGER_SOURCE });
+
+  assert.deepEqual(patchReactNativeWebView(dir), [CLIENT, MANAGER, VIEW, NEWARCH_MANAGER, HOOKS]);
+  const manager = readNewarch(dir);
+  const { hooks } = readSources(dir);
+
+  // One 4-argument override; the pending name is set before super and cleared in finally.
+  assert.equal(occurrences(manager, 'protected RNCWebViewWrapper createViewInstance('), 2);
+  assert.match(
+    manager,
+    /RNCWebViewHooks\.setPendingWebProfile\(RNCWebViewHooks\.webProfileProp\(initialProps\)\);\s+try \{\s+return super\.createViewInstance\(reactTag, context, initialProps, stateWrapper\);\s+\} finally \{\s+RNCWebViewHooks\.setPendingWebProfile\(null\);\s+\}/,
+  );
+  // The dispatcher takes the pending name once; without one, normal WebViews get beforeWebViewSetup as before.
+  assert.match(hooks, /String webProfile = pendingWebProfile;\s+pendingWebProfile = null;/);
+  assert.match(hooks, /if \(webProfile != null\) \{\s+current\.beforeWebViewSetupInProfile\(webView, webProfile\);\s+\} else \{\s+current\.beforeWebViewSetup\(webView\);/);
+  assert.match(
+    hooks,
+    /default void beforeWebViewSetupInProfile\(@NonNull RNCWebView webView, @NonNull String webProfile\) \{\s+beforeWebViewSetup\(webView\);/,
+  );
+  assert.match(hooks, /import com\.facebook\.react\.uimanager\.ReactStylesDiffMap;/);
+  assert.ok(!/`/.test(hooks), 'no template backtick leaked into the Java source');
+
+  // Run twice: nothing changes.
+  const once = { ...readSources(dir), newarch: manager };
+  const result = runScript(dir);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /Already patched/);
+  assert.deepEqual({ ...readSources(dir), newarch: readNewarch(dir) }, once);
+});
+
+test('B11: a new-architecture manager without the anchor fails and writes nothing', (t) => {
+  const broken = NEWARCH_MANAGER_SOURCE.replace('mRNCWebViewManagerImpl.createViewInstance(context)', 'createIt(context)');
+  const dir = createPackage(t, { client: PRISTINE_CLIENT, manager: MANAGER_SOURCE, newarch: broken });
+
+  const result = runScript(dir);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /RNCWebViewManager\.java: anchor not found for "hand the initial webProfile prop to beforeWebViewSetup \(B11\)"/);
+  assert.deepEqual(readSources(dir), { client: PRISTINE_CLIENT, manager: MANAGER_SOURCE, view: VIEW_SOURCE, hooks: null });
+  assert.equal(readNewarch(dir), broken);
+});
+
+test('B11: a new-architecture directory without the manager file fails', (t) => {
+  const dir = createPackage(t, { client: PRISTINE_CLIENT, manager: MANAGER_SOURCE, newarch: NEWARCH_MANAGER_SOURCE });
+  fs.rmSync(path.join(dir, NEWARCH_DIR, NEWARCH_MANAGER));
+
+  const result = runScript(dir);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /RNCWebViewManager\.java not found/);
 });
 
 test('fails loudly and writes nothing when an anchor is missing', (t) => {

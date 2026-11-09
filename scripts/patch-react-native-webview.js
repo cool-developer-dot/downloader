@@ -9,6 +9,9 @@
  * B8: the page's text-selection menu goes through the hooks too (wrapSelectionMenu), so the module can add its items
  * to Android's own menu instead of replacing it. B16: right after observeRequest, interceptRequest may answer a request
  * itself (the bundled Nastaliq font; B14's blocking) — one shouldInterceptRequest override, observeRequest first.
+ * B11: the new-architecture RNCWebViewManager reads a WebView's initial `webProfile` prop (an incognito tab's
+ * temporary profile) in the 4-argument createViewInstance and hands it to beforeWebViewSetup; without the prop
+ * nothing changes.
  *
  * Runs at postinstall and is idempotent. Every edit is an exact text replacement: when an anchor is missing, for example
  * after upgrading react-native-webview, it exits non-zero rather than shipping a browser without media detection.
@@ -26,6 +29,9 @@ const CLIENT = 'RNCWebViewClient.java';
 const MANAGER = 'RNCWebViewManagerImpl.kt';
 const VIEW = 'RNCWebView.java';
 const HOOKS = 'RNCWebViewHooks.java';
+// B11: the new-architecture view manager (the app builds with newArchEnabled=true).
+const NEWARCH_DIR = path.join('android', 'src', 'newarch', 'com', 'reactnativecommunity', 'webview');
+const NEWARCH_MANAGER = 'RNCWebViewManager.java';
 
 const HOOKS_SOURCE = `package com.reactnativecommunity.webview;
 
@@ -41,6 +47,7 @@ import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 
 import com.facebook.common.logging.FLog;
+import com.facebook.react.uimanager.ReactStylesDiffMap;
 
 import java.util.Collections;
 import java.util.Map;
@@ -58,6 +65,14 @@ public final class RNCWebViewHooks {
          * clients), which is when a WebView profile may still be chosen. B20.
          */
         void beforeWebViewSetup(@NonNull RNCWebView webView);
+
+        /**
+         * Main thread, instead of beforeWebViewSetup for a WebView created with a "webProfile" prop (B11: an incognito
+         * tab's temporary profile), at the same moment. Default: beforeWebViewSetup, as for any other WebView.
+         */
+        default void beforeWebViewSetupInProfile(@NonNull RNCWebView webView, @NonNull String webProfile) {
+            beforeWebViewSetup(webView);
+        }
 
         /** Main thread, before the WebView loads anything. */
         void onWebViewCreated(@NonNull RNCWebView webView);
@@ -104,6 +119,11 @@ public final class RNCWebViewHooks {
     // Read without a lock: observeRequest runs for every request on several network threads.
     private static volatile Listener listener;
 
+    // B11: the "webProfile" prop of the WebView RNCWebViewManager is creating right now (main thread; set just before
+    // and cleared just after its createViewInstance, taken by beforeWebViewSetup).
+    @Nullable
+    private static String pendingWebProfile;
+
     // The document-start registration of each WebView's injectedJavaScriptBeforeContentLoaded (main thread only).
     private static final Map<RNCWebView, ScriptHandler> documentStartScripts = new WeakHashMap<>();
 
@@ -121,15 +141,40 @@ public final class RNCWebViewHooks {
     }
 
     public static void beforeWebViewSetup(@NonNull RNCWebView webView) {
+        String webProfile = pendingWebProfile;
+        pendingWebProfile = null;
         Listener current = listener;
         if (current == null) {
             return;
         }
         try {
-            current.beforeWebViewSetup(webView);
+            if (webProfile != null) {
+                current.beforeWebViewSetupInProfile(webView, webProfile);
+            } else {
+                current.beforeWebViewSetup(webView);
+            }
         } catch (RuntimeException e) {
             logFailure("beforeWebViewSetup", e);
         }
+    }
+
+    /** B11: the "webProfile" initial prop, or null (absent, null, empty, or not a string). */
+    @Nullable
+    public static String webProfileProp(@Nullable ReactStylesDiffMap props) {
+        if (props == null || !props.hasKey("webProfile") || props.isNull("webProfile")) {
+            return null;
+        }
+        try {
+            String value = props.getString("webProfile");
+            return value == null || value.isEmpty() ? null : value;
+        } catch (RuntimeException e) {
+            return null;
+        }
+    }
+
+    /** B11: main thread; RNCWebViewManager sets it around creating a WebView (null clears it). */
+    public static void setPendingWebProfile(@Nullable String webProfile) {
+        pendingWebProfile = webProfile;
     }
 
     public static void onWebViewCreated(@NonNull RNCWebView webView) {
@@ -411,6 +456,36 @@ const EDITS = {
     }`,
     },
   ],
+  [NEWARCH_MANAGER]: [
+    {
+      name: 'hand the initial webProfile prop to beforeWebViewSetup (B11)',
+      from: `    @NonNull
+    @Override
+    protected RNCWebViewWrapper createViewInstance(@NonNull ThemedReactContext context) {
+        return mRNCWebViewManagerImpl.createViewInstance(context);
+    }`,
+      to: `    @NonNull
+    @Override
+    protected RNCWebViewWrapper createViewInstance(@NonNull ThemedReactContext context) {
+        return mRNCWebViewManagerImpl.createViewInstance(context);
+    }
+
+    @NonNull
+    @Override
+    protected RNCWebViewWrapper createViewInstance(
+            int reactTag,
+            @NonNull ThemedReactContext context,
+            @Nullable com.facebook.react.uimanager.ReactStylesDiffMap initialProps,
+            @Nullable com.facebook.react.uimanager.StateWrapper stateWrapper) {
+        RNCWebViewHooks.setPendingWebProfile(RNCWebViewHooks.webProfileProp(initialProps));
+        try {
+            return super.createViewInstance(reactTag, context, initialProps, stateWrapper);
+        } finally {
+            RNCWebViewHooks.setPendingWebProfile(null);
+        }
+    }`,
+    },
+  ],
   [VIEW]: [
     {
       name: 'let the hook add items to the text-selection menu',
@@ -487,6 +562,17 @@ function patchReactNativeWebView(packageDir) {
     const original = fs.readFileSync(file, 'utf8');
     return { file, original, patched: patchSource(name, original, version) };
   });
+  // B11: the new-architecture manager, when the package ships new-architecture sources (13.16.1 does); once the
+  // directory exists, a missing file or anchor fails like any other edit.
+  const newarchDir = path.join(packageDir, NEWARCH_DIR);
+  if (fs.existsSync(newarchDir)) {
+    const file = path.join(newarchDir, NEWARCH_MANAGER);
+    if (!fs.existsSync(file)) {
+      throw new Error(`${NEWARCH_MANAGER} not found in ${newarchDir} (react-native-webview ${version}).`);
+    }
+    const original = fs.readFileSync(file, 'utf8');
+    results.push({ file, original, patched: patchSource(NEWARCH_MANAGER, original, version) });
+  }
   const hooksFile = path.join(sourceDir, HOOKS);
   results.push({
     file: hooksFile,
