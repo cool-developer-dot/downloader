@@ -2206,6 +2206,90 @@ New libraries: expo-background-task 57.0.22 (MIT, 319 KB installed) + expo-task-
 Tested: unit 1837/1837 (2 workers), typecheck, lint 0/82, Kotlin vidorax-web 150/151 (known). Device: list above.
 ```
 
+## B24 — Urdu, calendar and widgets (#271, #269, #270, #65)
+
+Mega 7. Two native commits (Kotlin tests), the feature commit. No database change (`DATABASE_VERSION` stays 7). No
+patch-script change. One library (adhan). Gate (2 workers): unit 1848/1848, typecheck, lint 0 / 82, patch 10/10,
+Kotlin vidorax-web 154/155 (the known `WebViewSnapshotsTest`). Merged manifest: 40 permissions (unchanged), plus the
+widget receiver.
+
+| # | Feature | How |
+| --- | --- | --- |
+| #271 | Caret and alignment follow the text direction in the address bar and app fields | `inputDirectionStyle` (`utils/text-direction.ts`): the first strong letter decides (Eastern digits are weak); an empty field follows the app. Applied in the omnibox input (SuggestionOverlay) and in the shared `TextField` (a field's own `inputStyle` still wins) |
+| #271 | Mixed Urdu and English, correct encoding in searches; Eastern digits | Searches keep the text as typed and are percent-encoded by the engine's URL (tested with `لاہور weather ۲۰۲۶`). An address typed with Eastern digits and no Arabic-script letters (`۱۹۲.۱۶۸.۱.۱`, `example.com/۲۰۲۶`) is read with ASCII digits (`classifyNavigationInput`) |
+| #271 | Urdu matching in history, bookmark and tab search | The tab search already folded Urdu (`utils/search-text.ts`). History, bookmarks (both searches) and notes now fold the column in SQL (`urdu-fold-sql.ts`: nested `replace()` for ي/ى/ئ→ی, ك→ک, ه/ە/ة→ہ, أ/إ/آ/ٱ→ا, ؤ→و, both Eastern digit sets → 0–9, harakat / superscript alef / tatweel removed) and compare with the query folded by `foldSearchText` — **only when the query has Arabic-script letters or Eastern digits**, so every other search is unchanged. The History highlight marks exactly the folded match (index map) |
+| #271 | "Add Urdu keyboard" hint | Browser settings → Language input: native `hasUrduKeyboard()` (an enabled input method with an enabled `ur` subtype; no permission); when none, a row opens Android's keyboard settings (App Lock grace); checked again on return |
+| #269 | Gregorian + Hijri on the start page, Urdu month names in the Urdu app, ±2-day adjustment, month view, show / hide | `calendar/hijri.ts`. **Intl's Umm al-Qura only if it works on the phone**: checked once by formatting 18 February 2026, which must give 1 Ramadan 1447; otherwise the **bundled tabular calculation** (civil epoch; can differ from Umm al-Qura by a day — the setting says which is in use). Tested: the Intl path against published Umm al-Qura dates, the bundled one against Intl `islamic-civil` for every day of 2000–2029 and within a day of the published dates, the detector with a fake Intl. Urdu digits in the Urdu app. Month view: Monday-first grid, Hijri day under each day, previous / next month. Off by default |
+| #270 | Prayer times: adhan, computed on the phone; bundled cities or typed coordinates (no location permission); Karachi method by default; Asr Hanafi (default) / Shafi; Urdu names; countdown; show / hide; no sound, no notifications | `prayer/prayer-times.ts`: adhan `CalculationMethod.Karachi()` (Fajr / Isha 18°; adhan adds 1 minute to Dhuhr). 20 cities (14 in Pakistan, Makkah, Madinah, Dubai, London, New York, Toronto) with their time zones; typed "lat, lng" (Urdu digits and ، accepted) use the phone's zone. The card shows the six times and "<prayer> in h:mm" (every 30 s). Tested against AlAdhan's published times for Lahore and London on 15 March 2026 (Karachi method, Hanafi), within 2 minutes. Off by default |
+| #65 | Search widget, resizable 4×1, light / dark / Urdu label; a tap opens a new tab with the address bar focused, after App Lock | Native `widget/SearchWidget.kt` (built like `DownloadsWidgetProvider`); JS `urdu/search-widget.service.ts` (as B9's shortcuts: waits for App Lock, new start-page tab, `requestAddressBarFocus`) |
+
+### Manifest change (by hand, for Faran)
+
+`modules/vidorax-web/android/src/main/AndroidManifest.xml`:
+
+```xml
+<receiver
+  android:name="com.vidorax.web.widget.SearchWidgetProvider"
+  android:exported="false"
+  android:label="@string/vidorax_search_widget_label">
+  <intent-filter>
+    <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+  </intent-filter>
+  <meta-data android:name="android.appwidget.provider" android:resource="@xml/vidorax_search_widget_info" />
+</receiver>
+```
+
+Debug merged manifest after it: 40 permissions (no new name); `SearchWidgetProvider` present.
+
+### Native (Faran to review)
+
+- **d596da5** `widget/SearchWidget.kt`, `SearchWidgetProvider.kt`, layout / info / drawables / strings (values,
+  values-night, values-ur), the receiver above; `consumeSearchWidgetTap()` + event `onSearchWidget`
+  (private action `com.vidorax.web.action.SEARCH_WIDGET`, `FLAG_IMMUTABLE`, handed out once per intent). Test
+  `SearchWidgetTest` (3).
+- **959294e** `keyboard/UrduKeyboards.kt`: `hasUrduKeyboard()`, `openKeyboardSettings()`. Test `UrduKeyboardsTest`.
+
+### Found, not fixed
+
+- Pakistan's Hijri date follows local moon sighting; the ±2-day adjustment is manual.
+- Prayer times for hand-typed coordinates use the phone's time zone (a place in another zone shows phone-local
+  times). High-latitude places use adhan's default rule.
+- The URL column isn't folded (addresses are matched as typed); diacritics outside the folded set still count.
+
+### Device test list for Faran (B24)
+
+- [ ] Urdu app: address bar with an English address (left) and Urdu search (right), caret follows; English app with
+      Urdu typed; a TextField (Notes edit) both ways
+- [ ] Search `لاہور weather ۲۰۲۶` (encoded, results right); open `۱۹۲.۱۶۸.۱.۱` (router page); History / Bookmarks /
+      Notes search with Arabic ك/ي typed for Urdu titles, and the History highlight
+- [ ] Language input: without an Urdu keyboard → "Add Urdu keyboard" opens keyboard settings; add Gboard اردو, come
+      back → "An Urdu keyboard is on"
+- [ ] Calendar card on, Urdu and English, Urdu digits; the setting says Umm al-Qura (Intl) or arithmetic on this
+      phone; ±2 adjustment; month view previous / next; TalkBack reads each day with its Hijri date
+- [ ] Prayer card: Lahore vs a published timetable for today; Shafi vs Hanafi Asr; typed coordinates; countdown
+      ticks; no sound, no notification
+- [ ] Widget: add from the launcher (4×1, resize sideways), light and dark wallpapers, Urdu phone language label; tap
+      with App Lock on → PIN, then a new tab with the keyboard up; tap while the app is open
+- [ ] Release build; merged manifest 40 permissions; upgrade over Mega 6 (settings defaults off)
+
+### Handoff note
+
+```
+B24 Urdu, calendar and widgets — done
+Commits: d596da5 (B24: native — search widget), 959294e (B24: native — Urdu keyboard check), ade8e13 (feature),
+  <docs: this commit>
+Native code to review: widget/SearchWidget.kt + SearchWidgetProvider.kt (+ resources), keyboard/UrduKeyboards.kt.
+  Tests SearchWidgetTest 3, UrduKeyboardsTest 1. No patch change.
+Manifest: modules/vidorax-web AndroidManifest.xml — receiver com.vidorax.web.widget.SearchWidgetProvider (by hand,
+  not exported). Merged manifest: 40 permissions, unchanged.
+Database: no change (DATABASE_VERSION 7)
+New settings: showHijriCalendar false, hijriAdjust 0, showPrayerTimes false, prayerCity 'lahore', prayerCoords '',
+  prayerAsr 'hanafi'
+New libraries: adhan 4.4.6 (MIT; 1,002 KB installed, about 39 KB of code in the bundle, 15 KB minified).
+  package-lock: that one entry.
+Tested: unit 1848/1848 (2 workers), typecheck, lint 0/82, Kotlin vidorax-web 154/155 (known). Device: list above.
+```
+
 ## Lists kept for the owner
 
 ### Native changes for Faran to review
@@ -2313,6 +2397,12 @@ Tested: unit 1837/1837 (2 workers), typecheck, lint 0/82, Kotlin vidorax-web 150
 | `offerTranslate` | B23 | `true` | on / off |
 | `translateNeverLanguages` | B23 | `'[]'` | JSON list of language codes |
 | `translateNeverSites` | B23 | `'[]'` | JSON list of hosts |
+| `showHijriCalendar` | B24 | `false` | on / off |
+| `hijriAdjust` | B24 | `0` | −2 … 2 days |
+| `showPrayerTimes` | B24 | `false` | on / off |
+| `prayerCity` | B24 | `'lahore'` | one of 20 bundled cities |
+| `prayerCoords` | B24 | `''` | "lat, lng" (overrides the city when valid) |
+| `prayerAsr` | B24 | `'hanafi'` | `'hanafi'` / `'shafi'` |
 
 ### Found, not fixed
 

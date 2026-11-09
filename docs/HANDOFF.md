@@ -2204,6 +2204,10 @@ Based on the local `integration/final-check` (not pushed). One line per package:
 - **B23 Annotate and page alerts.** Highlights (B8 menu item, text anchors, restored, all-highlights screen), draw on
   page (B1's picture — B17 not built), page change alerts (expo-background-task, no cookies, Wi-Fi only, 20 pages),
   language detection + translate offer. Native e093261. DATABASE_VERSION 7. Merged manifest: 40 permissions.
+- **B24 Urdu, calendar and widgets.** Field direction follows the text, Eastern-digit addresses, Urdu matching in the
+  SQL searches, "Add Urdu keyboard" hint; Gregorian + Hijri and prayer times on the start page (off by default; adhan
+  4.4.6, MIT); the 4×1 search widget (receiver in the vidorax-web manifest). Native d596da5, 959294e. No database
+  change.
 
 ### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
 

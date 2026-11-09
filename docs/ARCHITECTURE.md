@@ -880,6 +880,11 @@ Each package is described in `docs/work-log/hamza-browser.md`; this is the shape
   table `page_watches`, `fetchPage` without cookies, the `expo-background-task` worker defined from
   `src/bootstrap/define-page-alert-task.ts` via `src/entry.js`), `src/browser/language/` (detection, translate offer).
   B8's read script also leaves the selection's anchor (additive).
+- **Urdu, calendar and widgets (B24).** `utils/text-direction.ts` (field direction, Eastern digits),
+  `storage/repositories/urdu-fold-sql.ts` (Urdu folding in SQL searches, only for Arabic-script queries),
+  `src/browser/calendar/` (Hijri: Intl Umm al-Qura if it works, else tabular; start-page cards and month view),
+  `src/browser/prayer/` (adhan, cities), `src/browser/urdu/search-widget.service.ts`. Native VidoraWeb
+  `widget/SearchWidget*.kt` (receiver in the module manifest), `keyboard/UrduKeyboards.kt`.
 - **Browser settings** live in `SettingsState` as primitives (so Settings Backup carries them and Reset restores them);
   `browser/settings/browser-setting-keys.ts` lists them and `browser-settings.audit.test.ts` checks persistence,
   backup and reset; `browser-setting-choices.ts` gives Backup the allowed values of each choice setting.
