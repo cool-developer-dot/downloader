@@ -400,6 +400,12 @@ export interface VidoraWebModuleApi {
   isAppInstalled?(app: string): boolean;
   /** B22 #273: opens an https page in that app. False when not installed or refused. */
   openInApp?(app: string, url: string): Promise<boolean>;
+  /**
+   * B23 #279: draws the strokes (JSON `[{ color: '#RRGGBB', width, points: [x, y, …] }]`, picture pixels) on the picture
+   * at `imageUri` (only from `<cache>/drawings/`), then saves it to Pictures/VidoraX (`'save'`, Android 10+) or opens
+   * the share sheet (`'share'`). Resolves whether it worked.
+   */
+  exportDrawing?(imageUri: string, strokesJson: string, mode: 'save' | 'share', name: string): Promise<boolean>;
   /** B19 #228: remote debugging on / off (process-wide; a new app process always starts with it off). */
   setRemoteDebugging?(enabled: boolean): Promise<boolean>;
   /** B19 #230: the page's cookies from the tab's own profile (incognito or normal). */

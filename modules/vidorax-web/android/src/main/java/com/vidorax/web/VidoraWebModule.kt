@@ -42,6 +42,7 @@ import com.vidorax.web.profiles.WebProfiles
 import com.vidorax.web.security.SecureWindow
 import com.vidorax.web.apps.AppLinks
 import com.vidorax.web.devtools.RemoteDebugging
+import com.vidorax.web.draw.DrawingExport
 import com.vidorax.web.devtools.SiteCookies
 import com.vidorax.web.scanner.QrScanner
 import com.vidorax.web.share.QrImage
@@ -409,6 +410,37 @@ class VidoraWebModule : Module() {
       val bitmap = QrImage.render(rows, 12) ?: return@AsyncFunction false
       val safe = name.replace(Regex("[^A-Za-z0-9 ._-]"), "_").take(80).ifBlank { "VidoraX QR" }
       QrImage.saveToGallery(context, bitmap, "$safe.png").also { bitmap.recycle() }
+    }
+
+    // B23 #279: the page picture with the user's strokes, saved to Pictures/VidoraX ("save") or shared ("share").
+    AsyncFunction("exportDrawing") { imageUri: String, strokesJson: String, mode: String, name: String ->
+      val source = DrawingExport.sourceFile(context, imageUri) ?: return@AsyncFunction false
+      val base = DrawingExport.load(source) ?: return@AsyncFunction false
+      val bitmap = DrawingExport.render(base, DrawingExport.parseStrokes(strokesJson))
+      base.recycle()
+      try {
+        if (mode == "save") {
+          val safe = name.replace(Regex("[^A-Za-z0-9 ._-]"), "_").take(80).ifBlank { "VidoraX drawing" }
+          return@AsyncFunction QrImage.saveToGallery(context, bitmap, "$safe.png")
+        }
+        val file = DrawingExport.writeShareFile(context, bitmap)
+        val uri = androidx.core.content.FileProvider.getUriForFile(context, "${context.packageName}.vidorax.web.files", file)
+        val send = Intent(Intent.ACTION_SEND)
+          .setType("image/png")
+          .putExtra(Intent.EXTRA_STREAM, uri)
+          .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val chooser = Intent.createChooser(send, name.take(120)).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val activity = appContext.currentActivity
+        try {
+          if (activity != null) activity.startActivity(chooser)
+          else context.startActivity(chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+          true
+        } catch (_: Exception) {
+          false
+        }
+      } finally {
+        bitmap.recycle()
+      }
     }
 
     // B22 #30: the Google code scanner (no CAMERA permission). { status: scanned | cancelled | unavailable, text }.
