@@ -9,6 +9,7 @@ import { useBrowserStore } from '@/browser/stores';
 import { isBrowserRouteVisible, subscribeBrowserRouteVisible } from '@/browser/webview/webview-activity';
 import { translate } from '@/localization';
 import { useAppLockStore } from '@/security/app-lock/app-lock.store';
+import { isExpectingSystemScreen } from '@/security/app-lock/expected-system-screen';
 
 import {
   bindIncognitoDownloadNotifier,
@@ -167,6 +168,11 @@ export async function verifyIncognitoWebView(tabId: string, viewTag: number): Pr
   return false;
 }
 
+/** BrowserWebView unmounted the tab's WebView (sleep, mount pool): its next WebView is checked again. */
+export function forgetIncognitoWebView(tabId: string | undefined): void {
+  if (tabId && verified.delete(tabId)) emit();
+}
+
 /** Whether an incognito tab's WebView was confirmed in the session's profile (always true for a normal tab). */
 export function useIncognitoVerified(tabId: string | undefined): boolean {
   useSyncExternalStore(
@@ -211,8 +217,9 @@ export function setTabSwitcherOpen(open: boolean): void {
 function applySecure(): void {
   const state = useBrowserStore.getState();
   const inFront = isIncognitoTabId(state.activeTabId);
+  // Not tied to the app being in front: Android takes the recent-apps picture while the app is being hidden, so the
+  // flag must still be on then.
   const secure =
-    AppState.currentState === 'active' &&
     isBrowserRouteVisible() &&
     (inFront || (switcherOpen && state.tabs.some((tab) => isIncognitoTabId(tab.id))));
   if (secure === lastSecure) return;
@@ -253,7 +260,8 @@ export function ensureIncognito(): () => void {
   });
   const unsubscribeRoute = subscribeBrowserRouteVisible(applySecure);
   const appState: NativeEventSubscription = AppState.addEventListener('change', (state) => {
-    if (state !== 'active' && hasIncognitoTabs()) needsUnlock = true;
+    // A system screen VidoraX opened itself (file chooser through a wrapper, QR share, the code scanner) doesn't relock.
+    if (state !== 'active' && hasIncognitoTabs() && !isExpectingSystemScreen()) needsUnlock = true;
     applySecure();
     if (state === 'active') lockIfReturning();
   });

@@ -45,6 +45,7 @@ import { useSettingsStore } from '@/store/settings';
 
 import type { BrowserMenuFeedback, BrowserMenuItemModel } from './types';
 import { isIncognitoAvailable, openIncognitoTab } from '@/browser/incognito/incognito.service';
+import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
 import { openQrSheet } from '@/browser/share-qr/share-qr.service';
 import { savePageNote } from '@/browser/notes/notes.service';
 
@@ -274,7 +275,10 @@ export function useBrowserMenuActions({
       return;
     }
     onClose();
-    const result = useBrowserStore.getState().createTab({ url: translateUrl });
+    // B11: translating an incognito page stays in incognito.
+    const result = useBrowserStore
+      .getState()
+      .createTab({ url: translateUrl, ...(isIncognitoInFront() ? { incognito: true } : {}) });
     if (result.status === 'LIMIT_REACHED') {
       announceTabsLimitReached();
     }

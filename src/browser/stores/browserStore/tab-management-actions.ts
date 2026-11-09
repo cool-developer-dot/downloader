@@ -7,6 +7,7 @@ import { MAX_MOUNTED_WEBVIEWS, MAX_OPEN_TABS } from '@/browser/tabs/constants';
 import { applyMountStates, reconcileMountPool } from '@/browser/tabs/mount-pool';
 import { createHomeTab, createTabFromPersisted } from '@/browser/tabs/tab-factory';
 import { createIncognitoTabId, createTabId } from '@/browser/tabs/tab-id';
+import { isIncognitoTabId } from '@/browser/incognito/incognito-state';
 import { moveTabBy, moveTabTo, setTabPinned, type ClosedTabSlot } from '@/browser/tabs/tab-list-ops';
 import { planBackgroundTab, planCloseMany, planDuplicate, planRestore } from '@/browser/tabs/tab-management-plans';
 import { shouldPersistForTab } from '@/browser/tabs/tab-privacy';
@@ -231,6 +232,8 @@ export function createTabManagementActions(
           desktopModeSource: source.desktopModeSource,
           createdAt: now,
           lastActiveAt: now,
+          // B11: a copy of an incognito tab is incognito too.
+          ...(isIncognitoTabId(source.id) ? { id: createIncognitoTabId() } : {}),
         });
       });
       if (plan.status === 'NOT_FOUND') {
