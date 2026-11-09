@@ -43,6 +43,7 @@ import com.vidorax.web.security.SecureWindow
 import com.vidorax.web.apps.AppLinks
 import com.vidorax.web.devtools.RemoteDebugging
 import com.vidorax.web.draw.DrawingExport
+import com.vidorax.web.print.PagePrint
 import com.vidorax.web.keyboard.UrduKeyboards
 import com.vidorax.web.widget.SearchWidget
 import com.vidorax.web.devtools.SiteCookies
@@ -97,6 +98,7 @@ class VidoraWebModule : Module() {
   @Volatile private var hasWebDownloadListeners = false
   @Volatile private var hasSharedTextListeners = false
   @Volatile private var hasShortcutListeners = false
+
 
   // B24 #65: a search-widget tap while JS was not listening, handed out by consumeSearchWidgetTap.
   @Volatile private var hasSearchWidgetListeners = false
@@ -467,6 +469,13 @@ class VidoraWebModule : Module() {
         bitmap.recycle()
       }
     }
+
+    // B17 #176 / #177: Print and Save as PDF — Android's print dialog for this tab's page.
+    AsyncFunction("printPage") { viewTag: Int, title: String, url: String ->
+      val webView = webViewFor(viewTag) ?: return@AsyncFunction false
+      val activity = appContext.currentActivity ?: return@AsyncFunction false
+      PagePrint.print(activity, webView, PagePrint.jobName(title, url))
+    }.runOnQueue(Queues.MAIN)
 
     // B22 #30: the Google code scanner (no CAMERA permission). { status: scanned | cancelled | unavailable, text }.
     AsyncFunction("scanQrCode") { promise: Promise ->

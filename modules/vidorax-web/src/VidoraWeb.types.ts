@@ -408,6 +408,8 @@ export interface VidoraWebModuleApi {
    * the share sheet (`'share'`). Resolves whether it worked.
    */
   exportDrawing?(imageUri: string, strokesJson: string, mode: 'save' | 'share', name: string): Promise<boolean>;
+  /** B17 #176 / #177: Android's print dialog (printers and Save as PDF) for this tab's page. */
+  printPage?(viewTag: number, title: string, url: string): Promise<boolean>;
   /** B24 #65: true once when the search widget started or brought back the app. */
   consumeSearchWidgetTap?(): boolean;
   /** B24 #271: an enabled keyboard has an Urdu subtype. */
