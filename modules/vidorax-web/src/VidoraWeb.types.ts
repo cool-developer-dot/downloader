@@ -410,6 +410,8 @@ export interface VidoraWebModuleApi {
   exportDrawing?(imageUri: string, strokesJson: string, mode: 'save' | 'share', name: string): Promise<boolean>;
   /** B17 #176 / #177: Android's print dialog (printers and Save as PDF) for this tab's page. */
   printPage?(viewTag: number, title: string, url: string): Promise<boolean>;
+  /** B17 #175: the whole page as one JPEG in `<cache>/drawings/` (status ok / single / tooLong / failed). */
+  captureFullPage?(viewTag: number, maxWidth: number): Promise<{ status: 'ok' | 'single' | 'tooLong' | 'failed'; uri?: string | null; width?: number; height?: number }>;
   /** B17 #178: saves the page as a web archive for `profile` under `id`; resolves its size in bytes (0 = failed). */
   saveOfflinePage?(viewTag: number, profile: string, id: string): Promise<number>;
   /** B17 #178: opens a saved page read-only; resolves when the viewer closes (false: couldn't open). */

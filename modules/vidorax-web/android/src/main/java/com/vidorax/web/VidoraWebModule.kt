@@ -44,6 +44,7 @@ import com.vidorax.web.apps.AppLinks
 import com.vidorax.web.devtools.RemoteDebugging
 import com.vidorax.web.draw.DrawingExport
 import com.vidorax.web.print.PagePrint
+import com.vidorax.web.capture.FullPageCapture
 import com.vidorax.web.offline.OfflinePageActivity
 import com.vidorax.web.offline.OfflinePages
 import com.vidorax.web.keyboard.UrduKeyboards
@@ -448,8 +449,9 @@ class VidoraWebModule : Module() {
     AsyncFunction("exportDrawing") { imageUri: String, strokesJson: String, mode: String, name: String ->
       val source = DrawingExport.sourceFile(context, imageUri) ?: return@AsyncFunction false
       val base = DrawingExport.load(source) ?: return@AsyncFunction false
-      val bitmap = DrawingExport.render(base, DrawingExport.parseStrokes(strokesJson))
-      base.recycle()
+      val strokes = DrawingExport.parseStrokes(strokesJson)
+      // B17: a screenshot or full-page capture has no strokes — the picture as it is (no second copy in memory).
+      val bitmap = if (strokes.isEmpty()) base else DrawingExport.render(base, strokes).also { base.recycle() }
       try {
         if (mode == "save") {
           val safe = name.replace(Regex("[^A-Za-z0-9 ._-]"), "_").take(80).ifBlank { "VidoraX drawing" }
@@ -480,6 +482,24 @@ class VidoraWebModule : Module() {
       val webView = webViewFor(viewTag) ?: return@AsyncFunction false
       val activity = appContext.currentActivity ?: return@AsyncFunction false
       PagePrint.print(activity, webView, PagePrint.jobName(title, url))
+    }.runOnQueue(Queues.MAIN)
+
+    // B17 #175: the whole page as one picture (stitched screens) in <cache>/drawings/, for exportDrawing to save / share.
+    AsyncFunction("captureFullPage") { viewTag: Int, maxWidth: Int, promise: Promise ->
+      val webView = webViewFor(viewTag) ?: return@AsyncFunction promise.resolve(mapOf("status" to "failed"))
+      val dir = java.io.File(context.cacheDir, DrawingExport.DIR).apply { mkdirs() }
+      dir.listFiles()?.filter { it.name.startsWith("fullpage-") }?.forEach { it.delete() }
+      val target = java.io.File(dir, "fullpage-${System.currentTimeMillis()}.jpg")
+      FullPageCapture.capture(webView, maxWidth.coerceIn(320, 1080), target) { result ->
+        promise.resolve(
+          mapOf(
+            "status" to result.status,
+            "uri" to result.file?.let { "file://${it.path}" },
+            "width" to result.width,
+            "height" to result.height,
+          ),
+        )
+      }
     }.runOnQueue(Queues.MAIN)
 
     // B17 #178: Save page offline — a web archive in <filesDir>/offline-pages/<profile>/<id>.mht; resolves its size.
