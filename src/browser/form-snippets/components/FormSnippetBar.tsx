@@ -33,7 +33,8 @@ export const FormSnippetBar = memo(function FormSnippetBar({ visible }: { visibl
         position: 'absolute',
         left: 0,
         right: 0,
-        bottom: keyboard,
+        // The app window is resized for the keyboard (adjustResize): the bottom of the screen is the keyboard's top.
+        bottom: 0,
         zIndex: 50,
         backgroundColor: theme.colors.card,
         borderTopWidth: 1,

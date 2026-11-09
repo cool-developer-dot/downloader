@@ -6,6 +6,7 @@ import { getVidoraWeb, isVidoraWebAvailable } from '@modules/vidorax-web';
 import { getSearchEngine } from '@/browser/search/search-engines';
 import { loadUrlActiveTab } from '@/browser/services';
 import { translate } from '@/localization';
+import { withExpectedSystemScreen } from '@/security/app-lock/expected-system-screen';
 
 import { classifyScan, qrRows, type ScanResult } from './qr-code';
 
@@ -74,7 +75,13 @@ export function canSaveQrToGallery(): boolean {
 export async function shareQrImage(): Promise<void> {
   const qr = state.qr;
   if (!qr) return;
-  const ok = await web()?.shareQrImage?.(qr.rows, qr.title || qr.url).catch(() => false);
+  // The share sheet is a system screen VidoraX opened: App Lock (and incognito's lock) don't relock for it.
+  const ok = await withExpectedSystemScreen(async () => {
+    const shared = await web()?.shareQrImage?.(qr.rows, qr.title || qr.url).catch(() => false);
+    // The native call returns as the sheet opens; the app leaves just after.
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    return shared;
+  });
   if (!ok) notify(translate('browserShare.qrShareFailed'));
 }
 
@@ -88,7 +95,9 @@ export async function saveQrImage(): Promise<void> {
 /** #30: scan, then decide what the code is. */
 export async function scanQrCode(): Promise<void> {
   const api = web();
-  const result = api?.scanQrCode ? await api.scanQrCode().catch(() => null) : null;
+  const result = api?.scanQrCode
+    ? await withExpectedSystemScreen(() => api.scanQrCode!().catch(() => null))
+    : null;
   if (!result || result.status === 'unavailable') {
     notify(translate('browserShare.scanUnavailable'));
     return;
