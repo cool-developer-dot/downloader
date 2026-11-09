@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 import vm from 'node:vm';
 
-import { SELECTION_READ_SCRIPT } from '../selection/selection-read-script.ts';
+import { SELECTION_CONTEXT_SEPARATOR, SELECTION_READ_SCRIPT, splitSelectionResult } from '../selection/selection-read-script.ts';
 import { addStroke, EMPTY_DRAWING, eraseAt, redo, strokePath, strokesJson, undo } from '../draw/draw-core.ts';
 import { detectPageLanguage, languageFromAttribute, languageFromText, parseStringList, shouldOfferTranslate } from '../language/language-detect.ts';
 import {
@@ -15,7 +15,6 @@ import {
   needsJavaScript,
 } from '../page-alerts/page-alerts-core.ts';
 import {
-  ANCHOR_REQUEST_SCRIPT,
   cleanAnchor,
   FIND_ANCHOR_SOURCE,
   matchesHighlightQuery,
@@ -39,9 +38,8 @@ describe('B23 #261 highlights: text anchors', () => {
     assert.equal(findAnchor('اردو متن اور اردو', 'اردو', 'اور ', ''), 13);
   });
 
-  test('B8’s read script still returns the text and now leaves the anchor (page text only)', () => {
+  test('B8’s read script returns the text with its anchor in the same result; nothing is left in the page', () => {
     const range = { startContainer: 'a', startOffset: 0, endContainer: 'a', endOffset: 4, toString: () => 'Fort' };
-    const ranges: { start?: unknown; end?: unknown }[] = [];
     const document = {
       activeElement: { tagName: 'BODY' },
       body: { childNodes: { length: 3 } },
@@ -50,36 +48,44 @@ describe('B23 #261 highlights: text anchors', () => {
         r.setStart = (n: unknown) => (r.start = n);
         r.setEnd = (n: unknown) => (r.end = n);
         r.toString = () => (r.start === document.body ? 'Visit the Lahore ' : ' at dawn, before the crowds');
-        ranges.push(r);
         return r;
       },
     };
     const window: Record<string, unknown> = {
       getSelection: () => ({ rangeCount: 1, getRangeAt: () => range, toString: () => 'Fort' }),
     };
-    const result = vm.runInNewContext(SELECTION_READ_SCRIPT, { window, document, String });
-    assert.equal(result, 'Fort');
-    assert.deepEqual(JSON.parse(JSON.stringify(window.__vidoraxSelectionContext)), { exact: 'Fort', prefix: 'Visit the Lahore ', suffix: ' at dawn, before the crowds' });
-    // A text field's selection: no anchor (the field's text isn't page text).
+    const keysBefore = Object.keys(window).sort();
+    const raw = vm.runInNewContext(SELECTION_READ_SCRIPT, { window, document, String, JSON }) as string;
+    assert.deepEqual(Object.keys(window).sort(), keysBefore, 'no page variable');
+    assert.ok(raw.startsWith('Fort' + SELECTION_CONTEXT_SEPARATOR));
+    assert.deepEqual(JSON.parse(JSON.stringify(splitSelectionResult(raw))), {
+      text: 'Fort',
+      anchor: { exact: 'Fort', prefix: 'Visit the Lahore ', suffix: ' at dawn, before the crowds' },
+    });
+    // A text field's selection: the text alone, no anchor.
     const field = { tagName: 'TEXTAREA', value: 'hello world', selectionStart: 0, selectionEnd: 5 };
-    const window2: Record<string, unknown> = { __vidoraxSelectionContext: { old: true }, getSelection: () => null };
-    assert.equal(vm.runInNewContext(SELECTION_READ_SCRIPT, { window: window2, document: { ...document, activeElement: field }, String }), 'hello');
-    assert.equal(window2.__vidoraxSelectionContext, null);
+    const plain = vm.runInNewContext(SELECTION_READ_SCRIPT, { window: { getSelection: () => null }, document: { ...document, activeElement: field }, String, JSON });
+    assert.equal(plain, 'hello');
+    assert.deepEqual(splitSelectionResult('hello'), { text: 'hello', anchor: null });
+    // A long selection still fits the native 20,000 cap with its anchor; a cut tail falls back to the text alone.
+    const long = vm.runInNewContext(SELECTION_READ_SCRIPT, {
+      window: { getSelection: () => ({ rangeCount: 1, getRangeAt: () => range, toString: () => 'x'.repeat(25_000) }) },
+      document,
+      String,
+      JSON,
+    }) as string;
+    assert.ok(long.length <= 20_000);
+    assert.equal(splitSelectionResult(long).anchor?.exact, 'Fort');
+    assert.deepEqual(splitSelectionResult('abc' + SELECTION_CONTEXT_SEPARATOR + '{"e":"Fo'), { text: 'abc', anchor: null });
   });
 
-  test('the anchor comes back once; messages are cleaned and bounded', () => {
-    const posted: string[] = [];
-    const window: Record<string, unknown> = {
-      __vidoraxSelectionContext: { exact: 'Fort', prefix: 'the ', suffix: ' at' },
-      ReactNativeWebView: { postMessage: (m: string) => posted.push(m) },
-    };
-    vm.runInNewContext(ANCHOR_REQUEST_SCRIPT, { window, JSON });
-    assert.equal(window.__vidoraxSelectionContext, null);
-    assert.deepEqual(parseAnnotateMessage(posted[0]), { kind: 'anchor', anchor: { exact: 'Fort', prefix: 'the ', suffix: ' at' } });
-    assert.deepEqual(parseAnnotateMessage('{"type":"vidorax_annotate","kind":"anchor","exact":"   "}'), { kind: 'anchor', anchor: null });
+  test('messages are cleaned and bounded', () => {
     assert.deepEqual(cleanAnchor({ exact: 'x', prefix: 'p'.repeat(50), suffix: 's'.repeat(50) }), { exact: 'x', prefix: 'p'.repeat(32), suffix: 's'.repeat(32) });
+    assert.equal(cleanAnchor({ exact: '   ' }), null);
+    assert.deepEqual(parseAnnotateMessage('{"type":"vidorax_annotate","kind":"restored","found":2,"of":3}'), { kind: 'restored', found: 2, of: 3 });
+    assert.equal(parseAnnotateMessage('{"type":"vidorax_annotate","kind":"anchor","exact":"x"}'), undefined, 'pages no longer send anchors');
     assert.equal(parseAnnotateMessage('{"type":"other"}'), undefined);
-    assert.equal(parseAnnotateMessage(`{"type":"vidorax_annotate","kind":"anchor","exact":"${'a'.repeat(30_000)}"}`), undefined);
+    assert.equal(parseAnnotateMessage(`{"type":"vidorax_annotate","kind":"lang","sample":"${'a'.repeat(30_000)}"}`), undefined);
   });
 
   test('only anchors and colours go into the page — never the note', () => {

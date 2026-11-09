@@ -8,7 +8,7 @@ import { translate } from '@/localization';
 
 import { handleSelectionAction } from './selection-actions';
 import { buildSelectionMenu, SELECTION_MENU_ITEMS } from './selection-menu-items';
-import { SELECTION_READ_SCRIPT } from './selection-read-script';
+import { SELECTION_READ_SCRIPT, splitSelectionResult } from './selection-read-script';
 import { saveNote } from '@/browser/notes/notes.service';
 import { tabIdForViewTag } from '@/browser/webview/webview-view-tags';
 import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
@@ -27,7 +27,10 @@ function notify(message: string): void {
   AccessibilityInfo.announceForAccessibility(message);
 }
 
-function onSelectionAction(event: SelectionActionEvent): void {
+function onSelectionAction(raw: SelectionActionEvent): void {
+  // B23 #261: the anchor travels with the text (selection-read-script.ts); every item sees the plain text.
+  const { text, anchor } = splitSelectionResult(raw.text);
+  const event = { ...raw, text };
   handleSelectionAction(event, {
     buildSearchUrl: (query) => getSearchEngine().buildSearchUrl(query),
     openTabAfterCurrent: (url, title) => {
@@ -46,7 +49,7 @@ function onSelectionAction(event: SelectionActionEvent): void {
     // B22 #252: the selected text with its page, from the tab the menu was on.
     saveNote: (text, viewTag) => void saveNote(text, tabIdForViewTag(viewTag)),
     // B23 #261: the page gives the anchor; the sheet picks the colour and note.
-    highlight: (text, viewTag) => startHighlight(tabIdForViewTag(viewTag), text),
+    highlight: (selected, viewTag) => startHighlight(tabIdForViewTag(viewTag), selected, anchor),
   });
 }
 

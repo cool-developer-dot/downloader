@@ -63,20 +63,6 @@ export const FIND_ANCHOR_SOURCE = `function __vidoraxFindAnchor(text, exact, pre
   return best;
 }`;
 
-/**
- * Set by B8's read script (selection-read-script.ts) when the selection is page text: the anchor for B23's Highlight.
- * The Highlight item asks for it with this script, which posts it back once and forgets it.
- */
-export const ANCHOR_REQUEST_SCRIPT = `(function () {
-  try {
-    var c = window.__vidoraxSelectionContext;
-    window.__vidoraxSelectionContext = null;
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: '${ANNOTATE_MESSAGE}', kind: 'anchor',
-      exact: c && c.exact || '', prefix: c && c.prefix || '', suffix: c && c.suffix || '' }));
-  } catch (e) {}
-})();
-true;`;
-
 /** Wraps each anchor found on the page in `<mark>` (anchors already shown are skipped). Posts how many were found. */
 export function restoreHighlightsScript(anchors: readonly PageAnchor[]): string {
   const list = anchors.map((a) => ({
@@ -142,11 +128,10 @@ true;`;
 }
 
 export type AnnotateMessage =
-  | { kind: 'anchor'; anchor: HighlightAnchor | null }
   | { kind: 'restored'; found: number; of: number }
   | { kind: 'lang'; lang: string; sample: string };
 
-/** A page message for B23 (anchor, restore count, language), bounded; undefined for anything else. */
+/** A page message for B23 (restore count, language), bounded; undefined for anything else. */
 export function parseAnnotateMessage(raw: string): AnnotateMessage | undefined {
   if (typeof raw !== 'string' || raw.length > 20_000 || !raw.includes(ANNOTATE_MESSAGE)) return undefined;
   let data: Record<string, unknown>;
@@ -156,7 +141,6 @@ export function parseAnnotateMessage(raw: string): AnnotateMessage | undefined {
     return undefined;
   }
   if (!data || data.type !== ANNOTATE_MESSAGE) return undefined;
-  if (data.kind === 'anchor') return { kind: 'anchor', anchor: cleanAnchor(data) };
   if (data.kind === 'restored') {
     const n = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.max(0, Math.floor(v)) : 0);
     return { kind: 'restored', found: n(data.found), of: n(data.of) };

@@ -9,7 +9,6 @@ import { translate } from '@/localization';
 import { annotateRepository, type Highlight } from '@/storage/repositories/annotate.repository';
 
 import {
-  ANCHOR_REQUEST_SCRIPT,
   pageKey,
   removeHighlightScript,
   restoreHighlightsScript,
@@ -18,7 +17,7 @@ import {
 } from './highlights-core';
 
 /**
- * B23 #261 — highlights: the selection menu's Highlight asks the page for the selection's anchor, the sheet picks a
+ * B23 #261 — highlights: the selection menu's Highlight brings the selection's anchor, the sheet picks a
  * colour and an optional note, the highlight is saved in the profile's database and marked on the page. Restored on
  * the next visit (load end). Never saved for, nor restored in, an incognito tab.
  */
@@ -27,7 +26,6 @@ export type PendingHighlight = { tabId: string; anchor: HighlightAnchor; url: st
 
 let pending: PendingHighlight | null = null;
 let pageSheetTabId: string | null = null;
-let awaitingAnchorTab: string | null = null;
 let version = 0;
 const listeners = new Set<() => void>();
 const injectors = new Map<string, (script: string) => void>();
@@ -66,8 +64,11 @@ export function bindHighlightsInjector(tabId: string, inject: (script: string) =
   };
 }
 
-/** Selection menu → Highlight (B8 item 'highlight'), from the tab with this text selected. */
-export function startHighlight(tabId: string | null | undefined, selectedText: string): void {
+/**
+ * Selection menu → Highlight (B8 item 'highlight'), from the tab with this text selected. The anchor came with the
+ * selection (B8's read script); a text field's selection has none: the text alone.
+ */
+export function startHighlight(tabId: string | null | undefined, selectedText: string, anchor?: HighlightAnchor | null): void {
   const tab = tabOf(tabId);
   if (!tab) return;
   if (isIncognitoTabId(tab.id)) {
@@ -75,19 +76,12 @@ export function startHighlight(tabId: string | null | undefined, selectedText: s
     return;
   }
   if (!isValidBrowserPageUrl(tab.url)) return;
-  const inject = injectors.get(tab.id);
-  // The anchor comes back as a page message (onAnchor); a text field's selection has none: the text alone.
-  awaitingAnchorTab = tab.id;
-  pending = { tabId: tab.id, anchor: { exact: selectedText.slice(0, 2000), prefix: '', suffix: '' }, url: tab.url, title: tab.title };
-  if (inject) inject(ANCHOR_REQUEST_SCRIPT);
-  emit();
-}
-
-/** The page's answer to ANCHOR_REQUEST_SCRIPT (an anchor of its own text, or none). */
-export function onAnchor(tabId: string | undefined, anchor: HighlightAnchor | null): void {
-  if (!tabId || awaitingAnchorTab !== tabId || !pending || pending.tabId !== tabId) return;
-  awaitingAnchorTab = null;
-  if (anchor) pending = { ...pending, anchor };
+  pending = {
+    tabId: tab.id,
+    anchor: anchor ?? { exact: selectedText.slice(0, 2000), prefix: '', suffix: '' },
+    url: tab.url,
+    title: tab.title,
+  };
   emit();
 }
 
@@ -98,14 +92,12 @@ export function usePendingHighlight(): PendingHighlight | null {
 
 export function cancelHighlight(): void {
   pending = null;
-  awaitingAnchorTab = null;
   emit();
 }
 
 export async function savePendingHighlight(color: HighlightColor, note: string): Promise<void> {
   const p = pending;
   pending = null;
-  awaitingAnchorTab = null;
   emit();
   if (!p || isIncognitoTabId(p.tabId)) return;
   const highlight: Highlight = {
