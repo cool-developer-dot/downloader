@@ -88,12 +88,29 @@ describe('B23 #261 highlights: text anchors', () => {
     assert.equal(parseAnnotateMessage(`{"type":"vidorax_annotate","kind":"lang","sample":"${'a'.repeat(30_000)}"}`), undefined);
   });
 
-  test('only anchors and colours go into the page — never the note', () => {
-    const script = restoreHighlightsScript([{ id: 'h1', exact: 'Fort', prefix: 'the ', suffix: ' at', color: 'green' }]);
-    assert.ok(script.includes('#A5D6A7'));
-    assert.doesNotThrow(() => new vm.Script(script));
-    assert.doesNotThrow(() => new vm.Script(removeHighlightScript('h1')));
-    assert.ok(!removeHighlightScript('a"]; alert(1); //').includes('alert(1)'), 'ids are cleaned');
+  test('marks carry no VidoraX class, id or attribute; notes never reach the page; remove and restore twice', () => {
+    const { document, body, p } = fakeDom(['Visit the ', 'Lahore Fort', ' at dawn. Lahore Fort again.']);
+    const posted: string[] = [];
+    const window = { ReactNativeWebView: { postMessage: (m: string) => posted.push(m) } };
+    const highlight = { id: 'h1', exact: 'Lahore Fort', prefix: 'Visit the ', suffix: ' at dawn', color: 'green' as const, note: 'SECRET NOTE' };
+    const script = restoreHighlightsScript([highlight]);
+    assert.ok(!script.includes('SECRET NOTE') && !script.includes('h1'), 'no note, no id in the page');
+    assert.ok(!/data-vidorax|className|setAttribute\(/.test(script));
+    const run = (code: string) => vm.runInNewContext(code, { document, window, NodeFilter: { SHOW_TEXT: 4 }, JSON });
+    run(script);
+    const marks = () => all(body).filter((n) => n.nodeName === 'MARK');
+    assert.equal(marks().length, 1);
+    assert.deepEqual(marks()[0].attributeNames(), ['style'], 'only the inline colour');
+    assert.equal(marks()[0].style.backgroundColor, 'rgb(165, 214, 167)');
+    assert.equal(textOf(marks()[0]), 'Lahore Fort');
+    assert.equal(textOf(body), 'Visit the Lahore Fort at dawn. Lahore Fort again.', 'the text is unchanged');
+    run(script);
+    assert.equal(marks().length, 1, 'restoring again adds nothing');
+    assert.deepEqual(JSON.parse(posted[1]), { type: 'vidorax_annotate', kind: 'restored', found: 1, of: 1 });
+    run(removeHighlightScript(highlight));
+    assert.equal(marks().length, 0);
+    assert.equal(textOf(p), 'Visit the Lahore Fort at dawn. Lahore Fort again.');
+    assert.doesNotThrow(() => new vm.Script(removeHighlightScript({ ...highlight, exact: '"]; alert(1); //' })));
   });
 
   test('page key, search and share text', () => {
@@ -205,3 +222,89 @@ describe('B23 #263 language detection and the translate offer', () => {
     assert.deepEqual(parseStringList('nope'), []);
   });
 });
+
+// ---- a tiny DOM for the highlight scripts (text nodes, elements, splitText, a text TreeWalker) ----
+type FakeNode = {
+  nodeName: string;
+  data: string;
+  parentNode: FakeNode | null;
+  childNodes: FakeNode[];
+  style: Record<string, string>;
+  attributeNames: () => string[];
+  splitText: (offset: number) => FakeNode;
+  insertBefore: (n: FakeNode, ref: FakeNode | null) => void;
+  appendChild: (n: FakeNode) => void;
+  removeChild: (n: FakeNode) => void;
+  normalize: () => void;
+  readonly firstChild: FakeNode | undefined;
+};
+
+function makeNode(nodeName: string, data = ''): FakeNode {
+  const node: FakeNode = {
+    nodeName,
+    data,
+    parentNode: null,
+    childNodes: [],
+    style: {},
+    attributeNames: () => (Object.keys(node.style).length ? ['style'] : []),
+    splitText(offset) {
+      const rest = makeNode('#text', node.data.slice(offset));
+      node.data = node.data.slice(0, offset);
+      const parent = node.parentNode!;
+      parent.insertBefore(rest, parent.childNodes[parent.childNodes.indexOf(node) + 1] ?? null);
+      return rest;
+    },
+    insertBefore(n, ref) {
+      n.parentNode?.removeChild(n);
+      const at = ref ? node.childNodes.indexOf(ref) : node.childNodes.length;
+      node.childNodes.splice(at, 0, n);
+      n.parentNode = node;
+    },
+    appendChild(n) {
+      node.insertBefore(n, null);
+    },
+    removeChild(n) {
+      node.childNodes.splice(node.childNodes.indexOf(n), 1);
+      n.parentNode = null;
+    },
+    normalize() {
+      for (let i = node.childNodes.length - 1; i > 0; i--) {
+        const a = node.childNodes[i - 1];
+        const b = node.childNodes[i];
+        if (a.nodeName === '#text' && b.nodeName === '#text') {
+          a.data += b.data;
+          node.removeChild(b);
+        }
+      }
+    },
+    get firstChild() {
+      return node.childNodes[0];
+    },
+  };
+  return node;
+}
+
+function all(root: FakeNode): FakeNode[] {
+  return root.childNodes.flatMap((c) => [c, ...all(c)]);
+}
+
+function textOf(root: FakeNode): string {
+  return all(root).filter((n) => n.nodeName === '#text').map((n) => n.data).join('');
+}
+
+function fakeDom(texts: string[]) {
+  const body = makeNode('BODY');
+  const p = makeNode('P');
+  body.appendChild(p);
+  for (const t of texts) p.appendChild(makeNode('#text', t));
+  const document = {
+    body,
+    createElement: (name: string) => makeNode(name.toUpperCase()),
+    createTreeWalker: (root: FakeNode) => {
+      const list = all(root).filter((n) => n.nodeName === '#text');
+      let i = 0;
+      return { nextNode: () => list[i++] ?? null };
+    },
+  };
+  return { document, body, p };
+}

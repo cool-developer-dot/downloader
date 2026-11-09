@@ -63,42 +63,70 @@ export const FIND_ANCHOR_SOURCE = `function __vidoraxFindAnchor(text, exact, pre
   return best;
 }`;
 
-/** Wraps each anchor found on the page in `<mark>` (anchors already shown are skipped). Posts how many were found. */
-export function restoreHighlightsScript(anchors: readonly PageAnchor[]): string {
-  const list = anchors.map((a) => ({
-    id: a.id,
+/** '#FFF176' → 'rgb(255, 241, 118)': the form a page reads back from `style.backgroundColor`. */
+export function rgbOf(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgb(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255})`;
+}
+
+function pageAnchorList(anchors: readonly PageAnchor[]) {
+  return anchors.map((a) => ({
     exact: a.exact.slice(0, MAX_HIGHLIGHT_TEXT),
     prefix: a.prefix.slice(-ANCHOR_CONTEXT),
     suffix: a.suffix.slice(0, ANCHOR_CONTEXT),
-    color: HIGHLIGHT_COLORS[a.color] ?? HIGHLIGHT_COLORS.yellow,
+    color: rgbOf(HIGHLIGHT_COLORS[a.color] ?? HIGHLIGHT_COLORS.yellow),
   }));
+}
+
+/**
+ * The page's text nodes, the anchor's range in them, and the nodes it covers (shared by restore and remove). A
+ * mark of ours is a plain `<mark>` with only an inline background colour (B23 fix: no class, id or data attribute
+ * names VidoraX), so it is recognised by the anchor's text plus that colour.
+ */
+const RANGE_SOURCE = `${FIND_ANCHOR_SOURCE}
+function __vidoraxCovered(body, a) {
+  var walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null);
+  var nodes = [], text = '', node;
+  while ((node = walker.nextNode())) { nodes.push({ node: node, start: text.length }); text += node.data; }
+  var at = __vidoraxFindAnchor(text, a.exact, a.prefix, a.suffix);
+  if (at < 0) return null;
+  var end = at + a.exact.length, covered = [];
+  for (var n = 0; n < nodes.length; n++) {
+    var item = nodes[n], s = item.start, e = s + item.node.data.length;
+    if (e <= at || s >= end) continue;
+    var parent = item.node.parentNode;
+    if (!parent || /^(SCRIPT|STYLE|TEXTAREA|NOSCRIPT)$/.test(parent.nodeName)) continue;
+    covered.push({ node: item.node, start: s, end: e });
+  }
+  return { at: at, end: end, covered: covered };
+}
+function __vidoraxIsOurs(el, color) {
+  return el && el.nodeName === 'MARK' && el.style && el.style.backgroundColor === color;
+}`;
+
+/** Wraps each anchor found on the page in `<mark>` (anchors already shown are skipped). Posts how many were found. */
+export function restoreHighlightsScript(anchors: readonly PageAnchor[]): string {
   return `(function () {
   try {
-    ${FIND_ANCHOR_SOURCE}
-    var list = ${JSON.stringify(list)};
+    ${RANGE_SOURCE}
+    var list = ${JSON.stringify(pageAnchorList(anchors))};
     var body = document.body;
     if (!body) return;
     var found = 0;
     for (var k = 0; k < list.length; k++) {
       var a = list[k];
-      if (document.querySelector('mark[data-vidorax-hl="' + a.id + '"]')) { found++; continue; }
-      var walker = document.createTreeWalker(body, NodeFilter.SHOW_TEXT, null);
-      var nodes = [], text = '', node;
-      while ((node = walker.nextNode())) { nodes.push({ node: node, start: text.length }); text += node.data; }
-      var at = __vidoraxFindAnchor(text, a.exact, a.prefix, a.suffix);
-      if (at < 0) continue;
-      var end = at + a.exact.length;
+      var r = __vidoraxCovered(body, a);
+      if (!r) continue;
       found++;
-      for (var n = 0; n < nodes.length; n++) {
-        var item = nodes[n], s = item.start, e = s + item.node.data.length;
-        if (e <= at || s >= end) continue;
-        var parent = item.node.parentNode;
-        if (!parent || /^(SCRIPT|STYLE|TEXTAREA|NOSCRIPT)$/.test(parent.nodeName)) continue;
-        var target = item.node;
-        if (at > s) target = target.splitText(at - s);
-        if (end < e) target.splitText(end - Math.max(at, s));
+      var shown = r.covered.length > 0;
+      for (var i = 0; i < r.covered.length; i++) if (!__vidoraxIsOurs(r.covered[i].node.parentNode, a.color)) shown = false;
+      if (shown) continue;
+      for (var j = 0; j < r.covered.length; j++) {
+        var c = r.covered[j], target = c.node;
+        if (__vidoraxIsOurs(target.parentNode, a.color)) continue;
+        if (r.at > c.start) target = target.splitText(r.at - c.start);
+        if (r.end < c.end) target.splitText(r.end - Math.max(r.at, c.start));
         var mark = document.createElement('mark');
-        mark.setAttribute('data-vidorax-hl', a.id);
         mark.style.backgroundColor = a.color;
         mark.style.color = 'inherit';
         target.parentNode.insertBefore(mark, target);
@@ -111,13 +139,20 @@ export function restoreHighlightsScript(anchors: readonly PageAnchor[]): string 
 true;`;
 }
 
-/** Takes one highlight off the page (its marks unwrapped). */
-export function removeHighlightScript(id: string): string {
+/** Takes one highlight off the page: our marks over its anchor, in its colour, are unwrapped. */
+export function removeHighlightScript(anchor: PageAnchor): string {
   return `(function () {
   try {
-    var marks = document.querySelectorAll('mark[data-vidorax-hl="' + ${JSON.stringify(id.replace(/[^A-Za-z0-9-]/g, ''))} + '"]');
-    for (var i = 0; i < marks.length; i++) {
-      var m = marks[i], p = m.parentNode;
+    ${RANGE_SOURCE}
+    var a = ${JSON.stringify(pageAnchorList([anchor])[0])};
+    var body = document.body;
+    if (!body) return;
+    var r = __vidoraxCovered(body, a);
+    if (!r) return;
+    for (var i = 0; i < r.covered.length; i++) {
+      var m = r.covered[i].node.parentNode;
+      if (!__vidoraxIsOurs(m, a.color) || !m.parentNode) continue;
+      var p = m.parentNode;
       while (m.firstChild) p.insertBefore(m.firstChild, m);
       p.removeChild(m);
       p.normalize && p.normalize();
