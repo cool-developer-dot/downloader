@@ -27,6 +27,8 @@ import type { BrowserTab, PersistedBrowserTabsEnvelope } from './types';
 import { coldStartMountPool } from './mount-pool';
 import { shouldPersistForTab } from './tab-privacy';
 import { savedActiveTabId } from './saved-active-tab';
+import { EMPTY_GROUPS, groupsForSave, groupsFromSave, type GroupsState } from './tab-groups';
+import { getGroupsState, setGroupsState } from './tab-groups-state';
 
 function sanitizeEnvelope(raw: unknown): PersistedBrowserTabsEnvelope | null {
   const parsed = parseTabsEnvelope(raw, {
@@ -39,11 +41,26 @@ function sanitizeEnvelope(raw: unknown): PersistedBrowserTabsEnvelope | null {
   if (!parsed) {
     return null;
   }
+  // B2: the groups the save has (read by its fields: older saves simply have none).
+  const groups = groupsFromSave(raw, new Set(parsed.tabs.map((t) => t.id)));
+  return withGroups(
+    {
+      schemaVersion: BROWSER_TABS_SCHEMA_VERSION,
+      activeTabId: parsed.activeTabId,
+      tabs: envelopeTabsForWrite(parsed.tabs),
+      updatedAt: parsed.updatedAt,
+    },
+    groups,
+  );
+}
+
+/** B2 (schema 3): `groups` and each saved tab's `groupId`; incognito groups and unsaved tabs are left out. */
+function withGroups(envelope: PersistedBrowserTabsEnvelope, state: GroupsState): PersistedBrowserTabsEnvelope {
+  const saved = groupsForSave(state, envelope.tabs.map((t) => t.id));
   return {
-    schemaVersion: BROWSER_TABS_SCHEMA_VERSION,
-    activeTabId: parsed.activeTabId,
-    tabs: envelopeTabsForWrite(parsed.tabs),
-    updatedAt: parsed.updatedAt,
+    ...envelope,
+    tabs: envelope.tabs.map((t) => (saved.membership[t.id] ? { ...t, groupId: saved.membership[t.id] } : t)),
+    groups: saved.groups,
   };
 }
 
@@ -82,6 +99,7 @@ function scheduleWrite(envelope: PersistedBrowserTabsEnvelope): void {
 }
 
 export function buildFreshTabEngineState(): HydratedTabEngineState {
+  setGroupsState(EMPTY_GROUPS);
   // Migrate legacy single-URL session into one tab when present.
   try {
     const session = readBrowserSessionSync();
@@ -131,6 +149,8 @@ export function hydrateTabEngineState(): HydratedTabEngineState {
       return buildFreshTabEngineState();
     }
     memoryCache = envelope;
+    // B2: this profile's groups come back with its tabs.
+    setGroupsState(groupsFromSave(envelope, new Set(envelope.tabs.map((t) => t.id))));
     const tabs = envelope.tabs.map(createTabFromPersisted);
     const activeTabId = envelope.activeTabId;
     const mountedTabIds = coldStartMountPool(activeTabId);
@@ -163,12 +183,15 @@ export function persistTabEngineState(input: {
   activeTabId: string;
 }): void {
   const kept = input.tabs.filter(shouldPersistForTab);
-  const envelope: PersistedBrowserTabsEnvelope = {
-    schemaVersion: BROWSER_TABS_SCHEMA_VERSION,
-    activeTabId: savedActiveTabId(input.activeTabId, kept),
-    tabs: envelopeTabsForWrite(normalizePinnedOrder(kept).map(toPersistedTabMetadata)),
-    updatedAt: Date.now(),
-  };
+  const envelope: PersistedBrowserTabsEnvelope = withGroups(
+    {
+      schemaVersion: BROWSER_TABS_SCHEMA_VERSION,
+      activeTabId: savedActiveTabId(input.activeTabId, kept),
+      tabs: envelopeTabsForWrite(normalizePinnedOrder(kept).map(toPersistedTabMetadata)),
+      updatedAt: Date.now(),
+    },
+    getGroupsState(),
+  );
   scheduleWrite(envelope);
 }
 

@@ -216,6 +216,8 @@ export interface SettingsState {
   prayerAsr: 'hanafi' | 'shafi';
   /** B17 #265: what a PDF link does (default 'ask': Open in VidoraX / Download / Open with another app). */
   pdfOpenChoice: 'ask' | 'viewer' | 'download' | 'external';
+  /** B2 #258: tabs opened from a page join that page's group (default off). */
+  groupTabsFromOpener: boolean;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

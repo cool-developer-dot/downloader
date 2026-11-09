@@ -261,6 +261,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         prayerCoords: state.prayerCoords,
         prayerAsr: state.prayerAsr,
         pdfOpenChoice: state.pdfOpenChoice,
+        groupTabsFromOpener: state.groupTabsFromOpener,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -503,6 +504,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
           prayerCity: typeof raw.prayerCity === 'string' && cityById(raw.prayerCity) ? raw.prayerCity : current.prayerCity,
           prayerCoords: typeof raw.prayerCoords === 'string' ? raw.prayerCoords.slice(0, 60) : current.prayerCoords,
           prayerAsr: raw.prayerAsr === 'shafi' || raw.prayerAsr === 'hanafi' ? raw.prayerAsr : current.prayerAsr,
+          groupTabsFromOpener: typeof raw.groupTabsFromOpener === 'boolean' ? raw.groupTabsFromOpener : current.groupTabsFromOpener,
           pdfOpenChoice: raw.pdfOpenChoice !== undefined && isPdfChoice(raw.pdfOpenChoice) ? raw.pdfOpenChoice : current.pdfOpenChoice,
         };
       },

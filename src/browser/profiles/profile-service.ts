@@ -143,7 +143,13 @@ export function saveProfileList(profiles: BrowserProfile[]): void {
 }
 
 /** MMKV keys a profile owns (each profile's copy, `@<id>`); deleted with the profile. */
-const PROFILE_SCOPED_KEYS = [mmkvKeys.browserTabs, mmkvKeys.browserClosedTabs, mmkvKeys.browserSession] as const;
+const PROFILE_SCOPED_KEYS = [
+  mmkvKeys.browserTabs,
+  mmkvKeys.browserClosedTabs,
+  mmkvKeys.browserSession,
+  // B2 #288: closed tab groups.
+  mmkvKeys.browserClosedGroups,
+] as const;
 
 /** WebView profile names (not browser profile ids) whose deletion has to wait. */
 function pendingDeletes(): string[] {

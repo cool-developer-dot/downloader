@@ -101,6 +101,8 @@ export const BROWSER_SETTING_KEYS = [
   'prayerAsr',
   // B17 (Hamza)
   'pdfOpenChoice',
+  // B2 (Hamza)
+  'groupTabsFromOpener',
 ] as const;
 
 export type BrowserSettingKey = (typeof BROWSER_SETTING_KEYS)[number];

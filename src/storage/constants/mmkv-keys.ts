@@ -23,6 +23,8 @@ export const mmkvKeys = {
   browserSession: 'vidorax.mmkv.browser.session',
   /** Phase 3B — open browser tabs metadata (local only). */
   browserTabs: 'vidorax.mmkv.browser.tabs.v1',
+  /** B2 #288: the last 10 closed tab groups (per browser profile). */
+  browserClosedGroups: 'vidorax.mmkv.browser.closedGroups.v1',
   /** B1 — the last 10 closed tabs (URL, title, position, pinned), for Reopen closed tab and Undo (local only). */
   browserClosedTabs: 'vidorax.mmkv.browser.closedTabs.v1',
   /** B20 — the browser profiles (id, name, colour) and which one is in use; see src/storage/profile. */

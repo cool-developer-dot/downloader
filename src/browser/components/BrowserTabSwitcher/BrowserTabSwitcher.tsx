@@ -41,6 +41,8 @@ import { matchesSearch } from '@/utils/search-text';
 
 import { CloseTabsDialog, type CloseTabsDialogRequest } from './CloseTabsDialog';
 import { SortableTabList } from './SortableTabList';
+import { AddToGroupSheet, ClosedGroupsSheet, GroupedTabList, TimelineSheet, useHasGroups } from './TabGroupsUI';
+import { groupTabsBySite, takeTabOutOfGroup, useClosedGroups, useTabGroups } from '@/browser/tabs/tab-groups.service';
 import { TabActionsSheet, type TabSheetAction } from './TabActionsSheet';
 import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
 import { TabVolumeSheet } from '@/browser/tab-sound/components/TabVolumeSheet';
@@ -191,6 +193,14 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
   const normalTabs = useMemo(() => filtered.filter((tab) => !isIncognitoTabId(tab.id)), [filtered]);
   const incognitoTabs = useMemo(() => filtered.filter((tab) => isIncognitoTabId(tab.id)), [filtered]);
   const hasIncognito = useMemo(() => tabs.some((tab) => isIncognitoTabId(tab.id)), [tabs]);
+  // B2: with groups the list shows group blocks (no drag there); without, B1's sortable list exactly as before.
+  const groupsState = useTabGroups();
+  const closedGroups = useClosedGroups();
+  const normalGrouped = useHasGroups(normalTabs);
+  const incognitoGrouped = useHasGroups(incognitoTabs);
+  const [groupPickerTabId, setGroupPickerTabId] = useState<string | null>(null);
+  const [timelineVisible, setTimelineVisible] = useState(false);
+  const [closedGroupsVisible, setClosedGroupsVisible] = useState(false);
   const noMove = useCallback(() => false, []);
   const noop = useCallback(() => undefined, []);
 
@@ -292,14 +302,25 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
       onPress: () => tabAudio.setMuted(id, !muted),
     });
     list.push({ id: 'volume', label: t('browserTabSound.volume'), icon: 'volume-medium', onPress: () => setVolumeTabId(id) });
+    // B2 #6: groups (incognito tabs only with incognito tabs).
+    list.push({ id: 'add_to_group', label: t('browserTabGroups.addToGroup'), icon: 'group', onPress: () => setGroupPickerTabId(id) });
+    if (groupsState.membership[id]) {
+      list.push({ id: 'remove_from_group', label: t('browserTabGroups.removeFromGroup'), icon: 'ungroup', onPress: () => takeTabOutOfGroup(id) });
+    }
     list.push({ id: 'close', label: t('browserTabs.closeTab'), icon: 'close', destructive: true, onPress: () => handleCloseTab(id) });
     return list;
-  }, [dragEnabled, handleCloseTab, handleMoveBy, onLimitReached, optionsTab, requestClose, t, tabs]);
+  }, [dragEnabled, groupsState, handleCloseTab, handleMoveBy, onLimitReached, optionsTab, requestClose, t, tabs]);
 
   const menuActions = useMemo((): ActionSheetItem[] => {
     const list: ActionSheetItem[] = [];
     if (closedTabs.length > 0) {
       list.push({ id: 'reopen', label: t('browserTabs.reopenClosed'), icon: 'restore', onPress: handleReopen });
+    }
+    // B2 #258 / #259 / #288.
+    list.push({ id: 'group_by_site', label: t('browserTabGroups.groupBySite'), icon: 'group', onPress: groupTabsBySite });
+    list.push({ id: 'timeline', label: t('browserTabGroups.timeline'), icon: 'timeline-clock-outline', onPress: () => setTimelineVisible(true) });
+    if (closedGroups.length > 0) {
+      list.push({ id: 'closed_groups', label: t('browserTabGroups.closedGroups'), icon: 'restore', onPress: () => setClosedGroupsVisible(true) });
     }
     // B9 #83: every open page into a new bookmark folder named with the date.
     list.push({ id: 'bookmark_all', label: t('browserBookmarks.bookmarkAllTabs'), icon: 'bookmark-plus-outline', onPress: () => void bookmarkAllTabs() });
@@ -314,7 +335,7 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
     }
     list.push({ id: 'close_all', label: t('browserTabs.closeAll'), icon: 'tab-remove', destructive: true, onPress: () => requestClose('all', null) });
     return list;
-  }, [activeTabId, closedTabs.length, handleReopen, requestClose, sortOrder, t, tabs.length]);
+  }, [activeTabId, closedGroups.length, closedTabs.length, handleReopen, requestClose, sortOrder, t, tabs.length]);
 
   const sortActions = useMemo(
     (): ActionSheetItem[] =>
@@ -415,19 +436,23 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
             </Box>
           ) : (
             <>
-              <SortableTabList
-                tabs={normalTabs}
-                activeTabId={activeTabId}
-                // Dragging uses positions in this list; with incognito tabs in between, Move up / down only.
-                dragEnabled={dragEnabled && !hasIncognito}
-                pinnedCount={pinned}
-                canMove={canMove}
-                onSelect={handleSelect}
-                onClose={handleCloseTab}
-                onOptions={setOptionsTabId}
-                onMove={handleMove}
-                onMoveBy={handleMoveBy}
-              />
+              {normalGrouped ? (
+                <GroupedTabList tabs={normalTabs} activeTabId={activeTabId} onSelect={handleSelect} onClose={handleCloseTab} onOptions={setOptionsTabId} />
+              ) : (
+                <SortableTabList
+                  tabs={normalTabs}
+                  activeTabId={activeTabId}
+                  // Dragging uses positions in this list; with incognito tabs in between, Move up / down only.
+                  dragEnabled={dragEnabled && !hasIncognito}
+                  pinnedCount={pinned}
+                  canMove={canMove}
+                  onSelect={handleSelect}
+                  onClose={handleCloseTab}
+                  onOptions={setOptionsTabId}
+                  onMove={handleMove}
+                  onMoveBy={handleMoveBy}
+                />
+              )}
               {incognitoTabs.length > 0 ? (
                 <View
                   testID="browser-tab-switcher-incognito"
@@ -468,18 +493,22 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
                       </Text>
                     </Pressable>
                   </Box>
-                  <SortableTabList
-                    tabs={incognitoTabs}
-                    activeTabId={activeTabId}
-                    dragEnabled={false}
-                    pinnedCount={0}
-                    canMove={noMove}
-                    onSelect={handleSelect}
-                    onClose={handleCloseTab}
-                    onOptions={setOptionsTabId}
-                    onMove={noop}
-                    onMoveBy={noop}
-                  />
+                  {incognitoGrouped ? (
+                    <GroupedTabList tabs={incognitoTabs} activeTabId={activeTabId} onSelect={handleSelect} onClose={handleCloseTab} onOptions={setOptionsTabId} />
+                  ) : (
+                    <SortableTabList
+                      tabs={incognitoTabs}
+                      activeTabId={activeTabId}
+                      dragEnabled={false}
+                      pinnedCount={0}
+                      canMove={noMove}
+                      onSelect={handleSelect}
+                      onClose={handleCloseTab}
+                      onOptions={setOptionsTabId}
+                      onMove={noop}
+                      onMoveBy={noop}
+                    />
+                  )}
                 </View>
               ) : null}
             </>
@@ -537,6 +566,10 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
         </View>
 
         <TabActionsSheet tab={optionsTab} actions={optionsActions} onClose={() => setOptionsTabId(null)} />
+        {/* B2: add to group, the timeline and recently closed groups. */}
+        <AddToGroupSheet tabId={groupPickerTabId} onClose={() => setGroupPickerTabId(null)} />
+        {timelineVisible ? <TimelineSheet visible onClose={() => setTimelineVisible(false)} onSelect={handleSelect} /> : null}
+        <ClosedGroupsSheet visible={closedGroupsVisible} onClose={() => setClosedGroupsVisible(false)} />
         <TabVolumeSheet
           tabId={volumeTab ? volumeTab.id : null}
           title={volumeTab ? tabDisplayTitle(volumeTab, t) : ''}

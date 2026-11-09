@@ -177,4 +177,5 @@ export const initialSettingsState: SettingsState = {
   prayerCoords: '',
   prayerAsr: 'hanafi',
   pdfOpenChoice: 'ask',
+  groupTabsFromOpener: false,
 };

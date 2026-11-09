@@ -82,6 +82,7 @@ import { DrawOnPageHost } from '@/browser/draw/components/DrawOnPageHost';
 import { TranslateOfferBanner } from '@/browser/language/components/TranslateOfferBanner';
 import { CaptureHost } from '@/browser/capture/components/CaptureHost';
 import { ensurePdfChoice } from '@/browser/capture/pdf.service';
+import { ensureTabGroups } from '@/browser/tabs/tab-groups.service';
 
 /**
  * BrowserScreen orchestrates only:
@@ -205,6 +206,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   useEffect(() => ensureDevtools(), []);
   // B17 #265: PDF links come to the open choice.
   useEffect(() => ensurePdfChoice(), []);
+  // B2: tab groups follow the tab list (closed tabs leave their groups; the optional opener grouping).
+  useEffect(() => ensureTabGroups(), []);
   useEffect(() => scheduleCacheLimitCheck(), []);
   const { loadUrl } = useBrowserEngineContext();
   const { t } = useTranslation();
