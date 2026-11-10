@@ -10,8 +10,6 @@ expo-env.d.ts
 .metro-health-check*
 
 # Environment / secrets (never commit real env files)
-.env
-.env.*
 !.env.example
 
 # Logs / debug
@@ -79,7 +77,6 @@ xcuserdata/
 ._*
 .Spotlight-V100
 .Trashes
-.vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
 !.vscode/tasks.json
@@ -96,3 +93,4 @@ temp/
 # Native module build output
 modules/*/android/build/
 modules/*/android/.cxx/
+config.bat

@@ -2453,7 +2453,7 @@ section; the open ones are repeated here.
 | 14 | B19 Developer tools | 7 | `hamza/B19-devtools` | `2fe8a03` | Done | — |
 | 15 | B23 Annotate and page alerts | 7 | `hamza/B23-annotate` | `09ba22b` | Done (+ B8 and B23 privacy fixes) | — |
 | 16 | B24 Urdu, calendar and widgets | 7 | `hamza/B24-urdu-widgets` | `a4b64c2` | Done (+ LTR field fix) | — |
-| 17 | B17 Capture, print and PDF | 4 (run last) | `hamza/B17-capture` | `cec6b7b` | Done | Owner: the offline viewer's file access (below) |
+| 17 | B17 Capture, print and PDF | 4 (run last) | `hamza/B17-capture` | `49964e6` | Done (+ viewer-close and incognito-PDF fixes) | Owner: the offline viewer's file access (below) |
 | 18 | B2 Tab groups and timeline | 4 (run last) | `hamza/B2-tab-groups` | `12311e3` | Done except drop-a-tab-onto-another | Drop-onto-tab not built (B1's drag) |
 
 **How the branches were made:** each points at the package's last commit in the linear history (no cherry-picks),
@@ -2473,6 +2473,10 @@ pushed) still fail that one byte test in a fresh Windows checkout until B15 is m
 - B15 fix: `a927748` (B15 branch) = `cb8deb5` (browser)
 - B8 fix: `fbf606c` (B23 branch) = `dbfefe0` (browser); B23 fix: `09ba22b` (B23 branch) = `453efa0` (browser)
 - B24 fix: `a4b64c2` (B24 branch) = `ad2b5ea` (browser)
+- B17 fixes: `6f19f7d` + `49964e6` (B17 branch) = `6a9d0de` + `71003c9` (browser)
+
+**Native commits built alone:** the intermediate native commits made by staging part of the module (B19 `e7936d3`,
+B24 `d596da5`, B17 `a5994b0`, `a474790`, `0964d8e`) each compile on their own (`:vidorax-web:compileDebugKotlin`).
 
 ### Merge order
 
@@ -2536,7 +2540,11 @@ Feature items (details in each package's list):
 - [ ] B24: field direction (address bar, Notes; PIN, number, URL and e-mail fields stay left-to-right in Urdu), Urdu
       searches, "Add Urdu keyboard", calendar, prayer times, search widget with App Lock
 - [ ] B17: screenshot and full-page capture (Wikipedia → Photos), print preview and Save as PDF, offline page in
-      airplane mode, every PDF choice and a 50-page PDF, Download image (also incognito)
+      airplane mode, every PDF choice and a 50-page PDF, Download image (also incognito); App Lock on → open a saved
+      page → Home → wait over 30 s → recents → PIN asked; an incognito PDF offers no "Open in VidoraX"; a PDF from a
+      tab moved to its own window (B20) still reaches the choice
+- [ ] Not checkable here (Robolectric doesn't draw, no device): capture pixels, MHTML rendering in the viewer, the
+      print dialog, PdfRenderer output
 - [ ] B2: groups across 10 tabs through a force-stop, Urdu names, closed-group restore at the limit, timeline, incognito
       groups never saved, B1's drag with no groups
 
