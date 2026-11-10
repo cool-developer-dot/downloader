@@ -86,7 +86,6 @@ private const val ON_SHORTCUT_OPEN = "onShortcutOpen"
 // B11 #107: a download from an incognito tab that went to Android's DownloadManager (JS shows the notice).
 private const val ON_INCOGNITO_DOWNLOAD = "onIncognitoDownload"
 private const val ON_SEARCH_WIDGET = "onSearchWidget"
-private const val OFFLINE_VIEWER_REQUEST = 6517
 private const val PDF_HINT = "pdf"
 
 // react-native-webview's own download defaults (RNCWebViewManagerImpl).
@@ -108,8 +107,6 @@ class VidoraWebModule : Module() {
 
   // B17 #265: PDF downloads go to JS for the open choice while this is on (setPdfChoiceEnabled).
   @Volatile private var pdfChoiceEnabled = false
-  // B17 #178: the openOfflinePage call waiting for its viewer to close.
-  private var pendingOfflineViewer: Promise? = null
 
   // B24 #65: a search-widget tap while JS was not listening, handed out by consumeSearchWidgetTap.
   @Volatile private var hasSearchWidgetListeners = false
@@ -520,22 +517,16 @@ class VidoraWebModule : Module() {
       val file = OfflinePages.archiveFile(context.filesDir, profile, id)
       val activity = appContext.currentActivity
       if (file == null || !file.isFile || activity == null) return@AsyncFunction promise.resolve(false)
-      pendingOfflineViewer?.resolve(true)
-      pendingOfflineViewer = promise
+      // An earlier viewer still open: it is reported closed now.
+      OfflinePageActivity.closed()
+      OfflinePageActivity.onClosed = { promise.resolve(true) }
       try {
-        activity.startActivityForResult(OfflinePageActivity.intent(context, file, title), OFFLINE_VIEWER_REQUEST)
+        activity.startActivity(OfflinePageActivity.intent(context, file, title))
       } catch (_: Exception) {
-        pendingOfflineViewer = null
+        OfflinePageActivity.onClosed = null
         promise.resolve(false)
       }
     }.runOnQueue(Queues.MAIN)
-
-    OnActivityResult { _, payload ->
-      if (payload.requestCode == OFFLINE_VIEWER_REQUEST) {
-        pendingOfflineViewer?.resolve(true)
-        pendingOfflineViewer = null
-      }
-    }
 
     Function("deleteOfflinePage") { profile: String, id: String ->
       OfflinePages.delete(OfflinePages.archiveFile(context.filesDir, profile, id))

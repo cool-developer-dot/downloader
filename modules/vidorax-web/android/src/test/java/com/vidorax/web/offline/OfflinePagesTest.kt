@@ -46,7 +46,24 @@ class OfflinePagesTest {
   fun theViewerRefusesAPathOutsideItsFolder() {
     val context = RuntimeEnvironment.getApplication()
     val outside = File(context.filesDir, "notes.mht").apply { writeText("x") }
+    var reported = 0
+    OfflinePageActivity.onClosed = { reported++ }
     val activity = Robolectric.buildActivity(OfflinePageActivity::class.java, OfflinePageActivity.intent(context, outside, "t")).create().get()
     assertTrue(activity.isFinishing)
+    assertEquals("the caller hears at once (App Lock's expected screen ends)", 1, reported)
+  }
+
+  @Test
+  fun leavingTheViewerReportsItClosedOnce() {
+    val context = RuntimeEnvironment.getApplication()
+    val file = OfflinePages.archiveFile(context.filesDir, "default", "page")!!.apply { parentFile!!.mkdirs(); writeText("x") }
+    var reported = 0
+    OfflinePageActivity.onClosed = { reported++ }
+    val controller = Robolectric.buildActivity(OfflinePageActivity::class.java, OfflinePageActivity.intent(context, file, "t")).create().start().resume()
+    assertEquals(0, reported)
+    controller.pause().stop()
+    assertEquals(1, reported)
+    controller.destroy()
+    assertEquals("only once", 1, reported)
   }
 }
