@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { Directory, Paths } from 'expo-file-system';
 import { getVidoraWeb, isVidoraWebAvailable, type WebDownloadEvent } from '@modules/vidorax-web';
 
 import { translate } from '@/localization';
@@ -46,7 +47,9 @@ function web() {
 /** Called by the web-download handler for hint `pdf`. */
 export async function routePdfDownload(event: WebDownloadEvent, download: () => Promise<void>): Promise<void> {
   const choice = useSettingsStore.getState().pdfOpenChoice;
-  if (!isPdfChoice(choice) || choice === 'ask') {
+  // An incognito PDF never opens in the in-app viewer (its screen isn't the incognito browser: no FLAG_SECURE, and a
+  // cached copy): a remembered "Open in VidoraX" asks instead, without that option.
+  if (!isPdfChoice(choice) || choice === 'ask' || (choice === 'viewer' && event.webProfile)) {
     pending = { event, download };
     emit();
     return;
@@ -70,6 +73,7 @@ export async function choosePdf(choice: Exclude<PdfChoice, 'ask'>, remember: boo
 
 async function act(choice: Exclude<PdfChoice, 'ask'>, { event, download }: Pending): Promise<void> {
   if (choice === 'download') return download();
+  if (choice === 'viewer' && event.webProfile) return download();
   const api = web();
   if (choice === 'external') {
     const opened = await withExpectedSystemScreen(async () => {
@@ -96,6 +100,15 @@ async function act(choice: Exclude<PdfChoice, 'ask'>, { event, download }: Pendi
 
 /** Idempotent; the browser screen starts it: PDF downloads come to the choice. */
 export function ensurePdfChoice(): void {
+  // Left from a viewer the app was killed in: cached PDFs and page pictures go.
+  for (const name of ['pdf', 'pdf-pages']) {
+    try {
+      const dir = new Directory(Paths.cache, name);
+      if (dir.exists) dir.delete();
+    } catch {
+      // nothing to clear
+    }
+  }
   try {
     web()?.setPdfChoiceEnabled?.(true);
   } catch {
