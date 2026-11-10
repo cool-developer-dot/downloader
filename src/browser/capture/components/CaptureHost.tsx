@@ -65,7 +65,8 @@ const PdfChoiceSheet = memo(function PdfChoiceSheet() {
         <Text variant="bodySmall" color="textSecondary" numberOfLines={2} style={{ textAlign: rtl.textAlign, writingDirection: 'ltr' }}>
           {name}
         </Text>
-        <Button title={t('browserCapture.pdfOpenHere')} onPress={() => pick('viewer')} testID="pdf-choice-viewer" />
+        {/* An incognito PDF isn't opened in the in-app viewer (pdf.service.ts). */}
+        {event?.webProfile ? null : <Button title={t('browserCapture.pdfOpenHere')} onPress={() => pick('viewer')} testID="pdf-choice-viewer" />}
         <Button title={t('browserCapture.pdfDownload')} variant="outline" onPress={() => pick('download')} testID="pdf-choice-download" />
         <Button title={t('browserCapture.pdfOpenWith')} variant="outline" onPress={() => pick('external')} testID="pdf-choice-external" />
         <View style={{ flexDirection: rtl.rowDirection, alignItems: 'center', minHeight: 48, gap: 8 }}>
