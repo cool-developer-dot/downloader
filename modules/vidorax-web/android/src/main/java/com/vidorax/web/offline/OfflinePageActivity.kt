@@ -22,6 +22,7 @@ class OfflinePageActivity : Activity() {
     super.onCreate(savedInstanceState)
     val file = intent.getStringExtra(EXTRA_PATH)?.let { File(it) }
     if (file == null || !file.isFile || !OfflinePages.isInside(filesDir, file)) {
+      closed()
       finish()
       return
     }
@@ -46,8 +47,19 @@ class OfflinePageActivity : Activity() {
 
   override fun onStop() {
     super.onStop()
-    if (!isChangingConfigurations) finish()
+    if (!isChangingConfigurations) {
+      // Reported here, not when the app comes back: App Lock's "expected screen" ends as soon as the viewer goes.
+      closed()
+      finish()
+    }
   }
+
+  override fun onDestroy() {
+    super.onDestroy()
+    if (!isChangingConfigurations) closed()
+  }
+
+  private fun closed() = Companion.closed()
 
   /** Nothing navigates away from the archive (links, redirects, form posts). */
   private class ReadOnlyClient : WebViewClient() {
@@ -55,6 +67,16 @@ class OfflinePageActivity : Activity() {
   }
 
   companion object {
+    /** Called once when the viewer stops or goes (openOfflinePage resolves). */
+    @Volatile
+    var onClosed: (() -> Unit)? = null
+
+    fun closed() {
+      val callback = onClosed
+      onClosed = null
+      callback?.invoke()
+    }
+
     const val EXTRA_PATH = "com.vidorax.web.offline.PATH"
     const val EXTRA_TITLE = "com.vidorax.web.offline.TITLE"
 
