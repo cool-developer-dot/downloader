@@ -7,6 +7,7 @@ import { SegmentedControl } from '@/components/inputs/SegmentedControl';
 import { Switch } from '@/components/inputs/Switch';
 
 import { useTranslation } from '@/localization';
+import { LinkIntakeSettingsSection } from '@/screens/settings/download-settings/LinkIntakeSettingsSection';
 import { selectSaveToGallery, useSettingsStore } from '@/store/settings';
 
 import {
@@ -100,6 +101,8 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
           title={feedback?.title ?? ''}
           message={feedback?.message ?? ''}
         />
+
+        <LinkIntakeSettingsSection index={0} disabled={preferenceDisabled} />
 
         <SettingsStaggerItem index={0}>
           <SettingsSection

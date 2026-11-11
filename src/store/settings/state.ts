@@ -3,6 +3,7 @@ import { DEFAULT_DOWNLOAD_SETTINGS } from '@/downloads/settings/types';
 import type { SettingsState } from './types';
 
 export const initialSettingsState: SettingsState = {
+  clipboardMonitor: false,
   downloadDirectory: null,
   wifiOnly: DEFAULT_DOWNLOAD_SETTINGS.wifiOnly,
   autoResume: true,

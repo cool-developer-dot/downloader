@@ -14,6 +14,7 @@ import {
 import { PlayerSessionHost } from '@/player/session-host';
 import { ReviewPromptHost } from '@/review';
 import { MiniPlayerOverlay } from '@/screens/player/mini';
+import { ClipboardLinkBanner } from '@/browser/components/ClipboardLinkBanner';
 import { AppLockGate } from '@/security/app-lock';
 
 export default function AppLayout() {
@@ -159,6 +160,7 @@ export default function AppLayout() {
           />
         </Stack>
         <MiniPlayerOverlay />
+        <ClipboardLinkBanner />
       </AppLockGate>
     </ProtectedRouteGuard>
   );

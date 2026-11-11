@@ -90,6 +90,8 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="about"/>
       </intent-filter>
+      <!-- Quick Add Shortcut (#515): the static "Paste link" app shortcut. -->
+      <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts"/>
     </activity>
   </application>
 </manifest>

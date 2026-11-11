@@ -8,6 +8,8 @@ import { routePaths, type RoutePath } from '../constants/route-paths';
 const LAUNCH_DESTINATIONS: Record<string, RoutePath> = {
   downloads: routePaths.downloads,
   library: routePaths.library,
+  // The "Paste link" app shortcut, also on a cold start.
+  'paste-link': routePaths.pasteLink,
 };
 
 /**
