@@ -4,6 +4,7 @@ import { isSupportedLanguage, normalizeLanguageCode, storageKeys } from '@/const
 import { bindLanguageReader } from '@/localization/translate';
 import { createStore } from '@/store/shared/create-store';
 import { createPersistStorage } from '@/store/shared/persist-storage';
+import { normalizeDefaultTab } from '@/navigation/helpers/default-tab';
 
 import { createSettingsActions } from './actions';
 import { initialSettingsState } from './state';
@@ -63,8 +64,10 @@ export const useSettingsStore = createStore<SettingsStore>()(
         downloadDirectory: state.downloadDirectory,
         wifiOnly: state.wifiOnly,
         autoResume: state.autoResume,
+        debugLogs: state.debugLogs,
         notifications: state.notifications,
         language: state.language,
+        defaultTab: state.defaultTab,
         maxConcurrentDownloads: state.maxConcurrentDownloads,
         saveToGallery: state.saveToGallery,
       }),
@@ -83,6 +86,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.saveToGallery === 'boolean' ? raw.saveToGallery : current.saveToGallery,
           autoResume:
             typeof raw.autoResume === 'boolean' ? raw.autoResume : current.autoResume,
+          debugLogs: typeof raw.debugLogs === 'boolean' ? raw.debugLogs : current.debugLogs,
           notifications:
             typeof raw.notifications === 'boolean'
               ? raw.notifications
@@ -92,6 +96,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
             isSupportedLanguage(normalizeLanguageCode(raw.language))
               ? normalizeLanguageCode(raw.language)
               : current.language,
+          defaultTab:
+            raw.defaultTab === undefined ? current.defaultTab : normalizeDefaultTab(raw.defaultTab),
           downloadDirectory:
             raw.downloadDirectory === null || typeof raw.downloadDirectory === 'string'
               ? raw.downloadDirectory
