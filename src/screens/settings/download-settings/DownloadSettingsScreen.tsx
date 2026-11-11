@@ -3,6 +3,7 @@ import { View } from 'react-native';
 
 import { Box } from '@/components/base/Box';
 import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
+import { SubtitleSettings } from '@/screens/settings/download-settings/SubtitleSettings';
 import { SegmentedControl } from '@/components/inputs/SegmentedControl';
 import { Switch } from '@/components/inputs/Switch';
 
@@ -126,6 +127,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
               accessibilityHint={t('settings.wifiOnlyLongHint')}
               testID="download-settings-wifi-only"
             />
+            <SubtitleSettings disabled={preferenceDisabled} />
             <SettingsRow
               title={t('settings.autoResumeLong')}
               description={t('settings.autoResumeLongHint')}

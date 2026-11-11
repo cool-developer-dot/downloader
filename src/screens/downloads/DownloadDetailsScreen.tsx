@@ -37,6 +37,7 @@ import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads
 import { DownloadDeleteDialog } from './components/DownloadDeleteDialog';
 import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
 import { useDownloadDetailsScreen } from './hooks/useDownloadDetailsScreen';
+import { DownloadSubtitlesSection } from './components/DownloadSubtitlesSection';
 import { useDownloadsTokens } from './theme/downloads-tokens';
 import {
   extractMediaType,
@@ -443,6 +444,8 @@ const DetailsBody = memo(function DetailsBody({
           testID={`download-details-primary-${primaryAction}`}
         />
       ) : null}
+
+      <DownloadSubtitlesSection id={item.id} />
 
       {!showInternalPlay && secondaryActions.length > 0 ? (
         <Box row gap={10} style={{ flexWrap: 'wrap' }}>
