@@ -9,5 +9,7 @@ export const initialSettingsState: SettingsState = {
   notifications: true,
   language: 'en',
   maxConcurrentDownloads: 2,
+  dataLimitDailyMb: 0,
+  dataLimitMonthlyMb: 0,
   saveToGallery: true,
 };
