@@ -20,6 +20,7 @@ import {
 import { navigation, routePaths } from '@/navigation';
 
 import { useLibraryScreen } from './hooks/useLibraryScreen';
+import { useWithSaveThumbnailAction } from './hooks/useSaveThumbnailSheetAction';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
 import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
@@ -133,6 +134,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
     shareItem,
     t,
   ]);
+  const completedActionsWithThumbnail = useWithSaveThumbnailAction(completedActions, actionItemId, closeItemActions);
 
   const folderSelectionActions = useMemo<ActionSheetItem[]>(
     () => {
@@ -244,7 +246,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
         onClose={closeItemActions}
         title={t('library.actionsTitle')}
         subtitle={actionSubtitle}
-        actions={completedActions}
+        actions={completedActionsWithThumbnail}
         testID="library-completed-actions"
       />
 

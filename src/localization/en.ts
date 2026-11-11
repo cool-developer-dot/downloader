@@ -1644,6 +1644,14 @@ export const en = {
       },
     },
   },
+  thumbnailSave: {
+    action: 'Save thumbnail',
+    actionHint: 'Saves the video’s cover image to your Gallery',
+    saved: 'Thumbnail saved to Gallery',
+    needsPermission: 'Allow storage access to save to the Gallery',
+    missing: 'This video has no thumbnail',
+    failed: 'Couldn’t save the thumbnail',
+  },
   legal: {
     effectiveLabel: 'Effective date: {date}',
     updatedLabel: 'Last updated: {date}',
