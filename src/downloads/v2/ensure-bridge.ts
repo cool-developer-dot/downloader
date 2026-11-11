@@ -106,6 +106,9 @@ export function ensureV2DownloadBridge(): void {
       wifiOnly: settings.wifiOnly,
       maxConcurrentDownloads: settings.maxConcurrentDownloads,
       saveToGallery: settings.saveToGallery,
+      notificationSound: settings.notificationSound,
+      notificationVibrate: settings.notificationVibrate,
+      notificationSilent: settings.notificationSilent,
     });
   };
   pushSettings();

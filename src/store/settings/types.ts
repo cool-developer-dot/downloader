@@ -3,6 +3,12 @@ export interface SettingsState {
   wifiOnly: boolean;
   autoResume: boolean;
   notifications: boolean;
+  /** Finished/failed download notifications play a sound (default on — today's behaviour). */
+  notificationSound: boolean;
+  /** Finished/failed download notifications vibrate (default off — today's behaviour). */
+  notificationVibrate: boolean;
+  /** Finished/failed download notifications make no sound or vibration; overrides both (default off). */
+  notificationSilent: boolean;
   language: string;
   /** Local-only field — not synced to a VidoraX cloud account. */
   maxConcurrentDownloads: number;

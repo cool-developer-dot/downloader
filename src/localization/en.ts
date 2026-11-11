@@ -1180,6 +1180,14 @@ export const en = {
     openSystemSettings: 'Open Android settings',
     downloadSettingsSuccessMessage: 'Your download settings were updated.',
   },
+  downloadNotifyOptions: {
+    sound: 'Notification sound',
+    soundHint: 'Plays a sound when a download finishes or fails',
+    vibrate: 'Vibrate',
+    vibrateHint: 'Vibrates when a download finishes or fails',
+    silent: 'Silent mode',
+    silentHint: 'No sound or vibration for finished or failed downloads',
+  },
   profile: {
     welcomePrefix: 'Welcome back,',
     accountSection: 'Account Information',
