@@ -10,6 +10,7 @@ import { downloadEngine, DownloadEngineError } from '@/downloads/engine';
 import { syncStatusImmediate } from '@/downloads/engine/synchronizer';
 import { reconcileDownloadState } from '@/downloads/reconciliation';
 import { removeEngineDownload, retryEngineDownload, runEngineDownloadAction } from '@/downloads/v2/actions';
+import { ensureDownloadSignIn } from '@/downloads/v2/download-auth';
 import { projectV2LibraryItem } from '@/downloads/v2/projection';
 import { logV2Download } from '@/downloads/v2/diagnostics';
 import { getV2Engine } from '@/downloads/v2/engine-port';
@@ -348,6 +349,12 @@ export function createDownloadsActions(
       owned: true,
     });
     try {
+      // #299: a download started with sign-in asks for its user name and password again when native code lost them.
+      const asksSignIn = action === 'resume' || action === 'retry';
+      if (asksSignIn && (await ensureDownloadSignIn(getV2Engine(), id)) === 'cancelled') {
+        logV2Download('action_failed', { downloadId: id, action, code: 'SIGN_IN_CANCELLED' });
+        return null;
+      }
       if (action === 'retry') {
         // A link the engine already proved expired must not be probed again unchanged (Phase 11C).
         const row = get().engineRowsById[id] ?? get().itemsById[id] ?? null;

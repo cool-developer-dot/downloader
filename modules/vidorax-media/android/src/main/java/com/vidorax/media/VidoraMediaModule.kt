@@ -10,6 +10,7 @@ import com.vidorax.media.bridge.LibraryQueryRecord
 import com.vidorax.media.bridge.PageFetchRequestRecord
 import com.vidorax.media.bridge.ProbeRequestRecord
 import com.vidorax.media.bridge.toJs
+import com.vidorax.media.net.NetworkOptions
 import com.vidorax.media.engine.DownloadEngineApi
 import com.vidorax.media.engine.DownloadEngineProvider
 import com.vidorax.media.library.DeviceVideos
@@ -126,6 +127,18 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("retry") Coroutine { id: String -> engine.retry(id) }
 
+    // #299: a download started with sign-in needs its user name and password again after a process death or a failure.
+    // JavaScript learns only where to sign in; the credentials themselves never come back from native code.
+    Function("downloadNeedsCredentials") { id: String ->
+      engine // the provider restores which downloads use sign-in
+      com.vidorax.media.net.DownloadCredentials.neededFor(id)?.let { mapOf("origin" to it.origin, "realm" to it.realm) }
+    }
+
+    AsyncFunction("setDownloadCredentials") { id: String, credentials: com.vidorax.media.bridge.CredentialsRecord ->
+      engine
+      com.vidorax.media.net.DownloadCredentials.restore(id, credentials.toModel())
+    }
+
     AsyncFunction("cancel") Coroutine { id: String -> engine.cancel(id) }
 
     AsyncFunction("removeDownload") Coroutine { id: String -> engine.removeDownload(id) }
@@ -140,6 +153,17 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("setDownloadSettings") Coroutine { settings: DownloadSettingsRecord ->
       engine.setDownloadSettings(settings.toModel())
+      // Advanced network options belong to the HTTP client (net/NetworkOptions); unsent = today's. The User-Agent and
+      // timeouts are also saved for downloads resumed before JavaScript runs; headers stay in memory only.
+      NetworkOptions.applyFromJs(
+        context,
+        settings.userAgent,
+        settings.customHeaders,
+        settings.connectTimeoutSeconds,
+        settings.readTimeoutSeconds,
+      )
+      // #332: the retry limit (null = Automatic, today's 5), saved for downloads resumed before JavaScript runs.
+      com.vidorax.media.engine.RetryLimit.applyFromJs(context, settings.retryLimit)
     }
 
     AsyncFunction("clearTempFiles") Coroutine { -> engine.clearTempFiles() }

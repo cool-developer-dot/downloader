@@ -13,6 +13,7 @@ import com.vidorax.media.library.SavedVideoIndex
 import com.vidorax.media.library.StoragePaths
 import com.vidorax.media.library.StorageUsage
 import com.vidorax.media.library.Thumbnails
+import com.vidorax.media.net.NetworkOptions
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,6 +33,11 @@ class MediaServices private constructor(context: Context) {
   val fileActions = FileActions(context)
   val storageUsage = StorageUsage(paths, library)
   val legacyImport = LegacyImport(context, paths, library, mediaInfo, thumbnails)
+
+  // Advanced network: the saved User-Agent and timeouts apply from process start, before any JavaScript runs.
+  init {
+    NetworkOptions.restore(context)
+  }
 
   /** Pasted/shared links read for their video before the tab plays anything (`fetchPage`). */
   internal val pageFetcher: PageFetcher by lazy {

@@ -106,6 +106,12 @@ enum class DownloadErrorCode : WireEnum {
 
   /** The finished file is not the media it should be (unreadable, wrong duration, a track missing after merging). */
   INVALID_MEDIA,
+
+  /**
+   * #299: a download started with sign-in was refused with a 401 — the user name or password was wrong, or they are
+   * gone (a process death, an earlier failure). Retry asks for them again.
+   */
+  AUTH_REQUIRED,
   ;
 
   override val wire: String get() = name

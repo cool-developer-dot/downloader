@@ -15,10 +15,12 @@ import { getV2Engine } from './engine-port';
 import { projectV2LibraryItem } from './projection';
 import { createLibraryReconciler } from './library-reconcile';
 import { pushV2DownloadSettings } from './settings';
+import { getNetworkOptionsInput, subscribeNetworkOptions } from './network-options-store';
 
 let attached = false;
 let detach: (() => void) | null = null;
 let detachSettings: (() => void) | null = null;
+let detachNetworkOptions: (() => void) | null = null;
 let detachAppState: (() => void) | null = null;
 let libraryHydration: Promise<void> | null = null;
 let libraryHydrationTimer: ReturnType<typeof setTimeout> | null = null;
@@ -104,12 +106,15 @@ export function ensureV2DownloadBridge(): void {
     const settings = useSettingsStore.getState();
     void pushV2DownloadSettings(engine, {
       wifiOnly: settings.wifiOnly,
+      network: getNetworkOptionsInput(),
       maxConcurrentDownloads: settings.maxConcurrentDownloads,
       saveToGallery: settings.saveToGallery,
     });
   };
   pushSettings();
   detachSettings = useSettingsStore.subscribe(pushSettings);
+  // Download Settings → Advanced network (and its headers once read from the secure store).
+  detachNetworkOptions = subscribeNetworkOptions(pushSettings);
   const sink = storeSink();
   // Subscribe before hydrating so a completion during startup is never missed.
   detach = subscribeV2Downloads(engine, sink);
@@ -195,6 +200,8 @@ export function resetV2DownloadBridgeForTests(): void {
   detach = null;
   detachSettings?.();
   detachSettings = null;
+  detachNetworkOptions?.();
+  detachNetworkOptions = null;
   detachAppState?.();
   detachAppState = null;
   if (libraryHydrationTimer) {

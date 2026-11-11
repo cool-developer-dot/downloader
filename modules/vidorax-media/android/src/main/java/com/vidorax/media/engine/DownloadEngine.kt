@@ -22,6 +22,7 @@ import com.vidorax.media.model.ProgressPhase
 import com.vidorax.media.model.RequestContext
 import com.vidorax.media.model.SourceKind
 import com.vidorax.media.model.VariantChoice
+import com.vidorax.media.net.DownloadCredentials
 import com.vidorax.media.net.MediaHttpException
 import com.vidorax.media.net.MediaNetworkException
 import com.vidorax.media.net.MediaRefusedException
@@ -111,6 +112,8 @@ internal class DownloadEngine(
   private val gallery: GalleryPublisher = GalleryPublisher.NONE,
   /** Backoff sleeps; injectable so tests do not wait in real time. */
   private val retryDelay: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
+  /** #332 Retry limit ([RetryLimit]): null is Automatic, today's [MAX_NETWORK_ATTEMPTS]. Read at each failure. */
+  private val retryLimit: () -> Int? = { null },
   private val now: () -> Long = System::currentTimeMillis,
   private val idFactory: () -> String = { UUID.randomUUID().toString() },
 ) : DownloadEngineApi {
@@ -311,9 +314,12 @@ internal class DownloadEngine(
   private fun needsSession(result: ProbeResult, context: RequestContext): Boolean =
     result is ProbeResult.Failure && result.reason == ProbeFailure.HTTP_403 && !context.useCookies
 
-  /** The request context this download uses now (the stored one: a session adopted mid-way sticks). */
+  /**
+   * The request context this download uses now (the stored one: a session adopted mid-way sticks), keyed to the
+   * download so the HTTP client can add its own sign-in (#299, net/DownloadCredentials; the key is never stored).
+   */
   private suspend fun currentRequest(id: String, fallback: DownloadRow): RequestContext =
-    store.find(id)?.request ?: fallback.request
+    (store.find(id)?.request ?: fallback.request).copy(authKey = id)
 
   /** Records that this download needs the browsing session from now on — the flag only, never a cookie value. */
   private suspend fun adoptSession(id: String, gen: Long): RequestContext? = mutex.withLock {
@@ -406,6 +412,8 @@ internal class DownloadEngine(
       audioUrl = request.audioUrl.takeIf { request.kind == SourceKind.SPLIT },
     )
     store.create(row)
+    // #299: the sign-in the server asked for, held in memory for this download only (pinned to its https origin).
+    request.credentials?.let { DownloadCredentials.put(id, request.url, it) }
     return row
   }
 
@@ -1086,7 +1094,12 @@ internal class DownloadEngine(
   }
 
   private suspend fun failClassification(id: String, gen: Long, failure: ProbeResult.Failure, expired: Boolean) {
-    val code = if (expired && failure.reason in EXPIRY_FAILURES) DownloadErrorCode.SOURCE_EXPIRED else mapProbeFailure(failure.reason)
+    val code = when {
+      // #299: a download started with sign-in that is refused with a 401 needs the user name and password (again).
+      failure.httpStatus == 401 && DownloadCredentials.usesSignIn(id) -> DownloadErrorCode.AUTH_REQUIRED
+      expired && failure.reason in EXPIRY_FAILURES -> DownloadErrorCode.SOURCE_EXPIRED
+      else -> mapProbeFailure(failure.reason)
+    }
     val message = if (code == DownloadErrorCode.SOURCE_EXPIRED) EXPIRED_MESSAGE else failure.message
     fail(id, gen, code, message)
   }
@@ -1182,7 +1195,7 @@ internal class DownloadEngine(
         failures = 0
       }
       failures += 1
-      if (failures > MAX_NETWORK_ATTEMPTS) {
+      if (failures > RetryLimit.attempts(retryLimit())) {
         fail(id, gen, transientCode, transientMessage)
         return null
       }

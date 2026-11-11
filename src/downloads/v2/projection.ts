@@ -62,6 +62,7 @@ const FAILURE_MESSAGES: Record<DownloadErrorCode, string> = {
   MUX_FAILED: 'Couldn’t merge the audio and video. Retry to try again.',
   TRANSCODE_FAILED: 'Couldn’t convert this video on this device.',
   INVALID_MEDIA: 'The finished file didn’t play back correctly.',
+  AUTH_REQUIRED: 'This site needs your user name and password. Retry to sign in again.',
 };
 
 /** Existing catalog platform labels (formatPlatform title-cases them); generic websites stay OTHER. */

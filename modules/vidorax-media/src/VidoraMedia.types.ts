@@ -148,7 +148,30 @@ export type ProbeResult =
       /** The download merges a separate audio track into the video (split files, HLS/DASH separate audio). */
       mergesAudio?: boolean;
     }
-  | { ok: false; reason: ProbeFailure; httpStatus: number | null; message: string | null };
+  | {
+      ok: false;
+      reason: ProbeFailure;
+      httpStatus: number | null;
+      message: string | null;
+      /** #299: the server answered 401 and asks for HTTP Basic sign-in. Absent from older native builds. */
+      authChallenge?: AuthChallenge | null;
+    };
+
+/**
+ * #299 Authentication Support: a `WWW-Authenticate: Basic` challenge. `origin` (scheme://host:port) is where the user
+ * name and password would be sent — only an `https://` origin is ever sent them; `realm` is the server's own label.
+ */
+export interface AuthChallenge {
+  scheme: 'basic';
+  origin: string;
+  realm: string | null;
+}
+
+/** #299: the user name and password the server asked for. Sent with one download only; never stored or read back. */
+export interface DownloadCredentials {
+  username: string;
+  password: string;
+}
 
 /**
  * A pasted or shared link fetched the way its browser tab would navigate to it, so the page can be read for its
@@ -239,6 +262,13 @@ export interface EnqueueRequest {
   thumbnailUrl?: string;
   durationMs?: number;
   estimatedBytes?: number;
+  /**
+   * #299: sign-in for this download only. Sent over https to the download URL's own origin (scheme, host and port)
+   * and never on a redirect to another origin; held in native memory only (never saved, never sent back, cleared when
+   * the download completes, is cancelled or fails). ERR_INVALID_REQUEST for a non-https URL or an invalid user name.
+   * Ignored by older native builds.
+   */
+  credentials?: DownloadCredentials;
   /** Display label for the chosen quality, e.g. "1080p". */
   qualityLabel?: string;
   /** Overrides `DownloadSettings.autoSaveToGallery` for this download. */
@@ -308,7 +338,9 @@ export type DownloadErrorCode =
   /** Converting a track the output cannot carry failed (no decoder/encoder); the tracks are kept for Retry. */
   | 'TRANSCODE_FAILED'
   /** The processed file did not read back as the video it should be (no picture, lost sound, wrong length). */
-  | 'INVALID_MEDIA';
+  | 'INVALID_MEDIA'
+  /** #299: a download started with sign-in was refused (401): wrong or forgotten user name/password. Retry asks again. */
+  | 'AUTH_REQUIRED';
 
 export interface DownloadRecord {
   id: string;
@@ -429,6 +461,30 @@ export interface DownloadSettings {
   /** Default false. */
   wifiOnly: boolean;
   /**
+   * Download Settings → Advanced network: replaces the User-Agent of every download request (visible ASCII, at most
+   * 256 characters). This and the three fields below are each sent only when the user changed them; omitted is
+   * today's behaviour (the browser's own User-Agent, no extra headers, 20 s to connect and 30 s without data). They
+   * never weaken TLS, the public-address check or the redirect checks. The native side saves the User-Agent and
+   * timeouts so a download resumed before JavaScript runs uses them; headers are held in memory only. Ignored by older
+   * native builds.
+   */
+  userAgent?: string;
+  /**
+   * Added to every download request that does not already carry the header (the page's own headers win). Names such
+   * as Cookie, Authorization, Host, Range or Proxy-* / Sec-* are refused; values are visible ASCII without line
+   * breaks. At most 10.
+   */
+  customHeaders?: Record<string, string>;
+  /** Seconds to connect / to wait for data before the attempt counts as failed (5..300). */
+  connectTimeoutSeconds?: number;
+  readTimeoutSeconds?: number;
+  /**
+   * #332 Retry limit: how many transient failures in a row (a dropped connection, a 5xx/408/429) a download waits out,
+   * without progress in between, before it fails. Sent only when the user changed it; omitted is "Automatic", today's
+   * 5. The native side clamps it to 1..10 and saves it with the download settings. Ignored by older native builds.
+   */
+  retryLimit?: number;
+  /**
    * Default true: every completed download is also copied to the device gallery (`Movies/VidoraX/<Site>`), after it
    * is COMPLETED and only as the final verified file. A failed copy never affects the download or its library item.
    */
@@ -480,6 +536,16 @@ export interface VidoraMediaModuleApi {
   pause(id: string): Promise<void>;
   resume(id: string): Promise<void>;
   retry(id: string): Promise<void>;
+  /**
+   * #299: where a download started with sign-in must sign in again before Resume/Retry can work (its credentials are
+   * gone after a process death or a failure); null when nothing is needed. Never returns the credentials.
+   */
+  downloadNeedsCredentials?(id: string): { origin: string; realm: string | null } | null;
+  /**
+   * #299: the user name and password again for such a download, pinned to the origin it was started with. False when
+   * the download never used sign-in. ERR_INVALID_REQUEST for invalid values.
+   */
+  setDownloadCredentials?(id: string, credentials: DownloadCredentials): Promise<boolean>;
   cancel(id: string): Promise<void>;
   /** Removes a failed/cancelled/completed download record and its temp files (never the library item). */
   removeDownload(id: string): Promise<void>;

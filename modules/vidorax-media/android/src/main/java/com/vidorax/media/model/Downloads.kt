@@ -7,6 +7,11 @@ data class RequestContext(
   val origin: String?,
   val headers: Map<String, String>,
   val useCookies: Boolean,
+  /**
+   * #299: the download this request belongs to, so the HTTP client can add that download's sign-in
+   * (net/DownloadCredentials) — set by the engine for each request, never stored (RequestContextJson leaves it out).
+   */
+  val authKey: String? = null,
 )
 
 data class ProbeRequest(
@@ -40,7 +45,17 @@ sealed interface ProbeResult {
     val reason: ProbeFailure,
     val httpStatus: Int?,
     val message: String?,
+    /** #299: the server answered 401 and asks for HTTP Basic authentication. */
+    val authChallenge: AuthChallenge? = null,
   ) : ProbeResult
+}
+
+/** #299: a `WWW-Authenticate: Basic` challenge — where to sign in (scheme://host:port) and the server's realm. */
+data class AuthChallenge(val origin: String, val realm: String?)
+
+/** #299: a user name and password for one download (net/DownloadCredentials). Never printed: both are hidden. */
+class BasicCredentials(val username: String, val password: String) {
+  override fun toString(): String = "BasicCredentials(<redacted>)"
 }
 
 data class ProbeVariant(
@@ -88,6 +103,11 @@ data class EnqueueRequest(
   val thumbnailUrl: String?,
   val durationMs: Long?,
   val estimatedBytes: Long?,
+  /**
+   * #299: the user name and password the server asked for, for this download only (https, its own origin). Handed to
+   * net/DownloadCredentials when the download is created; never stored with it.
+   */
+  val credentials: BasicCredentials? = null,
   val qualityLabel: String?,
   /** Null follows [DownloadSettings.autoSaveToGallery]. */
   val saveToGallery: Boolean?,

@@ -62,6 +62,9 @@ internal class HttpResponse(
 
   fun header(name: String): String? = response.header(name)
 
+  /** Every value of a header that may repeat (`WWW-Authenticate`, #299). */
+  fun headers(name: String): List<String> = response.headers(name)
+
   fun source(): BufferedSource = (response.body ?: error("no body")).source()
 
   fun byteStream(): InputStream = (response.body ?: error("no body")).byteStream()
@@ -117,11 +120,14 @@ internal class HttpClient(client: OkHttpClient, private val policy: UrlPolicy = 
     var url = request.url.toHttpUrlOrNull()
       ?: throw MediaRefusedException(ProbeFailure.UNSUPPORTED_FORMAT, "not an http(s) URL")
     var hops = 0
+    // #299: a download's sign-in goes only to its own origin; once a redirect leaves it, never again in this chain.
+    var signIn = true
     while (true) {
       if (!policy.allows(url)) {
         throw MediaRefusedException(ProbeFailure.POLICY_BLOCKED, "refused non-public address ${Redact.url(url.toString())}")
       }
-      val call = client.newCall(build(request, url))
+      if (!DownloadCredentials.isPinnedOrigin(request.context.authKey, url)) signIn = false
+      val call = client.newCall(build(request, url, signIn))
       val response = try {
         call.execute()
       } catch (e: IOException) {
@@ -144,7 +150,7 @@ internal class HttpClient(client: OkHttpClient, private val policy: UrlPolicy = 
     return response.request.url.resolve(location)
   }
 
-  private fun build(request: MediaRequest, url: HttpUrl): Request {
+  private fun build(request: MediaRequest, url: HttpUrl, signIn: Boolean = false): Request {
     val builder = Request.Builder().url(url).get()
     val ctx = request.context
     ctx.userAgent?.let { builder.header("User-Agent", it) }
@@ -161,6 +167,8 @@ internal class HttpClient(client: OkHttpClient, private val policy: UrlPolicy = 
     if (ctx.useCookies) {
       builder.header(SessionCookieInterceptor.MARKER, "1")
     }
+    // #299: the download's own Basic sign-in, over https to its pinned origin only (net/DownloadCredentials).
+    if (signIn) DownloadCredentials.authorizationFor(ctx.authKey, url)?.let { builder.header("Authorization", it) }
     // Identity so Content-Length/Content-Range reflect real bytes and resume math stays correct.
     builder.header("Accept-Encoding", "identity")
     request.rangeStart?.let { start ->
@@ -190,6 +198,8 @@ internal class HttpClient(client: OkHttpClient, private val policy: UrlPolicy = 
         // Cookies a server sets during the download itself (a signed-cookie CDN, a token cookie on the playlist
         // response) are replayed to that server like a browser would — held in memory only, never persisted.
         .cookieJar(ResponseCookieJar())
+        // Download Settings → Advanced network (NetworkOptions): passes every request through untouched by default.
+        .addInterceptor(NetworkOptionsInterceptor())
         // Network-level: every hop gets the WebView session cookies for its own host.
         .addNetworkInterceptor(SessionCookieInterceptor(cookies))
         .build(),
