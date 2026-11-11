@@ -46,6 +46,8 @@ object DownloadEngineProvider {
       // Lossless remux/merge with Media3's muxers; re-encoding only through the platform codecs (Transformer).
       processing = RealMediaProcessing(MediaProcessor(Remuxer(), TransformerTranscoder(context), AndroidCodecSupport)),
       transfers = RealTransfers(ProgressiveTransfer(http)),
+      // H20 Repair: a failed download's partial files are checked against the server through the same client.
+      partialChecks = RealPartialChecks(http),
       verification = RealVerification,
       inspector = RealMediaInspector(services.mediaInfo),
       thumbnails = RealThumbnails(services.thumbnails),

@@ -112,6 +112,8 @@ internal class DownloadEngine(
   /** Backoff sleeps; injectable so tests do not wait in real time. */
   private val retryDelay: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
   private val now: () -> Long = System::currentTimeMillis,
+  /** H20 Repair (#412): asks the server about a failed download's partial files; none = never changes anything. */
+  private val partialChecks: PartialChecks = PartialChecks.NONE,
   private val idFactory: () -> String = { UUID.randomUUID().toString() },
 ) : DownloadEngineApi {
   private val progressFlow = sharedFlow<DownloadProgress>()
@@ -441,6 +443,29 @@ internal class DownloadEngine(
 
   override suspend fun retry(id: String) =
     restart(id, allowed = setOf(DownloadState.FAILED), bumpAttempts = true, alreadyRunning = RUNNING)
+
+  /**
+   * H20 Repair Partial File (#412): checks a failed download's partial files against the server (PartialRepair) and
+   * retries it — from where it stopped when they check out, from zero when the server's file changed or the partial is
+   * damaged, re-fetching a damaged last segment. When the server cannot be asked now nothing changes. Only the
+   * download's own work files are touched (under [mutex], while it is still failed), never a finished file.
+   */
+  override suspend fun repairPartial(id: String): RepairOutcome {
+    val row = store.find(id) ?: throw NotFoundException("Unknown download $id")
+    if (row.state != DownloadState.FAILED) throw InvalidStateException("Cannot repair a ${row.state.wire} download")
+    val plan = PartialRepairer(paths::workDir, hls, dash, partialChecks).inspect(row, currentRequest(id, row))
+    if (plan.outcome == RepairOutcome.UNREACHABLE || plan.outcome == RepairOutcome.NOTHING) return plan.outcome
+    mutex.withLock {
+      val current = store.find(id) ?: throw NotFoundException("Unknown download $id")
+      // A Retry or Cancel meanwhile owns the files now: leave them alone.
+      if (current.state != DownloadState.FAILED) {
+        throw InvalidStateException("Cannot repair a ${current.state.wire} download")
+      }
+      plan.apply()
+    }
+    retry(id)
+    return plan.outcome
+  }
 
   private suspend fun restart(
     id: String,

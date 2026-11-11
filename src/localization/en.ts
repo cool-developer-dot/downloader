@@ -348,6 +348,36 @@ export const en = {
     libraryHeroA11y:
       'Offline media library organizing itself into a searchable personal hub',
   },
+  fileIntegrity: {
+    checksumTitle: 'SHA-256 checksum',
+    checksumHint: 'Compute the file’s SHA-256 to compare it with the one the site publishes.',
+    compute: 'Compute SHA-256',
+    computing: 'Computing the checksum…',
+    computingPercent: 'Computing the checksum… {percent}%',
+    checksumCancelled: 'Stopped. You can compute it again at any time.',
+    checksumFailed: 'Couldn’t compute the checksum: the file can’t be read.',
+    copy: 'Copy',
+    share: 'Share',
+    copied: 'Checksum copied',
+    copyFailed: 'Couldn’t copy the checksum',
+    unavailable: 'Not available in this version of the app.',
+    repair: 'Repair download',
+    repairHint:
+      '{size} is already downloaded. Repair checks it against the server: it continues if that part is intact, otherwise it starts again cleanly.',
+    repairResumed: 'The downloaded part checked out. Continuing where it stopped.',
+    repairRestartedChanged: 'The file on the server has changed, so the download starts again from the beginning.',
+    repairRestartedCorrupt: 'The downloaded part was damaged, so the download starts again from the beginning.',
+    repairRestartedNoResume: 'This server can’t continue the file, so the download starts again from the beginning.',
+    repairSegmentRefetched: 'The last piece of the stream was damaged and is downloaded again. The rest continues.',
+    repairUnreachable: 'Couldn’t reach the server to check the download. Nothing was changed. Try again later, or tap Retry.',
+    repairNothing: 'Nothing has been downloaded yet, so there is nothing to repair. Tap Retry to start again.',
+    repairFailed: 'Couldn’t repair this download.',
+    playWhileDownloading: 'Play while downloading',
+    playWhileDownloadingHint: 'Plays the part that is already downloaded. If playback catches up with the download, it waits.',
+    playWhileDownloadingNote:
+      'Still downloading: when playback reaches the part that hasn’t arrived yet, it waits for it. Nothing is added to your history.',
+    playUnavailable: 'This download can’t be played yet. Try again when more of it has downloaded.',
+  },
   auth: {
     signInTitle: 'Welcome Back',
     signInSubtitle:
