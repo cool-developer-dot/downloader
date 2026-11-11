@@ -120,6 +120,12 @@ class VidoraMediaModule : Module() {
       engine.findDuplicate(request.toModel())?.toJs()
     }
 
+    // The app's "Download notifications" setting for the native runner (kept, so it holds before JavaScript runs)
+
+    AsyncFunction("setDownloadNotificationsEnabled") { enabled: Boolean ->
+      com.vidorax.media.runner.DownloadNotificationsToggle.setEnabled(context, enabled)
+    }
+
     AsyncFunction("pause") Coroutine { id: String -> engine.pause(id) }
 
     AsyncFunction("resume") Coroutine { id: String -> engine.resume(id) }
