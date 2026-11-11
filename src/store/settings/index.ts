@@ -63,6 +63,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         downloadDirectory: state.downloadDirectory,
         wifiOnly: state.wifiOnly,
         autoResume: state.autoResume,
+        debugLogs: state.debugLogs,
         notifications: state.notifications,
         language: state.language,
         maxConcurrentDownloads: state.maxConcurrentDownloads,
@@ -83,6 +84,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.saveToGallery === 'boolean' ? raw.saveToGallery : current.saveToGallery,
           autoResume:
             typeof raw.autoResume === 'boolean' ? raw.autoResume : current.autoResume,
+          debugLogs: typeof raw.debugLogs === 'boolean' ? raw.debugLogs : current.debugLogs,
           notifications:
             typeof raw.notifications === 'boolean'
               ? raw.notifications

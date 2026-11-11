@@ -4,6 +4,7 @@ export const selectDownloadDirectory = (state: SettingsStore) => state.downloadD
 export const selectWifiOnly = (state: SettingsStore) => state.wifiOnly;
 export const selectSaveToGallery = (state: SettingsStore) => state.saveToGallery;
 export const selectAutoResume = (state: SettingsStore) => state.autoResume;
+export const selectDebugLogs = (state: SettingsStore) => state.debugLogs;
 export const selectNotifications = (state: SettingsStore) => state.notifications;
 export const selectLanguage = (state: SettingsStore) => state.language;
 export const selectMaxConcurrentDownloads = (state: SettingsStore) =>
