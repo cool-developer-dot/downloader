@@ -92,6 +92,11 @@ data class EnqueueRequest(
   /** Null follows [DownloadSettings.autoSaveToGallery]. */
   val saveToGallery: Boolean?,
   /**
+   * #494 Custom Extension: `mp4`, `m4v` or `m4a` for the finished file, used only when it is a safe alias for the
+   * container its bytes prove (engine/PreferredExtensions); null (or anything else) keeps the usual extension.
+   */
+  val preferredExtension: String? = null,
+  /**
    * The source as the page offered it, before any refresh or redirect: the video's identity is derived from it (see
    * `engine/DownloadIdentity`), so a re-signed or redirected link is still the same video. Null uses [url].
    */
