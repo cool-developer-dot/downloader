@@ -23,6 +23,7 @@ import { useLibraryScreen } from './hooks/useLibraryScreen';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
 import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
+import { useTagSheetActions } from '@/screens/downloads/hooks/useTagSheetActions';
 import { useFoldersStore } from '@/store/organization/folders';
 import { EmptyState } from '@/components/common/EmptyState';
 
@@ -83,6 +84,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
   } = useLibraryScreen();
 
   const foldersById = useFoldersStore((s) => s.itemsById);
+  const tagActionsFor = useTagSheetActions();
   const folderOrderedIds = useFoldersStore((s) => s.orderedIds);
 
   const completedActions = useMemo<ActionSheetItem[]>(() => {
@@ -99,6 +101,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
           void openItemExternal(id);
         },
       },
+      ...tagActionsFor(id, closeItemActions),
       {
         id: 'share',
         label: t('library.share'),
@@ -130,6 +133,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
     openItemExternal,
     requestDeleteItem,
     saveItemToDevice,
+    tagActionsFor,
     shareItem,
     t,
   ]);

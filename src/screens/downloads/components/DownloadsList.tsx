@@ -7,6 +7,7 @@ import {
 } from 'react-native';
 
 import type { DownloadListSection } from '../utils/download-format';
+import { useNarrowedDownloads } from '../hooks/useOrganizeNarrowing';
 import { DownloadCard } from './DownloadCard';
 import { DownloadFooterLoader } from './DownloadFooterLoader';
 import { DownloadSectionHeader } from './DownloadSectionHeader';
@@ -95,6 +96,11 @@ export const DownloadsList = memo(function DownloadsList({
     }
   }, [hasMore, loadingMore, onEndReached]);
 
+  // H12: the Size (#396) and Tag (#387) filters narrow what is shown (nothing chosen = every row, as before).
+  const narrowed = useNarrowedDownloads(orderedIds, sections);
+  orderedIds = narrowed.orderedIds;
+  sections = narrowed.sections;
+
   const footer = useMemo(
     () => (
       <DownloadFooterLoader
@@ -130,6 +136,7 @@ export const DownloadsList = memo(function DownloadsList({
         removeClippedSubviews
         keyboardShouldPersistTaps="handled"
         ListFooterComponent={footer}
+        ListEmptyComponent={narrowed.emptyNotice}
         contentContainerStyle={contentStyle}
         accessibilityRole="list"
       />
@@ -152,6 +159,7 @@ export const DownloadsList = memo(function DownloadsList({
       removeClippedSubviews
       keyboardShouldPersistTaps="handled"
       ListFooterComponent={footer}
+      ListEmptyComponent={narrowed.emptyNotice}
       contentContainerStyle={contentStyle}
       accessibilityRole="list"
     />

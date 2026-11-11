@@ -249,6 +249,12 @@ export interface EnqueueRequest {
    * removed), so a re-signed or redirected link is still recognised as the same video. Defaults to `url`.
    */
   identityUrl?: string;
+  /**
+   * H12 (Duplicate Action #386): download it although it is already saved ("Keep both", or the new copy of
+   * "Replace"): no duplicate check for this request, and its finished file is kept even when the same bytes are
+   * saved. Omitted = today's checks. Ignored by older native builds (they answer ALREADY_DOWNLOADED as before).
+   */
+  allowDuplicate?: boolean;
 }
 
 /**

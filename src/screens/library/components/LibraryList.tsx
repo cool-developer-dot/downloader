@@ -7,6 +7,7 @@ import {
 
 import { Box } from '@/components/base/Box';
 import type { LibraryViewMode, MediaLibraryItem } from '@/library';
+import { useTagFilteredItems } from '@/screens/downloads/hooks/useOrganizeNarrowing';
 
 import { useLibraryTokens } from '../theme/library-tokens';
 import { LibraryCard } from './LibraryCard';
@@ -35,6 +36,8 @@ export const LibraryList = memo(function LibraryList({
   listEmptyComponent,
   testID = 'library-list',
 }: LibraryListProps) {
+  // H12 (#387): the Tag filter narrows the videos shown (no tag chosen = every video, as before).
+  items = useTagFilteredItems(items);
   const libraryTokens = useLibraryTokens();
   const { width } = useWindowDimensions();
   const isGrid = viewMode === 'grid';

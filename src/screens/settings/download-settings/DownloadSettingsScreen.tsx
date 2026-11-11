@@ -2,6 +2,7 @@ import { memo, useCallback, useMemo } from 'react';
 import { View } from 'react-native';
 
 import { Box } from '@/components/base/Box';
+import { DuplicateActionSetting } from '@/screens/settings/download-settings/DuplicateActionSetting';
 import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { SegmentedControl } from '@/components/inputs/SegmentedControl';
 import { Switch } from '@/components/inputs/Switch';
@@ -145,6 +146,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
               accessibilityHint={t('settings.autoResumeLongHint')}
               testID="download-settings-auto-resume"
             />
+            <DuplicateActionSetting disabled={preferenceDisabled} />
             <SettingsRow
               title={t('settings.saveToGallery')}
               description={t('settings.saveToGalleryHint')}

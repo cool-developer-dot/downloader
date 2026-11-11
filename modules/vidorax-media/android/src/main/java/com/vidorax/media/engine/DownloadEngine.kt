@@ -107,6 +107,8 @@ internal class DownloadEngine(
   private val processing: MediaProcessing = MediaProcessing.PASSTHROUGH,
   /** Videos the user already has: a second download of one of them is refused as a duplicate. */
   private val savedVideos: SavedVideos = SavedVideos.NONE,
+  /** H12: downloads the user chose to keep although they already had the video; none by default. */
+  private val duplicateBypass: DuplicateBypass = DuplicateBypass(),
   /** The automatic device-gallery copy of each completed download. */
   private val gallery: GalleryPublisher = GalleryPublisher.NONE,
   /** Backoff sleeps; injectable so tests do not wait in real time. */
@@ -260,7 +262,7 @@ internal class DownloadEngine(
     val same = finalizeLock.withLock {
       runCatching { savedVideos.findByContent(dest, excludeId = row.id, audioOnly = audioOnly) }.getOrNull()
     }
-    if (same != null) {
+    if (same != null && !duplicateBypass.contains(row.id)) {
       dest.delete()
       val failed = mutex.withLock {
         val current = store.find(row.id) ?: return@withLock null
@@ -348,11 +350,15 @@ internal class DownloadEngine(
   override suspend fun enqueueUnique(request: EnqueueRequest): EnqueueResult {
     val identity = identityOf(request)
     val result = mutex.withLock {
+      // H12 (#386): "Keep both" / "Replace" — this one request is not checked against the videos the user has.
+      skipNextDuplicateCheck = request.allowDuplicate && identity != null
       identity?.let { duplicateLocked(it) }?.let { return@withLock it }
       EnqueueResult.Enqueued(createRow(request, identity).toRecord())
     }
     when (result) {
       is EnqueueResult.Enqueued -> {
+        // H12: its finished file is kept even when the user already has the same bytes (Keep both / Replace).
+        if (request.allowDuplicate) duplicateBypass.add(result.record.id, live = liveDownloadIds())
         stateFlow.tryEmit(result.record)
         launchWorker(result.record.id)
       }
@@ -370,8 +376,22 @@ internal class DownloadEngine(
     pageUrl = request.pageUrl,
   )
 
+  /**
+   * H12 (#386): set under [mutex] right before an `allowDuplicate` enqueue checks for the video, and consumed by that
+   * very check ([duplicateLocked]), so only that one request skips it.
+   */
+  private var skipNextDuplicateCheck = false
+
+  /** Downloads that can still finish (a failed one may be retried). */
+  private suspend fun liveDownloadIds(): List<String> =
+    store.list(now()).filter { !it.state.isTerminal || it.state == DownloadState.FAILED }.map { it.id }
+
   /** Must be called while holding [mutex]. A live download of the video first, then a saved copy of it. */
   private suspend fun duplicateLocked(identity: String): EnqueueResult? {
+    if (skipNextDuplicateCheck) {
+      skipNextDuplicateCheck = false
+      return null
+    }
     store.list(now()).firstOrNull { it.identityKey == identity && !it.state.isTerminal }
       ?.let { return EnqueueResult.AlreadyDownloading(it.toRecord()) }
     val saved = runCatching { savedVideos.findByIdentity(identity) }.getOrNull() ?: return null
@@ -1253,7 +1273,7 @@ internal class DownloadEngine(
       } catch (e: Exception) {
         null // an unreadable candidate is not a duplicate; the download completes as usual
       }
-      if (same != null) {
+      if (same != null && !duplicateBypass.contains(id)) {
         dest.delete()
         cleanupWork(id)
         fail(id, gen, DownloadErrorCode.DUPLICATE, DUPLICATE_MESSAGE)

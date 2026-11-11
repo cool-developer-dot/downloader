@@ -9,6 +9,7 @@ import { resolveDownloadTitle } from '@/downloads/quality/download-metadata';
 import type { AnalyzedMediaSelection, DownloadQualityOption } from '@/downloads/quality/types';
 import type { MediaRequestContext } from '@/downloads/types/request-context';
 import { findExistingDownload, getV2Engine, handOffVerifiedVariant, type V2DuplicateOutcome } from '@/downloads/v2';
+import { resolveDuplicateChoice } from '@/downloads/v2/duplicate-choice';
 import type { V2DownloadEntry } from '@/downloads/v2/projection';
 import { resolveFreshSourceForEnqueue } from '@/downloads/v2/source-refresh';
 import { runPreDownloadGate } from '@/media-detection/services/pre-download-gate.service';
@@ -157,6 +158,18 @@ export async function enqueueVerifiedBrowserVariant(
     },
     engineDeps,
   );
+  // H12 (#386): "When a video is already downloaded" — Keep both / Replace download it again through this same path,
+  // Ask offers that choice, Skip (the default) keeps today's answer.
+  if (existing?.duplicate === 'ALREADY_DOWNLOADED') {
+    const again = await resolveDuplicateChoice(
+      existing,
+      { option: input.option, title: payload.title, pageUrl, thumbnailUrl: null, requestContext: input.requestContext },
+      () => enqueueVerifiedBrowserVariant(input),
+    );
+    if (again) {
+      return again;
+    }
+  }
   if (existing) {
     return existing;
   }
