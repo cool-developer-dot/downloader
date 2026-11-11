@@ -44,6 +44,10 @@ export interface NetworkMediaBatchEvent {
  * Android's DownloadManager as before. `hint` comes from the response's MIME type or file name; `unknown` is a
  * generic binary with no usable name, which JS must either identify as a video or hand back with
  * `startSystemDownload`.
+ *
+ * H17: `risky` is an app or program file (the Dangerous File Warning's list, by name or MIME type) that is sent here
+ * only so JS can show the warning first: it is handed to `startSystemDownload` if the user confirms, else dropped.
+ * Older native builds never send it (those files went straight to DownloadManager).
  */
 export interface WebDownloadEvent {
   viewTag: number;
@@ -52,7 +56,7 @@ export interface WebDownloadEvent {
   contentDisposition: string | null;
   mimeType: string | null;
   contentLength: number | null;
-  hint: Extract<NetworkMediaHint, 'manifest-hls' | 'manifest-dash' | 'progressive' | 'unknown'>;
+  hint: Extract<NetworkMediaHint, 'manifest-hls' | 'manifest-dash' | 'progressive' | 'unknown'> | 'risky';
 }
 
 export interface SharedTextEvent {
