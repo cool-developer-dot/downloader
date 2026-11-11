@@ -142,6 +142,12 @@ data class DownloadProgress(
   val etaSeconds: Long?,
   /** [ProgressPhase.PROCESSING] only: what the engine is doing with the downloaded tracks. */
   val stage: ProcessingStage? = null,
+  /**
+   * #315, HLS/DASH segment downloads only (null otherwise): segments durably on disk and segments in all, over the
+   * video and a separate audio track.
+   */
+  val segmentsDone: Int? = null,
+  val segmentsTotal: Int? = null,
 )
 
 data class DownloadSettings(

@@ -172,6 +172,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureV2DownloadBridge } = await import('@/downloads/v2/ensure-bridge');
       // Mirrors the v2 DownloadEngine (its records and library items) into the downloads store.
       ensureV2DownloadBridge();
+      const { ensureV2ProgressStats } = await import('@/downloads/v2/progress-stats-store');
+      // Average speed, active time and the speed graph of v2 downloads (in memory, this session only).
+      ensureV2ProgressStats();
       const { ensureFavoritesMigration } = await import('@/library/ensure-favorites-migration');
       // One-time: legacy favorites onto the library items they unambiguously name. Off the startup path.
       setTimeout(ensureFavoritesMigration, FAVORITES_MIGRATION_DELAY_MS);

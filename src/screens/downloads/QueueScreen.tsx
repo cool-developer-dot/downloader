@@ -9,6 +9,7 @@ import { ScreenHeader } from '@/components/headers/ScreenHeader';
 import { useTheme } from '@/hooks/use-theme';
 import { navigation } from '@/navigation';
 
+import { DownloadsTotalSpeed } from './components/DownloadsTotalSpeed';
 import { QueueActiveRow } from './components/QueueActiveRow';
 import { QueuePendingRow } from './components/QueuePendingRow';
 import { useQueueScreen } from './hooks/useQueueScreen';
@@ -99,6 +100,8 @@ export const QueueScreen = memo(function QueueScreen() {
         onBackPress={handleBack}
         testID="download-queue-header"
       />
+
+      <DownloadsTotalSpeed testID="download-queue-total-speed" />
 
       {empty ? (
         <Box px={downloadsTokens.spacing.screenX} py={32}>

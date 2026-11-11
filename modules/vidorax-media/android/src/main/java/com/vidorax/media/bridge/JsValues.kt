@@ -92,6 +92,8 @@ internal fun DownloadProgress.toJs(): Map<String, Any?> = mapOf(
   "fraction" to fraction,
   "speedBps" to speedBps,
   "etaSeconds" to etaSeconds,
+  "segmentsDone" to segmentsDone,
+  "segmentsTotal" to segmentsTotal,
   "stage" to stage?.wire,
 )
 

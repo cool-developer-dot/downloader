@@ -137,6 +137,9 @@ internal class DownloadEngine(
 
   private val activeJobs = ConcurrentHashMap<String, Job>()
 
+  /** #315: segments done / total of running segment downloads, for their progress events. */
+  private val segmentCounts = SegmentCounts(now)
+
   /** Guards startup reconciliation so it can never run twice and spawn duplicate workers. */
   private val restoreStarted = AtomicBoolean(false)
 
@@ -905,6 +908,10 @@ internal class DownloadEngine(
       segmented = jobs.any { it is TrackJob.Segmented },
     ) {
       val context = currentRequest(id, start)
+      segmentCounts.track(
+        id,
+        jobs.filterIsInstance<TrackJob.Segmented>().map { SegmentCounts.Track(it.checkpoint, it.plan.segments.size) },
+      )
       streamWithProgress(id, gen) { onProgress ->
         val done = ArrayList<TrackResult>(jobs.size)
         var before = 0L
@@ -919,6 +926,7 @@ internal class DownloadEngine(
         done
       }
     } ?: return
+    segmentCounts.forget(id)
 
     val bytes = results.sumOf { it.bytes }
     persistProgress(id, gen, bytes, bytes)
@@ -1551,6 +1559,7 @@ internal class DownloadEngine(
   private fun buildProgress(id: String, bytes: Long, total: Long?, speedBps: Long): DownloadProgress {
     val fraction = total?.takeIf { it > 0 }?.let { (bytes.toDouble() / it).coerceIn(0.0, 1.0) }
     val eta = if (speedBps > 0 && total != null && total > bytes) (total - bytes) / speedBps else null
+    val segments = segmentCounts.of(id)
     return DownloadProgress(
       id = id,
       phase = ProgressPhase.DOWNLOAD,
@@ -1559,6 +1568,8 @@ internal class DownloadEngine(
       fraction = fraction,
       speedBps = speedBps,
       etaSeconds = eta,
+      segmentsDone = segments?.first,
+      segmentsTotal = segments?.second,
     )
   }
 
