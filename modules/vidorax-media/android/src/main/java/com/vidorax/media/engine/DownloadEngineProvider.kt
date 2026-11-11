@@ -51,6 +51,8 @@ object DownloadEngineProvider {
       thumbnails = RealThumbnails(services.thumbnails),
       library = RealLibraryWriter(services.library),
       savedVideos = RealSavedVideos(services.savedVideos),
+      // H4: the user's queues and start order, kept across restarts (SharedPreferences `vidorax_queue_order`).
+      queueOrder = QueueOrderBook(SharedPreferencesQueueOrderStorage(context)),
       gallery = RealGalleryPublisher(services.galleryExport),
       paths = services.paths,
       scope = services.scope,

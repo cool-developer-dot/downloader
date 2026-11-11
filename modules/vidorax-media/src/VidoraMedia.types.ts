@@ -457,6 +457,25 @@ export type VidoraMediaEvents = {
   onActivityStop: (event: { inPictureInPicture: boolean }) => void;
 };
 
+/** H4 (Multiple Queues #343): a user-named queue. `main` always exists, is listed somewhere, and is never held. */
+export type DownloadQueue = {
+  /** `main`, or letters, digits, `_` and `-` (at most 40). */
+  id: string;
+  /** 1..40 characters; Main's name is shown translated. */
+  name: string;
+  /** A held queue's downloads do not start until it is resumed. */
+  held: boolean;
+};
+
+/** H4: queues (in the order they run), queue of each download outside Main, and the user's start order. */
+export type DownloadQueueState = {
+  queues: DownloadQueue[];
+  /** Download id → queue id; a download not listed is in Main. */
+  assignments: Record<string, string>;
+  /** Download ids in the user's order, all queues together; unlisted downloads follow in first-come order. */
+  order: string[];
+};
+
 /** A genuine completion the engine recorded for JavaScript to count once (see `listCompletedDownloads`). */
 export type CompletedDownload = {
   id: string;
@@ -485,6 +504,18 @@ export interface VidoraMediaModuleApi {
   removeDownload(id: string): Promise<void>;
   pauseAll(): Promise<void>;
   resumeAll(): Promise<void>;
+  /**
+   * H4: the user's queues and start order. Downloads start by queue (listed order), then by this order inside the
+   * queue, then first-come; a held queue's downloads wait until it is resumed. Nothing set is today's order. Missing
+   * on older native builds.
+   */
+  getDownloadQueues?(): Promise<DownloadQueueState>;
+  /** These downloads first, in this order (each within its own queue). */
+  setDownloadOrder?(ids: string[]): Promise<DownloadQueueState>;
+  /** To the end of another queue's order. Rejects with ERR_INVALID_REQUEST for an unknown queue. */
+  moveDownloadsToQueue?(ids: string[], queueId: string): Promise<DownloadQueueState>;
+  /** The whole queue list (order, names, held). Main stays and is never held; a removed queue's downloads go to Main. */
+  setDownloadQueues?(queues: DownloadQueue[]): Promise<DownloadQueueState>;
   /** Every non-completed record plus records completed in the last 24 h, newest first. */
   listDownloads(): Promise<DownloadRecord[]>;
   setDownloadSettings(settings: DownloadSettings): Promise<void>;

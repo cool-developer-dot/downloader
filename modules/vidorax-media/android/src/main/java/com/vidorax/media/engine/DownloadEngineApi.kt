@@ -50,6 +50,28 @@ interface DownloadEngineApi {
 
   suspend fun resumeAll()
 
+  /**
+   * H4 (#305, #334, #343): the user's queues and start order. Downloads start by queue (in the listed order), then by
+   * the user's order inside the queue, then in the existing order; a held queue's downloads wait until it is
+   * resumed. Nothing set is today's first-come order. Finished and removed downloads are dropped from it.
+   */
+  suspend fun downloadQueues(): QueueOrderSnapshot = QueueOrderSnapshot.DEFAULT
+
+  /** [ids] first, in that order (each within its own queue); returns the new state. */
+  suspend fun setDownloadOrder(ids: List<String>): QueueOrderSnapshot = downloadQueues()
+
+  /** Moves downloads to another queue (to the end of its order). Throws InvalidRequestException for an unknown queue. */
+  suspend fun moveDownloadsToQueue(ids: List<String>, queueId: String): QueueOrderSnapshot = downloadQueues()
+
+  /**
+   * Replaces the queue list (order, names, held). Main always stays and is never held; a removed queue's downloads
+   * go back to Main. Throws InvalidRequestException for an invalid list.
+   */
+  suspend fun setDownloadQueues(queues: List<DownloadQueue>): QueueOrderSnapshot = downloadQueues()
+
+  /** True while [downloadId] waits in a held queue: not work the background runner has to stay up for. */
+  fun isQueueHeld(downloadId: String): Boolean = false
+
   /** Every non-completed record plus records completed in the last 24 h, newest first. */
   suspend fun listDownloads(): List<DownloadRecord>
 
