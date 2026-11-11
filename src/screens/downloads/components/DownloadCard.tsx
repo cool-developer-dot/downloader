@@ -18,6 +18,7 @@ import {
   resolveTransferRuntime,
   type DownloadCardAction,
 } from '../utils/download-format';
+import { DownloadLinkMenu } from './DownloadLinkMenu';
 
 export type DownloadCardProps = {
   id: string;
@@ -391,6 +392,11 @@ export const DownloadCard = memo(function DownloadCard({
             testID={testID ? `${testID}-${action}` : undefined}
           />
         ))}
+        <DownloadLinkMenu
+          id={id}
+          disabled={mutating}
+          testID={testID ? `${testID}-link-menu` : undefined}
+        />
       </Box>
     </Box>
   );

@@ -851,6 +851,17 @@ export const ur: CatalogStrings<typeof en> = {
     resetFiltersHint: 'تلاش، فلٹر، اور ترتیب صاف کرتا ہے',
     analyzeLinkHint: 'ڈاؤن لوڈ کے قابل فارمیٹس کے لیے لنک چیک کرتا ہے',
   },
+  downloadLinks: {
+    redownload: 'دوبارہ ڈاؤن لوڈ کریں',
+    redownloadHint: 'اصل صفحہ براؤزر میں کھولتا ہے',
+    copyLink: 'لنک کاپی کریں',
+    copyLinkHint: 'اصل صفحے کا لنک کاپی کرتا ہے',
+    linkCopied: 'لنک کاپی ہو گیا',
+    copyFailed: 'لنک کاپی نہیں ہو سکا',
+    moreActions: 'مزید اختیارات',
+    moreActionsHint: 'دوبارہ ڈاؤن لوڈ کریں یا اصل لنک کاپی کریں',
+    menuTitle: 'اصل صفحہ',
+  },
   deviceVideos: {
     title: 'اس ڈیوائس پر',
     subtitle: 'آپ کے فون پر پہلے سے محفوظ ویڈیوز',
