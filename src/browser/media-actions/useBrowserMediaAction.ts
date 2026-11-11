@@ -70,6 +70,7 @@ import {
   type BrowserDownloadPresentation,
 } from './browser-download-presentation';
 import { useDownloadsStore } from '@/store/downloads';
+import { isConfirmBeforeStartOn } from '@/downloads/v2/confirm-before-start';
 import {
   fingerprintDiagHash,
   logBrowserCta,
@@ -1786,7 +1787,8 @@ export function useBrowserMediaAction(
     }
 
     // Multi-quality: lock sheet (not handoff) — cancel must keep AVAILABLE.
-    if (hasMultipleQualities) {
+    // Confirm Before Start (#479, default off): every download opens the sheet so its Options apply.
+    if (hasMultipleQualities || isConfirmBeforeStartOn()) {
       const tabId =
         browserMediaActionService.getActiveTabId() ??
         useBrowserStore.getState().activeTabId ??

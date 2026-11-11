@@ -178,6 +178,12 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureIncomingLinkHandling } = await import('@/browser/services/incoming-link.service');
       // A link shared to VidoraX, or opened through it as the device's browser, lands in the browser tab.
       ensureIncomingLinkHandling();
+      const { ensureFilenameNaming } = await import('@/downloads/v2/ensure-filename-naming');
+      // Download Settings → File naming applies to new downloads (the default keeps titles unchanged).
+      ensureFilenameNaming();
+      const { ensureDownloadOptions } = await import('@/downloads/v2/download-options-store');
+      // Quality sheet → Options: name, folder, per-download Save to Gallery (nothing changes unless used).
+      ensureDownloadOptions();
       downloadAppLifecycle.ensureAttached();
       bindDownloadEngineToStore();
       ensureDownloadRecoveryListener();
