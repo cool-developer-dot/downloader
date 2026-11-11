@@ -1,4 +1,6 @@
 export interface SettingsState {
+  /** Clipboard Monitor: offer a copied link when VidoraX returns to the foreground (default off). */
+  clipboardMonitor: boolean;
   downloadDirectory: string | null;
   wifiOnly: boolean;
   autoResume: boolean;

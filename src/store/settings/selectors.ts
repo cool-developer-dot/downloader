@@ -1,5 +1,6 @@
 import type { SettingsStore } from './types';
 
+export const selectClipboardMonitor = (state: SettingsStore) => state.clipboardMonitor;
 export const selectDownloadDirectory = (state: SettingsStore) => state.downloadDirectory;
 export const selectWifiOnly = (state: SettingsStore) => state.wifiOnly;
 export const selectSaveToGallery = (state: SettingsStore) => state.saveToGallery;

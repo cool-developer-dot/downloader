@@ -8,6 +8,7 @@ import { TabBarIcon } from '@/navigation/components';
 import { createTabBarScreenOptions, createTabBarStyle, tabItems } from '@/navigation/config';
 import { tabRouteNames } from '@/navigation/constants';
 import { useTabExitBackHandler } from '@/navigation/hooks';
+import { PasteLinkRequestHandler } from '@/screens/paste-link/PasteLinkRequestHandler';
 import { QualitySelectionProvider } from '@/screens/downloads/quality';
 import { renderMiniPlayerTabBar } from '@/screens/player/mini';
 
@@ -51,6 +52,8 @@ export default function TabsLayout() {
 
   return (
     <QualitySelectionProvider>
+      {/* The app shortcut / widget "Paste link" runs the Paste link button's own action (H7). */}
+      <PasteLinkRequestHandler />
       <Tabs
         initialRouteName={tabRouteNames.browser}
         screenOptions={screenOptions}
