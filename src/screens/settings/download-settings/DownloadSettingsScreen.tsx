@@ -20,6 +20,7 @@ import {
   CONCURRENT_SEGMENT_OPTIONS,
 } from './constants';
 import { useDownloadSettingsScreen } from './useDownloadSettingsScreen';
+import { SaveLocationSettingsSection } from './SaveLocationSettingsSection';
 
 export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
   const settingsTokens = useSettingsTokens();
@@ -167,6 +168,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
             />
           </SettingsSection>
         </SettingsStaggerItem>
+        <SaveLocationSettingsSection index={0} disabled={preferenceDisabled} />
 
         <SettingsStaggerItem index={1}>
           <SettingsSection

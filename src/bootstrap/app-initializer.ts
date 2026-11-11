@@ -180,6 +180,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       ensureIncomingLinkHandling();
       downloadAppLifecycle.ensureAttached();
       bindDownloadEngineToStore();
+      const { ensureSaveLocationCopies } = await import('@/downloads/v2/ensure-save-location');
+      // Download Settings → Save location: an extra copy of new downloads in a picked folder (off by default).
+      ensureSaveLocationCopies();
       ensureDownloadRecoveryListener();
       ensureDownloadNotificationBridge();
       if (typeof ensureLibraryCompletionBridge === 'function') {

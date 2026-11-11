@@ -445,6 +445,14 @@ export interface StorageStats {
   totalBytes: number;
 }
 
+/** One copy `copyToFolder` wrote: the new document, the folder it is in (for Show in Folder), its final name. */
+export interface FolderCopy {
+  documentUri: string;
+  folderUri: string;
+  name: string;
+  bytes: number;
+}
+
 export type VidoraMediaEvents = {
   onDownloadProgress: (event: DownloadProgressEvent) => void;
   onDownloadStateChange: (event: DownloadStateEvent) => void;
@@ -532,6 +540,24 @@ export interface VidoraMediaModuleApi {
   /** System chooser to play the file in another app. */
   openWith(id: string): Promise<void>;
   share(ids: string[]): Promise<void>;
+  /**
+   * Save location (#297): copies the library item's file into the folder the user picked (`treeUri`, a persisted
+   * Storage Access Framework tree), inside `subfolders` (created when missing; at most two levels). The library file is
+   * only read. A name that exists gets the folder's own unique name. Rejects with ERR_FOLDER_ACCESS when the folder
+   * can no longer be written (permission revoked, folder moved or deleted), ERR_NOT_FOUND for an unknown item or a
+   * missing file, ERR_STORAGE when the copy fails (a partial copy is removed). Missing on older native builds.
+   */
+  copyToFolder?(id: string, treeUri: string, subfolders: string[]): Promise<FolderCopy>;
+  /** Bytes copied so far while `copyToFolder(id)` runs; null when no copy of `id` is running. */
+  getFolderCopyProgress?(id: string): { bytesDone: number; totalBytes: number } | null;
+  /** True while VidoraX still holds a persisted write grant for the picked folder. */
+  hasFolderAccess?(treeUri: string): Promise<boolean>;
+  /** Gives the folder grant back (Remove / Change). Never rejects. */
+  releaseFolderAccess?(treeUri: string): Promise<void>;
+  /** The picked folder's own name, or null when the provider does not say. */
+  getFolderName?(treeUri: string): Promise<string | null>;
+  /** Show in Folder (#398), best effort: false when no installed app opens folders. */
+  openFolder?(folderUri: string): Promise<boolean>;
   getStorageStats(): Promise<StorageStats>;
   /** Deletes orphaned temp work folders; resolves with bytes freed. */
   clearTempFiles(): Promise<number>;

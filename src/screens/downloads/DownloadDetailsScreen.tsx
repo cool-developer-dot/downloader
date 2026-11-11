@@ -31,6 +31,7 @@ import { useDownloadsStore } from '@/store/downloads';
 import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
 import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
+import { DownloadSaveLocationAction } from '@/screens/downloads/components/DownloadSaveLocationAction';
 import { renameMediaFileOnDevice } from '@/downloads/engine';
 import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads/v2';
 
@@ -510,6 +511,7 @@ const DetailsBody = memo(function DetailsBody({
         {created ? <InfoRow label={t('downloads.infoCreatedDate')} value={created} /> : null}
         {completed ? <InfoRow label={t('downloads.infoDownloadedDate')} value={completed} /> : null}
       </Box>
+      <DownloadSaveLocationAction id={item.id} />
 
       {(sourceHost || item.sourceUrl) && (
         <Box mt={8} gap={8}>
