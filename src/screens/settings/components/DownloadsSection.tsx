@@ -2,6 +2,7 @@ import { memo, useCallback } from 'react';
 
 import { push, routePaths } from '@/navigation';
 import { useTranslation } from '@/localization';
+import { DownloadHistoryLinkRow } from '@/screens/download-history/DownloadHistoryLinkRow';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSection } from './SettingsSection';
 
@@ -36,6 +37,7 @@ export const DownloadsSection = memo(function DownloadsSection({
         accessibilityHint={t('settings.downloadSettingsHint')}
         testID={`${testID}-open`}
       />
+      <DownloadHistoryLinkRow testID={`${testID}-history`} />
     </SettingsSection>
   );
 });
