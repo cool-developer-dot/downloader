@@ -6,7 +6,7 @@ import type { BrowserLongPressAction } from '../types';
  */
 export const openInNewTabAction: BrowserLongPressAction = {
   id: 'open_in_new_tab',
-  label: 'Open in New Tab',
+  labelKey: 'browser.linkActions.openInNewTab',
   icon: 'tab-plus',
   order: 30,
   enabled: false,

@@ -263,6 +263,58 @@ export const en = {
     cancel: 'Cancel',
     close: 'Close',
   },
+  /** Strings that were hard-coded in English (fix/i18n-hardcoded). */
+  mediaResult: {
+    videoFound: 'Video found',
+    videoFoundA11y: 'Video found. {title}',
+    thumbnailA11y: 'Video thumbnail',
+    placeholderA11y: 'Video placeholder',
+    calculating: 'Calculating…',
+    audio: 'Audio',
+    audioIncluded: 'Audio included',
+    videoOnly: 'Video only',
+    audioOnly: 'Audio only',
+  },
+  queueScreen: {
+    title: 'Queue',
+    subtitle: 'Active and up next',
+    active: 'Active',
+    upNext: 'Up Next',
+    emptyTitle: 'No downloads waiting',
+    emptyDescription: 'Active downloads and queued items will appear here.',
+  },
+  downloadEta: {
+    seconds: '{count}s left',
+    minutes: '{count}m left',
+    hours: '{count}h left',
+    hoursMinutes: '{hours}h {minutes}m left',
+  },
+  /** The v2 engine's failure reasons by error code (`downloads/v2/projection.ts`). */
+  downloadFailures: {
+    NETWORK: 'Network error. Check your connection and retry.',
+    HTTP_403: 'The site refused this download. Reopen the page and try again.',
+    HTTP_404: 'The video is no longer available at this link.',
+    HTTP_ERROR: 'The server returned an error. Retry later.',
+    SOURCE_EXPIRED: 'The download link expired. Reopen the page and download again.',
+    DRM_PROTECTED: 'This video is protected and can’t be downloaded.',
+    LIVE_UNSUPPORTED: 'Live streams can’t be downloaded.',
+    UNSUPPORTED_FORMAT: 'This video format isn’t supported for download.',
+    NOT_MEDIA: 'The link didn’t return a video. Reopen the page and try again.',
+    PROCESSING_FAILED: 'The downloaded file failed verification.',
+    NO_SPACE: 'Not enough storage.',
+    STORAGE_ERROR: 'The file couldn’t be saved to storage.',
+    DUPLICATE: 'Video already downloaded',
+    UNKNOWN: 'The download failed.',
+    VIDEO_TRACK_MISSING: 'The video file has no picture, so it can’t be saved.',
+    AUDIO_TRACK_MISSING: 'The audio track of this video is missing.',
+    TRACK_MISMATCH: 'The audio doesn’t belong to this video. Reopen the page and download again.',
+    SEGMENT_FAILED: 'Part of the stream couldn’t be downloaded. Retry later.',
+    MUX_FAILED: 'Couldn’t merge the audio and video. Retry to try again.',
+    TRANSCODE_FAILED: 'Couldn’t convert this video on this device.',
+    INVALID_MEDIA: 'The finished file didn’t play back correctly.',
+    /** H15 (#299): a download started with sign-in was refused. */
+    AUTH_REQUIRED: 'This site needs your user name and password. Retry to sign in again.',
+  },
   files: {
     actionsTitle: 'File actions',
     actionsSubtitle: 'Rename, delete, open, or share',
@@ -539,6 +591,14 @@ export const en = {
     webContentA11y: 'Web content',
     openBookmarksA11y: 'Open bookmarks',
     openHistoryA11y: 'Open browsing history',
+    linkActions: {
+      title: 'Link options',
+      announce: 'Link actions available',
+      copyLink: 'Copy link',
+      shareLink: 'Share link',
+      openInNewTab: 'Open in new tab',
+      openExternal: 'Open in external browser',
+    },
     media: {
       videoAvailable: 'Video available',
       alreadyDownloaded: 'Already downloaded',
@@ -1537,8 +1597,8 @@ export const en = {
       pauseAndResume: {
         question: 'Can I pause and resume downloads?',
         answer:
-          'Progressive file downloads can usually be paused and resumed from Downloads when the media source allows resuming from a partial file. Some sources — including social CDNs serving temporary signed links — ignore that request, and those downloads have to start over. HLS stream downloads do not support user pause/resume — VidoraX will not fake that behavior. Auto Resume (in Download Settings) can restart eligible paused progressive downloads when conditions allow; it does not unlock unsupported HLS pause.',
-        keywords: 'pause, resume, HLS, progressive, auto resume',
+          'Yes. Tap Pause on a running download in Downloads and Resume when you want it to continue — this works for video files and for HLS and DASH streams. A stream continues from the last segment it finished; a file continues from the bytes already saved, unless its source refuses to resume a partial file (some social sites’ temporary links), in which case it starts again from zero. A download stopped by a lost connection, by Android closing the app or by a phone restart continues on its own; a download you paused stays paused until you tap Resume.',
+        keywords: 'pause, resume, HLS, DASH, stream, auto resume',
       },
       wifiOnlyDownloads: {
         question: 'How does Wi-Fi Only work?',
@@ -1633,8 +1693,8 @@ export const en = {
       themeSettings: {
         question: 'How do I change the theme?',
         answer:
-          'Open Settings → Appearance and pick Light, Dark, or System. Theme applies across Help & Support and the rest of the app using VidoraX theme tokens.',
-        keywords: 'theme, dark, light, appearance, system',
+          'Open Settings → Appearance → Theme and pick System, Red, or Dark. Red, VidoraX’s own colours, is the default; System is a plain light look and Dark is dark. The theme applies across the whole app, including Help & Support.',
+        keywords: 'theme, red, dark, light, appearance, system',
       },
       storageSettings: {
         question: 'How do I manage storage?',

@@ -160,7 +160,7 @@ export const DownloadCard = memo(function DownloadCard({
     return null;
   }
 
-  const title = item.title?.trim() || item.fileName?.trim() || 'Untitled download';
+  const title = item.title?.trim() || item.fileName?.trim() || t('downloads.untitled');
   const metaLine = buildMetaLine(item);
   const progressMeta = buildProgressMeta(item, transfer);
   const statusLabel = getStatusLabel(item.status);
