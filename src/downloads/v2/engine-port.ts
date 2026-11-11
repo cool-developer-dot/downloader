@@ -35,6 +35,10 @@ export type V2EnginePort = {
   retry(id: string): Promise<void>;
   cancel(id: string): Promise<void>;
   removeDownload(id: string): Promise<void>;
+  /** Pauses every pausable download (the engine's own). Missing on older native builds: per-item `pause` then. */
+  pauseAll?(): Promise<void>;
+  /** Resumes every paused download (the engine's own). Missing on older native builds: per-item `resume` then. */
+  resumeAll?(): Promise<void>;
   listDownloads(): Promise<DownloadRecord[]>;
   listLibrary(query: LibraryQuery): Promise<LibraryPage>;
   getLibraryItem(id: string): Promise<LibraryItem | null>;

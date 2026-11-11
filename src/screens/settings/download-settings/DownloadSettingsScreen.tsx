@@ -19,6 +19,7 @@ import { useSettingsTokens } from '../theme/settings-tokens';
 import {
   CONCURRENT_SEGMENT_OPTIONS,
 } from './constants';
+import { DownloadListSettingsSection } from './DownloadListSettingsSection';
 import { useDownloadSettingsScreen } from './useDownloadSettingsScreen';
 
 export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
@@ -167,6 +168,8 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
             />
           </SettingsSection>
         </SettingsStaggerItem>
+
+        <DownloadListSettingsSection index={1} disabled={preferenceDisabled} />
 
         <SettingsStaggerItem index={1}>
           <SettingsSection

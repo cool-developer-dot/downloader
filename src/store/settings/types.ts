@@ -8,6 +8,8 @@ export interface SettingsState {
   maxConcurrentDownloads: number;
   /** Copy every completed download to the device gallery (default on). */
   saveToGallery: boolean;
+  /** Tapping a running/paused download row pauses/resumes it instead of opening details (default off). */
+  tapToToggle: boolean;
 }
 
 export type SettingsKey = keyof SettingsState;

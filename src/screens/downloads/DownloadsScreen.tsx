@@ -18,7 +18,9 @@ import {
   DownloadsList,
   DownloadSkeleton,
 } from './components';
+import { DownloadsBulkBar } from './components/DownloadsBulkBar';
 import { useDownloadsScreen } from './hooks/useDownloadsScreen';
+import { useTapToToggle } from './hooks/useTapToToggle';
 import {
   registerQualitySelectionDownloadListener,
   useQualitySelectionContext,
@@ -161,11 +163,16 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
     [onShare],
   );
 
+  const tapToggle = useTapToToggle({ pause: handlePause, resume: handleResume });
+
   const handlePressItem = useCallback(
     (id: string) => {
+      if (tapToggle(id)) {
+        return;
+      }
       openDetails(id);
     },
-    [openDetails],
+    [openDetails, tapToggle],
   );
 
   const openFavorites = useCallback(() => {
@@ -220,6 +227,8 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
         }
         testID="downloads-header"
       />
+
+      <DownloadsBulkBar />
 
       <Box py={12} gap={4}>
         <DownloadsHeaderControls
