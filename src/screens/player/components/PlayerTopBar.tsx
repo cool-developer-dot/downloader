@@ -8,6 +8,8 @@ import { useTranslation } from '@/localization';
 
 export type PlayerTopBarProps = {
   title: string;
+  /** The artist VidoraX keeps for the item (Edit after download → Title & artist); nothing when there is none. */
+  artist?: string | null;
   isFullscreen: boolean;
   visible: boolean;
   orientationIcon: string;
@@ -18,6 +20,7 @@ export type PlayerTopBarProps = {
 
 export const PlayerTopBar = memo(function PlayerTopBar({
   title,
+  artist,
   isFullscreen,
   visible,
   orientationIcon,
@@ -50,6 +53,11 @@ export const PlayerTopBar = memo(function PlayerTopBar({
           style={styles.title}>
           {title}
         </Text>
+        {artist ? (
+          <Text variant="caption" color="white" numberOfLines={1} style={styles.artist}>
+            {artist}
+          </Text>
+        ) : null}
         <IconButton
           icon={orientationIcon}
           size="medium"
@@ -94,5 +102,10 @@ const styles = StyleSheet.create({
   title: {
     flex: 1,
     marginHorizontal: 8,
+  },
+  artist: {
+    maxWidth: '35%',
+    marginEnd: 8,
+    opacity: 0.8,
   },
 });
