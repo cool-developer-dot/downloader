@@ -93,4 +93,7 @@ temp/
 # Native module build output
 modules/*/android/build/
 modules/*/android/.cxx/
-config.bat
+
+# local env files (restored after the 2026-11 malware cleanup)
+.env
+.env.*
