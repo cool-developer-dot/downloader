@@ -1,0 +1,48 @@
+{
+  "screens": [
+    {
+      "id": "01-browser",
+      "en": "Browse and paste video links",
+      "ur": "براؤز کریں اور ویڈیو لنک پیسٹ کریں"
+    },
+    {
+      "id": "02-video-available",
+      "en": "Tap to save the video",
+      "ur": "ٹیپ کریں، ویڈیو محفوظ کریں"
+    },
+    {
+      "id": "03-quality",
+      "en": "Choose the quality you want",
+      "ur": "اپنی پسند کی کوالٹی چنیں"
+    },
+    {
+      "id": "04-downloads",
+      "en": "Pause and resume any download",
+      "ur": "ڈاؤن لوڈ روکیں اور جاری رکھیں"
+    },
+    {
+      "id": "05-library",
+      "en": "Your videos, ready offline",
+      "ur": "آپ کی ویڈیوز، آف لائن تیار"
+    },
+    {
+      "id": "06-player",
+      "en": "Smooth player with gestures",
+      "ur": "اشاروں والا آسان پلیئر"
+    },
+    {
+      "id": "07-private",
+      "en": "Private, with optional App Lock",
+      "ur": "پرائیویٹ، اختیاری ایپ لاک کے ساتھ"
+    },
+    {
+      "id": "08-languages",
+      "en": "Use it in English or Urdu",
+      "ur": "اردو یا انگریزی میں استعمال کریں"
+    }
+  ],
+  "feature": {
+    "en": { "title": "VidoraX", "tagline": "Save videos. Watch offline." },
+    "ur": { "title": "VidoraX", "tagline": "ویڈیوز محفوظ کریں، آف لائن دیکھیں" }
+  }
+}

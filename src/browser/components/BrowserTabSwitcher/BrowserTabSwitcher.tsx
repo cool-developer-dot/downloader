@@ -21,6 +21,7 @@ import {
 import { extractPageHostname, formatDisplayUrl, isBrowserHomeUrl } from '@/browser/utils';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import { useTourBlocker } from '@/tour/tour-store';
 import type { BrowserTab } from '@/browser/tabs/types';
 
 export type BrowserTabSwitcherProps = {
@@ -88,6 +89,8 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
     }
     onClose();
   }, [createTab, onClose, onLimitReached]);
+
+  useTourBlocker(visible);
 
   // Unmount when dismissed — Android transparent Modal leftover windows
   // intercept taps across Browser / Downloads / Library.

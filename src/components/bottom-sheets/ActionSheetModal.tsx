@@ -9,6 +9,7 @@ import { Text } from '@/components/base/Text';
 import { Divider } from '@/components/common/Divider';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import { useTourBlocker } from '@/tour/tour-store';
 
 import type { ActionSheetItem } from './ActionSheet';
 
@@ -49,6 +50,8 @@ export const ActionSheetModal = memo(function ActionSheetModal({
     },
     [onClose],
   );
+
+  useTourBlocker(visible);
 
   // Unmount when dismissed — Android transparent Modal can keep intercepting
   // touches after visible=false (dead buttons after overflow / Video available).
