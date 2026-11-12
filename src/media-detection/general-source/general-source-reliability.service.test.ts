@@ -604,6 +604,39 @@ v360/index.m3u8
     generalPageMediaContextStore.clearTab(tabId);
   });
 
+  test('F6: a live stream the engine offers for recording becomes a Record offer, every quality marked live', async () => {
+    const tabId = 'tab-hls-live';
+    const scope = currentScope(tabId);
+    fakeClassifier(async (request) =>
+      request.kind === 'hls' && request.url === masterUrl
+        ? {
+            ok: true,
+            kind: 'live',
+            finalUrl: masterUrl,
+            contentType: 'application/vnd.apple.mpegurl',
+            container: 'ts',
+            sizeBytes: null,
+            resumable: false,
+            variants: [
+              { id: `${base}v720/index.m3u8`, width: 1280, height: 720, bitrate: 2_500_000, frameRate: null, videoCodec: 'avc1.64001f', needsAudioMux: false, estimatedBytes: null, decodable: true },
+            ],
+            audioTracks: [],
+            durationMs: null,
+          }
+        : { ok: false, reason: 'UNSUPPORTED_FORMAT', httpStatus: null, message: null },
+    );
+    serveRoutes({ [`${base}master.m3u8`]: { type: 'application/vnd.apple.mpegurl', body: masterText } });
+
+    const result = await buildVerifiedGeneralMediaOffer({ scope, candidates: [master], pageUrl });
+
+    assert.equal(result.ok, true);
+    const offered = result.ok ? result.offer.variants : [];
+    assert.deepEqual(offered.map((v) => [v.height, v.isLive, v.downloadable]), [[720, true, true]]);
+    const analysis = result.ok ? generalOfferToAnalysis(result.offer, result.offer.variants[0]!, master) : null;
+    assert.equal(analysis?.variants?.[0]?.isLive, true, 'the quality the user picks is a recording');
+    generalPageMediaContextStore.clearTab(tabId);
+  });
+
   test('refusals keep their meaning: encrypted, live, transient', async () => {
     const cases = [
       ['DRM_PROTECTED', 'DRM_UNSUPPORTED'],

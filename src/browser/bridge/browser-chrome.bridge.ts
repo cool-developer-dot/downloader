@@ -34,6 +34,15 @@ export type ParsedBrowserChromeMessage =
       };
     }
   | {
+      /** The page entered or left fullscreen; width/height are the fullscreen video's, when known. */
+      type: 'fullscreen';
+      payload: {
+        active: boolean;
+        width: number | null;
+        height: number | null;
+      };
+    }
+  | {
       type: 'ready';
       payload: Record<string, never>;
     };
@@ -43,6 +52,7 @@ const MESSAGE_TYPES = new Set<BrowserChromeMessageType>([
   'scroll',
   'pull_to_refresh',
   'spa_navigation',
+  'fullscreen',
   'ready',
 ]);
 
@@ -143,6 +153,22 @@ export function parseBrowserChromeMessage(
       return {
         type: 'link_long_press',
         payload: { href, text, x, y, pageUrl },
+      };
+    }
+    case 'fullscreen': {
+      if (typeof payload.active !== 'boolean') {
+        return null;
+      }
+      const width = finiteNumber(payload.width);
+      const height = finiteNumber(payload.height);
+      const sized = payload.active && width != null && height != null && width > 0 && height > 0;
+      return {
+        type: 'fullscreen',
+        payload: {
+          active: payload.active,
+          width: sized ? width : null,
+          height: sized ? height : null,
+        },
       };
     }
     case 'spa_navigation': {

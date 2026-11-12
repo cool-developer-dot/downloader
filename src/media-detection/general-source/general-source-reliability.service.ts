@@ -695,7 +695,13 @@ async function classifyHlsSource(
   }
   const audioState = result.mergesAudio || result.audioTracks.length > 0 ? 'INCLUDED' : 'UNKNOWN';
   const qualities = result.variants.filter((variant) => variant.decodable);
+  // F6: the engine offers a live stream for recording only while "Live recording (beta)" is on.
+  const live = result.kind === 'live';
   const build = (variant: (typeof qualities)[number] | null) => {
+    const built = buildVariant(variant);
+    return live ? { ...built, isLive: true } : built;
+  };
+  const buildVariant = (variant: (typeof qualities)[number] | null) => {
     const built = buildProgressiveVariant({
       media,
       executableUrl: result.finalUrl,
@@ -727,7 +733,7 @@ async function classifyHlsSource(
     return { ...built, resourceIdentity, variantId: `gvar_${hashIdentity(resourceIdentity)}`, representationId: variant.id };
   };
   const variants = qualities.length > 0 ? qualities.map(build) : [build(null)];
-  logGeneralSource('hls_classified', {
+  logGeneralSource(live ? 'hls_live_classified' : 'hls_classified', {
     mediaIdentityHash: diagHash(input.mediaIdentity),
     transport: 'hls',
     quality: String(variants.length),
@@ -1385,6 +1391,7 @@ export function generalOfferToAnalysis(
       unsupportedReason: null,
       originalIndex: index,
       representationId: v.representationId ?? null,
+      isLive: v.isLive === true,
     });
     if (v.audioState !== 'INCLUDED') {
       return { ...created, codecs: null, audioCodec: null };

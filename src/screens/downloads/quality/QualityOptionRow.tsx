@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { StyleSheet } from 'react-native';
 
 import { Box } from '@/components/base/Box';
+import { IconButton } from '@/components/buttons/IconButton';
 import { Icon } from '@/components/base/Icon';
 import { Pressable } from '@/components/base/Pressable';
 import { Text } from '@/components/base/Text';
@@ -21,6 +22,8 @@ export type QualityOptionRowProps = {
   onSelect: (id: string) => void;
   /** True while create/submit is in progress — disables interaction. */
   interactionDisabled?: boolean;
+  /** Plays this quality online (F17); absent when it cannot be played (split audio + video, refused). */
+  onPlay?: (id: string) => void;
   testID?: string;
 };
 
@@ -29,6 +32,7 @@ export const QualityOptionRow = memo(function QualityOptionRow({
   selected,
   onSelect,
   interactionDisabled = false,
+  onPlay,
   testID,
 }: QualityOptionRowProps) {
   const theme = useTheme();
@@ -93,6 +97,20 @@ export const QualityOptionRow = memo(function QualityOptionRow({
             </Text>
           ) : null}
         </Box>
+
+        {onPlay && !unsupported ? (
+          <IconButton
+            icon="play-circle-outline"
+            variant="ghost"
+            size="small"
+            color="primary"
+            disabled={interactionDisabled}
+            onPress={() => onPlay(option.id)}
+            accessibilityLabel={t('downloads.playOptionA11y', { label: option.label })}
+            accessibilityHint={t('downloads.playHint')}
+            testID={testID ? `${testID}-play` : undefined}
+          />
+        ) : null}
 
         <Box
           center

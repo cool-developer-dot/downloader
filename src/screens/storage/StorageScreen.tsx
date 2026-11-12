@@ -4,10 +4,12 @@ import { ActivityIndicator } from 'react-native';
 import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
 import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
+import { useLeftoverFiles } from '@/downloads/v2/leftovers';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { useStorageManager } from '@/storage-manager';
 
+import { LeftoverFilesCard } from './components/LeftoverFilesCard';
 import {
   StorageActions,
   StorageBreakdown,
@@ -22,9 +24,13 @@ export const StorageScreen = memo(function StorageScreen() {
   const { snapshot, loading, refreshing, clearingCache, error, refresh, clearCache } =
     useStorageManager();
 
+  const leftovers = useLeftoverFiles();
+  const refreshLeftovers = leftovers.refresh;
+
   const handleRefresh = useCallback(() => {
     refresh();
-  }, [refresh]);
+    void refreshLeftovers();
+  }, [refresh, refreshLeftovers]);
 
   const handleClearCache = useCallback(() => {
     void clearCache();
@@ -91,6 +97,7 @@ export const StorageScreen = memo(function StorageScreen() {
 
           <Box gap={12}>
             <StorageSectionHeader title={t('storage.actionsSection')} />
+            <LeftoverFilesCard state={leftovers} onCleaned={refresh} />
             <StorageActions
               onRefresh={handleRefresh}
               onClearCache={handleClearCache}

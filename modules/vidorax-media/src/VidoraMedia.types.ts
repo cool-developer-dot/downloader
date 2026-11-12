@@ -28,7 +28,19 @@
  * and merged. Encrypted/DRM → `DRM_PROTECTED`; live → `LIVE_UNSUPPORTED`; multi-period DASH and audio-only streams →
  * `UNSUPPORTED_FORMAT`. Two tracks whose lengths disagree are never merged (`TRACK_MISMATCH`).
  */
-export type SourceKind = 'progressive' | 'hls' | 'dash' | 'split';
+export type SourceKind =
+  | 'progressive'
+  | 'hls'
+  | 'dash'
+  | 'split'
+  /**
+   * F6 (behind Settings → "Live recording (beta)"): a live, unencrypted HLS media playlist recorded from now until
+   * Stop, the end of the stream (`EXT-X-ENDLIST`), the maximum length (`liveRecordingMaxMinutes`) or low storage;
+   * then finalized like any download. Refused (`LIVE_UNSUPPORTED`) while the setting is off. With the setting on, a
+   * `probe` of a live HLS stream (`kind: 'hls'` or `'live'`) answers `ok` with `kind: 'live'` — classified as the
+   * recording would meet it, so an encrypted live stream is still `DRM_PROTECTED`.
+   */
+  | 'live';
 
 export type SiteId =
   | 'instagram'
@@ -42,7 +54,9 @@ export type SiteId =
   | 'pinterest'
   | 'snapchat'
   | 'linkedin'
-  | 'web';
+  | 'web'
+  /** A file opened in VidoraX from another app and saved to the library (`importIncomingMedia`). */
+  | 'device';
 
 export interface RequestContext {
   /** Exact User-Agent of the WebView frame that observed the media (signed CDN URLs may be bound to it). */
@@ -98,7 +112,7 @@ export type ProbeFailure =
   /** `split`: the two files are not tracks of the same video (their lengths disagree). */
   | 'TRACK_MISMATCH';
 
-export type Container = 'mp4' | 'webm' | 'mov' | 'avi' | 'wmv' | 'mkv' | 'ts' | 'flv' | '3gp' | 'unknown';
+export type Container = 'mp4' | 'webm' | 'mov' | 'avi' | 'wmv' | 'mkv' | 'ts' | 'flv' | '3gp' | '3g2' | 'mpg' | 'unknown';
 
 export interface ProbeVariant {
   /** Opaque id to pass back as `EnqueueRequest.variant.videoId` (HLS variant URI or DASH representation id). */
@@ -268,6 +282,13 @@ export type DownloadState =
   | 'paused'
   | 'waiting_network'
   | 'waiting_retry'
+  /**
+   * F3: held by a rule until it clears — its start time, the daily download hours, roaming, charging or low battery
+   * (`DownloadRecord.waitReason`). Resumes by itself from the bytes on disk; not counted as running work.
+   */
+  | 'waiting_conditions'
+  /** F6: a live stream being recorded (`kind: 'live'`) until `stopRecording`; not pausable. */
+  | 'recording'
   /** Merging / remuxing / converting the downloaded tracks, verifying the result and adding it to the library. */
   | 'processing'
   | 'completed'
@@ -329,6 +350,32 @@ export interface DownloadRecord {
   /** Epoch milliseconds. */
   createdAt: number;
   updatedAt: number;
+  /** `waiting_conditions` only: which rule holds it. Missing on older native builds. */
+  waitReason?: DownloadWaitReason | null;
+  /** `waiting_conditions` only: when a time rule ends (the start time, the download hours opening), epoch ms. */
+  waitUntil?: number | null;
+  /** F3 "Start at…": the earliest moment this download may run, epoch ms; null = now. */
+  startAt?: number | null;
+  /** F6: how much of a live stream is recorded so far (`recording`, and the finished recording), ms. */
+  recordedMs?: number | null;
+}
+
+/**
+ * F3: why a download waits. `scheduled` — its own start time; `outside_hours` — the daily download hours;
+ * `roaming` — "Not on roaming"; `charging` — "Only while charging"; `battery_low` — "Pause when battery is low"
+ * (≤ 15 % and not charging).
+ */
+export type DownloadWaitReason = 'scheduled' | 'outside_hours' | 'roaming' | 'charging' | 'battery_low';
+
+/**
+ * F3: the daily download hours. Minutes after local midnight; `startMinute > endMinute` crosses midnight (22:00 →
+ * 06:00), equal values mean the whole day. `days` are ISO weekdays (1 = Monday … 7 = Sunday) on which the window
+ * *starts* — the hours after midnight of a crossing window belong to the day before.
+ */
+export interface DownloadWindow {
+  startMinute: number;
+  endMinute: number;
+  days: number[];
 }
 
 /** What the `processing` phase is doing (progress events only). */
@@ -345,6 +392,8 @@ export interface DownloadProgressEvent {
   fraction: number | null;
   speedBps: number;
   etaSeconds: number | null;
+  /** F6: a live recording's recorded length so far, ms (null for any other download). */
+  recordedMs?: number | null;
 }
 
 export interface DownloadStateEvent {
@@ -423,6 +472,35 @@ export interface LibraryPage {
   total: number;
 }
 
+/**
+ * A video or audio file another app asked VidoraX to open (`VIEW` of a `content:`/`file:` URI with a `video/*` or
+ * `audio/*` type). The URI never leaves native code except through `getIncomingMediaSource`, for the player: `token`
+ * stands for it everywhere else (router paths, logs). It is the first 32 hex digits of SHA-256 of the URI, so the same
+ * file opened again has the same token (its resume position is kept under it). Tokens live while the app process does.
+ */
+export interface IncomingMedia {
+  token: string;
+  /** The name the sending app gives the file (`OpenableColumns.DISPLAY_NAME`), when it gives one. */
+  displayName: string | null;
+  mimeType: string | null;
+  sizeBytes: number | null;
+  kind: 'video' | 'audio';
+}
+
+/** What the player needs to play an incoming file. */
+export interface IncomingMediaSource extends IncomingMedia {
+  /** `content://` or `file://` URI; read access was granted with the intent. */
+  uri: string;
+}
+
+/**
+ * `importIncomingMedia`: the file was copied into the library (site `device`), or the library / a VidoraX gallery copy
+ * already holds exactly these bytes and nothing was copied.
+ */
+export type ImportIncomingResult =
+  | { status: 'imported'; item: LibraryItem }
+  | { status: 'duplicate'; libraryItemId: string | null; galleryUri: string | null };
+
 export interface DownloadSettings {
   /** 1..4, default 2. */
   maxConcurrent: number;
@@ -435,6 +513,59 @@ export interface DownloadSettings {
   autoSaveToGallery: boolean;
   /** e.g. 1080; null = best available. */
   preferredMaxHeight: number | null;
+  /**
+   * 1..4, default 3 (Download Settings → "Connections per file"). A progressive file of at least 16 MiB whose server
+   * proves byte ranges (a `206` with the total size and a strong ETag/Last-Modified) is fetched over this many
+   * connections, each range written at its offset in one file (dynamic segmentation keeps every connection busy);
+   * HLS/DASH segments are fetched this many at a time, still assembled in order. Anything that refuses ranges or extra
+   * connections continues on one. A download still takes one `maxConcurrent` slot. Optional for older callers
+   * (missing = 3).
+   */
+  connectionsPerFile?: number;
+  /**
+   * Speed limit for all downloads together, bytes per second (Download Settings → "Speed limit": Off, 256 KB/s,
+   * 512 KB/s, 1, 2 or 5 MB/s). Null, 0 or missing = no limit. Applied in the read loop of every transfer stream
+   * (single file, parallel parts, segments), so it holds whatever the connections per file.
+   */
+  speedLimitBytesPerSecond?: number | null;
+  /** F3: downloads run only inside these daily hours; null or missing = any time. */
+  downloadWindow?: DownloadWindow | null;
+  /** F3: hold downloads while the phone is roaming. Default false. */
+  notOnRoaming?: boolean;
+  /** F3: hold downloads while the battery is at 15 % or less and not charging. Default false. */
+  pauseOnLowBattery?: boolean;
+  /** F3: run downloads only while the phone is charging. Default false. */
+  onlyWhileCharging?: boolean;
+  /** The app's language for the engine's own notification texts of F3 waits ('en' | 'ur'). Default 'en'. */
+  language?: string;
+  /** F6: Settings → Download Settings → Advanced → "Live recording (beta)". Default false: live streams are refused. */
+  liveRecording?: boolean;
+  /** F6: a recording stops by itself after this many minutes (15..720). Default 120. */
+  liveRecordingMaxMinutes?: number;
+}
+
+/**
+ * A download's own speed limit and the Priority mark (Download details). Persisted by the engine (survives restarts);
+ * only one download has priority — marking one clears the others. While the priority download receives bytes, all
+ * other downloads together get at most a quarter of its bandwidth. Bandwidth only: the queue's start order is not
+ * changed (docs/ARCHITECTURE.md §3.6).
+ */
+/** F15: leftover download files — how many files and bytes. */
+export interface LeftoverFiles {
+  count: number;
+  bytes: number;
+}
+
+export interface LeftoverFilesOptions {
+  /** v1 downloads still in use (queued, downloading, paused, failed): their temporary parts are kept. */
+  keepLegacyIds?: string[];
+}
+
+export interface DownloadBandwidth {
+  id: string;
+  /** Bytes per second; null = no limit of its own (the global limit still applies). */
+  speedLimitBytesPerSecond: number | null;
+  priority: boolean;
 }
 
 export interface StorageStats {
@@ -455,6 +586,8 @@ export type VidoraMediaEvents = {
    * the screen went off. Sent on the main thread while JavaScript timers are paused — the player's cue to stop.
    */
   onActivityStop: (event: { inPictureInPicture: boolean }) => void;
+  /** A file arrived while the app runs (`onNewIntent`). The launch file is read with `consumeIncomingMedia`. */
+  onIncomingMedia: (event: IncomingMedia) => void;
 };
 
 /** A genuine completion the engine recorded for JavaScript to count once (see `listCompletedDownloads`). */
@@ -488,6 +621,28 @@ export interface VidoraMediaModuleApi {
   /** Every non-completed record plus records completed in the last 24 h, newest first. */
   listDownloads(): Promise<DownloadRecord[]>;
   setDownloadSettings(settings: DownloadSettings): Promise<void>;
+  /**
+   * Sets a download's own speed limit and its Priority mark — both are applied (a missing limit is no limit, a missing
+   * priority is off); priority on clears it from every other download. Resolves with every download's entry. Rejects with ERR_NOT_FOUND for an unknown id. Missing on older native builds.
+   */
+  setDownloadBandwidth?(
+    id: string,
+    options: { speedLimitBytesPerSecond?: number | null; priority?: boolean },
+  ): Promise<DownloadBandwidth[]>;
+  /**
+   * F3 "Start at…": the earliest moment (epoch ms) this unfinished download may run; null starts it as soon as the
+   * other rules allow. A running download set to a later time stops and waits (its bytes stay). Persisted, survives
+   * restarts and reboots; the actual start can be a few minutes late (Android decides when background work runs).
+   * Rejects with ERR_NOT_FOUND for an unknown id, ERR_INVALID_STATE for a finished one. Missing on older native builds.
+   */
+  setDownloadStartAt?(id: string, startAt: number | null): Promise<DownloadRecord>;
+  /**
+   * F6: ends a live recording; what was recorded is finalized into the library like any download. Rejects with
+   * ERR_NOT_FOUND for an unknown id, ERR_INVALID_STATE for anything that is not recording. Missing on older builds.
+   */
+  stopRecording?(id: string): Promise<DownloadRecord>;
+  /** Every download that has its own limit or the priority mark. Missing on older native builds. */
+  listDownloadBandwidth?(): Promise<DownloadBandwidth[]>;
 
   // Library
   listLibrary(query: LibraryQuery): Promise<LibraryPage>;
@@ -535,6 +690,14 @@ export interface VidoraMediaModuleApi {
   getStorageStats(): Promise<StorageStats>;
   /** Deletes orphaned temp work folders; resolves with bytes freed. */
   clearTempFiles(): Promise<number>;
+  /**
+   * F15: download files that belong to nothing — work folders of no unfinished download (queued, running, paused,
+   * waiting, processing, recording and failed downloads keep theirs) and the temporary parts (`.hls`, `.mranges`,
+   * `*.part`) of v1 downloads not listed in `keepLegacyIds`. Finished files are never counted. Nothing is deleted.
+   */
+  measureLeftoverFiles(options?: LeftoverFilesOptions): Promise<LeftoverFiles>;
+  /** F15: deletes what `measureLeftoverFiles` lists; resolves with what was freed. */
+  cleanLeftoverFiles(options?: LeftoverFilesOptions): Promise<LeftoverFiles>;
 
   // Completions
   /**
@@ -545,6 +708,24 @@ export interface VidoraMediaModuleApi {
   listCompletedDownloads(): Promise<CompletedDownload[]>;
   /** Forgets completions JavaScript has counted, so each is reported once. */
   acknowledgeCompletedDownloads(ids: string[]): Promise<void>;
+
+  // Files opened from other apps
+  /**
+   * The file the app was launched with, or one that arrived while nothing listened to `onIncomingMedia` — at most
+   * once per intent (a JS reload does not reopen it). Null when there is none.
+   */
+  consumeIncomingMedia?(): IncomingMedia | null;
+  /** The playable URI and details for a token from this process; null for an unknown token. */
+  getIncomingMediaSource?(token: string): IncomingMediaSource | null;
+  /**
+   * Copies the file into the library (thumbnail, SHA-256 duplicate check), announced with `onLibraryChange`
+   * `imported`. Rejects with ERR_NOT_FOUND (unknown token or the file can no longer be read), ERR_INVALID_REQUEST (not
+   * an audio or video file, or empty), ERR_NO_SPACE (not enough free storage), ERR_STORAGE (the copy failed). Nothing is
+   * left behind when it rejects.
+   */
+  importIncomingMedia?(token: string): Promise<ImportIncomingResult>;
+  /** System chooser to open the incoming file in another app. Rejects with ERR_NO_APP / ERR_NOT_FOUND. */
+  openIncomingWith?(token: string): Promise<void>;
 
   // Player helpers (synchronous)
   /** Media stream volume 0..1. */

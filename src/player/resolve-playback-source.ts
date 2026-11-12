@@ -5,6 +5,7 @@
 
 import { PlaybackError } from './errors';
 import { assertSafeMediaId } from './media-id';
+import { isStreamMediaId, type RemoteStream } from './remote-stream';
 import type { PlaybackSource } from './types';
 
 export type LocalPlaybackRecord = {
@@ -66,6 +67,8 @@ export type ResolvePlaybackSourceDeps = {
   /** Optional persisted MIME from Phase 7A completed identity. */
   getMimeType?: (mediaId: string) => string | null;
   resolveFileUri?: (uri: string) => string;
+  /** Online streams (F17): the source the quality sheet or the browser bar opened, kept for this app run. */
+  getRemoteStream?: (mediaId: string) => RemoteStream | null;
 };
 
 let activeDeps: ResolvePlaybackSourceDeps | null = null;
@@ -128,6 +131,27 @@ export async function resolvePlaybackSource(
       'MEDIA_NOT_FOUND',
       'This video could not be found in your library.',
     );
+  }
+
+  // An online stream plays from its URL with the page's headers; it exists only for this app run.
+  if (isStreamMediaId(mediaId)) {
+    const stream = deps.getRemoteStream?.(mediaId) ?? null;
+    if (!stream) {
+      throw new PlaybackError(
+        'STREAM_LINK_EXPIRED',
+        'This video link has expired. Reload the page in the browser and tap Play again.',
+      );
+    }
+    return {
+      mediaId,
+      uri: stream.uri,
+      displayName: stream.title,
+      mimeType: null,
+      headers: stream.headers,
+      contentType: stream.contentType,
+      artworkUrl: stream.thumbnailUrl,
+      remote: true,
+    };
   }
 
   let record: LocalPlaybackRecord | null;

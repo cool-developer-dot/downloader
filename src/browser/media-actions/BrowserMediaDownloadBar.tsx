@@ -20,6 +20,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Box } from '@/components/base/Box';
+import { IconButton } from '@/components/buttons/IconButton';
 import { Icon } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
 import { BROWSER_TOUCH_TARGET } from '@/browser/constants';
@@ -196,7 +197,9 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
             ? t('downloads.alreadyDownloadedToast')
             : result.duplicate === 'ALREADY_DOWNLOADING' || result.deduped
               ? t('downloads.alreadyDownloadingToast')
-              : t('downloads.successToast'),
+              : action.isLive
+                ? t('downloads.recordingStartedToast')
+                : t('downloads.successToast'),
         );
         return;
       }
@@ -214,6 +217,25 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
       downloadInFlightRef.current = false;
     }
   }, [action, showToast, t]);
+
+  const playInFlightRef = useRef(false);
+  const [playBusy, setPlayBusy] = useState(false);
+  const handlePlay = useCallback(async () => {
+    if (playInFlightRef.current) {
+      return;
+    }
+    playInFlightRef.current = true;
+    setPlayBusy(true);
+    try {
+      const result = await action.play();
+      if (!result.ok) {
+        showToast(result.message);
+      }
+    } finally {
+      playInFlightRef.current = false;
+      setPlayBusy(false);
+    }
+  }, [action, showToast]);
 
   const handleBarPress = useCallback(() => {
     if (presentation.buttonDisabled) {
@@ -251,7 +273,11 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
 
   const isPreparing = presentation.isPreparing;
   const barEnabled = !presentation.buttonDisabled;
-  const noticeLabel = notice ? t(NOTICE_LABEL_KEYS[notice]) : null;
+  // F6: a live stream (with "Live recording (beta)" on) is recorded: the bar says so and shows a record icon.
+  const live = action.isLive;
+  const noticeLabel = notice
+    ? t(action.isRecording && notice === 'DOWNLOADING' ? 'browser.media.recordingVideo' : NOTICE_LABEL_KEYS[notice])
+    : null;
   const noticeIcon =
     notice === 'DOWNLOADED' || notice === 'ALREADY_DOWNLOADED'
       ? 'check-circle'
@@ -319,10 +345,14 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
             accessibilityLabel={
               isPreparing
                 ? t('browser.media.preparingDownload')
-                : t('browser.media.videoAvailableA11y')
+                : live
+                  ? t('browser.media.liveAvailableA11y')
+                  : t('browser.media.videoAvailableA11y')
             }
             accessibilityHint={
-              barEnabled ? t('browser.media.videoAvailableHint') : undefined
+              barEnabled
+                ? t(live ? 'browser.media.liveAvailableHint' : 'browser.media.videoAvailableHint')
+                : undefined
             }
             style={{
               minHeight: BROWSER_TOUCH_TARGET,
@@ -343,15 +373,35 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
                 ? t('browser.media.preparingDownload')
                 : isDownloadProgressNotice(notice) && noticeLabel
                   ? noticeLabel
-                  : t('browser.media.videoAvailable')}
+                  : live
+                    ? t('browser.media.liveAvailable')
+                    : t('browser.media.videoAvailable')}
             </Text>
-            <Animated.View style={iconStyle}>
-              <Icon
-                name="download"
-                size={20}
-                color={barEnabled ? 'primary' : 'disabled'}
-              />
-            </Animated.View>
+            <Box row style={{ alignItems: 'center' }} gap={4}>
+              {action.canPlay && !isPreparing ? (
+                // Online play (F17): its own button inside the bar — the rest of the bar still downloads.
+                <IconButton
+                  icon="play-circle-outline"
+                  variant="ghost"
+                  size="small"
+                  color="primary"
+                  loading={playBusy}
+                  onPress={() => {
+                    void handlePlay();
+                  }}
+                  accessibilityLabel={t('browser.media.playVideoA11y')}
+                  accessibilityHint={t('downloads.playHint')}
+                  testID="browser-media-play-button"
+                />
+              ) : null}
+              <Animated.View style={iconStyle}>
+                <Icon
+                  name={live ? 'record-rec' : 'download'}
+                  size={20}
+                  color={barEnabled ? (live ? 'error' : 'primary') : 'disabled'}
+                />
+              </Animated.View>
+            </Box>
           </Pressable>
         </Animated.View>
       ) : notice && noticeLabel ? (

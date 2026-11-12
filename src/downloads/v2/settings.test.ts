@@ -4,7 +4,17 @@ import { beforeEach, describe, test } from 'node:test';
 import type { DownloadSettings } from '@modules/vidorax-media/src/VidoraMedia.types';
 
 import type { V2EnginePort } from './engine-port';
-import { pushV2DownloadSettings, resetV2SettingsForTests, v2DownloadSettings } from './settings';
+import {
+  DEFAULT_CONNECTIONS_PER_FILE,
+  DEFAULT_LIVE_RECORDING_MAX_MINUTES,
+  LIVE_RECORDING_MAX_MINUTES_CHOICES,
+  normalizeConnectionsPerFile,
+  normalizeLiveRecordingMaxMinutes,
+  pushV2DownloadSettings,
+  resetV2SettingsForTests,
+  sameV2Settings,
+  v2DownloadSettings,
+} from './settings';
 
 function engineSpy(): { port: V2EnginePort; pushed: DownloadSettings[] } {
   const pushed: DownloadSettings[] = [];
@@ -27,7 +37,73 @@ describe('v2 download settings', () => {
       wifiOnly: true,
       autoSaveToGallery: true,
       preferredMaxHeight: null,
+      connectionsPerFile: 3,
+      speedLimitBytesPerSecond: null,
+      downloadWindow: null,
+      notOnRoaming: false,
+      pauseOnLowBattery: false,
+      onlyWhileCharging: false,
+      liveRecording: false,
+      liveRecordingMaxMinutes: 120,
+      language: 'en',
     });
+  });
+
+  test('F6 live recording reaches the engine: off by default, the maximum length clamped to 15–720 minutes', async () => {
+    const base = { wifiOnly: false, maxConcurrentDownloads: 2 };
+    assert.equal(DEFAULT_LIVE_RECORDING_MAX_MINUTES, 120);
+    assert.equal(v2DownloadSettings(base).liveRecording, false);
+    assert.equal(v2DownloadSettings({ ...base, liveRecording: true }).liveRecording, true);
+    assert.equal(v2DownloadSettings({ ...base, liveRecordingMaxMinutes: 30 }).liveRecordingMaxMinutes, 30);
+    assert.equal(v2DownloadSettings({ ...base, liveRecordingMaxMinutes: 5 }).liveRecordingMaxMinutes, 15);
+    assert.equal(v2DownloadSettings({ ...base, liveRecordingMaxMinutes: 9_999 }).liveRecordingMaxMinutes, 720);
+    assert.equal(normalizeLiveRecordingMaxMinutes('240'), 240);
+    assert.equal(normalizeLiveRecordingMaxMinutes('x'), 120);
+    assert.equal(normalizeLiveRecordingMaxMinutes(undefined), 120);
+    for (const minutes of LIVE_RECORDING_MAX_MINUTES_CHOICES) {
+      assert.equal(normalizeLiveRecordingMaxMinutes(minutes), minutes, 'every offered choice is accepted as is');
+    }
+
+    const { port, pushed } = engineSpy();
+    await pushV2DownloadSettings(port, base);
+    await pushV2DownloadSettings(port, { ...base, liveRecording: true });
+    await pushV2DownloadSettings(port, { ...base, liveRecording: true, liveRecordingMaxMinutes: 60 });
+    await pushV2DownloadSettings(port, { ...base, liveRecording: true, liveRecordingMaxMinutes: 60 });
+    assert.deepEqual(
+      pushed.map((s) => [s.liveRecording, s.liveRecordingMaxMinutes]),
+      [
+        [false, 120],
+        [true, 120],
+        [true, 60],
+      ],
+    );
+  });
+
+  test('connections per file reach the engine, default 3, clamped to 1-4', () => {
+    const base = { wifiOnly: false, maxConcurrentDownloads: 2 };
+    assert.equal(DEFAULT_CONNECTIONS_PER_FILE, 3);
+    assert.equal(v2DownloadSettings(base).connectionsPerFile, 3, 'an older stored setting without the field');
+    assert.equal(v2DownloadSettings({ ...base, connectionsPerFile: 1 }).connectionsPerFile, 1);
+    assert.equal(v2DownloadSettings({ ...base, connectionsPerFile: 4 }).connectionsPerFile, 4);
+    assert.equal(v2DownloadSettings({ ...base, connectionsPerFile: 9 }).connectionsPerFile, 4);
+    assert.equal(v2DownloadSettings({ ...base, connectionsPerFile: 0 }).connectionsPerFile, 1);
+    assert.equal(normalizeConnectionsPerFile('2'), 2);
+    assert.equal(normalizeConnectionsPerFile(Number.NaN), 3);
+    assert.equal(normalizeConnectionsPerFile(null), 3);
+    assert.equal(normalizeConnectionsPerFile(2.6), 3);
+  });
+
+  test('a changed connection count is a change to push', async () => {
+    const { port, pushed } = engineSpy();
+    await pushV2DownloadSettings(port, { wifiOnly: false, maxConcurrentDownloads: 2, connectionsPerFile: 3 });
+    await pushV2DownloadSettings(port, { wifiOnly: false, maxConcurrentDownloads: 2, connectionsPerFile: 3 });
+    await pushV2DownloadSettings(port, { wifiOnly: false, maxConcurrentDownloads: 2, connectionsPerFile: 1 });
+    assert.deepEqual(
+      pushed.map((s) => s.connectionsPerFile),
+      [3, 1],
+    );
+    const a = v2DownloadSettings({ wifiOnly: false, maxConcurrentDownloads: 2, connectionsPerFile: 2 });
+    assert.equal(sameV2Settings(a, { ...a, connectionsPerFile: 4 }), false);
   });
 
   test('finished videos go to the gallery unless the user turned it off', () => {

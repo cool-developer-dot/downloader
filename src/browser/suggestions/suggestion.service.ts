@@ -1,6 +1,5 @@
 import { BROWSER_SEARCH_BASE_URL } from '@/browser/constants';
 import { classifyNavigationInput, buildSearchUrl } from '@/browser/utils';
-import { bookmarkService, historyService, recentSearchService } from '@/storage/services';
 import type { BookmarkEntry, BrowserHistoryEntry } from '@/storage/types';
 
 import {
@@ -56,11 +55,24 @@ function applyMatchFlags(
   };
 }
 
+type RecentSearchSnapshot = { id: string; query: string; searchedAt: string };
+
+/**
+ * Where the local suggestion index reads from. The app wires the storage services in (`./storage-sources`); tests
+ * pass in-memory sources, since the storage layer needs expo-sqlite.
+ */
+export type SuggestionSources = {
+  listHistory(limit: number): Promise<BrowserHistoryEntry[]>;
+  listBookmarks(limit: number): Promise<BookmarkEntry[]>;
+  listFrequentlyVisited(limit: number): Promise<(BrowserHistoryEntry & { visitCount: number })[]>;
+  listRecentSearches(limit: number): Promise<RecentSearchSnapshot[]>;
+};
+
 interface SuggestionIndex {
   history: BrowserHistoryEntry[];
   bookmarks: BookmarkEntry[];
   frequent: (BrowserHistoryEntry & { visitCount: number })[];
-  recentSearches: { id: string; query: string; searchedAt: string }[];
+  recentSearches: RecentSearchSnapshot[];
   expiresAt: number;
 }
 
@@ -69,12 +81,17 @@ interface SuggestionIndex {
  * Remote providers (Google Suggest / AI) register via `registerProvider` later.
  */
 export class SuggestionService {
+  private readonly sources: SuggestionSources;
   private index: SuggestionIndex | null = null;
   private warmInFlight: Promise<SuggestionIndex> | null = null;
   private readonly remoteProviders: {
     id: string;
     collect: (context: SuggestionQueryContext) => Promise<RankableCandidate[]>;
   }[] = [];
+
+  constructor(sources: SuggestionSources) {
+    this.sources = sources;
+  }
 
   /**
    * Extension point for future remote suggestion providers.
@@ -110,37 +127,18 @@ export class SuggestionService {
     }
 
     this.warmInFlight = (async () => {
-      const [historyPage, bookmarkPage, frequent, recentPage] = await Promise.all([
-        historyService.list({
-          page: 1,
-          pageSize: SUGGESTION_HISTORY_PAGE_SIZE,
-          sortBy: 'visitedAt',
-          sortDirection: 'desc',
-        }),
-        bookmarkService.list({
-          page: 1,
-          pageSize: SUGGESTION_BOOKMARK_PAGE_SIZE,
-          sortBy: 'updatedAt',
-          sortDirection: 'desc',
-        }),
-        historyService.getFrequentlyVisited(SUGGESTION_FREQUENT_LIMIT),
-        recentSearchService.list({
-          page: 1,
-          pageSize: SUGGESTION_RECENT_SEARCH_LIMIT,
-          sortBy: 'searchedAt',
-          sortDirection: 'desc',
-        }),
+      const [history, bookmarks, frequent, recentSearches] = await Promise.all([
+        this.sources.listHistory(SUGGESTION_HISTORY_PAGE_SIZE),
+        this.sources.listBookmarks(SUGGESTION_BOOKMARK_PAGE_SIZE),
+        this.sources.listFrequentlyVisited(SUGGESTION_FREQUENT_LIMIT),
+        this.sources.listRecentSearches(SUGGESTION_RECENT_SEARCH_LIMIT),
       ]);
 
       const next: SuggestionIndex = {
-        history: historyPage.items,
-        bookmarks: bookmarkPage.items,
+        history,
+        bookmarks,
         frequent,
-        recentSearches: recentPage.items.map((item) => ({
-          id: item.id,
-          query: item.query,
-          searchedAt: item.searchedAt,
-        })),
+        recentSearches,
         expiresAt: Date.now() + SUGGESTION_INDEX_TTL_MS,
       };
 
@@ -456,7 +454,7 @@ export class SuggestionService {
   }
 
   private collectRecentSearches(
-    recentSearches: { id: string; query: string; searchedAt: string }[],
+    recentSearches: RecentSearchSnapshot[],
     context: SuggestionQueryContext,
   ): RankableCandidate[] {
     const q = context.normalizedQuery;
@@ -523,5 +521,3 @@ export class SuggestionService {
     ];
   }
 }
-
-export const suggestionService = new SuggestionService();

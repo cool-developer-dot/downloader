@@ -583,8 +583,13 @@ export const browserMediaActionService = {
    * a protected stream is never downloadable, whatever was published before the evidence arrived.
    * A handoff already in flight is left alone; the enqueue path has its own staleness checks.
    */
-  /** Withdraws a standing offer the current player has proven cannot be downloaded (protected, or split A/V). */
-  invalidateProtectedOffer(reason: 'protected_playback' | 'split_audio_video' = 'protected_playback'): boolean {
+  /**
+   * Withdraws a standing offer the current player has proven cannot be downloaded (protected, or split A/V), or a live
+   * stream's offer once "Live recording (beta)" is turned off (F6).
+   */
+  invalidateProtectedOffer(
+    reason: 'protected_playback' | 'split_audio_video' | 'live_recording_off' = 'protected_playback',
+  ): boolean {
     const slice = requireActiveSlice();
     if (slice.state.selectionLocked || slice.state.status === 'preparing') {
       return false;

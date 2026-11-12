@@ -26,6 +26,12 @@ enum class SourceKind(override val wire: String) : WireEnum {
    * video and an audio SourceBuffer): both are downloaded, verified and merged into one file.
    */
   SPLIT("split"),
+
+  /**
+   * F6: a live, unencrypted HLS media playlist recorded until Stop, `EXT-X-ENDLIST`, the maximum length or low storage,
+   * then finalized like any download. Only while Settings → "Live recording (beta)" is on.
+   */
+  LIVE("live"),
 }
 
 enum class SiteId(override val wire: String, val folderName: String) : WireEnum {
@@ -41,6 +47,8 @@ enum class SiteId(override val wire: String, val folderName: String) : WireEnum 
   SNAPCHAT("snapchat", "Snapchat"),
   LINKEDIN("linkedin", "LinkedIn"),
   WEB("web", "Web"),
+  /** A file opened from another app and saved with "Save to VidoraX" (IncomingImport). */
+  DEVICE("device", "Device"),
 }
 
 enum class Container(override val wire: String) : WireEnum {
@@ -53,6 +61,13 @@ enum class Container(override val wire: String) : WireEnum {
   TS("ts"),
   FLV("flv"),
   THREE_GP("3gp"),
+  /** 3GPP2 (`ftyp 3g2*`): ISO-BMFF, kept as `.3g2` / `video/3gpp2`. */
+  THREE_G2("3g2"),
+  /**
+   * MPEG Program Stream (F4): `.mpg`/`.mpeg`/`.vob`, MPEG-1 and MPEG-2 system streams. Converted to MP4 (MPEG-1/2 video
+   * → H.264, MP2/AC-3 → AAC); kept as `.mpg` / `video/mpeg` only when this device cannot decode a track.
+   */
+  MPEG_PS("mpg"),
   UNKNOWN("unknown"),
 }
 
@@ -63,10 +78,23 @@ enum class DownloadState(override val wire: String) : WireEnum {
   PAUSED("paused"),
   WAITING_NETWORK("waiting_network"),
   WAITING_RETRY("waiting_retry"),
+  /** F3: held by a rule (start time, download hours, roaming, charging, low battery) until it clears. */
+  WAITING_CONDITIONS("waiting_conditions"),
+  /** F6: a live stream being recorded; not pausable, stopped with `stopRecording`. */
+  RECORDING("recording"),
   PROCESSING("processing"),
   COMPLETED("completed"),
   FAILED("failed"),
   CANCELLED("cancelled"),
+}
+
+/** F3: which rule holds a [DownloadState.WAITING_CONDITIONS] download (docs/VidoraMedia.types.ts DownloadWaitReason). */
+enum class WaitReason(override val wire: String) : WireEnum {
+  SCHEDULED("scheduled"),
+  OUTSIDE_HOURS("outside_hours"),
+  ROAMING("roaming"),
+  CHARGING("charging"),
+  BATTERY_LOW("battery_low"),
 }
 
 enum class DownloadErrorCode : WireEnum {

@@ -12,6 +12,7 @@ import {
 } from './domain/merge';
 import { listPlaybackStatesForUser, loadPlaybackState } from './persistence';
 import { playbackQueryKeys } from './query-keys';
+import { isExternalMediaId } from '../player/external-media';
 
 /** Local playback summaries for this device. */
 export function listLocalPlaybackSummaries(
@@ -20,7 +21,11 @@ export function listLocalPlaybackSummaries(
   if (!namespace) {
     return [];
   }
-  return listPlaybackStatesForUser(namespace).map(localStateToSummary);
+  // A file opened from another app keeps its resume position, but is not a library video: never in Watch history,
+  // Continue watching or the library's progress.
+  return listPlaybackStatesForUser(namespace)
+    .filter((state) => !isExternalMediaId(state.mediaId))
+    .map(localStateToSummary);
 }
 
 export function resolvePlaybackSummary(

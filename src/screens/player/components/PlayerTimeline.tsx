@@ -1,18 +1,31 @@
+import { Image } from 'expo-image';
+import type { VideoThumbnail } from 'expo-video';
 import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { LayoutChangeEvent, StyleSheet, View } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { runOnJS } from 'react-native-reanimated';
 
 import { Box } from '@/components/base/Box';
+import { Pressable } from '@/components/base/Pressable';
 import { Text } from '@/components/base/Text';
 import { useTheme } from '@/hooks/use-theme';
-import { formatPlaybackTime } from '@/player';
+import {
+  formatDurationLabel,
+  formatPlaybackTime,
+  readPersistedDurationLabelMode,
+  toggleDurationLabelMode,
+  writePersistedDurationLabelMode,
+  type DurationLabelMode,
+} from '@/player';
+import { seekPreviewLeft, seekPreviewSize } from '@/player/seek-preview';
 import { useTranslation } from '@/localization';
 
 export type PlayerTimelineProps = {
   positionSeconds: number;
   durationSeconds: number | null;
   previewSeconds: number | null;
+  /** F14: the frame at the dragged position, shown above the thumb while scrubbing. */
+  previewFrame?: VideoThumbnail | null;
   disabled?: boolean;
   onSeekStart: (seconds: number) => void;
   onSeekChange: (seconds: number) => void;
@@ -36,6 +49,7 @@ export const PlayerTimeline = memo(function PlayerTimeline({
   positionSeconds,
   durationSeconds,
   previewSeconds,
+  previewFrame = null,
   disabled = false,
   onSeekStart,
   onSeekChange,
@@ -45,6 +59,15 @@ export const PlayerTimeline = memo(function PlayerTimeline({
   const theme = useTheme();
   const { t } = useTranslation();
   const [trackWidth, setTrackWidth] = useState(0);
+  // Total length or time left; tapping the label switches it, and the choice is remembered across launches.
+  const [durationMode, setDurationMode] = useState<DurationLabelMode>(readPersistedDurationLabelMode);
+  const toggleDurationMode = useCallback(() => {
+    setDurationMode((mode) => {
+      const next = toggleDurationLabelMode(mode);
+      writePersistedDurationLabelMode(next);
+      return next;
+    });
+  }, []);
   const scrubbingRef = useRef(false);
   // Timeline sits on a fixed dark dock over video. LIGHT primary is ink and
   // vanishes; keep progress readable in light / logo / dark.
@@ -59,6 +82,7 @@ export const PlayerTimeline = memo(function PlayerTimeline({
     duration != null && duration > 0
       ? Math.max(0, Math.min(1, displaySeconds / duration))
       : 0;
+  const durationLabel = formatDurationLabel(displaySeconds, duration, durationMode);
 
   const onLayout = useCallback((event: LayoutChangeEvent) => {
     setTrackWidth(event.nativeEvent.layout.width);
@@ -147,8 +171,35 @@ export const PlayerTimeline = memo(function PlayerTimeline({
     [pan, tap],
   );
 
+  const previewSize = previewFrame ? seekPreviewSize(previewFrame.width, previewFrame.height) : null;
+
   return (
     <Box gap={8} style={styles.wrap}>
+      {previewFrame && previewSize && previewSeconds != null && trackWidth > 0 ? (
+        <View
+          pointerEvents="none"
+          testID="player-seek-preview"
+          style={[
+            styles.preview,
+            {
+              width: previewSize.width,
+              height: previewSize.height + 22,
+              left: seekPreviewLeft(progress, trackWidth, previewSize.width),
+              bottom: '100%',
+            },
+          ]}>
+          <Image
+            source={previewFrame}
+            style={{ width: previewSize.width, height: previewSize.height, borderRadius: 6 }}
+            contentFit="cover"
+            transition={0}
+            accessibilityIgnoresInvertColors
+          />
+          <Text variant="caption" color="white" align="center" style={styles.previewTime}>
+            {formatPlaybackTime(previewSeconds)}
+          </Text>
+        </View>
+      ) : null}
       <GestureDetector gesture={gesture}>
         <View
           style={styles.hit}
@@ -194,9 +245,22 @@ export const PlayerTimeline = memo(function PlayerTimeline({
         <Text variant="caption" color="white">
           {formatPlaybackTime(displaySeconds)}
         </Text>
-        <Text variant="caption" color="white">
-          {formatPlaybackTime(duration)}
-        </Text>
+        <Pressable
+          onPress={toggleDurationMode}
+          hitSlop={12}
+          accessibilityRole="button"
+          accessibilityLabel={t(
+            durationMode === 'remaining' ? 'player.durationRemainingA11y' : 'player.durationTotalA11y',
+            { time: durationLabel },
+          )}
+          accessibilityHint={t(
+            durationMode === 'remaining' ? 'player.durationShowTotalHint' : 'player.durationShowRemainingHint',
+          )}
+          testID="player-duration-label">
+          <Text variant="caption" color="white">
+            {durationLabel}
+          </Text>
+        </Pressable>
       </Box>
     </Box>
   );
@@ -231,6 +295,19 @@ const styles = StyleSheet.create({
     height: 16,
     borderRadius: 8,
     borderWidth: 2,
+  },
+  preview: {
+    position: 'absolute',
+    marginBottom: 6,
+    borderRadius: 8,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: 'rgba(255,255,255,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    overflow: 'hidden',
+    zIndex: 5,
+  },
+  previewTime: {
+    lineHeight: 22,
   },
   times: {
     width: '100%',

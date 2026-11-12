@@ -15,6 +15,10 @@ import {
 } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
+import { translate } from '@/localization';
+import { useDownloadsStore } from '@/store/downloads';
+import { selectBackgroundPlayback, useSettingsStore } from '@/store/settings';
+
 import { invalidateLibraryAvailability, reconcileAvailability } from '@/library';
 import {
   decideActivityStopped,
@@ -39,12 +43,15 @@ import {
   normalizePlaybackRate,
 } from './playback-rates';
 import { PreparationWatchdog } from './preparation-watchdog';
+import { classifyStreamError, isStreamMediaId, STREAM_PREPARATION_TIMEOUT_MS } from './remote-stream';
 import { resolvePlaybackSource } from './resolve-playback-source';
 import {
   applyFirstFrameAccepted,
   applySurfaceReveal,
   canAcceptFirstFrameEvent,
   createRequestAnimationFrameScheduler,
+  hasOnlyUndecodableVideo,
+  revealsWithoutFirstFrame,
   scheduleCompositionSyncedReveal,
   shouldAssignPlaybackSource,
 } from './first-frame-state';
@@ -152,6 +159,15 @@ export function usePlayerSession(
     instance.muted = false;
   });
 
+  // Settings → Player → "Keep playing in background" (off by default).
+  const backgroundPlayback = useSettingsStore(selectBackgroundPlayback);
+  const backgroundPlaybackRef = useRef(backgroundPlayback);
+  useEffect(() => {
+    backgroundPlaybackRef.current = backgroundPlayback;
+  }, [backgroundPlayback]);
+  // When the PiP window last closed: an activity stop right after it is the window being dismissed.
+  const pictureInPictureEndedAtRef = useRef(0);
+
   const controller = useMemo(
     () =>
       createPlayerController(adaptVideoPlayer(player), {
@@ -220,6 +236,23 @@ export function usePlayerSession(
         isSurfaceRevealed: true,
         isLoading: false,
       };
+    });
+  }, [safeSetSession]);
+
+  // Audio has no first frame to wait for: reveal as soon as the source is ready.
+  const revealAudioOnlySource = useCallback(() => {
+    if (!revealsWithoutFirstFrame(sourceRef.current?.mimeType)) {
+      return;
+    }
+    safeSetSession((prev) => {
+      if (prev.isSurfaceRevealed) {
+        return prev;
+      }
+      playerLog('player.surface_revealed', {
+        mediaId: sourceRef.current?.mediaId,
+        generation: resolveGenRef.current,
+      });
+      return { ...prev, hasFirstFrame: true, isSurfaceRevealed: true, isLoading: false };
     });
   }, [safeSetSession]);
 
@@ -304,6 +337,8 @@ export function usePlayerSession(
     lastKnownPositionRef.current = 0;
     watchdogRef.current?.dispose();
     watchdogRef.current = new PreparationWatchdog({
+      // An online stream waits on the network: its first frame may take longer than a local file's.
+      timeoutMs: isStreamMediaId(mediaId) ? STREAM_PREPARATION_TIMEOUT_MS : undefined,
       onTimeout: () => {
         if (gen !== resolveGenRef.current || !mountedRef.current) {
           return;
@@ -370,7 +405,11 @@ export function usePlayerSession(
         if (shouldReplace) {
           await player.replaceAsync({
             uri: source.uri,
-            contentType: 'auto',
+            // A local file is recognised by its content; an online stream says what it is (F17).
+            contentType: source.contentType ?? 'auto',
+            ...(source.headers && Object.keys(source.headers).length > 0 ? { headers: source.headers } : null),
+            // Shown by the media notification when background play is on.
+            metadata: nowPlayingMetadata(source.mediaId, source.displayName, source.artworkUrl),
           });
           lastAssignedUriRef.current = source.uri;
           lastAssignedGenerationRef.current = gen;
@@ -405,6 +444,7 @@ export function usePlayerSession(
               error: null,
               errorMessage: null,
             }));
+            revealAudioOnlySource();
           }
         } catch {
           // Native statusChange will follow if status is not yet readable.
@@ -445,6 +485,7 @@ export function usePlayerSession(
     safeSetSession,
     applyTerminalError,
     cancelPendingReveal,
+    revealAudioOnlySource,
   ]);
 
   // Cleanup on unmount / media exit. The position comes from what the player last reported: by the time this runs
@@ -540,10 +581,12 @@ export function usePlayerSession(
         nextState: next,
         isPlaying: sessionRef.current.isPlaying,
         pictureInPicture: pictureInPictureRef.current,
+        backgroundPlayback: backgroundPlaybackRef.current,
       });
       if (decision.action === 'background_pause') {
         pauseForBackground('background');
       }
+      // continue_in_background: the media notification's service keeps the sound going.
       // await_picture_in_picture: keeps playing into the PiP window; the activity stopping (below) ends it otherwise.
       // foreground_no_autoplay: intentionally no play()
     };
@@ -557,13 +600,28 @@ export function usePlayerSession(
   // No one can see the video any more (PiP dismissed, no PiP window opened, screen off): stop it.
   useEffect(
     () =>
-      subscribeActivityStopped(() => {
+      subscribeActivityStopped((event) => {
         if (!mountedRef.current) {
           return;
         }
         const playing = sessionRef.current.isPlaying || player.playing;
-        if (decideActivityStopped({ isPlaying: playing }) === 'pause') {
+        const pictureInPictureEnded =
+          Boolean(event?.inPictureInPicture) ||
+          pictureInPictureRef.current.active ||
+          Date.now() - pictureInPictureEndedAtRef.current < PIP_DISMISS_STOP_WINDOW_MS;
+        const decision = decideActivityStopped({
+          isPlaying: playing,
+          backgroundPlayback: backgroundPlaybackRef.current,
+          pictureInPictureEnded,
+        });
+        if (decision === 'pause') {
           pauseForBackground('activity_stopped');
+        }
+        // A stopped activity shows no PiP window. expo-video's stop event does not come when the window was closed
+        // while its view had let go of the player (background play), so the state is cleared here.
+        if (pictureInPictureRef.current.active) {
+          pictureInPictureRef.current = { ...pictureInPictureRef.current, active: false };
+          pictureInPictureEndedAtRef.current = Date.now();
         }
       }),
     [pauseForBackground, player],
@@ -582,8 +640,17 @@ export function usePlayerSession(
   // listener above pauses.
   const onPictureInPictureStop = useCallback(() => {
     pictureInPictureRef.current = { ...pictureInPictureRef.current, active: false };
+    pictureInPictureEndedAtRef.current = Date.now();
     playerLog('player.pip_stop', { mediaId: sourceRef.current?.mediaId ?? undefined });
   }, []);
+
+  // Background play: expo-video's media session and its foreground service while a video is ready and not finished.
+  // Reaching the end (or an error) turns them off, which removes the notification; Replay turns them on again.
+  const backgroundSessionActive =
+    backgroundPlayback && session.isReady && !session.isCompleted && session.error == null;
+  useEffect(() => {
+    applyBackgroundPlayback(player, backgroundSessionActive);
+  }, [backgroundSessionActive, player]);
 
   useEventListener(player, 'statusChange', ({ status, error }) => {
     if (!mountedRef.current) {
@@ -594,7 +661,9 @@ export function usePlayerSession(
         return;
       }
       watchdogRef.current?.clear();
-      const code = classifyNativePlayerError(error);
+      // An online stream's refused link or lost network gets its own message (and Retry for the network).
+      const code =
+        (sourceRef.current?.remote ? classifyStreamError(error) : null) ?? classifyNativePlayerError(error);
       applyTerminalError(code);
       return;
     }
@@ -611,6 +680,11 @@ export function usePlayerSession(
     }
     if (status === 'readyToPlay') {
       watchdogRef.current?.clear();
+      if (hasOnlyUndecodableVideo(player.availableVideoTracks)) {
+        playerLog('player.undecodable_video', { mediaId: sourceRef.current?.mediaId });
+        applyTerminalError('UNSUPPORTED_MEDIA');
+        return;
+      }
       const duration =
         Number.isFinite(player.duration) && player.duration > 0
           ? player.duration
@@ -629,6 +703,7 @@ export function usePlayerSession(
         error: null,
         errorMessage: null,
       }));
+      revealAudioOnlySource();
       return;
     }
     if (status === 'loading') {
@@ -945,3 +1020,38 @@ export function usePlayerSession(
 }
 
 export { SEEK_STEP_SECONDS };
+
+/** expo-video keeps playing and shows the media notification (its playback service) only while both are on. */
+function applyBackgroundPlayback(player: { staysActiveInBackground: boolean; showNowPlayingNotification: boolean }, active: boolean): void {
+  try {
+    player.staysActiveInBackground = active;
+    player.showNowPlayingNotification = active;
+  } catch {
+    // A released player: nothing to keep alive.
+  }
+}
+
+/** A stop this soon after the PiP window closed is that window being dismissed (which pauses). */
+const PIP_DISMISS_STOP_WINDOW_MS = 2_000;
+
+/** Title, "Playing in VidoraX" and the library thumbnail (when there is one) for the media notification. */
+function nowPlayingMetadata(
+  mediaId: string,
+  displayName: string,
+  artworkUrl?: string | null,
+): { title: string; artist: string; artwork?: string } {
+  const state = useDownloadsStore.getState();
+  const thumbnail = (state.engineRowsById[mediaId] ?? state.itemsById[mediaId])?.thumbnailUrl;
+  // A library video's own thumbnail file; an online stream's offer thumbnail (F17).
+  const artwork =
+    typeof thumbnail === 'string' && thumbnail.startsWith('file://')
+      ? thumbnail
+      : typeof artworkUrl === 'string' && /^https?:\/\//i.test(artworkUrl)
+        ? artworkUrl
+        : null;
+  return {
+    title: displayName,
+    artist: translate('player.nowPlayingSubtitle'),
+    ...(artwork ? { artwork } : null),
+  };
+}

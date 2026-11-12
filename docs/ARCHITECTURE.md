@@ -10,7 +10,10 @@ document must be fixed.
 Goals
 
 - The following video formats can be downloaded when found in the browser:
-  - **Progressive:** MP4, M4V, MOV, WebM, AVI, WMV, standalone downloadable fMP4.
+  - **Progressive:** MP4, M4V, MOV, WebM, AVI, WMV, standalone downloadable fMP4; F4V (ISO-BMFF, saved as `.mp4`),
+    3G2 (saved as `.3g2`, `video/3gpp2`) and DivX/XviD (`.divx` is AVI and takes the AVI path); MPEG program streams
+    (F4: `.mpg`, `.mpeg`, a DVD's `.vob`; MPEG-1 and MPEG-2 packaging) — converted to MP4 where the device decodes
+    MPEG-1/2 video, else kept as `.mpg`. CSS-scrambled DVD titles are refused as protected.
   - **Streaming:** unencrypted VOD HLS (master and media playlists; MPEG-TS, fMP4/CMAF and packed-audio segments;
     byte ranges; a variant whose sound is a separate `EXT-X-MEDIA TYPE=AUDIO` rendition — both downloaded and
     merged). Unencrypted static single-period DASH: single-file (BaseURL/SegmentBase) or segmented
@@ -19,8 +22,11 @@ Goals
   - **Split audio/video:** a video-only file and an audio-only file of one video (a MediaSource player fed from two
     SourceBuffers — Instagram/Facebook-style), resolved, checked to be one video's, downloaded and merged.
   - **Extensionless URLs** when probe/verification confirms one of the above formats.
+  - **Live HLS recording** (F6, Settings → Downloads → Advanced → "Live recording (beta)", off by default): an
+    unencrypted live HLS stream is offered as **Record** and recorded from now until Stop, its end, the maximum length
+    or low storage, then finalized to MP4 like any download (§3.8).
 - Progressive files are streamed directly to disk and kept byte for byte when they already play (MP4/M4V/MOV,
-  WebM/MKV, 3GP); a container that plays or seeks poorly is remuxed without re-encoding (MPEG-TS, fragmented MP4, AVI,
+  WebM/MKV, 3GP/3G2); a container that plays or seeks poorly is remuxed without re-encoding (MPEG-TS, fragmented MP4, AVI,
   FLV → MP4); only a track the output cannot carry is re-encoded (MP3/AC-3 → AAC, VP8/MPEG-2 → H.264) with the
   platform's MediaCodec encoders. The output of a merge/remux is MP4 (H.264/H.265/MPEG-4/VP9/AV1 + AAC/Opus), or
   WebM when both tracks are VP8/VP9 + Opus/Vorbis.
@@ -34,6 +40,13 @@ Goals
 - The browser is usable immediately at launch.
 - **Downloadable ≠ internally playable.** A container nothing on the device can read (ASF/WMV: Media3 has no ASF
   extractor and Android no WMV decoder) is kept exactly as downloaded and relies on "Open with" / an external player.
+  The same holds for an AVI whose header declares a video stream Android cannot decode (DivX 3 / `DIV3`: Media3 reads
+  only its sound) — kept as `.avi` (`process/AviHeader`), never refused as "audio only". Likewise an MPEG program
+  stream on a device without an MPEG-2 video decoder — Android's own (`c2.android.mpeg2.decoder`) is enabled only on TV
+  devices (`domain="tv"`), so most phones have one only when their chip vendor ships it — or without an AC-3 decoder
+  for a DVD's AC-3 sound: kept as `.mpg` (`video/mpeg`); the player then says "Unsupported format" with "Open with"
+  (a source whose video tracks are all `isSupported: false`) instead of waiting for a frame. "Open with" with no app for
+  the type says "No compatible video app is installed" (`ERR_NO_APP`).
 
 Non-goals (refused, with a clear message to the user)
 
@@ -47,7 +60,7 @@ Non-goals (refused, with a clear message to the user)
 - Unresolved `blob:` / MSE-only sources: a player whose files cannot be tied to it exactly (e.g. several candidate
   files from a feed that prefetches the next item) is not guessed.
 - Merging tracks whose lengths or starts disagree (they are not one video's): `TRACK_MISMATCH`.
-- Live streams (v2 may add "record from now").
+- Live streams while "Live recording (beta)" is off; live DASH always (F6 records live HLS only, §3.8).
 - Bypassing logins or paywalls. Content is only reachable when the user can already play it in the browser.
 
 ## 2. System overview
@@ -108,13 +121,19 @@ All Media3 artifacts pinned to **exactly** the version expo-video uses (`1.9.0`,
 | `net/HttpClient` | One OkHttp client. Per request: tab User-Agent, Referer, Origin, extra headers (never `Cookie`/`Authorization`), `Accept-Encoding: identity`, `Range`/`If-Range`, bounded `Range` for `EXT-X-BYTERANGE`. Redirects are followed by the client itself (max 20; a loop is a permanent `NOT_MEDIA`), and every hop — plus every HLS child URL — must pass `net/UrlSafety` (public http(s) hosts only; the page detector's SSRF rule, without DNS). Cookies: the WebView session per hop when `useCookies` (`net/SessionCookies`), plus an in-memory jar of cookies the servers set during the download; nothing persisted. |
 | `plan/Probe` | The one classifier: DOWNLOADABLE (`ProbeResult.Success`), PROTECTED (`DRM_PROTECTED`), UNSUPPORTED (`UNSUPPORTED_FORMAT`, `LIVE_UNSUPPORTED`, `NOT_MEDIA`, `POLICY_BLOCKED`) or transient (`NETWORK`, `HTTP_ERROR` 5xx/408/429, `HTTP_403`/`HTTP_404` = refresh from the page). Progressive: bounded 64 KiB range sniff (magic bytes win over extension/Content-Type; a 206 must start at 0; encrypted MP4/WebM → PROTECTED; an MP4 whose track list in those bytes has sound and no video → UNSUPPORTED — the audio half of a split stream is not a video). `kind: hls`, or bytes that are a playlist, go to `plan/HlsPlanner` with the request's `variant` (the engine fills in the preferred-quality setting exactly as enqueue does), so the verdict is about the variant that would be downloaded; then `HlsPlanner.confirmMedia` reads that variant's init section (fMP4) or the first 4 KiB of its first segment and refuses WebVTT, packed audio, a track list without video, and Common Encryption boxes — a media playlist found on its own can be a stream's subtitle or audio rendition. A read that fails is no verdict (the transfer re-checks the bytes). `kind: dash`, or bytes that are an MPD, go to `plan/DashPlanner`; the representation it picks is then classified by its own bytes exactly as a progressive file, so DASH is DOWNLOADABLE only when that one file is a complete, clear video. MP3/AAC/M4A(B) are named as audio files (an `M4A `/`M4B ` brand even when the track list is past the probe). YouTube hosts, HTML/JSON pages, `blob:` and inline manifests (`manifestText`) refused. |
 | `plan/DashPlanner` | Media3 `DashManifestParser` over a bounded (4 MiB) fetch. Refuses: any `ContentProtection` (raw, namespace-aware scan — Media3 records nothing for a bare `mp4protection`) or DRM init data → PROTECTED; `type="dynamic"` → LIVE; several periods and audio-only manifests → UNSUPPORTED; 401/403, 404/410, 5xx and transport failures keep their transient codes. Every decodable video representation on a public host is eligible: single-file (BaseURL/SegmentBase → `DashTrackSource.File`) or segmented (SegmentTemplate `$Number$`/`$Time$`/SegmentTimeline, SegmentList → init + every segment as an `HlsPlan`-shaped segment plan, bounded 20 000 segments; unbounded templates refused). Selection: `variant.videoId` exactly (never swapped), else best ≤ `maxHeight`, else best. Sound: the representation's own (muxed codecs), else the separate audio adaptation set's `variant.audioId`, else main role > unlabelled > AAC > Opus/Vorbis > others, highest bitrate. `presentationTimeOffset` becomes the track's time offset. A plan that is one complete muxed file keeps the progressive path (`DashResolution.Ready`); anything else is `DashResolution.Tracks` (file tracks classified by their own bytes for their role, segment tracks by their init section). The engine re-reads the manifest on every run. |
-| `plan/HlsPlanner` | Media3 `HlsPlaylistParser` (multivariant with its `EXT-X-DEFINE` imports, or media). Variant: `variant.videoId` exactly (never substituted), else best ≤ `maxHeight`, else best decodable. A variant whose `AUDIO` group has only renditions with a URI gets that group's rendition (`variant.audioId`, else `DEFAULT`, else `AUTOSELECT`, else the first) planned too, as `HlsPlan.audio` (same refusals; discontinuities with separate audio refused). Refuses: any `EXT-X-KEY`/`EXT-X-SESSION-KEY` method other than `NONE` (decided from the tag text too — Media3 records nothing for SAMPLE-AES identity or FairPlay), DRM init data, live (no `EXT-X-ENDLIST`), `EXT-X-GAP`, audio-only, fMP4 that changes init section or timeline mid-stream, segments on non-public hosts. `confirmTrack` checks a track's first bytes for its role (video: a picture; audio: TS, packed audio or a sound track; never encrypted). A child playlist refused 401/403 is retried once with the parent's query (token propagation). Output: an `HlsPlan` with a structure fingerprint (not token-sensitive). |
-| `transfer/ProgressiveTransfer` | Streamed write to `.part` file. Resume at byte level with `Range` + `If-Range`: the validator (a strong ETag, else Last-Modified — never a weak ETag) of the response that started the `.part` is kept beside it (`download.part.validator`), so it survives pause, process death, reboot and a re-signed link. On server 200 to a ranged request, restart from zero (never append a 200 onto an existing partial). A write the disk refuses is a `StorageWriteException` (ENOSPC → `NO_SPACE`), never a network error. A superseded worker never touches the `.part`. Atomic rename on completion. |
-| `transfer/HlsTransfer` | One segment track (an HLS media playlist, the audio rendition, or a DASH segment representation — `HlsTransferSpec.role`) appended to its own `.part` (`download.part` / `audio.part`) in order; after each one the `.part` is synced and `work/<id>/hls.checkpoint` advanced (segments done, bytes, fingerprint, container — no URL, no token). Resume truncates to the checkpoint and continues at the next segment; a checkpoint for another stream restarts from zero. MPEG-TS: byte concatenation. fMP4: init once, each segment's own `sidx` renamed `free`, one global `sidx` written into space reserved after the init (`transfer/Fmp4Index`) so players get the real duration and seeking — no sample byte changes, no sample byte changes. The container is confirmed from the bytes (subtitles refused; DASH WebM accepted; `plan/HlsSegmentFormat`, shared with the classifier). An audio track may be HLS packed audio: each segment's ID3 tag is dropped and the first one's `com.apple.streaming.transportStreamTimestamp` is kept (checkpointed) as the track's time offset, so the merge keeps it in sync with an MPEG-TS video. |
-| `process/MediaProcessor` | After the transfers: keep (MP4/MOV/M4V not fragmented, WebM/MKV, 3GP, and anything Media3 cannot read — WMV — byte for byte), remux (MPEG-TS, fragmented MP4, AVI, FLV → MP4), merge (separate video + audio → MP4, or WebM for VP8/VP9 + Opus/Vorbis) or transcode (only the track the output cannot carry, into its own file, then merged losslessly with the copied track at its original timeline offset). Split inputs are refused before a byte is written when their stated lengths disagree (`TRACK_MISMATCH`), and every produced file is read back: a video track, the audio when one went in, the source's length, and merged tracks that start within 2 s and last as long as each other (from the samples actually written). Failures: `VIDEO_TRACK_MISSING`, `AUDIO_TRACK_MISSING`, `TRACK_MISMATCH`, `MUX_FAILED`, `TRANSCODE_FAILED`, `INVALID_MEDIA`, `DRM_PROTECTED`. |
+| `plan/HlsPlanner` | Media3 `HlsPlaylistParser` (multivariant with its `EXT-X-DEFINE` imports, or media). Variant: `variant.videoId` exactly (never substituted), else best ≤ `maxHeight`, else best decodable. A variant whose `AUDIO` group has only renditions with a URI gets that group's rendition (`variant.audioId`, else `DEFAULT`, else `AUTOSELECT`, else the first) planned too, as `HlsPlan.audio` (same refusals; discontinuities with separate audio refused). Refuses: any `EXT-X-KEY`/`EXT-X-SESSION-KEY` method other than `NONE` (decided from the tag text too — Media3 records nothing for SAMPLE-AES identity or FairPlay), DRM init data, live (no `EXT-X-ENDLIST`; F6's `planLive` / `liveWindow` accept it for a recording, §3.8), `EXT-X-GAP`, audio-only, fMP4 that changes init section or timeline mid-stream, segments on non-public hosts. `confirmTrack` checks a track's first bytes for its role (video: a picture; audio: TS, packed audio or a sound track; never encrypted). A child playlist refused 401/403 is retried once with the parent's query (token propagation). Output: an `HlsPlan` with a structure fingerprint (not token-sensitive). |
+| `transfer/ProgressiveTransfer` | Streamed write to `.part` file. Resume at byte level with `Range` + `If-Range`: the validator (a strong ETag, else Last-Modified — never a weak ETag) of the response that started the `.part` is kept beside it (`download.part.validator`), so it survives pause, process death, reboot and a re-signed link. On server 200 to a ranged request, restart from zero (never append a 200 onto an existing partial). A write the disk refuses is a `StorageWriteException` (ENOSPC → `NO_SPACE`), never a network error. A superseded worker never touches the `.part`. Atomic rename on completion. **Several connections** (`DownloadSettings.connectionsPerFile` > 1, F1): the first request asks `bytes=<from>-`; when the answer proves ranges — a `206` at `<from>` with the total size, ≥ 16 MiB left, a strong validator — the rest goes to `transfer/RangedDownload`. A file the probe already knows is under 16 MiB gets one connection and today's exact requests. |
+| `transfer/LiveHlsRecorder` | F6: a live HLS media playlist recorded into `download.part` (§3.8): reload every target duration (half of it when nothing new came, RFC 8216 §6.3.4), segments keyed by media sequence, appended strictly in order through `HlsTransfer.liveIo` (the same fetch, token propagation, F1 fetch-ahead and F2 limiter), TS continuity renumbered and an fMP4 init written once; after each segment the `.part` is synced and `work/<id>/live.checkpoint` (JSON: last sequence, bytes, recorded µs, container, TS counters, discontinuities, missed — no URL) written atomically. Stops: Stop, `EXT-X-ENDLIST`, the maximum length, low storage (free < recorded + 64 MiB), a stall (no new segment for max(30 s, 3 × target)), an fMP4 init change. |
+| `transfer/RangedDownload` | One file over up to N connections: the `.part` pre-sized to the whole file, N equal parts, each a bounded `Range` with `If-Range` written at its offset (positional `FileChannel` writes — no join step, no second copy). `download.part.parts` (total, validator, `[start, end, done]` per part) is written ~1/s and whenever it stops, after `force()` — pause, network loss and process death resume every part. Dynamic segmentation: a free connection takes the second half of the largest running part (halves ≥ 1 MiB). Never a failure of its own: `200`/`416`/misaligned to a part → continue on one connection from the contiguous prefix; another validator → restart from 0 on one connection; `401`/`403`/`429` while others are open → carry on with one connection; a dropped part retries alone. `PartProgress.bytesOnDisk` is what the engine counts as downloaded (not the pre-sized length). |
+| `transfer/HlsTransfer` | One segment track (an HLS media playlist, the audio rendition, or a DASH segment representation — `HlsTransferSpec.role`) appended to its own `.part` (`download.part` / `audio.part`) in order; after each one the `.part` is synced and `work/<id>/hls.checkpoint` advanced (segments done, bytes, fingerprint, container, TS continuity counters — no URL, no token). Resume truncates to the checkpoint and continues at the next segment; a checkpoint for another stream restarts from zero. With `connections` > 1 (F1) up to N segments are fetched at once into `download.part.seg<i>` (`.tmp` until whole) and still appended strictly in order; a fetch's failure surfaces only when its turn comes, and whole fetched-ahead files of the same stream are reused after a pause or restart. MPEG-TS: byte concatenation with each packet's continuity counter renumbered so the joins are continuous (`transfer/TsContinuity`: per-segment counters made Media3's `TsExtractor` drop the last frame before every join, and frames after it when segments do not start on key frames; an older build's prefix is renumbered once on resume). fMP4: init once, each segment's own `sidx` renamed `free`, one global `sidx` written into space reserved after the init (`transfer/Fmp4Index`) so players get the real duration and seeking — no sample byte changes, no sample byte changes. The container is confirmed from the bytes (subtitles refused; DASH WebM accepted; `plan/HlsSegmentFormat`, shared with the classifier). An audio track may be HLS packed audio: each segment's ID3 tag is dropped and the first one's `com.apple.streaming.transportStreamTimestamp` is kept (checkpointed) as the track's time offset, so the merge keeps it in sync with an MPEG-TS video. |
+| `process/MediaProcessor` | After the transfers: keep (MP4/MOV/M4V/F4V not fragmented, WebM/MKV, 3GP/3G2, and anything Media3 cannot read — WMV, an AVI whose video only an external player decodes — byte for byte), remux (MPEG-TS, fragmented MP4, AVI, FLV → MP4), merge (separate video + audio → MP4, or WebM for VP8/VP9 + Opus/Vorbis) or transcode (only the track the output cannot carry, into its own file, then merged losslessly with the copied track at its original timeline offset). Split inputs are refused before a byte is written when their stated lengths disagree (`TRACK_MISMATCH`), and every produced file is read back: a video track, the audio when one went in, the source's length, and merged tracks that start within 2 s and last as long as each other (from the samples actually written). Failures: `VIDEO_TRACK_MISSING`, `AUDIO_TRACK_MISSING`, `TRACK_MISMATCH`, `MUX_FAILED`, `TRANSCODE_FAILED`, `INVALID_MEDIA`, `DRM_PROTECTED`. |
 | `process/Remuxer` | `MediaExtractorCompat` (Media3's extractors; MPEG-TS with `TimestampAdjuster.MODE_NO_OFFSET` so renditions keep their offsets) → `Mp4Muxer` (moov at the end: no reserved padding) / `WebmMuxer`. One video + at most one audio track; files interleaved by time; every file shifted by its time offset, the output moved so its earliest sample is at 0 (a later track keeps its delay as an edit list). A fragmented MP4's own edit-list start delays, which Media3's fragmented extractor leaves out (an empty edit followed by the media edit, as HLS fMP4 from ffmpeg writes them), are added per track (`process/FragmentEdits`) — without them an fMP4 audio rendition starts up to tens of ms early. In-band codec configs (MPEG-4 VOL, H.264 SPS/PPS, HEVC VPS/SPS/PPS in AVI/FLV) recovered from the first key frame (`process/CodecConfig`). Rotation kept. Cancellable between samples; a partial output is deleted. |
-| `process/Transcoder` | Media3 Transformer on its own looper thread: one track of one file → a single-track MP4 (H.264 video or AAC audio, platform MediaCodec — hardware where available). Only asked when a track cannot be copied and this device can decode it (`AndroidCodecSupport`). |
-| `verify/Verifier` | Post-download validation on the bytes on disk: expected length, container magic (MPEG-TS only when an HLS download produced it), no DRM brands and no encrypted tracks in the `moov` wherever it sits (protected → `DRM_PROTECTED`, not "corrupt"). HLS output must also decode as a video (MediaExtractor) before COMPLETED. |
+| `process/Transcoder` | Media3 Transformer on its own looper thread: one track of one file → a single-track MP4 (H.264 video or AAC audio, platform MediaCodec — hardware where available). Only asked when a track cannot be copied and this device can decode it (`AndroidCodecSupport`). `RoutingTranscoder` sends an MPEG audio Layer II track to `MpegAudioTranscoder` instead (F4). |
+| `process/MpegAudioDecoder` | F4: MPEG-1/2 Audio Layer II ("MP2") decoder in Kotlin — no Android device has a platform MP2 decoder, yet it is the sound of nearly every `.mpg`/`.vob`/VCD. A port of minimp3's Layer I/II path and polyphase synthesis (public domain, CC0); output matches minimp3 sample for sample on every allocation table (MPEG-1 B.2a–c, MPEG-2 LSF), and minimp3 matches ffmpeg to ≥ 70 dB. |
+| `process/MpegAudioTranscoder` | F4: MP2 track → `MpegAudioDecoder` → platform AAC-LC encoder (80 kb/s per channel) → single-track MP4 via `Mp4Muxer`, starting at zero like the Transformer path. A frame that does not decode becomes silence of its length (sync kept); mostly undecodable or no decodable frame → `TRANSCODE_FAILED`. |
+| `process/Mpeg1SystemStream` | F4: Media3's `PsExtractor` reads MPEG-2 packaging only. An MPEG-1 system stream is re-packaged first (`rewrapped-mpeg2.vob` in the work folder): 12-byte pack headers → 14-byte MPEG-2 ones (same SCR and mux rate), each packet's MPEG-1 header (stuffing, STD buffer, PTS/DTS) → an MPEG-2 PES header with the same PTS/DTS; payload byte for byte. When the copy would only be kept, the original download is kept. |
+| `plan/MpegProgramStream` | F4: pack-header detection (MPEG-1 `0010`, MPEG-2 `01`), `isScrambled` (any audio/video/private-1 PES with `PES_scrambling_control ≠ 00` — CSS — refused as `DRM_PROTECTED` at the probe and, over the first 4 MB, by the Verifier) and `hasVideoStream` (a video PES id: Android's metadata reader misses MPEG-1 system-stream video, so the engine's audio-only gate trusts the packets, as it trusts a DivX AVI's header). |
+| `verify/Verifier` | Post-download validation on the bytes on disk: expected length, container magic (MPEG-TS only when an HLS download produced it), no DRM brands and no encrypted tracks in the `moov` wherever it sits, no scrambled MPEG program stream packets (protected → `DRM_PROTECTED`, not "corrupt"). HLS output must also decode as a video (MediaExtractor) before COMPLETED. |
 | `library/LibraryStore` | Library rows, queries (search, site, favorites, sort, paging), rename (title only), per-item favorites, delete (file + thumbnail; gallery copy is left alone). Missing-file repair: an item whose file is gone or empty (deleted or moved outside VidoraX) is removed with its thumbnail and announced `deleted` — at module start, on `reconcileLibrary` (Player tab focus, app foreground, pull-to-refresh, the player finding the file missing) and when an action finds the file gone. The recorded MIME type follows the container proven from the bytes (a MOV is `video/quicktime`, even when the platform says `video/mp4`). |
 | `library/MediaInfo` | `MediaMetadataRetriever` for duration, width, height, rotation, codecs. |
 | `library/Thumbnails` | Frame at 10% of duration (min 1 s), scaled to 480 px wide, WebP in `filesDir/thumbs/<id>.webp`. |
@@ -124,7 +143,9 @@ All Media3 artifacts pinned to **exactly** the version expo-video uses (`1.9.0`,
 | `library/LegacyImport` | One-time import of completed files from the old layout `filesDir/VidoraXDownloads/<id>/<file>` (id preserved so existing playback progress still matches). Skips `.part` and workspace folders, generates metadata and thumbnails, then removes empty old folders. |
 | `runner/DownloadNotifications` | Channel `vidorax_downloads_progress` (low importance, ongoing: "Downloading · 6.8 MB of 13 MB · 1.2 MB/s", Pause/Cancel; Paused with Resume/Cancel; Waiting for network) and `vidorax_downloads_status` (completed; failed with Retry unless the verdict is final). Speed is the engine's 2 s window, shown only while bytes move. Tapping opens `vidorax://downloads` (a transfer) or `vidorax://library` (a finished video) — also on a cold start: `MainActivity.onNewIntent` keeps the link and the splash honours it. |
 | `analyze/PageFetcher` | `fetchPage`: a pasted/shared link read the way its tab would navigate to it, for the direct analyzer (§5.4). GET with the tab's identity (the stock WebView User-Agent via `BrowserIdentity`, or the desktop UA; device Accept-Language; `Sec-Fetch-*` navigation headers; OkHttp's transparent gzip). Redirects followed here, ≤ 10 hops, every hop checked against `UrlPolicy` (public hosts only) and the YouTube policy before it is contacted, a URL seen twice = `REDIRECT_LOOP`; one deadline (1–20 s) spans all hops and the body; the body is read up to a byte bound (16 KiB–4 MiB) and decoded with its declared charset. Media (a pasted file or manifest) is recognised from Content-Type and the first 4 KiB (`ContentClassifier`) and never read further. Cookies: the WebView session's per hop plus those earlier hops set; with `commitCookies`, the `Set-Cookie`s of a complete fetch that finished inside its deadline are stored in the WebView jar (`CookieSink`), exactly what the tab's navigation would store. Typed failures: `INVALID_URL`, `UNSAFE_URL`, `POLICY_BLOCKED`, `REDIRECT_LOOP`, `TOO_MANY_REDIRECTS`, `TIMEOUT`, `NETWORK`, `HTTP_ERROR` (status), `UNSUPPORTED_CONTENT`. Nothing is executed, nothing persisted, no cookie value reaches JavaScript or a log. |
-| `files/FileActions` | Open with / share via a `FileProvider` (`${applicationId}.vidorax.files`) with read grants. |
+| `files/FileActions` | Open with / share via a `FileProvider` (`${applicationId}.vidorax.files`) with read grants. `openIncomingWith`: a file another app opened in VidoraX, forwarded with its read grant, VidoraX excluded from the chooser. |
+| `incoming/IncomingMedia` | "Open with VidoraX" (F16). `IncomingMediaIntents.parse`: a `VIEW` of a `content:`/`file:` URI whose type — the intent's, else the resolver's, else the display name's extension — is audio or video; web links, no data and other types are ignored. `IncomingMediaReader` (launch intent via `consumeIncomingMedia`, later ones via `OnNewIntent` → `onIncomingMedia`) reads the display name and size (`OpenableColumns`), takes a persistable read grant when one is offered, and marks the intent consumed. JavaScript gets a **token** — first 32 hex of SHA-256(`incoming:` + URI), stable per file, so it doubles as the resume key — never the URI (only `getIncomingMediaSource`, for the player, returns it). `IncomingMediaRegistry`: token → file for this process (last 32). |
+| `library/IncomingImport` | "Save to VidoraX" (`importIncomingMedia`): free-space check (size + 32 MiB), copy into `noBackupFilesDir/imports/<id>/` with SHA-256 on the way, `SavedVideoIndex.findByContent` → `duplicate`, else type from name / MIME / container, `library/device/<Title>_<id>.<ext>` (site `device`), thumbnail, row (no gallery copy: the file is on the device already), content hash stored, `onLibraryChange` `imported`. A file Android cannot decode is kept (opens with another app); not audio/video or empty → `ERR_INVALID_REQUEST`; unreadable → `ERR_NOT_FOUND`; `ERR_NO_SPACE`; any failure removes the work file, library file and thumbnail. One import at a time; leftovers of an import the process died in are removed by the next. |
 | `player/Volume` | Media stream volume get/set and change events (for the player's volume gesture). |
 
 ### 3.3 Storage layout (private by default)
@@ -136,7 +157,17 @@ filesDir/
 noBackupFilesDir/
   vidorax-media.db
   work/<id>/                                    temp parts, segments, keys (deleted on completion/cancel)
+  imports/<id>/                                 a file from another app being saved (IncomingImport)
 ```
+
+**Leftover download files (F15)** — `engine/LeftoverFiles` + `measureLeftoverFiles` / `cleanLeftoverFiles`, Storage →
+"Leftover download files — X MB" → Clean up (confirmation, then "Freed X MB"; hidden when there is nothing). Leftovers:
+entries of `work/` that no listed download may still use — the keep rule keeps queued, probing, downloading, paused,
+waiting, processing (and F6 recording) **and failed** downloads (Retry resumes from the part); completed, cancelled and
+unknown ones go — and in v1 folders (`files/VidoraXDownloads/<id>/`) only the `.hls` / `.mranges` workspaces and
+`*.part` files of v1 downloads JavaScript does not report as active (`keepLegacyIds`: QUEUED, DOWNLOADING, PAUSED,
+FAILED). Finished files, `imports/`, the library and thumbnails are never listed. Measure and clean run under the
+engine's lock. `clearTempFiles` uses the same rule (v1 folders untouched).
 
 The library copy is private (App Lock protects it). Since 2026-09-26 every completed download is **also** published
 to `Movies/VidoraX/<Site>` by default (`autoSaveToGallery`, Settings → Download Settings → "Save to Gallery"; the
@@ -150,13 +181,16 @@ downloads(id TEXT PRIMARY KEY, state TEXT NOT NULL, kind TEXT NOT NULL, url TEXT
           page_url TEXT, thumbnail_url TEXT, quality_label TEXT, bytes_done INTEGER NOT NULL DEFAULT 0,
           total_bytes INTEGER, error_code TEXT, error_message TEXT, attempts INTEGER NOT NULL DEFAULT 0,
           next_retry_at INTEGER, save_to_gallery INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)
--- kind: 'progressive', 'hls', 'dash' (url = the MPD) or 'split' (url = the video file, audio_url = the audio file).
+-- kind: 'progressive', 'hls', 'dash' (url = the MPD) or 'split' (url = the video file, audio_url = the audio file);
+--       'live' (F6, url = the live playlist; no schema change — a value of the same column, no identity_key).
 -- No manifest_text (inline manifests are refused).
 -- variant_json (HLS/DASH): {"videoId": HLS playlist scheme://host/path | DASH representation id,
 --   "audioId": HLS rendition scheme://host/path | DASH audio representation id, "maxHeight": n}
 -- — the choice a resume re-selects.
 -- Track files live in work/<id>/: download.part (video, or the whole file) and audio.part, each with its
--- .validator and, once finished, .done; segment tracks with hls.checkpoint / audio.checkpoint.
+-- .validator and, once finished, .done; segment tracks with hls.checkpoint / audio.checkpoint. A multi-connection
+-- file also has download.part.parts (its per-part checkpoint); segments fetched ahead are download.part.seg<i>
+-- (.tmp while written).
 -- HLS resume state is NOT a table: work/<id>/hls.checkpoint beside the .part (segments done, bytes, playlist
 -- fingerprint, container). Segment URLs carry tokens and are re-read from a fresh playlist on every run, so none
 -- are persisted.
@@ -175,6 +209,10 @@ gallery_exports(uri TEXT PRIMARY KEY, library_id TEXT, identity_key TEXT, create
 -- boot job and background runner while no JavaScript runs. JS lists it (`listCompletedDownloads`), counts each id
 -- once for the in-app review, then acknowledges (`acknowledgeCompletedDownloads`), which deletes the rows. Bounded:
 -- the newest 500 unacknowledged rows are kept.
+download_bandwidth(...)                                                    -- schema v5 (F2, §3.6)
+download_schedule(download_id TEXT PRIMARY KEY, start_at INTEGER NOT NULL) -- schema v6 (F3, §3.7)
+-- A download's own "Start at…" time (epoch ms). Dropped when the download completes or is removed, and once the
+-- time has passed and the download is let through. New table only: migration 6 is CREATE TABLE IF NOT EXISTS.
 ```
 
 Request context (`request_json`) contains User-Agent, Referer, Origin and extra headers, never cookie values.
@@ -186,17 +224,21 @@ one (the stock system WebView UA in mobile mode), so UA-bound signed URLs still 
 ### 3.5 Download state machine
 
 ```
+queued → probing → recording (F6, kind 'live': Stop / end / max length / low storage / stall → processing)
+   │        │
 queued → probing → downloading ⇄ paused
-                        │  ⇅ waiting_network (Wi-Fi-only / offline)
-                        │  ⇅ waiting_retry   (transient error, backoff)
+   ⇅                    │  ⇅ waiting_network (Wi-Fi-only / offline)
+waiting_conditions      │  ⇅ waiting_retry   (transient error, backoff)
+(F3 rules, §3.7)        │  ⇅ waiting_conditions (a rule changed mid-transfer; the part is kept)
                         ▼
                    verifying (file validation / metadata / thumbnail / optional gallery export)
                         ▼
                    completed          failed(code)    cancelled
 ```
 
-- On engine start, `downloading`/`probing`/`verifying` rows with no live worker become `queued` (they resume from
-  the segment ledger for HLS, or from the `.part` file byte offset for progressive).
+- On engine start, `downloading`/`probing`/`verifying`/`waiting_conditions` rows with no live worker become `queued`
+  (they resume from the segment ledger for HLS, or from the `.part` file byte offset for progressive); a rule that
+  still holds sends them straight back to `waiting_conditions`.
 - **One download per video.** `enqueueUnique` checks, atomically with creating the row (engine mutex): a non-terminal
   download with the same identity → `ALREADY_DOWNLOADING` (that download; a paused one is resumed); a saved copy
   (library or VidoraX gallery) → `ALREADY_DOWNLOADED`. `findDuplicate` is the same check without creating anything
@@ -204,9 +246,99 @@ queued → probing → downloading ⇄ paused
   under a finalize lock, the finished file is compared by size + SHA-256 with the library and VidoraX's gallery
   copies; a match deletes the new file and ends the download `failed(DUPLICATE)` ("Video already downloaded", final,
   no Retry, no library item, no gallery copy). The gallery copy is made only after COMPLETED, from the final file.
+- A `recording` row is never paused (`pause` refuses it, `pauseAll` skips it): **Stop** (`stopRecording`, the
+  notification's Stop) ends it and finalizes what was recorded; **Cancel** discards it. On engine start a `recording`
+  row is finalized from its checkpoint (`recoverRecording`) — a recording never records on after a process death.
 - `retry` is allowed from `failed`; `resume` from `paused`; `cancel` from any non-terminal state and deletes temp
   files. `completed` rows stay in `downloads` for 24 h for the Downloads screen, then are pruned (the library row
   remains).
+
+### 3.6 Queue and bandwidth rules (F2 bandwidth, H4 start order)
+
+Two separate decisions, so the queue work (Hamza's H4) and the speed limits (F2) never fight:
+
+- **Start order (H4 owns it).** Which queued download takes the next of `maxConcurrent` slots. A download waits in
+  `queued` until a slot frees; F2 never starts, holds back or reorders a download. A Priority download that is still
+  `queued` gets nothing until the queue starts it.
+- **Bandwidth (F2 owns it).** How fast the *running* downloads read. `transfer/BandwidthLimiter` — one per engine — is
+  consulted after every network read of every stream (single file, `RangedDownload` parts, HLS/DASH segments and
+  segments fetched ahead; disk-to-disk appends are not counted). Token buckets: the **global limit**
+  (`DownloadSettings.speedLimitBytesPerSecond`, Download Settings → "Speed limit": Off, 256 KB/s, 512 KB/s, 1, 2, 5
+  MB/s; engine SharedPreferences, so it holds for downloads resumed before JavaScript runs); a **per-download limit**
+  (Download details), always inside the global one; **Priority** (Download details, at most one download): while the
+  priority download read in the last 2 s, all other downloads together get at most `PRIORITY_OTHERS_SHARE` (25 %) of
+  the global limit, or of the priority download's measured speed when there is no global limit (never below 32 KB/s
+  together). Per-download limits and Priority live in `download_bandwidth` (schema v5) and are dropped when the
+  download completes or is removed. A bucket allows a quarter-second burst and goes into debt instead of splitting a
+  read; changing a limit applies to the next read.
+
+### 3.7 Scheduling and conditions (F3)
+
+**Research — what Android allows (no restricted permissions).** Exact alarms (`SCHEDULE_EXACT_ALARM` /
+`USE_EXACT_ALARM`) are restricted on Play to alarm/calendar apps, and a battery-optimization exemption
+(`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) to apps whose core function breaks without it — neither applies to a
+downloader, so neither is used. Implicit broadcasts (`ACTION_POWER_CONNECTED`, connectivity) cannot be received by a
+manifest receiver since Android 8. What remains, and is enough: **JobScheduler** — `setMinimumLatency` (not before),
+`setOverrideDeadline` (at the latest), `setRequiresCharging`, `setRequiresBatteryNotLow`, `NETWORK_TYPE_NOT_ROAMING` /
+`UNMETERED`, `setPersisted(true)` (survives reboot with `RECEIVE_BOOT_COMPLETED`, which the boot job already holds).
+Android picks the moment, so a start can be late: **the UI says so** ("a scheduled start can be a few minutes late").
+On Android 14+ a job without a deadline may get "flexible" constraints (charging, idle) for hours, so timed wake-ups get
+a deadline `WAKE_DEADLINE_SLACK_MS` (10 min) after their time. A force-stop cancels an app's jobs (Android's rule); the
+schedule lives in the engine's database, so the next start of VidoraX re-plans it.
+
+**Rules** (`engine/DownloadRules`, pure, Calendar/TimeZone for minSdk 24): the first that holds wins — time first, so
+the label can say when:
+
+| Rule | Setting / source | Holds while | Wait label (list, details, notification) |
+| --- | --- | --- | --- |
+| Start time | Download details → "Start at…" (today/tomorrow, quarter hours), `download_schedule` | now < start | "Scheduled for 02:00" / "Scheduled for Tue 02:00" |
+| Download hours | Download Settings, `downloadWindow` {startMinute, endMinute, ISO days} | outside the window | "Outside download hours" |
+| Not on roaming | Download Settings, `notOnRoaming` | default network lacks `NET_CAPABILITY_NOT_ROAMING` | "Paused — roaming" |
+| Only while charging | Download Settings, `onlyWhileCharging` | not plugged in | "Waiting for charging" |
+| Pause when battery is low | Download Settings, `pauseOnLowBattery` | ≤ 15 % (`LOW_BATTERY_PERCENT`) and not charging | "Paused — battery low" |
+
+A window that crosses midnight belongs to the day it starts (Fri 22:00–06:00 covers Saturday 03:00); equal start and
+end mean the whole day of the chosen days. The settings live in the engine's SharedPreferences (pushed by
+`ensure-bridge`, like Wi-Fi only), so they hold for downloads resumed before JavaScript runs; the notification's
+language comes from the same push.
+
+**Engine.** Before taking a slot a worker calls `awaitConditions`: while a rule holds the download is
+`waiting_conditions` with `waitReason` / `waitUntil` on its record, and it waits for `policyVersion` (bumped by a
+settings push, a start-time change, a device change from `AndroidDeviceConditions` — sticky battery broadcast and the
+default network's capabilities — or the next time the rules' answer changes). A running transfer watches the same
+version and stops at a rule (`NetworkNoLongerAllowed`), keeping its part; it continues from there when allowed. A
+start time set on a paused download moves it to waiting; on a running one, it stops it until then.
+
+**Background** (`runner/BackgroundDownloads`): whenever downloads wait on rules, one persisted wake job
+(`WAKE_JOB_ID`) — not before the earliest time a rule changes, with the device constraints the rules ask for; cancelled
+when nothing waits. The job starts the engine, which re-checks everything and lets the downloads run (under the
+user-initiated job / foreground service when allowed, else a plain continuation job, `CONTINUE_JOB_ID`).
+
+### 3.8 Live recording (F6)
+
+Behind Settings → Downloads → Advanced → **"Live recording (beta)"** (`DownloadSettings.liveRecording`, default off)
+and **"Maximum length"** (`liveRecordingMaxMinutes`, 30 min / 1 / 2 / 4 / 8 h offered, 15–720 accepted, default 2 h);
+both live in the engine's SharedPreferences (pushed by `ensure-bridge`), so a recording obeys them with the app closed.
+
+- **Offer.** With the setting on, the engine's `probe` of an HLS source refused only as live (`LIVE_UNSUPPORTED`)
+  classifies it again as a recording would meet it (`Prober.probeLive` → `HlsPlanner.planLive` + `confirmMedia`) and
+  answers `ok` with `kind: 'live'`: the same variant choice, the same refusals — any `EXT-X-KEY` other than `NONE`,
+  DRM, YouTube, not a video — plus a variant whose sound is a separate rendition (only variants with their own sound
+  are offered; two live tracks are not recorded and merged). Live DASH stays refused. JS marks every quality
+  `isLive`; the browser bar says "Live stream" with a record icon ("Recording…" while it runs), the quality sheet
+  "Record 720p", and the hand-off enqueues `kind: 'live'` with the chosen variant. Online Play is not offered for a
+  live stream. With the setting off nothing changes: "Live streams can't be downloaded".
+- **Recording.** `DownloadEngine.runRecording`: refused (`LIVE_UNSUPPORTED`) when the setting is off; plan
+  (`planLive`, re-planned once — same variant — when the playlist link answers 401/403), state `recording`, then
+  `LiveHlsRecorder` (§3.2) from the live edge (the last 3 segments of the first playlist read). A segment that left
+  the window, `EXT-X-GAP`, or answers 404/410 is counted as missed and skipped; a dropped connection or a 5xx is
+  retried on the next reload; a discontinuity is recorded as one. Progress events carry `recordedMs`; the notification
+  and the Downloads row say "Recording · 12:34 · 85 MB" with **Stop** (and Cancel).
+- **Finalize.** The `.part` is cut to the checkpoint, verified, gated as a video, then processed like an HLS
+  download: MPEG-TS or fMP4 → MP4 (remux, no re-encode); a TS recording with discontinuities is kept as `.ts` (the VOD
+  rule). Nothing recorded → `failed` (`NO_SPACE` when storage ran out, else `NETWORK`). A recording has no identity:
+  two recordings of one stream are two videos. A Retry of a failed recording finalizes what is on disk, else records
+  anew.
 
 ## 4. Native module: `modules/vidorax-web`
 
@@ -239,6 +371,12 @@ anchor is not found) adds a `RNCWebViewHooks` class to react-native-webview and 
    hooks absent at `sourceopen` before; present after). `RNCWebView.callInjectedJavaScriptBeforeContentLoaded` skips
    its late evaluation when the document-start registration is in place (the stock path remains the fallback on a
    WebView without the feature).
+
+None of the hooks lives in the WebChromeClient. Website fullscreen (§8) uses react-native-webview's own: with
+`allowsFullscreenVideo` it gives the active tab's WebView an `RNCWebChromeClient` subclass whose `onShowCustomView`
+puts the page's video view over the activity's content view (and sets `SCREEN_ORIENTATION_UNSPECIFIED`); a parked tab
+gets the plain `RNCWebChromeClient`, which does not override `onShowCustomView`, so WebView reports fullscreen as
+unsupported there.
 
 The module also reads links shared to the app (`ACTION_SEND text/plain`, e.g. "Share → VidoraX" from the Instagram
 or TikTok app): the launch intent through `consumeSharedText()`, later intents through `OnNewIntent` →
@@ -419,7 +557,7 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
 
 - `downloads/v2/engine-port.ts`: typed access to `VidoraMedia` (newer methods optional, so an older native build
   degrades instead of crashing). `ensure-bridge.ts` attaches once at startup: pushes the download settings (Wi-Fi-only,
-  concurrency) to the engine, subscribes to its events, hydrates `listDownloads()` into the zustand store
+  concurrency, Save to Gallery, connections per file) to the engine, subscribes to its events, hydrates `listDownloads()` into the zustand store
   (`src/store/downloads`), repairs the library on foreground (`library-reconcile.ts`) and reconciles review
   completions (§8).
 - `downloads/v2/handoff.ts` and `enqueue-request.ts` turn a verified browser variant into an `EnqueueRequest`;
@@ -440,21 +578,66 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
   format). Progress is saved every 5 s while playing, on pause, on background, on end, and on unmount **from refs**
   (never from a released player).
 - Controls: back, orientation sheet and fullscreen on top; previous / −10 s / play-pause / +10 s / next in the
-  centre; scrubber with current / total time, mute and the speed sheet at the bottom; a lock control. Picture-in-picture
-  is entered automatically when the user leaves the app while a video plays (no button). Auto-hide after 3 s while
-  playing. *(Not built yet, planned in Phase 20 — `docs/ROADMAP.md`: fit/fill/crop, audio and
-  subtitle track menus, remaining-time toggle.)*
-- Gestures: tap toggles controls; double-tap in the centre zone seeks ±10 s by left/right half and resets the zoom;
-  vertical swipe on the left 25 % changes **window** brightness (no system settings permission); right 25 % changes
-  media volume; pinch zooms; the lock button disables gestures. *(Long-press 2× and a play/pause double-tap are not
-  built yet — Phases 20 and 16.)*
-- Next/previous follow the order of the library screen the player was opened from. The player only opens local
-  library files (`resolve-playback-source.ts`, by media id); network streams and files from other apps are Phase 16.
+  centre; scrubber with current / total time (tap the total to show the time left as `−mm:ss`, tap again for the
+  total; the choice is kept in MMKV `vidorax.mmkv.player.durationLabelMode.v1`), mute and the speed sheet at the
+  bottom; a lock control. Picture-in-picture is entered automatically when the user leaves the app while a video plays
+  (no button). Auto-hide after 3 s while playing. *(Not built yet, planned in Phase 20 — `docs/ROADMAP.md`:
+  fit/fill/crop, audio and subtitle track menus.)*
+- **Seek preview frames (F14)** (`src/player/seek-preview.ts`, `use-seek-preview.ts`, `PlayerTimeline`): while the
+  scrubber is dragged, a 160 dp frame with its time sits above the thumb (kept inside the track). Frames come from
+  `player.generateThumbnailsAsync` (≤ 256 px wide; on Android a new MediaMetadataRetriever per call, exact frame):
+  one request in flight, the latest position wins, a request starts at most every 150 ms, frames are cached by
+  1-second buckets (40 at most, least recently used released a second after leaving the cache), all dropped when the
+  player closes or changes media; three failures in a row stop asking (a source without frames). On only for files on
+  the device that have shown a video frame — library, device videos, files from other apps — never for streams (F17)
+  or audio.
+- Gestures: tap toggles controls; double-tap: while zoomed it only resets the zoom, otherwise the surface is split in
+  thirds — left −10 s, middle play/pause, right +10 s (`resolveDoubleTapAction`; physical sides, not mirrored in
+  Urdu); vertical swipe on the left 25 % changes **window** brightness (no system settings permission); right 25 %
+  changes media volume; pinch zooms; the lock button disables gestures. *(Long-press 2× is not built yet — Phase 20.)*
+- Next/previous follow the order of the library screen the player was opened from. The player opens local library
+  files (`resolve-playback-source.ts`, by media id), device videos (`device:<MediaStore id>`) and files other apps open
+  with VidoraX (`external:<token>`, F16: `src/player/external-media.ts`). An external file is held by
+  `incomingMediaQueue` until `IncomingMediaHost` (inside `AppLockGate` in the `(app)` layout, which renders under the
+  splash) may open it: the launch has handed over (`src/navigation/launch-handover.ts` — set by the splash after its
+  own `replace`, by the onboarding pages when they finish, or 5 s after the shell mounted when no splash appeared;
+  the router already shows `/browser` under the splash, so an earlier Player would be replaced) and App Lock is off or
+  unlocked, so nothing plays behind the PIN. It plays from
+  `getIncomingMediaSource` with every player feature; its position is saved under its id (= a hash of its URI, so the
+  same file resumes) but `listLocalPlaybackSummaries` drops `external:` ids — no Watch history, no Continue watching, no
+  library row, no Previous/Next. The top bar shows **Save to VidoraX** (`importIncomingMedia`; toast: saved / already
+  in your library / not enough storage / no longer readable / failed). On the error screen an external file offers
+  "Open with…" (also for "unreadable" — a WMV has no decoder here) and Save to VidoraX (kept for another app, the F5
+  rule). An `audio/*` source is revealed when ready (`revealsWithoutFirstFrame`): the startup cover otherwise waits for
+  a video frame that never comes. `+native-intent.ts` treats `content:`/`file:` links as non-routes, like web links.
+- **Online streams (F17)** (`src/player/remote-stream.ts`, `src/browser/media-actions/browser-media-play.service.ts`):
+  **Play** beside Download in the quality sheet (one per quality row when that quality plays as chosen, and in the
+  footer for the selected one) and on the "Video available" bar for a single offer. The chosen variant is confirmed
+  current exactly as a download would be (`refreshStaleDirectSource` + `resolveFreshSourceForEnqueue`: a newer signed
+  link the page produced is taken; an expired one → "reload the page"); an HLS master is resolved to the chosen height
+  (`chooseHlsVariant`, the engine planner's rule) unless its variants use a separate audio rendition; a DASH manifest
+  plays adaptively (expo-video cannot pin a representation), so DASH rows have no per-quality Play. The source keeps
+  the page's User-Agent, Referer (falling back to the page, like the engine), Origin, and — when the engine would use
+  cookies (`cookiesRequired || hasCookies`) — the WebView's cookies for the stream URL as a Cookie header (expo-video
+  has no cookie jar); `contentType` is `hls` / `dash` / `progressive`. It is kept in memory under `stream:<token>` (no
+  URL in the route; the last 8 per run); `resolvePlaybackSource` returns it with `remote: true`. No library row, no
+  resume record, no Watch history (`bind-playback-persistence` ignores `stream:` ids); a `stream:` id from an earlier
+  run → "Link expired". Split audio + video offers, refused, live, DRM, encrypted and YouTube offers are never playable
+  (`streamUnavailableReason`). Errors: an HTTP 401/403/404/410 → `STREAM_LINK_EXPIRED`; a failed connection →
+  `STREAM_NETWORK_ERROR` (Retry); the preparation timeout is 30 s (`STREAM_PREPARATION_TIMEOUT_MS`). Title: the live
+  page's name for the media, then the offer's; a file or manifest opened directly in the tab uses its file name (the
+  tab title can be the previous page's). Mini player, PiP and background play work as for any session.
 - Picture-in-picture needs manifest entries mirrored from expo-video's config plugin (this repo does not run
-  prebuild). Background audio is **off**: expo-video's `ExpoVideoPlaybackService` and
-  `FOREGROUND_SERVICE_MEDIA_PLAYBACK` were removed on 2026-10-01 (app.json `supportsBackgroundPlayback: false`), so
-  playback pauses in the background (PiP excepted) and there is no media notification. Re-adding it (Phase 16) needs
-  both manifest entries back plus the Play Console foreground-service declaration.
+  prebuild). **Background play (F18)**: Settings → Player → "Keep playing in background" (`backgroundPlayback`, off by
+  default). The manifest declares expo-video's `ExpoVideoPlaybackService` (`mediaPlayback`) and
+  `FOREGROUND_SERVICE_MEDIA_PLAYBACK` (app.json `supportsBackgroundPlayback: true`; Play declaration in
+  `docs/play-console/PLAY_SUBMISSION.md` B2). With the setting on, `decideAppLifecycleAction` →
+  `continue_in_background` and `decideActivityStopped` keeps playing (closing a PiP window still pauses); the session
+  sets `staysActiveInBackground` + `showNowPlayingNotification` while a video is ready and not finished, and the source
+  carries `metadata` (title, "Playing in VidoraX" in the app's language, library thumbnail). While the activity is
+  stopped the player views let go of the player (`session-host/video-surface-attachment`: an undrawn TextureView
+  surface would stall seeks from the notification) and take it back when the app is active. Setting off → the player
+  pauses in the background exactly as before (PiP excepted).
 - **One session, two views** (`src/player/session-host`). The session (`usePlayerSession`: the native player, resume
   seek, autoplay, background/PiP pause policy, playback events) runs in `PlayerSessionHost`, mounted once in the
   `(app)` stack beside the navigator — not in the Player screen. The Player route attaches to it
@@ -488,7 +671,18 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
   with AppCompat on every start (the launch frames on Android 8–11, the window background everywhere). Until the app has
   recorded a choice (the very first launch after install) the system splash follows the device. Background services
   start after the first frame.
-- One owner for Android back: the browser goes back in page history when it can; otherwise a double press exits.
+- One owner for Android back: a website's fullscreen video is left first, then the browser goes back in page history
+  when it can; otherwise a double press exits.
+- Website video fullscreen (`src/browser/fullscreen`): the page's own fullscreen button works in the active tab
+  (`allowsFullscreenVideo`, §4). The document-start browser-chrome script reports `fullscreen` with the video's size
+  (`videoWidth`/`videoHeight` of the fullscreen video — searched inside containers, open shadow roots and same-origin
+  frames; a cross-origin frame's numeric `width`/`height` attributes; else none) and re-reports when the size arrives.
+  `webFullscreenOrientation`: wide (≥ 1.1 : 1) or unknown → landscape, tall or square → portrait, locked through
+  `src/player/orientation-controller.ts` (`SENSOR_LANDSCAPE` turns even with system auto-rotate off); leaving restores
+  portrait. The app leaves fullscreen itself (injected `document.exitFullscreen()`, portrait restored at once) on Back,
+  a tab switch, the tab switcher, backgrounding and leaving the Browser route; a page that navigates, crashes or unmounts
+  while fullscreen is forgotten. The "Video available" bar is hidden meanwhile. The same script puts the page back at
+  its scroll position after leaving (react-native-webview's video view resets it), once the layout width is back.
 - Theme defaults to Logo; System follows the device's light/dark (`resolveThemeMode(preference, deviceScheme)`).
 - Sharing a link to VidoraX (`ACTION_SEND text/plain`) opens it in a browser tab. Web links opened with VidoraX
   (`VIEW` `http(s)`) belong to the browser too: `src/app/+native-intent.ts` keeps them away from the router (§5.3).

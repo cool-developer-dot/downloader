@@ -1,9 +1,10 @@
 #!/bin/bash
-# Fresh test1 install + R10 data: 1 favorited MP4, history pages, recent search "cats".
+# Fresh test1 install + R10 data: 1 favorited MP4, history pages, recent search "cats", one paused large download.
 Q="$(cd "$(dirname "$0")" && pwd)"
 S="${QA_WORK:-/tmp/vidorax-qa}"; mkdir -p "$S/shots" "$S/cold"
 export ANDROID_SERIAL="${ANDROID_SERIAL:-emulator-5554}"
 w(){ perl -e "select(undef,undef,undef,$1)"; }
+PAUSED_URL="${PAUSED_URL:-https://upload.wikimedia.org/wikipedia/commons/transcoded/c/c0/Big_Buck_Bunny_4K.webm/Big_Buck_Bunny_4K.webm.720p.vp9.webm}"
 adb uninstall com.vidorax.fast.videodownloader >/dev/null
 adb install ${SEED_APK:?set SEED_APK to the test1 APK} | tail -1
 adb shell monkey -p com.vidorax.fast.videodownloader -c android.intent.category.LAUNCHER 1 >/dev/null 2>&1; w 30
@@ -23,5 +24,13 @@ adb shell input tap 540 221; w 2.5
 $Q/ui.py tap "Clear address" >/dev/null 2>&1; w 1.5
 for c in c a t s; do adb shell input text $c; w 0.4; done; w 2
 $Q/ui.py tap "Search Google for “cats”"; w 6
+# R10 also needs a download that is paused when the app is upgraded: a large WebM (168 MB, ranges + strong ETag).
+adb shell "am start -a android.intent.action.VIEW -d '$PAUSED_URL' com.vidorax.fast.videodownloader" >/dev/null 2>&1; w 20
+adb shell input tap 1010 2004; w 4
+$Q/ui.py tap "Don’t allow" >/dev/null 2>&1; w 2
+adb shell input tap 405 2274; w 3
+for i in $(seq 1 20); do $Q/ui.py dump | grep -q "Pause download" && break; w 2; done
+w 5; $Q/ui.py tap "Pause download" >/dev/null; w 3
+echo "paused: $($Q/ui.py dump | grep -c 'Resume download') row(s)"
 adb shell input keyevent 3; w 2
 echo seeded

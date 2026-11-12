@@ -61,6 +61,14 @@ const PROGRESSIVE_VIDEO_CONTAINERS = new Set([
   'ts',
   'flv',
   '3gp',
+  '3g2',
+  // F4V is MP4 and DivX is AVI by their bytes; the engine names the finished file by its container.
+  'f4v',
+  'divx',
+  // MPEG program streams (F4); the engine converts them to MP4 when this device decodes their tracks.
+  'mpg',
+  'mpeg',
+  'vob',
   'unknown',
 ]);
 
@@ -258,6 +266,8 @@ export function buildV2EnqueueRequest(input: V2HandoffInput): V2EnqueueDecision 
   const estimatedBytes = positiveBytes(option);
   const qualityLabel = option.label?.trim();
   const stream = hls || dash;
+  // F6: a live HLS offer is recorded, not downloaded.
+  const live = hls && option.isLive === true;
   const maxHeight = stream && typeof option.height === 'number' && option.height > 0 ? Math.trunc(option.height) : null;
   // The exact DASH representation / HLS variant the user picked: downloaded as chosen, or refused — never swapped.
   const videoId = stream ? option.representationId?.trim() || null : null;
@@ -266,7 +276,7 @@ export function buildV2EnqueueRequest(input: V2HandoffInput): V2EnqueueDecision 
     ok: true,
     request: {
       url: option.sourceUrl,
-      kind: split ? 'split' : hls ? 'hls' : dash ? 'dash' : 'progressive',
+      kind: split ? 'split' : live ? 'live' : hls ? 'hls' : dash ? 'dash' : 'progressive',
       ...(audioSource ? { audioUrl: audioSource.toString() } : {}),
       ...(maxHeight || videoId
         ? { variant: { ...(videoId ? { videoId } : {}), ...(maxHeight ? { maxHeight } : {}) } }

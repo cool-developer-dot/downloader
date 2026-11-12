@@ -7,9 +7,11 @@ import java.io.IOException
 import java.io.InputStream
 import java.util.concurrent.TimeUnit
 import okhttp3.Call
+import okhttp3.ConnectionPool
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
+import okhttp3.Protocol
 import okhttp3.Request
 import okhttp3.Response
 import okio.BufferedSource
@@ -52,13 +54,9 @@ internal class HttpResponse(
   /**
    * The validator to bind a resume to: a strong ETag, else Last-Modified. A weak ETag (`W/"…"`) is never used —
    * `If-Range` must not carry one (RFC 9110 §13.1.5), and a server would then answer every resume with the whole file.
+   * An ETag sent without its quotes is quoted ([Validators]).
    */
-  val validator: String?
-    get() {
-      val etag = response.header("ETag")?.trim()?.ifBlank { null }
-      if (etag != null && !etag.startsWith("W/")) return etag
-      return response.header("Last-Modified")?.trim()?.ifBlank { null }
-    }
+  val validator: String? get() = Validators.of(response.header("ETag"), response.header("Last-Modified"))
 
   fun header(name: String): String? = response.header(name)
 
@@ -109,6 +107,25 @@ internal class HttpResponse(
  */
 internal class HttpClient(client: OkHttpClient, private val policy: UrlPolicy = UrlPolicy.PUBLIC_ONLY) {
   private val client: OkHttpClient = client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+
+  /**
+   * This client on HTTP/1.1 with a pool of its own — same cookies, interceptors and URL policy — so that every request
+   * in flight is its own TCP connection. "Connections per file" (several ranges of one file, segments fetched ahead)
+   * means nothing over HTTP/2, where OkHttp multiplexes every request to a host on one connection: found on the device
+   * 2026-10-11, three ranges of a file from an HTTP/2 CDN shared one socket and gained nothing.
+   */
+  val separateConnections: HttpClient by lazy {
+    HttpClient(
+      this.client.newBuilder()
+        .protocols(listOf(Protocol.HTTP_1_1))
+        .connectionPool(ConnectionPool(SEPARATE_POOL_IDLE, 1, TimeUnit.MINUTES))
+        .build(),
+      policy,
+    )
+  }
+
+  /** The protocols this client may negotiate (tests). */
+  internal val protocols: List<Protocol> get() = client.protocols
 
   /** Whether [url] is one this client would send a request to. */
   fun allows(url: String): Boolean = url.toHttpUrlOrNull()?.let { policy.allows(it) } ?: false
@@ -175,6 +192,9 @@ internal class HttpClient(client: OkHttpClient, private val policy: UrlPolicy = 
     /** What browsers allow; a longer chain is a loop or a trap. */
     const val MAX_REDIRECTS = 20
 
+    /** Idle connections the separate-connection pool keeps (a few downloads × a few connections each). */
+    private const val SEPARATE_POOL_IDLE = 8
+
     private val REDIRECT_CODES = setOf(301, 302, 303, 307, 308)
 
     fun create(
@@ -195,6 +215,30 @@ internal class HttpClient(client: OkHttpClient, private val policy: UrlPolicy = 
         .build(),
       urlPolicy,
     )
+  }
+}
+
+/**
+ * Validators sent back as `If-Range`. Some servers send an ETag without its quotes (`ETag: 19a40f3e…`, found on
+ * upload.wikimedia.org 2026-10-11): replayed like that, `If-Range` does not match and every resume — and every part of
+ * a multi-connection download — gets the whole file back (`200`), so a resume silently restarted from byte 0. Sent
+ * quoted, as RFC 9110 spells an entity-tag, the same server answers `206`.
+ */
+internal object Validators {
+  fun of(etagHeader: String?, lastModifiedHeader: String?): String? {
+    val etag = etagHeader?.trim()?.ifBlank { null }
+    if (etag != null && !etag.startsWith("W/")) return normalize(etag)
+    return lastModifiedHeader?.trim()?.ifBlank { null }
+  }
+
+  /**
+   * A stored or received validator in the form to send: an unquoted ETag gets its quotes. An HTTP date (it has spaces)
+   * and a quoted or weak ETag are left as they are.
+   */
+  fun normalize(validator: String): String {
+    val value = validator.trim()
+    if (value.isEmpty() || value.startsWith("\"") || value.startsWith("W/") || value.any { it.isWhitespace() }) return value
+    return "\"$value\""
   }
 }
 

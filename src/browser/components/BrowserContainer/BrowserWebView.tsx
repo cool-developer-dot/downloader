@@ -42,6 +42,7 @@ import type { BrowserChromeBridgeBindings } from '@/browser/hooks';
 import { browserUserAgentMode } from '@/browser/constants';
 import { resolveWebViewUserAgentForTab } from '@/browser/constants/user-agent';
 import { useBrowserEngineContext } from '@/browser/engine';
+import { webFullscreen } from '@/browser/fullscreen/web-fullscreen.runtime';
 import { useBrowserEngineEvents } from '@/browser/hooks';
 import { useBrowserStore } from '@/browser/stores';
 import { isBrowserHomeUrl } from '@/browser/utils';
@@ -527,13 +528,24 @@ export const BrowserWebView = memo(function BrowserWebView({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- true unmount only (not isActive flips)
   }, []);
 
+  // A fullscreen page that navigates away, crashes or unmounts sends no `fullscreenchange`: forget it here.
+  useEffect(() => {
+    const ownTabId = tabId;
+    return () => {
+      if (ownTabId) {
+        webFullscreen.onPageGone(ownTabId, 'unmount');
+      }
+    };
+  }, [tabId]);
+
   const handleLoadStart = useCallback(
     (event: WebViewNavigationEvent | WebViewErrorEvent) => {
+      webFullscreen.onPageGone(tabId ?? useBrowserStore.getState().activeTabId, 'navigation');
       onLoadStart(event.nativeEvent.url);
       const target = (event.nativeEvent as { target?: number }).target;
       bindNativeScope(typeof target === 'number' ? target : nativeViewTagRef.current, event.nativeEvent.url);
     },
-    [bindNativeScope, onLoadStart],
+    [bindNativeScope, onLoadStart, tabId],
   );
 
   const handleLoadEnd = useCallback(
@@ -583,16 +595,18 @@ export const BrowserWebView = memo(function BrowserWebView({
 
   const handleContentProcessDidTerminate = useCallback(
     (event: WebViewTerminatedEvent) => {
+      webFullscreen.onPageGone(tabId ?? useBrowserStore.getState().activeTabId, 'render_process_gone');
       onContentProcessDidTerminate(event);
     },
-    [onContentProcessDidTerminate],
+    [onContentProcessDidTerminate, tabId],
   );
 
   const handleRenderProcessGone = useCallback(
     (event: WebViewRenderProcessGoneEvent) => {
+      webFullscreen.onPageGone(tabId ?? useBrowserStore.getState().activeTabId, 'render_process_gone');
       onRenderProcessGone(event);
     },
-    [onRenderProcessGone],
+    [onRenderProcessGone, tabId],
   );
 
   const handleOpenWindow = useCallback(
@@ -676,6 +690,9 @@ export const BrowserWebView = memo(function BrowserWebView({
       allowsBackForwardNavigationGestures={config.allowsBackForwardNavigationGestures}
       allowsInlineMediaPlayback={config.allowsInlineMediaPlayback}
       mediaPlaybackRequiresUserAction={config.mediaPlaybackRequiresUserAction}
+      // Only the active tab can cover the app: a parked tab gets react-native-webview's plain chrome client (no
+      // fullscreen support, so the page's request is refused), and losing it closes the tab's video view natively.
+      allowsFullscreenVideo={config.allowsFullscreenVideo && isActive}
       setSupportMultipleWindows={config.setSupportMultipleWindows}
       javaScriptCanOpenWindowsAutomatically={config.javaScriptCanOpenWindowsAutomatically}
       startInLoadingState={config.startInLoadingState}

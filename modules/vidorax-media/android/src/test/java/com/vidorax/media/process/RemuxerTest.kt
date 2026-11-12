@@ -274,6 +274,50 @@ class RemuxerTest {
   }
 
   @Test
+  fun `processor keeps a 3GPP2 file and an F4V as downloaded`() = runBlocking {
+    for ((name, container) in listOf("sample.3g2" to Container.THREE_G2, "sample.f4v" to Container.MP4)) {
+      val file = fixture(name)
+      val result = MediaProcessor().process(ProcessingInput.Single(TrackFile(file, MediaProcessor.trackContainer(container))), tmp.root)
+      if (result is ProcessingResult.Failed) fail("$name: ${result.code}: ${result.message}")
+      result as ProcessingResult.Done
+      assertEquals(name, ProcessingOperation.KEEP, result.operation)
+      assertEquals(name, file, result.file)
+    }
+  }
+
+  @Test
+  fun `a DivX file is read as AVI with its MPEG-4 video`() {
+    val info = checkNotNull(MediaFiles.read(fixture("divx-mp3.divx"), TrackContainer.AVI))
+    assertEquals("video/mp4v-es", info.video?.mimeType)
+    assertEquals("audio/mpeg", info.audio?.mimeType)
+  }
+
+  @Test
+  fun `processor keeps a DivX 3 AVI whose video Android cannot decode, for Open with`() = runBlocking {
+    val file = fixture("div3-mp3.divx")
+    val result = MediaProcessor().process(ProcessingInput.Single(TrackFile(file, TrackContainer.AVI)), tmp.root)
+    if (result is ProcessingResult.Failed) fail("${result.code}: ${result.message}")
+    result as ProcessingResult.Done
+    assertEquals(ProcessingOperation.KEEP, result.operation)
+    assertEquals(file, result.file)
+  }
+
+  @Test
+  fun `an AVI with no video stream in its header is still refused`() = runBlocking {
+    // The DivX 3 file's header with its video stream type renamed: Media3 sees only the MP3, and so does the header.
+    val bytes = fixture("div3-mp3.divx").readBytes()
+    val strh = String(bytes, Charsets.ISO_8859_1).indexOf("strh")
+    check(strh > 0 && String(bytes, strh + 8, 4, Charsets.ISO_8859_1) == "vids")
+    "auds".toByteArray().copyInto(bytes, strh + 8)
+    val audioOnly = File(tmp.root, "audio-only.avi").apply { writeBytes(bytes) }
+    assertFalse(AviHeader.declaresVideoStream(audioOnly))
+    assertTrue(AviHeader.declaresVideoStream(fixture("div3-mp3.divx")))
+    val result = MediaProcessor().process(ProcessingInput.Single(TrackFile(audioOnly, TrackContainer.AVI)), tmp.root)
+    result as ProcessingResult.Failed
+    assertEquals(DownloadErrorCode.VIDEO_TRACK_MISSING, result.code)
+  }
+
+  @Test
   fun `processor converts only the MP3 audio an MP4 cannot hold and copies the video`() = runBlocking {
     val asked = mutableListOf<TranscodeRequest>()
     val processor = MediaProcessor(transcoder = Transcoder { request, output, _ ->

@@ -6,6 +6,7 @@ import {
   parseBrowserChromeMessage,
 } from '@/browser/bridge';
 import type { BrowserLinkLongPressPayload } from '@/browser/actions';
+import { webFullscreen } from '@/browser/fullscreen/web-fullscreen.runtime';
 import { browserSyncService } from '@/browser/services/browser-sync.service';
 import { useBrowserStore } from '@/browser/stores';
 import { isBrowserHomeUrl } from '@/browser/utils';
@@ -27,7 +28,7 @@ type UseBrowserChromeBridgeOptions = {
 };
 
 /**
- * Browser chrome WebView bridge (long-press + scroll + pull-to-refresh).
+ * Browser chrome WebView bridge (long-press + scroll + pull-to-refresh + website fullscreen).
  * Returns whether a message was consumed so media detection can demux.
  */
 export function useBrowserChromeBridge(
@@ -88,6 +89,16 @@ export function useBrowserChromeBridge(
             return true;
           }
           onPullToRefresh?.();
+          return true;
+        }
+        case 'fullscreen': {
+          // A parked tab's page is told to leave again — only the active tab may cover the app.
+          const owningTabId = tabId ?? useBrowserStore.getState().activeTabId;
+          const { active, width, height } = message.payload;
+          webFullscreen.onPageReport(owningTabId, isActive, {
+            active,
+            size: width != null && height != null ? { width, height } : null,
+          });
           return true;
         }
         case 'spa_navigation': {

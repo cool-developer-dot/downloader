@@ -13,7 +13,7 @@ import { VIDEO_FORMATS, resolveVideoFormatHint, videoFormatFromExtension, videoF
 const OCTET_STREAM = new Set(['application/octet-stream', 'binary/octet-stream']);
 
 const KIND_TO_CONTAINER: Record<string, CompletedMediaContainer> = {
-  mov: 'mov', avi: 'avi', wmv: 'wmv', m4v: 'm4v',
+  mov: 'mov', avi: 'avi', wmv: 'wmv', m4v: 'm4v', mpg: 'mpg',
   mp4: 'mp4',
   webm: 'webm',
   ts: 'ts',
@@ -23,7 +23,7 @@ const KIND_TO_CONTAINER: Record<string, CompletedMediaContainer> = {
 };
 
 const CONTAINER_TO_EXT: Record<CompletedMediaContainer, string | null> = {
-  mov: 'mov', avi: 'avi', wmv: 'wmv', m4v: 'm4v',
+  mov: 'mov', avi: 'avi', wmv: 'wmv', m4v: 'm4v', mpg: 'mpg',
   mp4: 'mp4',
   webm: 'webm',
   ts: 'ts',
@@ -33,7 +33,7 @@ const CONTAINER_TO_EXT: Record<CompletedMediaContainer, string | null> = {
 
 const CONTAINER_TO_MIME: Record<CompletedMediaContainer, string | null> = {
   mov: VIDEO_FORMATS.mov.mime, avi: VIDEO_FORMATS.avi.mime,
-  wmv: VIDEO_FORMATS.wmv.mime, m4v: VIDEO_FORMATS.m4v.mime,
+  wmv: VIDEO_FORMATS.wmv.mime, m4v: VIDEO_FORMATS.m4v.mime, mpg: VIDEO_FORMATS.mpg.mime,
   mp4: 'video/mp4',
   webm: 'video/webm',
   ts: 'video/mp2t',
@@ -243,7 +243,7 @@ export function resolveCompletedMimeType(
 }
 
 export function formatContainerLabel(container: CompletedMediaContainer): string | null {
-  if (container === 'mov' || container === 'm4v' || container === 'avi' || container === 'wmv') return container.toUpperCase();
+  if (container === 'mov' || container === 'm4v' || container === 'avi' || container === 'wmv' || container === 'mpg') return container.toUpperCase();
   switch (container) {
     case 'mp4':
       return 'MP4';

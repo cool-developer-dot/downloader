@@ -10,6 +10,7 @@ import java.io.File
  *     filesDir/library/<site>/<Safe Title>_<shortId>.<ext>
  *     filesDir/thumbs/<id>.webp
  *     noBackupFilesDir/work/<id>/
+ *     noBackupFilesDir/imports/<id>/      (a file from another app being saved: IncomingImport)
  *
  * The database stores library and thumbnail paths relative to filesDir, so rows stay valid when Android moves the
  * app's data directory.
@@ -19,6 +20,9 @@ class StoragePaths(filesDir: File, noBackupFilesDir: File) {
   val libraryDir = File(this.filesDir, "library")
   val thumbnailsDir = File(this.filesDir, "thumbs")
   val workRoot = File(noBackupFilesDir.absoluteFile.normalize(), "work")
+
+  /** Outside [workRoot], so clearing downloads' temp files never removes an import in progress. */
+  val importRoot = File(noBackupFilesDir.absoluteFile.normalize(), "imports")
 
   /** v1 download folders, `filesDir/VidoraXDownloads/<id>/<file>`. */
   val legacyDownloadsDir = File(this.filesDir, "VidoraXDownloads")
@@ -38,6 +42,8 @@ class StoragePaths(filesDir: File, noBackupFilesDir: File) {
   fun thumbnailFile(id: String): File = File(thumbnailsDir, "${FileNames.safeId(id)}.webp")
 
   fun workDir(id: String): File = File(workRoot, FileNames.safeId(id))
+
+  fun importDir(id: String): File = File(importRoot, FileNames.safeId(id))
 
   /** The database form of a file under filesDir. */
   fun toStoredPath(file: File): String {

@@ -1,3 +1,4 @@
+export { HistoryClearSearchesRow } from './HistoryClearSearchesRow';
 export { HistoryDeleteDialog } from './HistoryDeleteDialog';
 export { HistoryEmptyState } from './HistoryEmptyState';
 export { HistoryErrorState } from './HistoryErrorState';

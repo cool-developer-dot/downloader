@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { selectIsHome, selectBrowserError, useBrowserStore } from '@/browser/stores';
-import { navigation, routePaths } from '@/navigation';
+import { navigation, openPlayer, routePaths } from '@/navigation';
+import { translate } from '@/localization';
+import { isPlayableOffer } from '@/player/remote-stream';
 import { buildAnalysisFromVerification } from '@/downloads/analyze/analyze-from-verification';
 import { normalizeAnalysisToSelection } from '@/downloads/quality';
 import { verifyMediaCandidate } from '@/media-detection/services/candidate-verifier.service';
@@ -70,6 +72,7 @@ import {
   type BrowserDownloadPresentation,
 } from './browser-download-presentation';
 import { useDownloadsStore } from '@/store/downloads';
+import { selectLiveRecording, useSettingsStore } from '@/store/settings';
 import {
   fingerprintDiagHash,
   logBrowserCta,
@@ -85,6 +88,7 @@ import {
 import { logMediaResolveTrace } from './media-resolve-diagnostics';
 import { recordVerificationOutcome } from './pipeline-trace';
 import { pickOfferedQualityOption } from './offered-option';
+import { prepareOfferStream } from './browser-media-play.service';
 import {
   pipelineRejectionFor,
   recordPipelineOutcome,
@@ -157,6 +161,14 @@ export type BrowserMediaActionViewModel = BrowserMediaActionState & {
   }>;
   viewDownloads: () => void;
   openLibrary: () => void;
+  /** A single verified offer the player can open online (F17); several qualities choose in the sheet instead. */
+  canPlay: boolean;
+  /** F6: the offer is a live stream to record ("Live recording (beta)" on): Record, not Download. */
+  isLive: boolean;
+  /** F6: the download the action area follows is a live recording ("Recording…" instead of "Downloading…"). */
+  isRecording: boolean;
+  /** Plays the offer online in the VidoraX player (F17) — the offer stays available, nothing is downloaded. */
+  play: () => Promise<{ ok: true } | { ok: false; message: string }>;
 };
 
 /**
@@ -1447,12 +1459,24 @@ export function useBrowserMediaAction(
     [actionState.analysis],
   );
 
+  // F6: a live offer is a recording — while "Live recording (beta)" is off it offers nothing. An offer verified before
+  // the setting was turned off is withdrawn; the stream is then looked at again (and refused as live).
+  const liveRecordingOn = useSettingsStore(selectLiveRecording);
+  const verifiedOptions = useMemo(() => selectVerifiedStandaloneQualities(selection?.options), [selection]);
   const downloadableOptions = useMemo(
-    () => selectVerifiedStandaloneQualities(selection?.options),
-    [selection],
+    () => verifiedOptions.filter((option) => liveRecordingOn || !option.isLive),
+    [liveRecordingOn, verifiedOptions],
   );
+  const standingLiveOffer =
+    actionState.status === 'verified' && verifiedOptions.length > 0 && verifiedOptions.every((option) => option.isLive);
+  useEffect(() => {
+    if (!liveRecordingOn && standingLiveOffer) {
+      browserMediaActionService.invalidateProtectedOffer('live_recording_off');
+    }
+  }, [liveRecordingOn, standingLiveOffer]);
 
   const hasMultipleQualities = downloadableOptions.length > 1;
+  const isLive = downloadableOptions.length > 0 && downloadableOptions.every((option) => option.isLive === true);
   const expanded = !actionState.dismissed && !actionState.autoShownOnce
     ? actionState.status === 'verified'
     : !actionState.dismissed;
@@ -1581,6 +1605,10 @@ export function useBrowserMediaAction(
   );
   const offerRowStatus = useDownloadsStore((state) =>
     offerDuplicate?.downloadId ? (state.engineRowsById[offerDuplicate.downloadId]?.status ?? null) : null,
+  );
+  const followedDownloadId = consumedOutcome?.downloadId ?? offerDuplicate?.downloadId ?? null;
+  const isRecording = useDownloadsStore((state) =>
+    followedDownloadId ? state.transferById[followedDownloadId]?.recording === true : false,
   );
   const consumedNotice = resolveConsumedDownloadNotice(consumedOutcome, consumedRowStatus);
   const offerDuplicateNotice = resolveOfferDuplicateNotice(offerDuplicate, offerRowStatus);
@@ -1976,6 +2004,54 @@ export function useBrowserMediaAction(
     }
   }, [hasMultipleQualities, options]);
 
+  const offeredOption = useMemo(
+    () => (selection ? pickOfferedQualityOption(selection.options, actionState.mediaUrl) : null),
+    [actionState.mediaUrl, selection],
+  );
+  const canPlay =
+    actionState.status === 'verified' &&
+    !actionState.selectionLocked &&
+    !hasMultipleQualities &&
+    isPlayableOffer(offeredOption);
+
+  const play = useCallback(async (): Promise<{ ok: true } | { ok: false; message: string }> => {
+    const state = browserMediaActionService.getState();
+    const tabId =
+      browserMediaActionService.getActiveTabId() ?? useBrowserStore.getState().activeTabId ?? '__default__';
+    const pageUrl = state.pageUrl ?? useMediaDetectionStore.getState().lastNavigation;
+    if (state.status !== 'verified' || !state.analysis) {
+      return { ok: false, message: translate('downloads.playUnavailable') };
+    }
+    // The page shows another video (the next reel) than the offer names: never play the old one as the current one.
+    const liveIdentity = liveMediaIdentityOf(tabId, pageUrl);
+    if (
+      generalPageMediaContextStore.get(tabId)?.activeOwnerHidden ||
+      (state.contentIdentity != null && liveIdentity != null && state.contentIdentity !== liveIdentity)
+    ) {
+      return { ok: false, message: translate('downloads.playUnavailable') };
+    }
+    const offerSelection = normalizeAnalysisToSelection(state.analysis);
+    const option = pickOfferedQualityOption(offerSelection.options, state.mediaUrl);
+    if (!option) {
+      return { ok: false, message: translate('downloads.playUnavailable') };
+    }
+    try {
+      const result = await prepareOfferStream({
+        selection: offerSelection,
+        option,
+        requestContext: state.requestContext,
+        pageUrl,
+      });
+      if (!result.ok) {
+        return { ok: false, message: result.message };
+      }
+      openPlayer(result.mediaId);
+      return { ok: true };
+    } catch {
+      return { ok: false, message: translate('downloads.playFailed') };
+    }
+  }, []);
+
   const viewDownloads = useCallback(() => {
     navigation.navigate(routePaths.downloads);
   }, []);
@@ -2012,6 +2088,10 @@ export function useBrowserMediaAction(
     download,
     viewDownloads,
     openLibrary,
+    canPlay,
+    play,
+    isLive,
+    isRecording,
   };
 }
 

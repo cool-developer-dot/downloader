@@ -118,6 +118,16 @@ export type TransferProgressSnapshot = {
   errorMessage: string | null;
   /** v2 `processing` phase: what the engine is doing with the downloaded tracks (merging, converting…). */
   processingStage?: import('@modules/vidorax-media/src/VidoraMedia.types').ProcessingStage | null;
+  /** F3: the rule holding a `waiting_conditions` download. */
+  waitReason?: import('@modules/vidorax-media/src/VidoraMedia.types').DownloadWaitReason | null;
+  /** F3: when a time rule ends (epoch ms). */
+  waitUntil?: number | null;
+  /** F3 "Start at…" (epoch ms). */
+  startAt?: number | null;
+  /** F6: a live stream being recorded (Stop instead of Pause, no total). */
+  recording?: boolean;
+  /** F6: how much of the live stream is recorded (ms). */
+  recordedMs?: number | null;
 };
 
 export type LocalDownloadRecord = {
