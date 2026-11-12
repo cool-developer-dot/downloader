@@ -11,7 +11,7 @@ import { DETECTION_TIMING } from '../constants';
 import { MEDIA_BRIDGE_CHANNEL } from '../types';
 
 const VIDEO_EXTS =
-  'mp4|webm|mov|m4v|mkv|avi|mpeg|mpg|m2ts|3gp|3g2|flv|wmv|ogv';
+  'mp4|webm|mov|m4v|f4v|mkv|avi|divx|mpeg|mpg|m2ts|3gp|3g2|flv|wmv|ogv';
 const AUDIO_EXTS = 'mp3|m4a|aac|ogg|opus|wav|flac';
 const STREAM_EXTS = 'm3u8|mpd';
 /** .ts excluded from extension-alone matching — segment noise. */

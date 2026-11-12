@@ -82,7 +82,8 @@ internal object Verifier {
     }
   }
 
-  private fun isIsoBmff(container: Container): Boolean = container == Container.MP4 || container == Container.MOV
+  private fun isIsoBmff(container: Container): Boolean =
+    container == Container.MP4 || container == Container.MOV || container == Container.THREE_G2
 
   /** Walks the top-level boxes of the finished file (seeks only) and scans the `moov` for encryption boxes. */
   private fun hasEncryptedTracks(file: File): Boolean = runCatching {

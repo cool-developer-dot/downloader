@@ -3,6 +3,7 @@ import type { StoreApi } from 'zustand';
 import { recentSearchService } from '@/storage/services';
 import { isStorageError } from '@/storage/types';
 
+import { clearRecentSearches } from './clear-recent-searches';
 import { initialRecentSearchesState } from './state';
 import type { RecentSearchesActions, RecentSearchesStore } from './types';
 
@@ -117,7 +118,14 @@ export function createRecentSearchesActions(
     },
     clear: async () => {
       try {
-        await recentSearchService.clear();
+        await clearRecentSearches({
+          clearStored: () => recentSearchService.clear(),
+          invalidateSuggestions: () => {
+            void import('@/browser/suggestions').then(({ suggestionService }) => {
+              suggestionService.invalidate();
+            });
+          },
+        });
         set({
           ...initialRecentSearchesState,
           ready: true,

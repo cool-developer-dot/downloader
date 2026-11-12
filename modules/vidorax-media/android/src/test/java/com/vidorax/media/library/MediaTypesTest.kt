@@ -18,6 +18,26 @@ class MediaTypesTest {
   }
 
   @Test
+  fun flashMp4ThreeGpp2AndDivx() {
+    // F4V is ISO-BMFF: named and labelled MP4. DivX/XviD files are AVI. 3GPP2 keeps its own type.
+    assertEquals(Container.MP4, MediaTypes.forFileName("show.F4V")?.container)
+    assertEquals(Container.MP4, MediaTypes.forMimeType("video/x-f4v")?.container)
+    assertEquals(Container.AVI, MediaTypes.forFileName("movie.divx")?.container)
+    assertEquals(Container.AVI, MediaTypes.forMimeType("video/divx")?.container)
+    assertEquals(Container.AVI, MediaTypes.forMimeType("video/x-divx")?.container)
+    assertEquals(Container.THREE_G2, MediaTypes.forFileName("clip.3g2")?.container)
+    assertEquals(Container.THREE_G2, MediaTypes.forMimeType("video/3gpp2")?.container)
+
+    // The name and type a finished file gets.
+    assertEquals("mp4", MediaTypes.forContainer(Container.MP4)?.extension)
+    assertEquals("avi", MediaTypes.forContainer(Container.AVI)?.extension)
+    assertEquals("3g2", MediaTypes.forContainer(Container.THREE_G2)?.extension)
+    assertEquals("video/3gpp2", MediaTypes.forContainer(Container.THREE_G2)?.mimeType)
+    assertEquals("video/3gpp2", MediaTypes.libraryMimeType(Container.THREE_G2, "video/mp4"))
+    assertTrue(MediaTypes.isSupportedVideo(null, "clip.3g2"))
+  }
+
+  @Test
   fun byMimeTypeIgnoresParametersAndCase() {
     assertEquals("webm", MediaTypes.forMimeType("Video/WebM; codecs=\"vp9, opus\"")?.extension)
     assertEquals("ts", MediaTypes.forMimeType("video/mp2ts")?.extension)

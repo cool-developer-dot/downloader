@@ -16,8 +16,9 @@ import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import {
   doubleTapSeekDelta,
-  resolveCenterDoubleTapSide,
+  resolveDoubleTapAction,
   SIDE_ZONE_RATIO,
+  type DoubleTapAction,
   type DoubleTapSeekSide,
 } from '@/player';
 import {
@@ -41,6 +42,8 @@ export type PlayerVideoSurfaceProps = {
   brightnessGesturesEnabled?: boolean;
   onSingleTap?: () => void;
   onDoubleTapSeek?: (side: DoubleTapSeekSide, deltaSeconds: number) => void;
+  /** Double tap in the middle third. */
+  onDoubleTapTogglePlay?: () => void;
   onBrightnessPanStart?: () => void;
   onBrightnessPanUpdate?: (translationY: number) => void;
   onBrightnessPanFinalize?: () => void;
@@ -69,6 +72,7 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
   brightnessGesturesEnabled = true,
   onSingleTap,
   onDoubleTapSeek,
+  onDoubleTapTogglePlay,
   onBrightnessPanStart,
   onBrightnessPanUpdate,
   onBrightnessPanFinalize,
@@ -172,14 +176,17 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
   }, [onSingleTap]);
 
   const handleDoubleTap = useCallback(
-    (localX: number) => {
-      const side = resolveCenterDoubleTapSide(localX, layout.width);
-      if (!side) {
+    (action: DoubleTapAction) => {
+      if (action === 'togglePlay') {
+        onDoubleTapTogglePlay?.();
         return;
       }
-      onDoubleTapSeek?.(side, doubleTapSeekDelta(side));
+      if (action === 'seekBack' || action === 'seekForward') {
+        const side: DoubleTapSeekSide = action === 'seekBack' ? 'left' : 'right';
+        onDoubleTapSeek?.(side, doubleTapSeekDelta(side));
+      }
     },
-    [layout.width, onDoubleTapSeek],
+    [onDoubleTapSeek, onDoubleTapTogglePlay],
   );
 
   const handleZoomChange = useCallback(
@@ -336,7 +343,7 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
         runOnJS(volumeFinalize)();
       });
 
-    // Double tap: back to fitted while zoomed, otherwise seek by the side tapped.
+    // Double tap: back to fitted while zoomed (and nothing else); otherwise by third — −10 s / play-pause / +10 s.
     const doubleTap = Gesture.Tap()
       .numberOfTaps(2)
       .maxDuration(280)
@@ -345,7 +352,8 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
         if (!success) {
           return;
         }
-        if (isZoomed(scale.value)) {
+        const action = resolveDoubleTapAction(event.x, surfaceWidth.value, isZoomed(scale.value));
+        if (action === 'resetZoom') {
           scale.value = withTiming(1, SETTLE);
           translateX.value = withTiming(0, SETTLE);
           translateY.value = withTiming(0, SETTLE);
@@ -353,7 +361,9 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
           runOnJS(setZoomed)(false);
           return;
         }
-        runOnJS(handleDoubleTap)(event.x);
+        if (action) {
+          runOnJS(handleDoubleTap)(action);
+        }
       });
 
     const singleTap = Gesture.Tap()

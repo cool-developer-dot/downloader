@@ -77,10 +77,20 @@ export {
 export {
   SEEK_FEEDBACK_MS,
   doubleTapSeekDelta,
-  resolveCenterDoubleTapSide,
-  resolveDoubleTapSide,
+  resolveDoubleTapAction,
+  type DoubleTapAction,
   type DoubleTapSeekSide,
 } from './double-tap-seek';
+export {
+  DEFAULT_DURATION_LABEL_MODE,
+  formatDurationLabel,
+  toggleDurationLabelMode,
+  type DurationLabelMode,
+} from './duration-label';
+export {
+  readPersistedDurationLabelMode,
+  writePersistedDurationLabelMode,
+} from './duration-label-preference';
 export {
   configureOrientationAdapter,
   enterFullscreenOrientation,

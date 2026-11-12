@@ -60,6 +60,10 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
 
   const qualitySelection = useQualitySelectionContext();
   const openPasteLink = qualitySelection.open;
+  // The empty state's "Open Browser" just opens it; only the paste button reads the clipboard.
+  const openBrowser = useCallback(() => {
+    navigation.navigate(routePaths.browser);
+  }, []);
 
   const {
     orderedIds,
@@ -261,7 +265,7 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
 
       {status === 'empty' ? (
         <DownloadEmptyState
-          onActionPress={openPasteLink}
+          onActionPress={openBrowser}
           refreshing={refreshing}
           onRefresh={handleRefresh}
         />

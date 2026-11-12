@@ -61,6 +61,10 @@ const PROGRESSIVE_VIDEO_CONTAINERS = new Set([
   'ts',
   'flv',
   '3gp',
+  '3g2',
+  // F4V is MP4 and DivX is AVI by their bytes; the engine names the finished file by its container.
+  'f4v',
+  'divx',
   'unknown',
 ]);
 

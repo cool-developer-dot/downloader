@@ -15,7 +15,7 @@ export type MediaUrlHint = {
   strength: 'strong' | 'keyed';
 };
 
-const PROGRESSIVE_EXTENSIONS = new Set(['mp4', 'm4v', 'mov', 'webm', 'mkv', '3gp', 'avi', 'wmv', 'flv', 'ogv']);
+const PROGRESSIVE_EXTENSIONS = new Set(['mp4', 'm4v', 'f4v', 'mov', 'webm', 'mkv', '3gp', '3g2', 'avi', 'divx', 'wmv', 'flv', 'ogv']);
 
 /** Images, documents, scripts, subtitles, audio and segments: never a whole video. */
 const NON_VIDEO_EXTENSIONS = new Set([

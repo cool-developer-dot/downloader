@@ -48,7 +48,9 @@ export function mapCompletedActionError(
   const normalized = code.toUpperCase();
   if (
     normalized.includes('NO_COMPATIBLE_APP') ||
-    normalized.includes('ACTIVITY_NOT_FOUND')
+    normalized.includes('ACTIVITY_NOT_FOUND') ||
+    // The v2 module's openWith rejects with ERR_NO_APP (e.g. a kept AVI/WMV with no player installed).
+    normalized === 'ERR_NO_APP'
   ) {
     return new CompletedFileActionError(
       'NO_COMPATIBLE_APP',

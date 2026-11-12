@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { pendingNavigationService } from '@/browser/services';
 import { useBrowserStore } from '@/browser/stores';
 import { navigation, routePaths } from '@/navigation';
-import { useBrowserHistory } from '@/storage/hooks';
+import { useBrowserHistory, useRecentSearches } from '@/storage/hooks';
 
 import { groupHistoryByDay } from '../utils/history-format';
 
@@ -28,7 +28,12 @@ export function useHistoryScreen() {
     clear,
   } = useBrowserHistory({ autoLoad: true });
 
+  // Searches typed in the address bar: cleared on their own, never with the browsing history (and vice versa).
+  const { total: recentSearchTotal, clear: clearSearches } = useRecentSearches({ autoLoad: true });
+
   const [clearVisible, setClearVisible] = useState(false);
+  const [clearSearchesVisible, setClearSearchesVisible] = useState(false);
+  const [clearingSearches, setClearingSearches] = useState(false);
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -126,6 +131,27 @@ export function useHistoryScreen() {
     }
   }, [clear]);
 
+  const openClearSearches = useCallback(() => {
+    setClearSearchesVisible(true);
+  }, []);
+
+  const cancelClearSearches = useCallback(() => {
+    if (clearingSearches) {
+      return;
+    }
+    setClearSearchesVisible(false);
+  }, [clearingSearches]);
+
+  const confirmClearSearches = useCallback(async () => {
+    setClearingSearches(true);
+    try {
+      await clearSearches();
+      setClearSearchesVisible(false);
+    } finally {
+      setClearingSearches(false);
+    }
+  }, [clearSearches]);
+
   const openBrowser = useCallback(() => {
     navigation.navigate(routePaths.browser);
   }, []);
@@ -162,6 +188,12 @@ export function useHistoryScreen() {
     openClear,
     cancelClear,
     confirmClear,
+    recentSearchTotal,
+    clearSearchesVisible,
+    clearingSearches,
+    openClearSearches,
+    cancelClearSearches,
+    confirmClearSearches,
     openBrowser,
   };
 }
