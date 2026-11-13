@@ -1,4 +1,5 @@
 import type { IconName } from '@/components/base/Icon';
+import type { TranslationKey } from '@/localization';
 
 /**
  * Context provided to long-press (and future) browser actions.
@@ -9,20 +10,24 @@ export type BrowserActionContext = {
   title?: string;
   linkText?: string;
   pageUrl?: string;
-  /** Reserved for future tab orchestration — no-op in Phase 1 Day 4. */
+  /** Opens `url` in a new tab and switches to it (or reports the tab limit). */
   openInNewTab?: (url: string) => void;
+  /** B6 #51: opens `url` in a new tab behind the current one (or reports the tab limit); `title` names it. */
+  openInBackground?: (url: string, title?: string) => void;
 };
 
 export type BrowserActionId =
   | 'copy_link'
   | 'share_link'
   | 'open_in_new_tab'
+  | 'open_in_background'
   | 'open_external'
   | (string & {});
 
 export type BrowserLongPressAction = {
   id: BrowserActionId;
-  label: string;
+  /** Sheet label, translated when the sheet is shown. */
+  labelKey: TranslationKey;
   icon?: IconName;
   /** Sort ascending — lower runs first in the sheet. */
   order: number;
@@ -46,4 +51,6 @@ export type BrowserLinkLongPressPayload = {
   x: number;
   y: number;
   pageUrl: string;
+  /** B17 #280: the long-pressed image's http(s) address (with or without a link). */
+  imageSrc?: string;
 };

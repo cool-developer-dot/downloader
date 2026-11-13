@@ -7,21 +7,28 @@ import { Pressable } from '@/components/base/Pressable';
 import { Text } from '@/components/base/Text';
 import { ProgressBar } from '@/components/common/ProgressBar';
 import { useTranslation } from '@/localization';
+import type { TranslationKey } from '@/localization/types';
 import { useDownloadsStore } from '@/store/downloads';
 
 import { useDownloadsTokens } from '../theme/downloads-tokens';
+import { DownloadCardProgressStats } from './DownloadCardProgressStats';
 import {
   buildMetaLine,
   buildProgressMeta,
   getStatusLabel,
   getSupportedActions,
+  recordingLabelFor,
   resolveTransferRuntime,
+  waitingLabelFor,
   type DownloadCardAction,
 } from '../utils/download-format';
+import { DownloadLinkMenu } from './DownloadLinkMenu';
 
 export type DownloadCardProps = {
   id: string;
   onPress?: (id: string) => void;
+  /** Always opens the details — with "Tap to pause or resume" on, a tap on an active row toggles it instead. */
+  onLongPress?: (id: string) => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onCancel: (id: string) => void;
@@ -43,6 +50,7 @@ const ACTION_ICONS: Record<
   DownloadCardAction,
   { icon: string; destructive?: boolean }
 > = {
+  stop: { icon: 'stop' },
   pause: { icon: 'pause' },
   resume: { icon: 'play' },
   cancel: { icon: 'close', destructive: true },
@@ -52,10 +60,8 @@ const ACTION_ICONS: Record<
   remove: { icon: 'trash-can-outline', destructive: true },
 };
 
-const ACTION_LABEL_KEYS: Record<
-  DownloadCardAction,
-  { label: 'common.pause' | 'common.resume' | 'common.cancel' | 'common.retry' | 'common.open' | 'common.share' | 'common.remove'; a11y: 'downloads.primaryPause' | 'downloads.primaryResume' | 'downloads.primaryCancel' | 'downloads.primaryRetry' | 'downloads.primaryOpen' | 'downloads.primaryShare' | 'downloads.primaryRemove' }
-> = {
+const ACTION_LABEL_KEYS: Record<DownloadCardAction, { label: TranslationKey; a11y: TranslationKey }> = {
+  stop: { label: 'downloads.stop', a11y: 'downloads.primaryStop' },
   pause: { label: 'common.pause', a11y: 'downloads.primaryPause' },
   resume: { label: 'common.resume', a11y: 'downloads.primaryResume' },
   cancel: { label: 'common.cancel', a11y: 'downloads.primaryCancel' },
@@ -75,7 +81,7 @@ const ActionButton = memo(function ActionButton({
   const { t } = useTranslation();
   const config = ACTION_ICONS[action];
   const labels = ACTION_LABEL_KEYS[action];
-  const showLabel = action === 'resume' || action === 'retry';
+  const showLabel = action === 'resume' || action === 'retry' || action === 'stop';
   const size = showLabel
     ? Math.max(downloadsTokens.actionButtonSize, downloadsTokens.touchTarget)
     : downloadsTokens.actionButtonSize;
@@ -131,6 +137,7 @@ const ActionButton = memo(function ActionButton({
 export const DownloadCard = memo(function DownloadCard({
   id,
   onPress,
+  onLongPress,
   onPause,
   onResume,
   onCancel,
@@ -148,6 +155,7 @@ export const DownloadCard = memo(function DownloadCard({
   const [thumbFailed, setThumbFailed] = useState(false);
 
   const handleOpenDetails = useCallback(() => onPress?.(id), [id, onPress]);
+  const handleLongPress = useCallback(() => onLongPress?.(id), [id, onLongPress]);
   const handlePause = useCallback(() => onPause(id), [id, onPause]);
   const handleResume = useCallback(() => onResume(id), [id, onResume]);
   const handleCancel = useCallback(() => onCancel(id), [id, onCancel]);
@@ -160,10 +168,12 @@ export const DownloadCard = memo(function DownloadCard({
     return null;
   }
 
-  const title = item.title?.trim() || item.fileName?.trim() || 'Untitled download';
-  const metaLine = buildMetaLine(item);
+  const title = item.title?.trim() || item.fileName?.trim() || t('downloads.untitled');
+  // F6: a live recording reads "Recording · 12:34 · 85 MB" and has Stop instead of Pause.
+  const recordingLine = item.status === 'DOWNLOADING' ? recordingLabelFor(transfer) : null;
+  const metaLine = buildMetaLine(item, { hideSize: recordingLine != null });
   const progressMeta = buildProgressMeta(item, transfer);
-  const statusLabel = getStatusLabel(item.status);
+  const statusLabel = recordingLine ? t('downloads.statusRecording') : getStatusLabel(item.status);
   const statusColors = downloadsTokens.status[item.status];
   const runtimeOptions = {
     localUri: transfer?.localUri ?? null,
@@ -172,11 +182,13 @@ export const DownloadCard = memo(function DownloadCard({
     workerState: item.workerState ?? transfer?.workerState ?? null,
     supportsResume: transfer?.supportsResume ?? null,
     errorCode: item.errorCode ?? null,
+    recording: recordingLine != null,
   };
   const actions = getSupportedActions(item.status, item.sourceUrl, runtimeOptions);
   const pauseBlocked =
+    !recordingLine &&
     resolveTransferRuntime(item.status, runtimeOptions).pauseBlockedReason ===
-    'SOURCE_NOT_RESUMABLE';
+      'SOURCE_NOT_RESUMABLE';
   const progressValue = Math.max(
     transfer?.progress ?? 0,
     item.progress ?? 0,
@@ -186,15 +198,20 @@ export const DownloadCard = memo(function DownloadCard({
     Number(item.fileSize) > 0 ||
     item.status === 'COMPLETED';
   const showProgress =
-    item.status === 'DOWNLOADING' ||
-    item.status === 'PAUSED' ||
-    (item.status === 'QUEUED' && progressValue > 0);
+    !recordingLine &&
+    (item.status === 'DOWNLOADING' ||
+      item.status === 'PAUSED' ||
+      (item.status === 'QUEUED' && progressValue > 0));
   const showPercentLabel = hasKnownTotal && item.status !== 'COMPLETED';
+  // F3: a held download that has no progress line yet still says why it waits.
+  const waitingLine = showProgress || recordingLine ? null : waitingLabelFor(transfer);
   const showCompletedBadge = item.status === 'COMPLETED';
 
   const accessibilityParts = [
     title,
     statusLabel,
+    waitingLine,
+    recordingLine,
     metaLine,
     // Progress percent lives on ProgressBar accessibilityValue — avoid
     // re-announcing every ~250ms tick via this parent label.
@@ -206,6 +223,9 @@ export const DownloadCard = memo(function DownloadCard({
 
   const dispatchAction = (action: DownloadCardAction) => {
     switch (action) {
+      case 'stop':
+        void useDownloadsStore.getState().stopRecording(id);
+        break;
       case 'pause':
         handlePause();
         break;
@@ -239,6 +259,7 @@ export const DownloadCard = memo(function DownloadCard({
       style={{ alignItems: 'flex-start', gap: 4 }}>
       <Pressable
         onPress={onPress ? handleOpenDetails : undefined}
+        onLongPress={onLongPress ? handleLongPress : undefined}
         disabled={!onPress}
         accessibilityRole={onPress ? 'button' : undefined}
         accessibilityLabel={accessibilityParts.join('. ')}
@@ -301,6 +322,25 @@ export const DownloadCard = memo(function DownloadCard({
               </Text>
             ) : null}
 
+            {waitingLine ? (
+              <Text
+                variant="caption"
+                color="textSecondary"
+                numberOfLines={1}
+                testID={testID ? `${testID}-wait` : undefined}>
+                {waitingLine}
+              </Text>
+            ) : null}
+
+            {recordingLine ? (
+              <Box row rtlRow gap={6} style={{ alignItems: 'center' }} testID={testID ? `${testID}-recording` : undefined}>
+                <Icon name="record-circle" size={14} color="error" />
+                <Text variant="caption" color="textSecondary" numberOfLines={1} style={{ flex: 1 }}>
+                  {recordingLine}
+                </Text>
+              </Box>
+            ) : null}
+
             {showProgress ? (
               <Box gap={4}>
                 <ProgressBar
@@ -330,6 +370,11 @@ export const DownloadCard = memo(function DownloadCard({
                 </Box>
               </Box>
             ) : null}
+
+            <DownloadCardProgressStats
+              id={id}
+              testID={testID ? `${testID}-progress-stats` : undefined}
+            />
 
             {showCompletedBadge && progressMeta ? (
               <Text variant="caption" color="textSecondary" numberOfLines={1}>
@@ -391,6 +436,11 @@ export const DownloadCard = memo(function DownloadCard({
             testID={testID ? `${testID}-${action}` : undefined}
           />
         ))}
+        <DownloadLinkMenu
+          id={id}
+          disabled={mutating}
+          testID={testID ? `${testID}-link-menu` : undefined}
+        />
       </Box>
     </Box>
   );

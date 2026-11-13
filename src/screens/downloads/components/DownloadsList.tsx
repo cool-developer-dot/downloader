@@ -6,10 +6,15 @@ import {
   type SectionListRenderItem,
 } from 'react-native';
 
+import { useQueueOrderStore } from '@/downloads/v2/queue-order-store';
+
 import type { DownloadListSection } from '../utils/download-format';
+import { useNarrowedDownloads } from '../hooks/useOrganizeNarrowing';
 import { DownloadCard } from './DownloadCard';
 import { DownloadFooterLoader } from './DownloadFooterLoader';
 import { DownloadSectionHeader } from './DownloadSectionHeader';
+import { QueueReorderButton } from './QueueReorderButton';
+import { QueueReorderPanel } from './QueueReorderPanel';
 
 export type DownloadsListProps = {
   orderedIds: string[];
@@ -21,6 +26,8 @@ export type DownloadsListProps = {
   onRefresh: () => void;
   onEndReached: () => void;
   onPressItem: (id: string) => void;
+  /** Touch and hold a row: its details, whatever a tap does. */
+  onLongPressItem?: (id: string) => void;
   onPause: (id: string) => void;
   onResume: (id: string) => void;
   onCancel: (id: string) => void;
@@ -41,6 +48,7 @@ export const DownloadsList = memo(function DownloadsList({
   onRefresh,
   onEndReached,
   onPressItem,
+  onLongPressItem,
   onPause,
   onResume,
   onCancel,
@@ -50,11 +58,13 @@ export const DownloadsList = memo(function DownloadsList({
   onRemove,
   testID = 'downloads-list',
 }: DownloadsListProps) {
+  const queueReorderMode = useQueueOrderStore((s) => s.reorderMode);
   const renderCard = useCallback(
     (id: string) => (
       <DownloadCard
         id={id}
         onPress={onPressItem}
+        onLongPress={onLongPressItem}
         onPause={onPause}
         onResume={onResume}
         onCancel={onCancel}
@@ -65,7 +75,7 @@ export const DownloadsList = memo(function DownloadsList({
         testID={`download-card-${id}`}
       />
     ),
-    [onCancel, onOpen, onPause, onPressItem, onRemove, onResume, onRetry, onShare],
+    [onCancel, onLongPressItem, onOpen, onPause, onPressItem, onRemove, onResume, onRetry, onShare],
   );
 
   const renderFlatItem: ListRenderItem<string> = useCallback(
@@ -82,6 +92,7 @@ export const DownloadsList = memo(function DownloadsList({
         title={section.title}
         count={section.data.length}
         testID={`downloads-section-${section.key}`}
+        action={section.key === 'QUEUED' || section.key === 'PAUSED' ? <QueueReorderButton sectionKey={section.key} /> : undefined}
       />
     ),
     [],
@@ -94,6 +105,11 @@ export const DownloadsList = memo(function DownloadsList({
       onEndReached();
     }
   }, [hasMore, loadingMore, onEndReached]);
+
+  // H12: the Size (#396) and Tag (#387) filters narrow what is shown (nothing chosen = every row, as before).
+  const narrowed = useNarrowedDownloads(orderedIds, sections);
+  orderedIds = narrowed.orderedIds;
+  sections = narrowed.sections;
 
   const footer = useMemo(
     () => (
@@ -110,6 +126,11 @@ export const DownloadsList = memo(function DownloadsList({
     () => ({ flexGrow: 1, paddingBottom: 24 }),
     [],
   );
+
+  // H4: Reorder mode shows the queues and their downloads in start order instead of the list.
+  if (queueReorderMode) {
+    return <QueueReorderPanel />;
+  }
 
   if (showSections) {
     return (
@@ -130,6 +151,7 @@ export const DownloadsList = memo(function DownloadsList({
         removeClippedSubviews
         keyboardShouldPersistTaps="handled"
         ListFooterComponent={footer}
+        ListEmptyComponent={narrowed.emptyNotice}
         contentContainerStyle={contentStyle}
         accessibilityRole="list"
       />
@@ -152,6 +174,7 @@ export const DownloadsList = memo(function DownloadsList({
       removeClippedSubviews
       keyboardShouldPersistTaps="handled"
       ListFooterComponent={footer}
+      ListEmptyComponent={narrowed.emptyNotice}
       contentContainerStyle={contentStyle}
       accessibilityRole="list"
     />

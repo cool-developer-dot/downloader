@@ -1,6 +1,5 @@
 package com.vidorax.media.net
 
-import android.webkit.CookieManager
 import okhttp3.Cookie
 import okhttp3.CookieJar
 import okhttp3.HttpUrl
@@ -14,12 +13,27 @@ import okhttp3.Response
 internal fun interface CookieSource {
   /** The `Cookie` header value for this exact URL, or null when there is nothing to send. */
   fun cookiesFor(url: String): String?
+
+  /**
+   * B11: the same from the incognito session [profile]'s jar; null [profile] = [cookiesFor]. A source without
+   * incognito jars sends nothing for an incognito download — never another profile's cookies.
+   */
+  fun cookiesFor(url: String, profile: String?): String? = if (profile == null) cookiesFor(url) else null
 }
 
-/** The real source. `VidoraWeb` flushes the WebView jar, so this reads what the browsing session holds. */
+/**
+ * The real source. `VidoraWeb` flushes the WebView jar, so this reads what the browsing session holds: the active
+ * browser profile's jar (B20, [ActiveWebCookies]).
+ */
 internal object WebViewCookieSource : CookieSource {
   override fun cookiesFor(url: String): String? =
-    runCatching { CookieManager.getInstance().getCookie(url) }.getOrNull()?.ifBlank { null }
+    runCatching { ActiveWebCookies.current().getCookie(url) }.getOrNull()?.ifBlank { null }
+
+  override fun cookiesFor(url: String, profile: String?): String? {
+    if (profile == null) return cookiesFor(url)
+    val jar = IncognitoWebCookies.jarFor(profile) ?: return null
+    return runCatching { jar.getCookie(url) }.getOrNull()?.ifBlank { null }
+  }
 }
 
 /**
@@ -44,7 +58,10 @@ internal class SessionCookieInterceptor(private val source: CookieSource) : Inte
       return chain.proceed(request)
     }
     val builder = request.newBuilder().removeHeader(MARKER)
-    val merged = mergeCookieHeaders(source.cookiesFor(request.url.toString()), request.header("Cookie"))
+    // "1" = the active profile's jar (as before B11); any other marker value is an incognito session's name.
+    val profile = request.header(MARKER)?.takeIf { it != "1" }
+    val session = if (profile == null) source.cookiesFor(request.url.toString()) else source.cookiesFor(request.url.toString(), profile)
+    val merged = mergeCookieHeaders(session, request.header("Cookie"))
     if (merged != null) builder.header("Cookie", merged) else builder.removeHeader("Cookie")
     return chain.proceed(builder.build())
   }

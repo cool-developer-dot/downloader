@@ -6,9 +6,15 @@ import {
   parseBrowserChromeMessage,
 } from '@/browser/bridge';
 import type { BrowserLinkLongPressPayload } from '@/browser/actions';
+import { webFullscreen } from '@/browser/fullscreen/web-fullscreen.runtime';
 import { browserSyncService } from '@/browser/services/browser-sync.service';
+import { receivePageLinks } from '@/browser/services/page-link-grabber';
+import { addressBarVisibility } from '@/browser/address-bar/address-bar-visibility';
+import { pageActivity } from '@/browser/scroll/page-activity';
 import { useBrowserStore } from '@/browser/stores';
 import { isBrowserHomeUrl } from '@/browser/utils';
+import { findInPage } from '@/browser/find/find-in-page.service';
+import { onPopupBlocked, onSitePermissionRequest } from '@/browser/site-permissions/site-permissions.service';
 
 export type BrowserChromeBridgeBindings = {
   injectedJavaScript: string;
@@ -27,7 +33,7 @@ type UseBrowserChromeBridgeOptions = {
 };
 
 /**
- * Browser chrome WebView bridge (long-press + scroll + pull-to-refresh).
+ * Browser chrome WebView bridge (long-press + scroll + pull-to-refresh + website fullscreen).
  * Returns whether a message was consumed so media detection can demux.
  */
 export function useBrowserChromeBridge(
@@ -59,6 +65,14 @@ export function useBrowserChromeBridge(
           if (!isActive) {
             return true;
           }
+          // B4 #29: Auto-hide follows the active page's scrolling (it ignores everything while the setting is off).
+          addressBarVisibility.onPageScroll(message.payload.scrollY);
+          // B6 #46 / #47: a fast scroll on a long page offers the ↑ / ↓ jump button.
+          pageActivity.onScroll({
+            y: message.payload.scrollY,
+            height: message.payload.height,
+            viewHeight: message.payload.viewHeight,
+          });
           const state = useBrowserStore.getState();
           const url = tabId
             ? state.tabs.find((t) => t.id === tabId)?.url ?? state.currentUrl
@@ -67,6 +81,34 @@ export function useBrowserChromeBridge(
             return true;
           }
           browserSyncService.onScroll(url, message.payload.scrollY);
+          return true;
+        }
+        case 'auto_scroll': {
+          // B6 #54: the page's loop reached the bottom or a touch paused it.
+          if (isActive) {
+            pageActivity.onAutoScrollEvent(message.payload.event);
+          }
+          return true;
+        }
+        case 'site_permission': {
+          // B13: refused in the page; listed under its site, and the bar says so when it's the page in front.
+          onSitePermissionRequest(message.payload.kind, tabId ?? null, isActive);
+          return true;
+        }
+        case 'popup_blocked': {
+          // B13 #120: a window opened without a tap; sites allowed "always" get it, others get the bar.
+          onPopupBlocked(message.payload.url, tabId ?? null, isActive);
+          return true;
+        }
+        case 'find_result': {
+          // B7: the page's answer to the find bar (dropped unless it is for the bar's tab and latest request).
+          findInPage.onResult(message.payload, tabId ?? useBrowserStore.getState().activeTabId);
+          return true;
+        }
+        case 'media_state': {
+          // B6 #240: volume keys keep their job while the page plays audible media.
+          const owner = tabId ?? useBrowserStore.getState().activeTabId;
+          pageActivity.setMediaPlaying(owner, message.payload.playing);
           return true;
         }
         case 'link_long_press': {
@@ -88,6 +130,22 @@ export function useBrowserChromeBridge(
             return true;
           }
           onPullToRefresh?.();
+          return true;
+        }
+        case 'fullscreen': {
+          // A parked tab's page is told to leave again — only the active tab may cover the app.
+          const owningTabId = tabId ?? useBrowserStore.getState().activeTabId;
+          const { active, width, height } = message.payload;
+          webFullscreen.onPageReport(owningTabId, isActive, {
+            active,
+            size: width != null && height != null ? { width, height } : null,
+          });
+          return true;
+        }
+        case 'page_links': {
+          // Page Link Grabber (#484): only a grab the app started is waiting for this id.
+          const { requestId, pageUrl, links } = message.payload;
+          receivePageLinks(requestId, pageUrl, links);
           return true;
         }
         case 'spa_navigation': {

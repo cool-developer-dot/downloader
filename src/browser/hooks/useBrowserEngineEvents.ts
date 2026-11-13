@@ -14,6 +14,7 @@ import { useBrowserEngineContext } from '@/browser/engine';
 import {
   browserSyncService,
   goBackWebView,
+  stopWebViewLoading,
   navigationService,
   recordSuccessfulVisit,
 } from '@/browser/services';
@@ -42,6 +43,22 @@ import type { IntentNavigationContext } from '@/browser/navigation/external-navi
 import { classifyBrowserNavigation } from '@/browser/navigation/browser-navigation-policy';
 import { mediaDetectionEngine } from '@/media-detection';
 import { useHistoryStore } from '@/store/history';
+import { useSettingsStore } from '@/store/settings';
+import { createBrowserError } from '@/browser/utils/errors';
+import { decideHttpNavigation, httpsUpgradeFor } from '@/browser/privacy/https-upgrade';
+import { isJavaScriptAllowed, parseJavaScriptExceptions } from '@/browser/privacy/privacy-settings';
+import { siteBlockReasonFor } from '@/browser/blocking/site-blocking.service';
+import { autoplayPolicyFor } from '@/browser/blocking/autoplay.service';
+import {
+  currentHttpPolicy,
+  httpAllowedHosts,
+  noSecureVersionCode,
+  noteHttpsUpgrade,
+  settleUpgrade,
+  takeFailedUpgrade,
+  UPGRADE_SETTLE_DELAY_MS,
+  upgradingHosts,
+} from '@/browser/privacy/privacy.service';
 
 /** Compare main-document URLs ignoring hash (subresource errors use different paths). */
 function isSameDocumentNavigationUrl(a: string, b: string): boolean {
@@ -462,6 +479,14 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
         return;
       }
 
+      // B14: a page that started without the browser's own load or the request guard (a restored tab, a reload, a
+      // back / forward) on a site that is blocked now: stop it and show the notice.
+      if (siteBlockReasonFor(url)) {
+        stopWebViewLoading(webViewRef.current);
+        setTimeout(() => loadUrl(url), 0);
+        return;
+      }
+
       logBrowserLoad(navId, 'start', {
         safeHost: urlMeta.safeHost,
         safePathPattern: urlMeta.safePathPattern,
@@ -481,9 +506,11 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
       getOwningTabChrome,
       loadStartEpochRef,
       loadStartUrlRef,
+      loadUrl,
       navigationEpochRef,
       setLoading,
       tabId,
+      webViewRef,
     ],
   );
 
@@ -501,6 +528,9 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
 
   const onLoadEnd = useCallback(
     (url: string) => {
+      // react-native-webview sends a failed load's end right before its error; the error must still see the upgrade.
+      const endedAt = Date.now();
+      setTimeout(() => settleUpgrade(url, endedAt), UPGRADE_SETTLE_DELAY_MS);
       const owning = getOwningTabChrome();
       const state = useBrowserStore.getState();
 
@@ -563,7 +593,8 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
         markVisited();
 
         const owningAfter = getOwningTabChrome();
-        if (!owningAfter.error && !state.incognito) {
+        // B14: a blocked page that was stopped as it started (restored tab, reload) is never a visit.
+        if (!owningAfter.error && !state.incognito && !siteBlockReasonFor(committedUrl)) {
           const activeId = useBrowserStore.getState().activeTabId;
           if (!tabId || tabId === activeId) {
             browserSyncService.onSuccessfulPage(committedUrl, owningAfter.title);
@@ -575,6 +606,8 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
             url: committedUrl,
             title: owningAfter.title,
             hasError: false,
+            // B10: the tab's own gate (shouldPersistForTab) decides whether this page is kept.
+            tab: tabId ? (useBrowserStore.getState().tabs.find((t) => t.id === tabId) ?? null) : undefined,
           }).then((entry) => {
             if (webViewInstanceGenerationRef.current !== visitGen) {
               return;
@@ -722,6 +755,18 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
           }),
         ),
       });
+
+      // B12 #124: an upgraded page that didn't answer over https has no secure version; the user decides where the
+      // build can open http. A plain http page the build refused (a restored tab, say) says the same.
+      const upgradedFrom = takeFailedUpgrade(failingUrl);
+      const refusedHttp = /ERR_CLEARTEXT_NOT_PERMITTED/i.test(safeDescription) ? failingUrl : null;
+      if (upgradedFrom || refusedHttp) {
+        setError(createBrowserError(upgradedFrom ? noSecureVersionCode() : 'https_required', { retryUrl: upgradedFrom ?? refusedHttp }));
+        if (!tabId || tabId === useBrowserStore.getState().activeTabId) {
+          browserSyncService.onError();
+        }
+        return;
+      }
 
       if (classification === 'ssl') {
         logBrowserSsl(navId, {
@@ -953,7 +998,7 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
     if (
       (!tabId || tabId === activeId) &&
       !isBrowserHomeUrl(pageUrl) &&
-      /\.(mp4|webm|mov|m4v|mkv|avi|mpeg|mpg|mp3|m4a|aac|ogg|m3u8|mpd|3gp|3g2|flv|wmv)(?:[?#]|$)/i.test(url)
+      /\.(mp4|webm|mov|m4v|f4v|mkv|avi|divx|mpeg|mpg|vob|mp3|m4a|aac|ogg|m3u8|mpd|3gp|3g2|flv|wmv)(?:[?#]|$)/i.test(url)
     ) {
       mediaDetectionEngine.observeUrl(url, pageUrl);
     }
@@ -975,9 +1020,52 @@ export function useBrowserEngineEvents(): BrowserEngineEventBridge {
       return false;
     }
 
+    if (isMainFrame) {
+      // B14 #276 / #277 / #278: a blocked site is shown as blocked by the browser's own load (never loaded).
+      if (siteBlockReasonFor(url)) {
+        logBrowserNav(navId, 'block', { decision: false, decisionReason: 'site_blocked', safeHost: urlMeta.safeHost });
+        setTimeout(() => loadUrl(url), 0);
+        return false;
+      }
+      const settings = useSettingsStore.getState();
+      // B12 #124: with HTTPS-only on, or in a build that can't open http, a page asked for over http opens over https.
+      const http = decideHttpNavigation(url, currentHttpPolicy(), httpAllowedHosts(), upgradingHosts());
+      if (http.kind === 'upgrade') {
+        noteHttpsUpgrade(http.url, url);
+        logBrowserNav(navId, 'block', { decision: false, decisionReason: 'https_only_upgrade', safeHost: urlMeta.safeHost });
+        setTimeout(() => loadUrl(http.url), 0);
+        return false;
+      }
+      if (http.kind === 'no-secure-version') {
+        // The secure page sent the browser back to http: upgrading again would loop.
+        logBrowserNav(navId, 'block', { decision: false, decisionReason: 'https_redirected_back', safeHost: urlMeta.safeHost });
+        settleUpgrade(httpsUpgradeFor(url, new Set(), 'secure-only'));
+        setError(createBrowserError(noSecureVersionCode(), { retryUrl: url }));
+        if (!tabId || tabId === useBrowserStore.getState().activeTabId) {
+          browserSyncService.onError();
+        }
+        return false;
+      }
+      // B12 #135: a site with the other JavaScript setting reloads through the browser, after the WebView switched.
+      const exceptions = parseJavaScriptExceptions(settings.javaScriptExceptions);
+      const runningNow = isJavaScriptAllowed(getOwningTabChrome().url, settings.javaScript, exceptions);
+      if (isJavaScriptAllowed(url, settings.javaScript, exceptions) !== runningNow) {
+        logBrowserNav(navId, 'block', { decision: false, decisionReason: 'javascript_site_setting', safeHost: urlMeta.safeHost });
+        setTimeout(() => loadUrl(url), 0);
+        return false;
+      }
+      // B14 #218: a site with another autoplay choice reloads through the browser too (the WebView's autoplay setting
+      // and page script follow the tab's site, so they must change before the page starts).
+      if (autoplayPolicyFor(url) !== autoplayPolicyFor(getOwningTabChrome().url)) {
+        logBrowserNav(navId, 'block', { decision: false, decisionReason: 'autoplay_site_setting', safeHost: urlMeta.safeHost });
+        setTimeout(() => loadUrl(url), 0);
+        return false;
+      }
+    }
+
     logBrowserNav(navId, 'allow', { decision: true, decisionReason: 'http_https' });
     return true;
-  }, [getOwningTabChrome, navigationEpochRef, tabId, webViewInstanceGenerationRef]);
+  }, [getOwningTabChrome, loadUrl, navigationEpochRef, setError, tabId, webViewInstanceGenerationRef]);
 
   return useMemo(
     () => ({

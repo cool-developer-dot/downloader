@@ -58,6 +58,8 @@ internal object AndroidCodecSupport : CodecSupport {
   private val list by lazy { runCatching { MediaCodecList(MediaCodecList.REGULAR_CODECS) }.getOrNull() }
 
   override fun canDecode(mimeType: String): Boolean {
+    // MP2 has no platform decoder anywhere; VidoraX decodes it itself (MpegAudioDecoder, via RoutingTranscoder).
+    if (mimeType.equals(MpegAudioDecoder.MIME_TYPE, ignoreCase = true)) return true
     val codecs = list ?: return true
     return codecs.codecInfos.any { info -> !info.isEncoder && info.supportedTypes.any { it.equals(mimeType, ignoreCase = true) } }
   }
@@ -70,7 +72,8 @@ internal object AndroidCodecSupport : CodecSupport {
  *   bytes, untouched. A container Media3 cannot read at all (ASF/WMV) is kept as downloaded: there is nothing to
  *   convert it with, and it opens in apps that can play it.
  * - **Remux** (no re-encoding) a file whose container plays or seeks poorly: MPEG-TS (HLS), fragmented MP4 (HLS fMP4,
- *   standalone fMP4), AVI, FLV → MP4.
+ *   standalone fMP4), AVI, FLV → MP4. An MPEG program stream (F4) always becomes an MP4 too — its MPEG-1/2 video and
+ *   MP2/AC-3 sound are converted, being nothing an MP4 can carry.
  * - **Merge** a separately downloaded video and audio track into one MP4 (or WebM for VP8/VP9 + Opus/Vorbis), keeping
  *   their timelines — the tracks are checked to be one video's (lengths agree) before a byte is written.
  * - **Transcode** only a track the output cannot carry (MP3/AC-3 audio in MP4, MPEG-2 video…) to AAC / H.264 with the
@@ -103,15 +106,21 @@ internal class MediaProcessor(
   // --- one file ---
 
   private suspend fun single(track: TrackFile, workDir: File, onProgress: (ProcessingStage, Double?) -> Unit): ProcessingResult {
+    if (track.container == TrackContainer.MPEG_PS && Mpeg1SystemStream.isMpeg1(track.file)) return mpeg1System(track, workDir, onProgress)
     val info = MediaFiles.read(track.file, track.container)
       ?: return keep(track, "container not readable by Media3; kept as downloaded")
     if (info.encrypted) return ProcessingResult.Failed(DownloadErrorCode.DRM_PROTECTED, "This video is protected")
+    // An AVI whose video codec Media3 cannot name (DivX 3) still has its picture: keep it as downloaded for "Open
+    // with", as a WMV is kept.
+    if (info.video == null && track.container == TrackContainer.AVI && AviHeader.declaresVideoStream(track.file)) {
+      return keep(track, "video codec not readable by Media3; kept as downloaded")
+    }
     val video = info.video ?: return ProcessingResult.Failed(DownloadErrorCode.VIDEO_TRACK_MISSING, "This file has no video")
     val audio = info.audio
 
     val needsContainer = when (track.container) {
       TrackContainer.MP4 -> info.fragmented
-      TrackContainer.TS, TrackContainer.AVI, TrackContainer.FLV, TrackContainer.PACKED_AUDIO -> true
+      TrackContainer.TS, TrackContainer.AVI, TrackContainer.FLV, TrackContainer.MPEG_PS, TrackContainer.PACKED_AUDIO -> true
       TrackContainer.WEBM, TrackContainer.MKV, TrackContainer.THREE_GP, TrackContainer.UNKNOWN -> false
     }
     if (!needsContainer) return keep(track, null)
@@ -141,6 +150,26 @@ internal class MediaProcessor(
       onProgress = onProgress,
     )
     return verified(merged.output, expectAudio = audio != null, expectedDurationUs = info.durationUs, operation = ProcessingOperation.TRANSCODE, onProgress)
+  }
+
+  /**
+   * An MPEG-1 system stream (F4): Media3 reads program streams only in MPEG-2 packaging, so its packets are first
+   * re-packaged ([Mpeg1SystemStream], payload untouched) and that copy is converted. When the copy would only be kept
+   * (no decoder for a track), the original download is what is kept.
+   */
+  private suspend fun mpeg1System(track: TrackFile, workDir: File, onProgress: (ProcessingStage, Double?) -> Unit): ProcessingResult {
+    val rewrapped = File(workDir, REWRAPPED_PS)
+    val context = currentCoroutineContext()
+    onProgress(ProcessingStage.REMUXING, null)
+    Mpeg1SystemStream.rewrap(track.file, rewrapped) { context.ensureActive() }
+    return try {
+      when (val result = single(track.copy(file = rewrapped), workDir, onProgress)) {
+        is ProcessingResult.Done -> if (result.operation == ProcessingOperation.KEEP) keep(track, result.note) else result
+        is ProcessingResult.Failed -> result
+      }
+    } finally {
+      rewrapped.delete()
+    }
   }
 
   /**
@@ -363,6 +392,9 @@ internal class MediaProcessor(
     const val TRANSCODED_VIDEO = "transcoded-video.mp4"
     const val TRANSCODED_AUDIO = "transcoded-audio.mp4"
 
+    /** An MPEG-1 system stream re-packaged as an MPEG-2 program stream, while it is converted. */
+    const val REWRAPPED_PS = "rewrapped-mpeg2.vob"
+
     /** Audio and video of one video end within this of each other (encoders pad audio; players trim). */
     private const val MIN_LENGTH_SLACK_US = 1_500_000L
     private const val LENGTH_SLACK_FRACTION = 0.05
@@ -384,6 +416,7 @@ internal class MediaProcessor(
       TrackContainer.AVI -> Container.AVI
       TrackContainer.FLV -> Container.FLV
       TrackContainer.THREE_GP -> Container.THREE_GP
+      TrackContainer.MPEG_PS -> Container.MPEG_PS
       TrackContainer.PACKED_AUDIO, TrackContainer.UNKNOWN -> Container.UNKNOWN
     }
 
@@ -395,7 +428,8 @@ internal class MediaProcessor(
       Container.TS -> TrackContainer.TS
       Container.AVI -> TrackContainer.AVI
       Container.FLV -> TrackContainer.FLV
-      Container.THREE_GP -> TrackContainer.THREE_GP
+      Container.THREE_GP, Container.THREE_G2 -> TrackContainer.THREE_GP
+      Container.MPEG_PS -> TrackContainer.MPEG_PS
       Container.WMV, Container.UNKNOWN -> TrackContainer.UNKNOWN
     }
   }

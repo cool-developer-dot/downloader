@@ -2,6 +2,13 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 
 import { DATABASE_VERSION, TABLE_NAMES } from '@/storage/constants';
 
+import { applyBookmarkOrganizerTables } from './bookmark-organizer-schema';
+import { applySiteBlockingTables } from './site-blocking-schema';
+import { applyNotesTables } from './notes-schema';
+import { applyUserScriptsTables } from './user-scripts-schema';
+import { applyAnnotateTables } from './annotate-schema';
+import { applySavedPagesTables } from './saved-pages-schema';
+
 /**
  * Apply pragmas outside any transaction.
  * WAL mode cannot be changed from within a transaction (expo-sqlite).
@@ -13,6 +20,18 @@ export async function configureDatabasePragmas(db: SQLiteDatabase): Promise<void
 }
 
 export async function applySchema(db: SQLiteDatabase): Promise<void> {
+  await applyBrowserTables(db);
+  await applyCatalogSchema(db);
+  await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+}
+
+/**
+ * The browser's own tables: history, bookmarks, recent searches, recent URLs (idempotent CREATE IF NOT EXISTS).
+ * B20: the app database holds the default browser profile's; every other profile's database (browser-database.ts)
+ * has only these. A package that changes them adds the change here, checking the real schema (IF NOT EXISTS,
+ * PRAGMA table_info before ALTER TABLE), so it runs safely on both kinds of database and twice.
+ */
+export async function applyBrowserTables(db: SQLiteDatabase): Promise<void> {
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS ${TABLE_NAMES.browserHistory} (
       id TEXT PRIMARY KEY NOT NULL,
@@ -79,9 +98,18 @@ export async function applySchema(db: SQLiteDatabase): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_recent_urls_hostname
       ON ${TABLE_NAMES.recentUrls}(hostname);
   `);
-
-  await applyCatalogSchema(db);
-  await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
+  // B9: bookmark folders, tags, notes, order and the reading list (idempotent; see bookmark-organizer-schema.ts).
+  await applyBookmarkOrganizerTables(db);
+  // B14: site blocker / focus lists, time limits and time used, the focus timer (new tables; site-blocking-schema.ts).
+  await applySiteBlockingTables(db);
+  // B22: notes (a new table; notes-schema.ts).
+  await applyNotesTables(db);
+  // B19: user scripts (a new table; user-scripts-schema.ts).
+  await applyUserScriptsTables(db);
+  // B23: highlights and watched pages (new tables; annotate-schema.ts).
+  await applyAnnotateTables(db);
+  // B17: saved pages (a new table; saved-pages-schema.ts).
+  await applySavedPagesTables(db);
 }
 
 /**

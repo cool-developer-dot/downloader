@@ -3,6 +3,7 @@ import type {
   BrowserNavigationSnapshot,
   BrowserState,
 } from '@/browser/types';
+import type { TabManagementActions } from './tab-management-actions';
 import type {
   BrowserTab,
   CloseTabResult,
@@ -25,8 +26,9 @@ export interface BrowserActions {
   setDesktopMode: (enabled: boolean, options?: { source?: 'user' | 'platform'; tabId?: string }) => void;
 
   /** Phase 3B tab engine */
-  createTab: (options?: { url?: string; title?: string }) => CreateTabResult;
-  closeTab: (tabId: string) => CloseTabResult;
+  createTab: (options?: { url?: string; title?: string; incognito?: boolean }) => CreateTabResult;
+  /** `record: false` (B20 #16, a tab moved to its own window): not kept for Reopen closed tab, no Undo. */
+  closeTab: (tabId: string, options?: { record?: boolean }) => CloseTabResult;
   switchTab: (tabId: string) => SwitchTabResult;
   updateTab: (tabId: string, patch: Partial<BrowserTab>) => void;
   /**
@@ -38,4 +40,4 @@ export interface BrowserActions {
   syncChromeFromActiveTab: () => void;
 }
 
-export type BrowserStore = BrowserState & BrowserActions;
+export type BrowserStore = BrowserState & BrowserActions & TabManagementActions;

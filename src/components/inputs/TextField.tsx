@@ -13,6 +13,9 @@ import { Pressable } from '@/components/base/Pressable';
 import { Text } from '@/components/base/Text';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import { fieldForcesLtr, inputDirectionStyle } from '@/utils/text-direction';
+import { spellCheckInputProps } from '@/browser/startup/spell-check';
+import { useSettingsStore } from '@/store/settings';
 
 import { fieldMetrics, getFieldColors, type FieldState } from './field-styles';
 
@@ -55,7 +58,8 @@ export const TextField = memo(
     ref,
   ) {
     const theme = useTheme();
-    const { t } = useTranslation();
+    const spellCheck = useSettingsStore((s) => s.spellCheck !== false);
+    const { t, rtl } = useTranslation();
     const [isFocused, setIsFocused] = useState(false);
 
     const fieldState: FieldState = useMemo(() => {
@@ -121,8 +125,15 @@ export const TextField = memo(
                 color: colors.textColor,
                 paddingVertical: theme.spacing[12],
               },
+              // B24 #271: caret and alignment follow the text typed (Urdu right, English left; empty: the app's).
+              // B24 fix: PIN, password, number, phone, URL and e-mail fields always left-to-right.
+              fieldForcesLtr(rest)
+                ? { textAlign: 'left', writingDirection: 'ltr' }
+                : inputDirectionStyle(typeof value === 'string' ? value : '', rtl.isRtl),
               inputStyle,
             ]}
+            // B21 #237: Spell check off turns off the keyboard's suggestions and checking; a field's own props win.
+            {...spellCheckInputProps(spellCheck)}
             {...rest}
           />
           {showClearButton ? (

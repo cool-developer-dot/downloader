@@ -20,13 +20,16 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { TextField } from '@/components/inputs/TextField';
 import { isAnalyzeBusy } from '@/downloads/analyze/analyze-state-machine';
+import { isPlayableOffer, playsChosenQuality } from '@/player/remote-stream';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { primaryAlphas } from '@/theme';
+import { useTourBlocker } from '@/tour/tour-store';
 
 import { AnalysisLoadingState } from './AnalysisLoadingState';
 import { AnalyzeFallbackState } from './AnalyzeFallbackState';
 import { downloadButtonLabel } from './constants';
+import { DownloadOptionsPanel } from './DownloadOptionsPanel';
 import { MediaResultCard } from './MediaResultCard';
 import { QualityOptionRow } from './QualityOptionRow';
 import type { UseQualitySelectionResult } from './useQualitySelection';
@@ -65,6 +68,8 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
     resetToInput,
     selectOption,
     confirmDownload,
+    playing,
+    playOption,
     openPendingInBrowser,
     flowKind,
     isBrowserHandoffActive,
@@ -95,6 +100,13 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
     void confirmDownload();
   }, [confirmDownload]);
 
+  const handlePlay = useCallback(
+    (optionId?: string) => {
+      void playOption(optionId);
+    },
+    [playOption],
+  );
+
   const showInput = phase === 'idle' || phase === 'failed' || phase === 'cancelled';
   const showAnalyzing = isAnalyzeBusy(phase);
   const showPlaybackFallback = phase === 'waiting_for_playback';
@@ -110,7 +122,10 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
     phase === 'ready' &&
     selectedOption?.downloadable === true &&
     !creating &&
+    !playing &&
     !analyzing;
+  // Online play (F17): a single source the player can open — never a split audio + video pair or a refused offer.
+  const canPlay = phase === 'ready' && isPlayableOffer(selectedOption) && !creating && !analyzing;
 
   const footer = (() => {
     if (showAnalyzing) {
@@ -152,21 +167,42 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
               {t('downloads.selectedHint')}: {selectedOption.label}
             </Text>
           ) : null}
-          <Button
-            title={downloadButtonLabel(selectedOption?.label)}
-            onPress={handleDownload}
-            loading={creating}
-            disabled={!canDownload}
-            fullWidth
-            leftIcon="download"
-            accessibilityLabel={downloadButtonLabel(selectedOption?.label)}
-            accessibilityHint={
-              canDownload
-                ? 'Starts download with the selected format'
-                : 'Select a downloadable format first'
-            }
-            testID="quality-selection-download"
-          />
+          <Box row gap={8}>
+            {isPlayableOffer(selectedOption) ? (
+              <Button
+                title={t('downloads.playAction')}
+                variant="outline"
+                onPress={() => handlePlay()}
+                loading={playing}
+                disabled={!canPlay}
+                leftIcon="play"
+                accessibilityLabel={
+                  playsChosenQuality(selectedOption)
+                    ? t('downloads.playOptionA11y', { label: selectedOption?.label ?? '' })
+                    : t('browser.media.playVideoA11y')
+                }
+                accessibilityHint={t('downloads.playHint')}
+                style={{ flex: 1 }}
+                testID="quality-selection-play"
+              />
+            ) : null}
+            <Button
+              title={downloadButtonLabel(selectedOption?.label, selectedOption?.isLive === true)}
+              onPress={handleDownload}
+              loading={creating}
+              disabled={!canDownload}
+              fullWidth={!isPlayableOffer(selectedOption)}
+              leftIcon={selectedOption?.isLive ? 'record-rec' : 'download'}
+              accessibilityLabel={downloadButtonLabel(selectedOption?.label, selectedOption?.isLive === true)}
+              accessibilityHint={
+                canDownload
+                  ? 'Starts download with the selected format'
+                  : 'Select a downloadable format first'
+              }
+              style={isPlayableOffer(selectedOption) ? { flex: 2 } : undefined}
+              testID="quality-selection-download"
+            />
+          </Box>
           {isBrowserQualityHandoff ? null : (
             <Button
               title={t('downloads.changeLinkAction')}
@@ -207,6 +243,8 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
 
     return null;
   })();
+
+  useTourBlocker(visible);
 
   // Unmount when dismissed. This sheet is mounted at the tab-root provider;
   // a leftover Android Dialog would intercept every tab's buttons.
@@ -277,7 +315,11 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
                 </Box>
                 <Text variant="bodySmall" color="textSecondary">
                   {isBrowserQualityHandoff
-                    ? t('browser.media.chooseQualityHint')
+                    ? t(
+                        selection?.options.some((option) => option.isLive)
+                          ? 'browser.media.chooseLiveQualityHint'
+                          : 'browser.media.chooseQualityHint',
+                      )
                     : t('downloads.qualitySheetSubtitle')}
                 </Text>
               </Box>
@@ -434,6 +476,7 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
               {phase === 'ready' && selection ? (
                 <Box gap={16}>
                   <MediaResultCard selection={selection} selectedOption={selectedOption} />
+                  <DownloadOptionsPanel selection={selection} selectedOption={selectedOption} />
 
                   {selection.options.length > 1 ? (
                     <Box gap={10}>
@@ -450,7 +493,8 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
                             option={option}
                             selected={selectedId === option.id}
                             onSelect={selectOption}
-                            interactionDisabled={creating}
+                            interactionDisabled={creating || playing}
+                            onPlay={playsChosenQuality(option) ? handlePlay : undefined}
                             testID={`quality-option-${option.id}`}
                           />
                         ))}

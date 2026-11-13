@@ -121,7 +121,7 @@ class HlsTransferTest {
     estimatedBytes = null,
   )
 
-  private fun spec(plan: HlsPlan) = HlsTransferSpec(plan, context, part, checkpoint)
+  private fun spec(plan: HlsPlan, connections: Int = 1) = HlsTransferSpec(plan, context, part, checkpoint, connections = connections)
 
   private fun run(plan: HlsPlan, onProgress: (Long, Long?) -> Unit = { _, _ -> }) =
     runBlocking { transfer.transfer(spec(plan), onProgress) }
@@ -136,7 +136,7 @@ class HlsTransferTest {
 
     val outcome = run(plan(listOf(seg("/v/s0.ts"), seg("/v/s1.ts"), seg("/v/s2.ts")))) { bytes, _ -> progress += bytes }
 
-    assertArrayEquals(seg0 + seg1 + other, part.readBytes())
+    assertArrayEquals(TsJoin.of(seg0, seg1, other), part.readBytes())
     assertEquals(Container.TS, outcome.container)
     assertEquals(part.length(), outcome.bytesWritten)
     assertEquals(progress, progress.sorted())
@@ -211,7 +211,7 @@ class HlsTransferTest {
     routes["/v/s1.ts"] = { MockResponse().setBody(Buffer().write(big)) }
     val outcome = transfer.transfer(spec(plan))
 
-    assertArrayEquals("no byte written twice, none missing", seg0 + big + seg1, part.readBytes())
+    assertArrayEquals("no byte written twice, none missing", TsJoin.of(seg0, big, seg1), part.readBytes())
     assertEquals(part.length(), outcome.bytesWritten)
     assertEquals("a finished segment is never fetched again", 1, requests.count { it.requestUrl!!.encodedPath == "/v/s0.ts" })
   }
@@ -224,7 +224,7 @@ class HlsTransferTest {
 
     run(plan(listOf(seg("/v/s0.ts"), seg("/v/s1.ts"))))
 
-    assertArrayEquals(seg0 + seg1, part.readBytes())
+    assertArrayEquals(TsJoin.of(seg0, seg1), part.readBytes())
   }
 
   @Test fun aCheckpointClaimingMoreBytesThanTheFileHasIsIgnored() {
@@ -268,7 +268,7 @@ class HlsTransferTest {
 
     run(plan(listOf(seg("/v/s0.ts"), seg("/v/s1.ts"))))
 
-    assertArrayEquals(seg0 + seg1, part.readBytes())
+    assertArrayEquals(TsJoin.of(seg0, seg1), part.readBytes())
     val sent = requests.map { it.requestUrl!!.let { u -> u.encodedPath + (u.encodedQuery?.let { q -> "?$q" } ?: "") } }
     assertEquals(listOf("/v/s0.ts", "/v/s0.ts?auth=T0K", "/v/s1.ts?auth=T0K"), sent)
   }
@@ -285,9 +285,128 @@ class HlsTransferTest {
     assertEquals(ProbeFailure.UNSUPPORTED_FORMAT, refused.reason)
   }
 
+  // ---------- segments fetched in parallel ----------
+
+  /** Six segments, the early ones slow: fetched three at a time, they must still be written in playlist order. */
+  private fun sixSegments(): Pair<HlsPlan, ByteArray> {
+    val bodies = listOf(seg0, other, seg1, other + seg0, seg1, other)
+    bodies.forEachIndexed { i, body -> serve("/q/s$i.ts", body, throttle = i < 2) }
+    return plan((bodies.indices).map { seg("/q/s$it.ts") }) to TsJoin.of(*bodies.toTypedArray())
+  }
+
+  @Test fun segmentsFetchedInParallelAreWrittenInPlaylistOrder() {
+    val (plan, expected) = sixSegments()
+    val progress = CopyOnWriteArrayList<Long>()
+
+    val outcome = runBlocking { transfer.transfer(spec(plan, connections = 3)) { bytes, _ -> progress += bytes } }
+
+    assertArrayEquals(expected, part.readBytes())
+    assertEquals(Container.TS, outcome.container)
+    assertEquals(6, HlsCheckpoint.read(checkpoint)!!.completed)
+    assertEquals(part.length(), progress.last())
+    assertEquals("each segment fetched once", 6, requests.size)
+    assertTrue("no fetched-ahead file is left", part.parentFile!!.listFiles()!!.none { it.name.contains(".seg") })
+  }
+
+  @Test fun pausedAndResumedThreeTimesInParallelIsByteIdenticalToAnUninterruptedDownload() = runBlocking {
+    val (plan, _) = sixSegments()
+    transfer.transfer(spec(plan, connections = 3))
+    val uninterrupted = part.readBytes()
+    part.delete()
+    checkpoint.delete()
+
+    for (round in 1..3) {
+      val job = launch(Dispatchers.IO) { transfer.transfer(spec(plan, connections = 3)) }
+      withTimeout(15_000) { while ((HlsCheckpoint.read(checkpoint)?.completed ?: 0) < round) delay(5) }
+      job.cancelAndJoin()
+    }
+    transfer.transfer(spec(plan, connections = 3))
+
+    assertArrayEquals(uninterrupted, part.readBytes())
+  }
+
+  @Test fun aLaterSegmentThatFailsNeverCostsTheOnesBeforeIt() {
+    serve("/w/s0.ts", seg0, throttle = true)
+    serve("/w/s1.ts", seg1)
+    routes["/w/s2.ts"] = { MockResponse().setResponseCode(503) }
+    val plan = plan(listOf(seg("/w/s0.ts"), seg("/w/s1.ts"), seg("/w/s2.ts")))
+
+    val error = assertThrows(MediaHttpException::class.java) { runBlocking { transfer.transfer(spec(plan, connections = 3)) } }
+
+    assertEquals(503, error.statusCode)
+    assertEquals("the segments before it are in the checkpoint", 2, HlsCheckpoint.read(checkpoint)!!.completed)
+    serve("/w/s2.ts", other)
+    runBlocking { transfer.transfer(spec(plan, connections = 3)) }
+    assertArrayEquals(TsJoin.of(seg0, seg1, other), part.readBytes())
+    assertEquals(1, requests.count { it.requestUrl!!.encodedPath == "/w/s0.ts" })
+    assertEquals(1, requests.count { it.requestUrl!!.encodedPath == "/w/s1.ts" })
+  }
+
+  @Test fun aWholeSegmentFetchedAheadBeforeAPauseIsNotFetchedAgain() = runBlocking {
+    serve("/z/s0.ts", other + other + other, throttle = true)
+    serve("/z/s1.ts", seg0)
+    serve("/z/s2.ts", seg1)
+    val plan = plan(listOf(seg("/z/s0.ts"), seg("/z/s1.ts"), seg("/z/s2.ts")))
+    val job = launch(Dispatchers.IO) { transfer.transfer(spec(plan, connections = 3)) }
+    withTimeout(15_000) { while (!(SegmentFiles.fileFor(part, 1).isFile && SegmentFiles.fileFor(part, 2).isFile)) delay(5) }
+    job.cancelAndJoin()
+    assertEquals("paused while the first segment was still coming", 0, HlsCheckpoint.read(checkpoint)!!.completed)
+
+    serve("/z/s0.ts", other + other + other)
+    transfer.transfer(spec(plan, connections = 3))
+
+    assertArrayEquals(TsJoin.of(other + other + other, seg0, seg1), part.readBytes())
+    assertEquals(1, requests.count { it.requestUrl!!.encodedPath == "/z/s1.ts" })
+    assertEquals(1, requests.count { it.requestUrl!!.encodedPath == "/z/s2.ts" })
+    assertEquals("the half-fetched first segment was fetched again", 2, requests.count { it.requestUrl!!.encodedPath == "/z/s0.ts" })
+  }
+
+  @Test fun segmentsFetchedAheadPastTheCheckpointAreReused() = runBlocking {
+    serve("/y/s0.ts", seg0)
+    serve("/y/s1.ts", other + other + other, throttle = true)
+    serve("/y/s2.ts", seg1)
+    serve("/y/s3.ts", other)
+    val plan = plan(listOf(seg("/y/s0.ts"), seg("/y/s1.ts"), seg("/y/s2.ts"), seg("/y/s3.ts")))
+    val job = launch(Dispatchers.IO) { transfer.transfer(spec(plan, connections = 3)) }
+    withTimeout(15_000) {
+      while (!(HlsCheckpoint.read(checkpoint)?.completed == 1 && SegmentFiles.fileFor(part, 2).isFile)) delay(5)
+    }
+    job.cancelAndJoin()
+
+    serve("/y/s1.ts", other + other + other)
+    transfer.transfer(spec(plan, connections = 3))
+
+    assertArrayEquals(TsJoin.of(seg0, other + other + other, seg1, other), part.readBytes())
+    assertEquals("segment 2 was whole on disk before the pause", 1, requests.count { it.requestUrl!!.encodedPath == "/y/s2.ts" })
+    assertEquals(1, requests.count { it.requestUrl!!.encodedPath == "/y/s0.ts" })
+  }
+
+  @Test fun aTransportStreamPausedOnAnOlderVersionIsRenumberedWhenItResumes() {
+    // What an older build left: the raw concatenation and a checkpoint without continuity counters.
+    part.writeBytes(seg0 + other)
+    HlsCheckpoint.write(checkpoint, HlsCheckpoint("fp-1", 2, (seg0.size + other.size).toLong(), null, Container.TS))
+    serve("/v/s2.ts", seg1)
+
+    run(plan(listOf(seg("/v/s0.ts"), seg("/v/s1.ts"), seg("/v/s2.ts"))))
+
+    assertArrayEquals(TsJoin.of(seg0, other, seg1), part.readBytes())
+    assertEquals(listOf("/v/s2.ts"), requests.map { it.requestUrl!!.encodedPath })
+  }
+
+  @Test fun theCheckpointCarriesTheContinuityCounters() {
+    serve("/v/s0.ts", seg0)
+    serve("/v/s1.ts", other)
+    run(plan(listOf(seg("/v/s0.ts"), seg("/v/s1.ts"))))
+    val saved = HlsCheckpoint.read(checkpoint)!!
+    val state = TsContinuity().apply { renumberPackets(TsJoin.of(seg0, other).copyOf(), seg0.size + other.size) }.state
+    assertEquals(state, saved.continuity)
+  }
+
   @Test fun theCheckpointRoundTripsAndCarriesNoUrl() {
     HlsCheckpoint.write(checkpoint, HlsCheckpoint("abc", 7, 1234, 0, Container.MP4))
     assertEquals(HlsCheckpoint("abc", 7, 1234, 0, Container.MP4), HlsCheckpoint.read(checkpoint))
+    HlsCheckpoint.write(checkpoint, HlsCheckpoint("abc", 7, 1234, 0, Container.TS, continuity = mapOf(256 to 3, 0 to 15)))
+    assertEquals(mapOf(256 to 3, 0 to 15), HlsCheckpoint.read(checkpoint)!!.continuity)
     val text = checkpoint.readText()
     assertTrue(!text.contains("http") && !text.contains("token"))
     checkpoint.writeText("{broken")

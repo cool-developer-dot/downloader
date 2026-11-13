@@ -1,5 +1,6 @@
-import { memo, useCallback, useEffect, type ReactNode } from 'react';
+import { memo, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import {
+  StyleSheet,
   TextInput,
   type NativeSyntheticEvent,
   type TextInputSubmitEditingEventData,
@@ -13,9 +14,11 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Box } from '@/components/base/Box';
+import { Icon } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import { useTourTargetRef } from '@/tour/tour-targets';
 
 import {
   BROWSER_ADDRESS_BAR_HEIGHT,
@@ -23,10 +26,17 @@ import {
   BROWSER_TOUCH_TARGET,
 } from '@/browser/constants';
 import { useAddressBar } from '@/browser/hooks';
+import { normalizeAddressBarPosition } from '@/browser/address-bar/address-bar-settings';
+import { splitForDomainHighlight } from '@/browser/address-bar/domain';
+import { EngineBadge } from '@/browser/components/EngineBadge';
+import { useSearchEngineDefinition } from '@/browser/hooks/useSearchEngineDefinition';
+import { useSettingsStore } from '@/store/settings';
 
 import { OmniboxTrailing } from './OmniboxTrailing';
+import { ReaderButton } from '@/browser/reader/components/ReaderButton';
 import { SecurityIndicator } from './SecurityIndicator';
 import { SuggestionOverlay } from './SuggestionOverlay';
+import { ScanQrButton } from '@/browser/share-qr/components/ScanQrButton';
 
 export type AddressBarProps = {
   /** Future leading slot inside the omnibox (e.g. voice, QR). */
@@ -45,6 +55,7 @@ export const AddressBar = memo(function AddressBar({
   trailingSlot,
   testID = 'browser-address-bar',
 }: AddressBarProps) {
+  const tourTargetRef = useTourTargetRef('addressBar');
   const theme = useTheme();
   const { t } = useTranslation();
   const {
@@ -59,6 +70,10 @@ export const AddressBar = memo(function AddressBar({
     suggestions,
     suggestionsLoading,
     showSuggestions,
+    caretAtEnd,
+    inputValue,
+    inputSelection,
+    onSelectionChange,
     onChangeText,
     onFocus,
     onBlur,
@@ -69,6 +84,15 @@ export const AddressBar = memo(function AddressBar({
   } = useAddressBar();
 
   const focusProgress = useSharedValue(0);
+  const position = normalizeAddressBarPosition(useSettingsStore((state) => state.addressBarPosition));
+  // Follows an engine change in Browser settings (B5).
+  const engine = useSearchEngineDefinition();
+  // B4 #37: the registrable domain in full colour, the rest dimmed (not while editing).
+  const highlight = useMemo(
+    () => (!isFocused && value ? splitForDomainHighlight(value) : null),
+    [isFocused, value],
+  );
+  const showEngineBadge = !isFocused && !value;
 
   useEffect(() => {
     focusProgress.value = withTiming(isFocused ? 1 : 0, {
@@ -105,6 +129,8 @@ export const AddressBar = memo(function AddressBar({
   return (
     <Box flex={1} gap={4}>
       <Animated.View
+        ref={tourTargetRef}
+        collapsable={false}
         testID={testID}
         accessibilityRole="search"
         style={[
@@ -122,7 +148,18 @@ export const AddressBar = memo(function AddressBar({
           containerStyle,
         ]}>
         {leadingSlot}
+        {showEngineBadge ? (
+          <Box accessible accessibilityLabel={t('browserAddress.engineA11y', { engine: engine.name })}>
+            <EngineBadge engine={engine.id} size={22} />
+          </Box>
+        ) : null}
         <SecurityIndicator visible={showSecurity} />
+        {highlight?.idnWarning ? (
+          <Box accessible accessibilityLabel={t('browserAddress.idnWarning')}>
+            <Icon name="alert-outline" size={18} color="warning" />
+          </Box>
+        ) : null}
+        <Box flex={1} style={{ minWidth: 0, justifyContent: 'center' }}>
         <TextInput
           value={isFocused ? draft : value}
           onChangeText={onChangeText}
@@ -140,25 +177,63 @@ export const AddressBar = memo(function AddressBar({
           selectTextOnFocus
           placeholder={t('browser.addressPlaceholder')}
           placeholderTextColor={theme.colors.textDisabled}
-          accessibilityLabel={t('browser.addressBar')}
+          accessibilityLabel={
+            highlight?.idnWarning
+              ? `${t('browser.addressBar')}. ${t('browserAddress.idnWarningShort')}`
+              : t('browser.addressBar')
+          }
           accessibilityHint={t('browser.addressHint')}
           accessibilityState={{ busy: isLoading, expanded: isFocused }}
           allowFontScaling
           testID={`${testID}-input`}
           style={{
-            flex: 1,
             minHeight: BROWSER_TOUCH_TARGET,
             paddingVertical: 0,
             color: theme.colors.textPrimary,
+            // With the highlight drawn on top, the field itself is invisible but still the tap target (Android ignores a
+            // transparent text colour here).
+            opacity: highlight ? 0 : 1,
             fontSize: theme.typography.bodySmall.fontSize,
             fontFamily: theme.typography.body.fontFamily,
           }}
         />
+        {highlight ? (
+          <Text
+            pointerEvents="none"
+            numberOfLines={1}
+            ellipsizeMode="tail"
+            accessible={false}
+            importantForAccessibility="no-hide-descendants"
+            testID={`${testID}-domain-highlight`}
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                textAlignVertical: 'center',
+                includeFontPadding: false,
+                fontSize: theme.typography.bodySmall.fontSize,
+                fontFamily: theme.typography.body.fontFamily,
+                color: theme.colors.textDisabled,
+                writingDirection: 'ltr',
+                textAlign: 'left',
+              },
+            ]}>
+            {highlight.before}
+            <Text style={{ color: highlight.idnWarning ? theme.colors.warning : theme.colors.textPrimary }}>
+              {highlight.domain}
+            </Text>
+            {highlight.after}
+          </Text>
+        ) : null}
+        </Box>
         <OmniboxTrailing
           showClear={showClear && !isFocused}
           isLoading={isLoading && !isFocused}
           onClear={clear}
         />
+        {/* B22 #30: Scan QR code in the empty address bar. */}
+        <ScanQrButton compact visible={isFocused && !draft.trim()} testID="browser-omnibox-scan" />
+        {/* B15 #161: reader mode, only on article pages. */}
+        <ReaderButton hidden={isFocused || isLoading} />
         {trailingSlot}
       </Animated.View>
 
@@ -179,7 +254,7 @@ export const AddressBar = memo(function AddressBar({
           accessibilityLiveRegion="polite"
           style={{ position: 'absolute', width: 1, height: 1, opacity: 0, overflow: 'hidden' }}
           testID={`${testID}-loading-announce`}>
-          Loading page
+          {t('browser.loadingPageA11y')}
         </Text>
       ) : null}
 
@@ -188,8 +263,13 @@ export const AddressBar = memo(function AddressBar({
         suggestions={suggestions}
         loading={suggestionsLoading}
         query={draft}
+        inputValue={inputValue}
+        inputSelection={inputSelection}
+        caretAtEnd={caretAtEnd}
+        position={position}
         inputRef={inputRef}
         onChangeText={onChangeText}
+        onSelectionChange={onSelectionChange}
         onSubmit={submit}
         onClear={clear}
         onSelect={selectSuggestion}

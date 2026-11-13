@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- B24 #65 search widget (Urdu). -->
+<resources>
+  <string name="vidorax_search_widget_label">VidoraX تلاش</string>
+  <string name="vidorax_search_widget_description">ٹائپ کرنے کے لیے نیا ٹیب کھولتا ہے</string>
+  <string name="vidorax_search_widget_hint">تلاش کریں یا ویب پتہ لکھیں</string>
+</resources>

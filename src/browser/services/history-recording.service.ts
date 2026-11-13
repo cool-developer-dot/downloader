@@ -2,7 +2,9 @@ import {
   BROWSER_HOMEPAGE,
   BROWSER_WEBVIEW_BLANK,
 } from '@/browser/constants';
+import { shouldSaveVisit } from '@/browser/history/history-policy';
 import { isBrowserHomeUrl } from '@/browser/utils';
+import { useSettingsStore } from '@/store/settings';
 import { historyService } from '@/storage/services';
 import type { BrowserHistoryEntry } from '@/storage/types';
 
@@ -21,6 +23,8 @@ export type RecordableVisitInput = {
   url: string;
   title?: string | null;
   hasError?: boolean;
+  /** B10: the tab that showed the page; nothing is saved for a tab `shouldPersistForTab` refuses. */
+  tab?: { id: string } | null;
 };
 
 export function isRecordableHistoryUrl(url: string): boolean {
@@ -69,6 +73,11 @@ export async function recordSuccessfulVisit(
   input: RecordableVisitInput,
 ): Promise<BrowserHistoryEntry | null> {
   if (input.hasError) {
+    return null;
+  }
+
+  // B10 #101: "Save history" off, or a tab whose pages aren't kept — no new entry.
+  if (!shouldSaveVisit(useSettingsStore.getState().saveHistory, input.tab)) {
     return null;
   }
 

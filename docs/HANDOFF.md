@@ -1975,6 +1975,277 @@ in `docs/ROADMAP.md`. No code changed.
   "Not planned" with a reason (torrent/P2P, accounts/cloud vs the local-only rule, Play-restricted permissions,
   device-wide file manager, password manager, music-player and online-service features).
 
+### 4.32 Phase 16 quick fixes — Faran · Sonnet (branch `faran/sonnet-fixes`, 2026-10-10)
+
+One task per commit group (`F12:` …), full log with test evidence in `docs/work-log/faran-sonnet.md`.
+
+- **F12 Help answers.** 16 Help & Support answers rewritten to match the app (en + ur): theme options System / Red /
+  Dark; HLS and DASH downloads pause and resume (segment checkpoints; checked on the AVD); the saved-videos tab is
+  "Player"; favorites, folders, rename, delete, share and storage name the real screens. New
+  `src/localization/catalog-parity.test.ts` (same keys, no empty Urdu, same placeholders).
+- **F9 Clear recent searches.** History has a "Clear recent searches" row + dialog; it clears only the address-bar
+  searches and invalidates the omnibox suggestion index (`clearRecentSearches`); "Clear all" history keeps searches.
+  `SuggestionService` now takes its sources in the constructor (storage sources in `suggestions/index.ts`).
+- **F8 Open in new tab.** The link long-press sheet's "Open in new tab" works (`openLinkInNewTab` →
+  `createTab({ url })`, http(s) only; at 10 tabs a toast "Maximum 10 tabs open" — `tabs-limit-notice.ts`); sheet title
+  and labels are translated (`browser.linkActions.*`, actions use `labelKey`).
+- **F7 Paste a copied link.** "Paste link" (Downloads; Home's identical action) reads the clipboard
+  (`linkFromClipboardText`: first http(s) link starting a word, punctuation trimmed) and opens it with `openPastedLink`
+  (direct analyzer); YouTube → refusal toast; no link → Browser with the address-bar editor focused
+  (`address-bar-focus.ts`; Android drops the overlay's first keyboard request, so the hook blurs/refocuses once).
+- **F11 Translate page.** Browser menu → "Translate page" (after Share) opens
+  `translate.google.com/translate?sl=auto&tl=<en|ur>&u=<page>` in a new tab (`services/translate-page.ts`); disabled on
+  home / non-web / Google Translate pages; Privacy Policy §5 says the page address goes to Google when tapped.
+- **F10 Player.** Tap the total time → time left `−mm:ss` (MMKV `vidorax.mmkv.player.durationLabelMode.v1`);
+  double tap by thirds — −10 s / play-pause / +10 s — after the unchanged zoom-reset rule (`resolveDoubleTapAction`, a
+  worklet). ARCHITECTURE §7 updated.
+- **F5 F4V / 3G2 / DivX.** The sniffer names a `3g2*` ftyp brand `THREE_G2` (kept `.3g2`, `video/3gpp2`, details
+  "3G2"); F4V is ISO-BMFF → `.mp4` (a DRM-branded F4V is refused like any protected MP4); `.divx` / `video/divx` is
+  AVI → remuxed to MP4 when Android decodes it, else kept `.avi` when the AVI header declares a video stream
+  (`process/AviHeader`; MediaProcessor keep rule + DownloadEngine skips its audio-only refusal). Detection (vidorax-web
+  classifier, JS extension/MIME/observer, enqueue) knows `.f4v/.3g2/.divx`. "Open with" `ERR_NO_APP` now maps to "No
+  compatible video app" (was "couldn't open"). ARCHITECTURE §1/§3 updated.
+
+### 4.33 Faran · Opus engine batch (branch `faran/opus-engine`, from 2026-10-11)
+
+Full log with test evidence: `docs/work-log/faran-opus.md`; prompt `docs/work-plans/faran-opus-prompt.md`.
+
+- **F1 Parallel connections.** Download Settings → Performance → "Connections per file" (1–4, default 3; engine prefs
+  `connectionsPerFile`). A progressive file ≥ 16 MiB whose server proves ranges (206 + total + strong validator) is
+  fetched as parallel byte ranges into the pre-sized `.part` (`transfer/RangedDownload`, per-part checkpoint
+  `download.part.parts`, dynamic split only when it pays off against request latency); HLS/DASH segments are fetched
+  N at a time and appended in order. Fallback to one connection, never a failure. Parts use their own HTTP/1.1
+  connections (`HttpClient.separateConnections` — over HTTP/2 OkHttp had put them on one socket). Two engine bugs
+  fixed on the way: (1) MPEG-TS segment joins lost the last frame before each join (Media3 `TsExtractor` continuity
+  check; Mux 288p lost 60 of 19,039 frames and stalled after seeks) → `transfer/TsContinuity` renumbers at assembly;
+  (2) an unquoted ETag (Wikimedia) replayed in `If-Range` made every resume restart from zero → `Validators` quotes it.
+  On this AVD's ~1.7 MB/s link 1 and 3 connections move bytes at the same rate (host curl agrees); the gain shows
+  where a connection is the limit (fixture: 14.6 s → 4.2 s → 2.85 s). Real-phone check BLOCKED (no phone).
+- **F13 Web video fullscreen.** A website's own fullscreen button now works in the active tab (`allowsFullscreenVideo`
+  — react-native-webview's chrome client puts the page's video view over the app). `src/browser/fullscreen`: the
+  document-start browser-chrome script reports `fullscreen` with the video's size; wide or unknown → landscape, tall or
+  square → portrait (`WEB_FULLSCREEN_WIDE_RATIO` 1.1), through `orientation-controller` (turns with system auto-rotate
+  off). Back, backgrounding, leaving the Browser route, a tab switch or the tab switcher take the page out of
+  fullscreen (injected `exitFullscreen()` + portrait at once); a navigation/crash/unmount is forgotten. Found on the
+  device and fixed: a parked tab's page could cover the whole app with a black video view that JS never heard about →
+  only the active tab's WebView is fullscreen-capable. The page also gets its scroll position back after leaving
+  (react-native-webview's video view resets it). "Video available" is hidden while fullscreen. Facebook offers no
+  fullscreen button to logged-out mobile visitors (BLOCKED by the site); real phone BLOCKED (no phone).
+- **F16 Open video files from other apps.** `MainActivity` takes `VIEW` of `content:`/`file:` `video/*` and `audio/*`
+  (Files → "Open with VidoraX"). vidorax-media `incoming/` reads the intent (name, size, persistable grant when
+  offered) and gives JavaScript a token (hash of the URI — never the URI); the Player plays it as `external:<token>`
+  with every player feature (mini player, PiP, gestures), resume by token, no library row, no Watch history. **Save to
+  VidoraX** (`library/IncomingImport`): copy with SHA-256, duplicate check ("Already in your VidoraX library"),
+  site `device`, thumbnail, `imported`; undecodable files are kept. App Lock: the PIN comes first. Found and fixed: a
+  cold start's Player was replaced by the splash's own navigation (`launch-handover.ts`), an MP3 stayed on "Preparing
+  video" (audio revealed when ready). Google Photos BLOCKED (its first-run asks to turn on backup for the owner's
+  account); real phone BLOCKED. From F16 on, R1–R12 runs once at §7 (owner's request); per task a quick release check.
+- **F18 Background play.** Settings → Player → "Keep playing in background" (off by default, MMKV). On: leaving the
+  app or locking the screen keeps the sound going with expo-video's media notification/session (title, "Playing in
+  VidoraX", thumbnail; play/pause/seek); end of video or closing the player removes it; PiP unchanged (closing the
+  window pauses). Manifest: `ExpoVideoPlaybackService` + `FOREGROUND_SERVICE_MEDIA_PLAYBACK`; Play Console declaration
+  in PLAY_SUBMISSION.md B2. Found and fixed: seeks from the notification stalled (undrawn TextureView surface) →
+  views let go of the player while the activity is stopped; a closed PiP window left the session thinking PiP was on.
+  Lock-screen controls / headphones / real phone BLOCKED on the AVD.
+- **F2 Speed control.** `transfer/BandwidthLimiter`: token buckets (0.25 s burst, debt instead of split reads) taken
+  after every network read in all four read loops, so the limit holds for any connection count. Download Settings →
+  Performance → "Speed limit" (Off / 256 KB/s / 512 KB/s / 1 / 2 / 5 MB/s; engine prefs `speedLimitBytesPerSecond`,
+  pushed by `ensure-bridge`). Download details (while downloading/paused/queued): its own limit + **Priority** (one at
+  a time; while it reads, the others together get 25 % of the global limit, or of its measured speed without one) —
+  `setDownloadBandwidth`/`listDownloadBandwidth`, stored in the new `download_bandwidth` table (**schema v5**,
+  `CREATE TABLE IF NOT EXISTS`; upgrade from v4 with real rows tested), dropped on completion/removal. Queue rules for
+  H4/F2 in ARCHITECTURE §3.6. Measured on the device: 512 KB/s → 511.2 KB/s over 100 s; 256 KB/s beside an unlimited
+  download → 249.7 vs 2448 KB/s; Priority under 1 MB/s → 764 vs 256 KB/s; all survive a force-stop. Real phone BLOCKED.
+- **F17 Play online streams.** **Play** beside Download in the quality sheet (per quality row when it plays as chosen,
+  and in the footer) and on the "Video available" bar for a single offer — nothing downloaded or consumed. The variant
+  is confirmed current like a download (fresh signed link, else "reload the page"); an HLS master is resolved to the
+  chosen height; DASH plays adaptively (no per-row Play). Headers: page User-Agent, Referer (fallback: the page),
+  Origin, and the WebView cookies as a Cookie header when the engine would use cookies. In memory as `stream:<token>`
+  (`src/player/remote-stream.ts`); no library row, resume record or Watch history. Errors: Link expired (401/403/404/
+  410) / No connection (+ Try again). Split audio+video, refused, live, DRM, YouTube: no Play. Found and fixed on the
+  device: TikTok refused the player (no cookies/Referer); "Play 360p" played 720p (offer named the master); a dropped
+  connection read as a generic error. Dailymotion BLOCKED (sign-in wall + cookie consent); real phone BLOCKED.
+- **F14 Seek preview frames.** Dragging the scrubber shows a small frame + time above the thumb
+  (`generateThumbnailsAsync`, `src/player/seek-preview.ts`: one request in flight, latest position wins, ≤ 1 start
+  per 150 ms, 1-second buckets, 40-frame LRU released on eviction/close, stops after 3 failures). Local, device and
+  external files with video only (not streams, not audio). Checked: H.264 1080p 10 min, HEVC, VP9 WebM (frames take
+  ~1.2–1.5 s there on the AVD), landscape fullscreen, Urdu, time-left label and double-tap unchanged, memory back to
+  baseline after 2 × 20 scrubs. Real phone BLOCKED.
+- **F15 Leftover download files cleaner.** Storage → "Leftover download files — X MB" → Clean up (confirm → "Freed X
+  MB"; hidden when nothing). Native `LeftoverFiles` under the engine lock: `work/` entries of no listed download that
+  may still use them (queued/running/paused/waiting/processing/recording and failed keep theirs) and v1 `.hls` /
+  `.mranges` / `*.part` of v1 downloads JS reports inactive; finished files never. Device: 20 MB orphan + 5 MB v1
+  workspace beside a paused 38 MB download → 25.0 MB shown → freed; the paused download resumed byte-identical and
+  plays.
+- **F3 Scheduling and conditions.** Download Settings → "Schedule & conditions": Download hours (weekdays, quarter
+  hours, a window past midnight belongs to its start day), Not on roaming, Pause when battery is low (≤ 15 % off the
+  charger), Only while charging — all off by default, engine prefs pushed by `ensure-bridge`. Download details →
+  "Start at…" (today/tomorrow; `download_schedule`, schema v6). A held download is `waiting_conditions` with a reason
+  ("Scheduled for 02:00", "Outside download hours", "Paused — roaming", "Waiting for charging", "Paused — battery
+  low"; list, details, notification, en/ur) and keeps its part. Background: one persisted JobScheduler wake job
+  (latency + charging/battery/network constraints, a 10-min deadline for timed wake-ups) — no exact alarms, no battery
+  exemption, no new permission. Device: battery/charging holds and releases (also with the app closed: 4 s after
+  plug-in), a start time with the app closed ran 2 min late, holds survive force-stop before JS runs, test1 upgrade
+  with paused + queued downloads; roaming and reboot BLOCKED (emulator cannot roam; reboot needs the owner).
+- **F4 MPEG Program Stream.** `.mpg`/`.mpeg`/`.vob` (`Container.MPEG_PS`, wire `mpg`) detected everywhere a container
+  is (native sniffer, web classifier, JS detection/enqueue); CSS-scrambled packets → protected. Converted to MP4:
+  MPEG-1/2 video → H.264 via Transformer and the platform MPEG-2 decoder; MP2 → AAC via VidoraX's own Layer II decoder
+  (`process/MpegAudioDecoder`, a minimp3 port, + `MpegAudioTranscoder`, routed by `RoutingTranscoder`); MPEG-1 system
+  streams re-packaged as MPEG-2 first (`process/Mpeg1SystemStream`). Without a decoder (most phones lack MPEG-2: the
+  AOSP one is TV-only) the file is kept as `.mpg`, its length/size read from the stream, and the player now says
+  "Unsupported format" + "Open with…" instead of spinning. Device: local VOB/MPEG-1/scrambled and archive.org's "Duck and
+  Cover" (kept, 9:15); conversion on a device with an MPEG-2 decoder BLOCKED.
+- **F6 Live stream recording.** Settings → Downloads → Advanced → "Live recording (beta)" (off) + "Maximum length"
+  (2 h). On: the engine's probe offers a live, unencrypted HLS stream as `kind: 'live'` (same refusals; muxed variants
+  only); the bar says "Live stream" + REC, the sheet "Record 720p"; `transfer/LiveHlsRecorder` records from the live
+  edge (reload per target duration, F1 fetch-ahead, F2 limiter, TS renumbered, `live.checkpoint` per segment) until
+  Stop / `ENDLIST` / max length / low storage / stall, then remux to MP4. Downloads row and notification "Recording ·
+  12:34 · 85 MB" with Stop (en/ur); a process death finalizes from the checkpoint on the next start. No schema change.
+  Device: Unified Streaming live → 2:16 MP4 plays; force-stop at 0:53 → 53.76 s MP4 plays; background, Urdu, dark OK;
+  turning the setting off withdraws a standing offer (found and fixed). Real phone BLOCKED.
+
+### 4.34 Browser — Hamza packages (branch `hamza/browser`, from 2026-10-29)
+
+Full log with test evidence: `docs/work-log/hamza-browser.md`; prompt `docs/work-plans/hamza-browser-prompt.md`.
+Based on the local `integration/final-check` (not pushed). One line per package:
+
+- **B1 Tab management.** Reopen closed tab (last 10, Undo after every close), pin, duplicate, close other / all (with
+  "Also close pinned tabs"), drag to reorder, search tabs (Urdu-aware), tab previews (VidoraWeb `snapshotWebView`),
+  Sort by Manual / Site / Last used / Opened. Tab envelope v2 read by fields.
+- **B5 Search settings.** Browser settings screen (Settings → Browser, `/browser-settings`); search engine Google
+  (default) / Bing / DuckDuckGo / Yahoo / Ecosia / Brave with their own Safe Search, language and region parameters;
+  Search this site; suggestions switch. `getSearchEngine()` builds every search URL; defaults keep the old URL.
+- **B4 Address bar.** Inline autocomplete of visited / bookmarked sites, position Top / Bottom, hide while scrolling,
+  engine badge, registrable domain highlighted (`tldts`, `xn--` hosts with a warning), search shortcuts (`g`, `b`,
+  `d`, `w` + own ones in Browser settings → Search), calculator row (own parser, Eastern digits). New dependency
+  `tldts` 7.4.18 (MIT).
+- **B6 Navigation and scrolling.** Hard reload (long-press Reload / menu), Long-press Back list from the WebView's own
+  history, swipe on the toolbar (and page edges with button navigation), Scroll to top / bottom (menu + a ↑ / ↓ button
+  after fast scrolling), Auto scroll with a floating control, Scroll speed, Volume keys scroll pages (default off; one
+  native key channel shared with B21), Open in background tab, Preload pages (DNS ahead for the top suggestion, prefetch
+  of a page's `rel="next"`; Wi-Fi only by default). Native: `getWebViewHistory`, `goBackOrForward`, `setKeyCapture` +
+  `onCapturedKey` (+ `MainActivity.dispatchKeyEvent`), `getNavigationMode`, `prefetchDns`.
+- **B8 Selected text.** Search in a page's text-selection menu: the chosen engine, in a new tab right after the current
+  one, ≤ 300 characters with a note; Copy, Share, Paste and Select all stay Android's own; Chromium's Web search is
+  removed. Native: VidoraWeb implements the patch hook `wrapSelectionMenu` (`setSelectionMenu`, `onSelectionAction`).
+  No new setting, permission or library. Device checks pending Faran's final pass.
+- **B10 History.** Search highlights its matches (matching title / URL / host was already there; 5,000 entries
+  proven fast); Clear browsing data by range (hour, 24 h, 7 d, 4 weeks, all time: history, recent searches, closed
+  tabs, tab previews; hook `bindSiteDataClearer` for B12's site data); Clear history on exit (next cold start + Menu
+  → Exit); Save history off switch ("History is off"); Export history as CSV (UTF-8 BOM, system folder picker). No
+  native code, no database change (version 2), no permission or library.
+- **B21 Startup and customization.** Homepage (start page or a checked address; Home opens it; Home button switch);
+  startup options (Continue / start page / homepage — one tab in front, tabs kept; a launch link wins); Spell check
+  switch (app fields + page fields, not the address bar); Customize toolbar (≤ 6 of 10 buttons, order, Reset; Tabs and
+  Menu locked in the address bar); start page background (theme / colour / gradient / photo from the Photo Picker,
+  dark layer + dark palette); keyboard shortcuts through B6's key channel, listed in settings. Native: VidoraWeb
+  `pickStartPageImage`, `clearStartPageImage`. No permission, no library, no database change.
+- **B7 Find in page.** Menu → Find in page: a bar with "3 of 12" / "No matches", ↑ / ↓ / Enter (scrolling the match
+  into view), Match case, Whole word (Unicode, so Urdu works), every match highlighted and the current one stronger,
+  all cleared on close; Back, Esc, a tab change or navigation close it. An injected search with the CSS Custom
+  Highlight API (no DOM change) instead of `findAllAsync` (no match case / whole word); only numbers come back. No
+  native code, setting, permission or library.
+- **B3 Tab sound and sleep.** Speaker on tabs playing sound (B6's media report), mute from it or the tab menu, a 0–100 %
+  tab volume (applied in the page by wrapping the media elements' volume / muted), Sleep unused tabs (Off by default;
+  15 min–3 h; never the front tab or one playing sound; hook for B18), Memory in Browser settings → Tabs. Native:
+  VidoraWeb `getAppMemory`. No permission, library or database change.
+- **B13 Site permissions.** Location, camera, mic and notification requests refused in the page (no permission exists or
+  is added), with a bar and the site listed as Blocked; pop-ups without a tap blocked with Allow once / Always for this
+  site; Site permissions in Browser settings and from the lock icon, Reset one / all, per profile. Merged manifest
+  checked (no location / camera / mic). No native code, library or database change.
+- **B9 Bookmarks.** Folders (nest, breadcrumbs, delete keep / all), Edit (title, address, folder, tags, note; also from
+  the star), drag + Move up / down, bookmarks bar (off by default), Bookmark all tabs, import / export bookmark HTML
+  (5,000 tested), reading list (own table; B17 hook), Check links (no cookies, Wi-Fi only by default, never deletes),
+  tags and notes in search, Add to home screen (pinned shortcut, App Lock first). Native: VidoraWeb
+  `pinBookmarkShortcut` and friends. DATABASE_VERSION 3. No permission or library.
+- **B15 Reader mode.** Readability in the page (`isProbablyReaderable` → address bar button + menu item), sanitised
+  article drawn natively over the page (Back keeps the page's place), Follow app / Light / Sepia / Dark, size, font,
+  spacing, pictures (all remembered), Urdu in bundled Noto Nastaliq, Read aloud with expo-speech (offline voices,
+  paragraph highlight, speed, Urdu voice or the phone's speech settings). Libraries: @mozilla/readability 0.6.0
+  (Apache-2.0), expo-speech 57.0.3 (MIT, `<queries>` only); font OFL 1.1. No native code, no database change.
+- **B16 Page display.** Force dark (forceDarkOn on 10–12, algorithmic darkening on 13+ while the app is dark; "No
+  forced dark on this site"), text size 50–200 % global + per site, force enable zoom, page zoom per site, text reflow
+  (native text autosizing), font style (icon fonts kept), Urdu in Nastaliq with the phone's font (on by default;
+  **B16 update:** the bundled font as the fallback, through Faran's `interceptRequest` patch hook — one font at one
+  fixed `appassets.androidplatform.net` address, an empty 404 for the rest of that host), colour filters + night light as one native colour matrix on
+  the WebView layer, window-only brightness. Aa panel in the menu; Browser settings → Page display with the per-site
+  list. Native: VidoraWeb `setPageLayout`, `setDisplayFilter`. No permission, library or database change.
+- **B18 Data saver and performance.** Block images (+ always-show sites), images on Wi-Fi only, Data saver (pictures
+  Wi-Fi only, no preloading, lite on mobile data, B14 autoplay hook; **B18 update:** `Save-Data: on` in the
+  `source` headers with DNT while Data saver is on), Lite mode (one live tab, page animations off, pictures Wi-Fi only, light start page),
+  hardware acceleration switch (software layer after reload), Battery saver (off / with the phone's / on: no
+  preloading, slower auto scroll, 5-minute tab sleep), cache limit with size and Clear now, Data usage → Browsing
+  (TrafficStats minus downloads, only while browsing), lightweight start page. Native: VidoraWeb
+  `setBlockNetworkImage`, `setSoftwareLayer`, `getAppTraffic`, `isPowerSaveMode`, `getWebViewCacheSize`,
+  `clearWebViewCache`. Additive seam in B6: `bindAutoScrollSpeedFactor`. No permission, library or database change.
+- **B14 Ad, tracker and site blocking.** Ad blocker and tracker blocker (off by default; bundled EasyList /
+  EasyPrivacy, CC BY-SA 3.0, never downloaded) through B16's interceptRequest hook — never the page itself, never a
+  video / manifest request, never player code; lock icon: blocked count and "Allow ads on this site". Autoplay Allow /
+  Block sound (default, today's) / Block all, global and per site; Data saver → Block all. Site blocker, daily site
+  time limits (blocked until tomorrow), focus mode timer — per profile, surviving restarts, "This site is blocked"
+  before a page loads. Native: VidoraWeb `setContentBlocking`, `setBlockingPage`, `getBlockedCount` (no patch change).
+  DATABASE_VERSION 4 (new tables only), profile database version 2. No permission or library.
+- **B11 Incognito.** New incognito tab (menu, switcher; listed apart), Open in incognito, a new temporary WebView
+  profile per session (`vidorax-incog<session>`, never active) chosen per WebView from a `webProfile` prop (patched
+  new-arch manager → beforeWebViewSetupInProfile), fail closed until confirmed; wipe on close by deleting that profile
+  after its WebViews unmount; nothing saved (shouldPersistForTab false); App Lock on return; FLAG_SECURE; download
+  notice and the session's own cookies for downloads; violet bar; incognito search engine. Native: patch script
+  (cba6715), VidoraWeb (0dedfc5), vidorax-media (4f17008). No permission, library, manifest or database change.
+- **B22 Share, QR and upload.** QR code of the page (share as image, save to the gallery on Android 10+), Scan QR
+  (Google code scanner, no CAMERA; URLs ask first, other schemes text only), file / camera upload checked (camera fixed
+  with an IMAGE_CAPTURE `<queries>` entry), Notes (table per profile, DATABASE_VERSION 5; selection menu and page;
+  Notes screen; never from incognito), Open in app chip (six apps through `<queries>` packages), Form snippets (field
+  kind only, never password / OTP / card). Native 50f0a2d (no patch change). Libraries: qrcode-generator 1.4.4 (MIT),
+  play-services-code-scanner 16.1.0. Merged manifest: no CAMERA.
+- **B19 Developer tools.** Off by default (nothing injected); console, network (Resource Timing), inspect, view source,
+  user agent and device widths per tab, remote debugging (in memory, off at next start), storage with cookies from the
+  tab's own profile, security panel, user scripts (per profile, isolated, never downloaded, incognito per script).
+  Native e7936d3, ecc57fa. DATABASE_VERSION 6. No permission, library or manifest change.
+- **B23 Annotate and page alerts.** Highlights (B8 menu item, text anchors, restored, all-highlights screen), draw on
+  page (B1's picture — B17 not built), page change alerts (expo-background-task, no cookies, Wi-Fi only, 20 pages),
+  language detection + translate offer. Native e093261. DATABASE_VERSION 7. Merged manifest: 40 permissions.
+- **B24 Urdu, calendar and widgets.** Field direction follows the text, Eastern-digit addresses, Urdu matching in the
+  SQL searches, "Add Urdu keyboard" hint; Gregorian + Hijri and prayer times on the start page (off by default; adhan
+  4.4.6, MIT); the 4×1 search widget (receiver in the vidorax-web manifest). Native d596da5, 959294e. No database
+  change.
+- **B17 Capture, print and PDF.** Screenshot and stitched full-page capture (Pictures/VidoraX or share), Print /
+  Save as PDF, Save page offline (read-only viewer activity, per profile, reading-list copies), in-app PDF viewer and
+  open choice (PDFs now come to JS first), Download image. Native a5994b0, a474790, 0964d8e, c390a73.
+  DATABASE_VERSION 8. Merged manifest: 40 permissions.
+- **B2 Tab groups and timeline.** Groups (menu, 8 colours, collapse, close, group by site, opener option), timeline,
+  the last 10 closed groups; tab envelope schema 3 read by fields; incognito groups never saved. No native code.
+
+### 4.35 Browser — Faran packages (branch `faran/browser`, from 2026-11-03)
+
+Full log with test evidence: `docs/work-log/faran-browser.md`. Branched from `0e188aa` (B6 on `hamza/browser`); local
+only. Hamza's unfinished B8 start is parked on `hamza/b8-wip`.
+
+- **B20 Profiles, guest mode, backup and restore, export, tab windows.** Up to 5 browser profiles (Browser settings →
+  Profiles and guest mode; Browser menu → Profile), each with its own tabs, bookmarks, history, searches, browser
+  settings and — through WebView profiles — cookies and site data; the default profile is today's data unchanged.
+  Guest mode starts empty and is wiped when it ends (App Lock asks for the PIN). Backup: one JSON file of every
+  profile (no tabs, downloads, App Lock or logins); Restore merges it after a summary. Export: bookmark file for other
+  browsers + history CSV. Move tab to new window: a native window next to the app. Native: patch hook
+  `beforeWebViewSetup`; VidoraWeb `isWebProfileSupported`, `setWebProfile`, `deleteWebProfile`,
+  `getWebProfileNames`, `openBrowserWindow`, `closeBrowserWindows`, `onBrowserWindow`; VidoraMedia
+  `setCookieProfile`. No new permission or library.
+- **B12 Privacy controls.** Browser settings → Privacy and security: cookies (Allow all / Block third-party, the
+  default / Block all), Do Not Track + Global Privacy Control, HTTPS-only mode (always on in release builds, which
+  can't open http; the failure page says "No secure version of this site"), the insecure page warning (cleartext
+  builds only), JavaScript with per-site exceptions, and Site data (list, clear one, clear all). The lock in the
+  address bar opens the site sheet: connection, certificate with SHA-256, cookies, storage, JavaScript for the site,
+  Clear site data. All per profile. Native VidoraWeb `setCookiesEnabled`, `getCertificate`, `listSiteData`,
+  `clearSiteData`, `clearAllSiteData`, `getCookieCount`, `isCleartextAllowed`. Known WebView limits (cookies kept while
+  blocked, Cache Storage on WebView without `DELETE_BROWSING_DATA`) are in the work log. No new permission or library.
+- **Integration (2026-11-13, branch `integration/browser`).** `hamza/browser` + `faran/browser`. Final test fixed
+  incognito (the `webProfile` prop is now declared in react-native-webview's codegen spec by the patch script), React
+  Compiler cached reads of external stores (tab groups, capture, devtools, data saver, tab sound, incognito state —
+  `'use no memo'` or a real snapshot), and the reader's header under the status bar. Second pass: a link from another
+  app is no longer lost on a cold start (queued until the tab's WebView exists), grouped tabs open their options on
+  long-press, B2 drop-a-tab-onto-another built, Mute / Unmute label, Urdu prayer countdown. Hamza's open questions
+  decided (viewer kept, new defaults kept, detectability accepted). Coverage and what wasn't checked:
+  `docs/work-log/faran-browser.md`, "Integration".
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

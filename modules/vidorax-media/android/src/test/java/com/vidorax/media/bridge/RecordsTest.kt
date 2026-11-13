@@ -136,6 +136,15 @@ class RecordsTest {
   }
 
   @Test
+  fun connectionsPerFileDefaultsToThreeAndIsRangeChecked() {
+    assertEquals("an older bundle that sends no value gets the default", 3, DownloadSettingsRecord().toModel().connectionsPerFile)
+    assertEquals(1, DownloadSettingsRecord(connectionsPerFile = 1).toModel().connectionsPerFile)
+    assertEquals(4, DownloadSettingsRecord(connectionsPerFile = 4).toModel().connectionsPerFile)
+    assertInvalid { DownloadSettingsRecord(connectionsPerFile = 0).toModel() }
+    assertInvalid { DownloadSettingsRecord(connectionsPerFile = 5).toModel() }
+  }
+
+  @Test
   fun legacyMetadataNeedsAnIdAndLeavesBlankFieldsUnchanged() {
     assertInvalid { LegacyMetadataRecord().toModel() }
     assertEquals(
@@ -147,5 +156,71 @@ class RecordsTest {
   private fun assertInvalid(block: () -> Unit) {
     val error = assertThrows(CodedException::class.java) { block() }
     assertEquals("ERR_INVALID_REQUEST", error.code)
+  }
+}
+
+class SpeedLimitRecordsTest {
+  @Test fun theGlobalSpeedLimitIsOptionalAndZeroMeansOff() {
+    org.junit.Assert.assertNull(DownloadSettingsRecord().toModel().speedLimitBytesPerSecond)
+    org.junit.Assert.assertNull(DownloadSettingsRecord(speedLimitBytesPerSecond = 0.0).toModel().speedLimitBytesPerSecond)
+    org.junit.Assert.assertEquals(
+      524288L,
+      DownloadSettingsRecord(speedLimitBytesPerSecond = 524288.0).toModel().speedLimitBytesPerSecond,
+    )
+    org.junit.Assert.assertThrows(Exception::class.java) {
+      DownloadSettingsRecord(speedLimitBytesPerSecond = -1.0).toModel()
+    }
+  }
+
+  @Test fun bandwidthOptionsTreatMissingAsOff() {
+    org.junit.Assert.assertNull(DownloadBandwidthRecord().limit())
+    org.junit.Assert.assertNull(DownloadBandwidthRecord(speedLimitBytesPerSecond = 0.0).limit())
+    org.junit.Assert.assertEquals(262144L, DownloadBandwidthRecord(speedLimitBytesPerSecond = 262144.0).limit())
+  }
+}
+
+/** F3: the download-hours and condition settings from JavaScript. */
+class ConditionRecordsTest {
+  @Test fun windowAndRulesAreReadAndDefaultOff() {
+    val off = DownloadSettingsRecord().toModel()
+    org.junit.Assert.assertNull(off.window)
+    org.junit.Assert.assertFalse(off.notOnRoaming || off.pauseOnLowBattery || off.onlyWhileCharging)
+    org.junit.Assert.assertEquals("en", off.language)
+
+    val on = DownloadSettingsRecord(
+      downloadWindow = DownloadWindowRecord(startMinute = 22 * 60, endMinute = 6 * 60, days = listOf(5, 6)),
+      notOnRoaming = true,
+      pauseOnLowBattery = true,
+      onlyWhileCharging = true,
+      language = "ur",
+    ).toModel()
+    org.junit.Assert.assertEquals(com.vidorax.media.model.DownloadWindow(1320, 360, setOf(5, 6)), on.window)
+    org.junit.Assert.assertTrue(on.notOnRoaming && on.pauseOnLowBattery && on.onlyWhileCharging)
+    org.junit.Assert.assertEquals("ur", on.language)
+    org.junit.Assert.assertEquals("an unknown language is English", "en", DownloadSettingsRecord(language = "fr").toModel().language)
+  }
+
+  @Test fun liveRecordingIsOffByDefaultWithATwoHourLimit() {
+    val off = DownloadSettingsRecord().toModel()
+    org.junit.Assert.assertFalse(off.liveRecording)
+    org.junit.Assert.assertEquals(120, off.liveRecordingMaxMinutes)
+    val on = DownloadSettingsRecord(liveRecording = true, liveRecordingMaxMinutes = 30).toModel()
+    org.junit.Assert.assertTrue(on.liveRecording)
+    org.junit.Assert.assertEquals(30, on.liveRecordingMaxMinutes)
+    org.junit.Assert.assertEquals(720, DownloadSettingsRecord(liveRecordingMaxMinutes = 720).toModel().liveRecordingMaxMinutes)
+    org.junit.Assert.assertThrows(Exception::class.java) { DownloadSettingsRecord(liveRecordingMaxMinutes = 14).toModel() }
+    org.junit.Assert.assertThrows(Exception::class.java) { DownloadSettingsRecord(liveRecordingMaxMinutes = 721).toModel() }
+  }
+
+  @Test fun anInvalidWindowIsRefused() {
+    org.junit.Assert.assertThrows(Exception::class.java) {
+      DownloadSettingsRecord(downloadWindow = DownloadWindowRecord(0, 60, emptyList())).toModel()
+    }
+    org.junit.Assert.assertThrows(Exception::class.java) {
+      DownloadSettingsRecord(downloadWindow = DownloadWindowRecord(0, 60, listOf(8))).toModel()
+    }
+    org.junit.Assert.assertThrows(Exception::class.java) {
+      DownloadSettingsRecord(downloadWindow = DownloadWindowRecord(1440, 60, listOf(1))).toModel()
+    }
   }
 }

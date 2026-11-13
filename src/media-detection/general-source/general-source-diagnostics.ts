@@ -22,6 +22,7 @@ type GeneralSourceDiagEvent =
   | 'dash_classified'
   | 'dash_rejected'
   | 'hls_classified'
+  | 'hls_live_classified'
   | 'hls_rejected'
   | 'native_refused'
   | 'claimed_by_manifest'

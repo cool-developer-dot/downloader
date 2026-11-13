@@ -15,3 +15,4 @@ export {
   type MiniPlayerPrimaryAction,
 } from './mini-player-policy';
 export { redrawPausedFrame, useRedrawOnAttach } from './use-redraw-on-attach';
+export { useVideoSurfaceAttachment } from './use-video-surface-attachment';

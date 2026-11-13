@@ -13,7 +13,13 @@ export const routePaths = {
   player: '/player',
   library: '/library',
   settings: '/settings',
+  /** The "Paste link" app shortcut (`vidorax://paste-link`). */
+  pasteLink: '/paste-link',
+  /** Batch Add (#292): several links at once, also opened by the Page Link Grabber (#484). */
+  batchAdd: '/batch-add',
   downloadSettings: '/download-settings',
+  /** Browser settings (Hamza's browser packages, B5 onward). */
+  browserSettings: '/browser-settings',
   appLockSetup: '/app-lock-setup',
   appLockDisable: '/app-lock-disable',
   appLockChangePin: '/app-lock-change-pin',
@@ -29,6 +35,14 @@ export const routePaths = {
   watchHistory: '/watch-history',
   bookmarks: '/bookmarks',
   favorites: '/favorites',
+  /** B22 #252: the user's notes (per browser profile). */
+  notes: '/notes',
+  /** B23 #261: every highlight (per browser profile). */
+  highlights: '/highlights',
+  /** B17 #178: pages saved for reading offline (per browser profile). */
+  savedPages: '/saved-pages',
+  /** B17 #264: the in-app PDF viewer (?path=<cache file>&title=). */
+  pdfViewer: '/pdf-viewer',
   /** Videos already on the device, played in VidoraX. */
   deviceVideos: '/device-videos',
 } as const;

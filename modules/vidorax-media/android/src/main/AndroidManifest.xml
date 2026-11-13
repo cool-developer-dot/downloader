@@ -61,6 +61,19 @@
       </intent-filter>
     </receiver>
 
+    <!-- Home-screen widget (H22): active downloads and "Paste link". Updated by the system and the engine only. -->
+    <receiver
+      android:name="com.vidorax.media.widget.DownloadsWidgetProvider"
+      android:exported="false"
+      android:label="@string/vidorax_widget_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/vidorax_downloads_widget_info" />
+    </receiver>
+
     <!-- Open with / share for library files. -->
     <provider
       android:name="com.vidorax.media.files.VidoraFileProvider"
@@ -71,5 +84,11 @@
         android:name="android.support.FILE_PROVIDER_PATHS"
         android:resource="@xml/vidorax_media_file_paths" />
     </provider>
+
+    <!-- Play while downloading: the in-app player reads a download's growing file through this; not exported. -->
+    <provider
+      android:name="com.vidorax.media.files.GrowingFileProvider"
+      android:authorities="${applicationId}.vidorax.growing"
+      android:exported="false" />
   </application>
 </manifest>

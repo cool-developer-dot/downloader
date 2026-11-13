@@ -11,10 +11,15 @@ import {
   createStackHeaderOptions,
   ProtectedRouteGuard,
 } from '@/navigation';
+import { IncomingMediaHost } from '@/player/IncomingMediaHost';
 import { PlayerSessionHost } from '@/player/session-host';
+import { DownloadSignInHost } from '@/screens/downloads/components/DownloadSignInHost';
 import { ReviewPromptHost } from '@/review';
+import { OrganizeHosts } from '@/screens/downloads/components/OrganizeHosts';
 import { MiniPlayerOverlay } from '@/screens/player/mini';
+import { ClipboardLinkBanner } from '@/browser/components/ClipboardLinkBanner';
 import { AppLockGate } from '@/security/app-lock';
+import { TourAccessibilityScope, TourHost } from '@/tour';
 
 export default function AppLayout() {
   const theme = useTheme();
@@ -80,85 +85,94 @@ export default function AppLayout() {
   return (
     <ProtectedRouteGuard>
       <AppLockGate>
-        <ReviewPromptHost />
-        {/* The one player session, shared by the Player screen and the mini player (outlives the Player screen). */}
-        <PlayerSessionHost />
-        <Stack screenOptions={screenOptions}>
-          <Stack.Screen
-            name={appStackRouteNames.tabs}
-            options={createHiddenHeaderOptions()}
-          />
-          <Stack.Screen name={appStackRouteNames.about} options={aboutHeaderOptions} />
-          <Stack.Screen
-            name={appStackRouteNames.support}
-            options={supportHeaderOptions}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.reportProblem}
-            options={reportProblemHeaderOptions}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.privacy}
-            options={privacyHeaderOptions}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.terms}
-            options={termsHeaderOptions}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.history}
-            options={historyHeaderOptions}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.watchHistory}
-            options={createHiddenHeaderOptions()}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.bookmarks}
-            options={createHiddenHeaderOptions()}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.favorites}
-            options={createHiddenHeaderOptions()}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.downloadSettings}
-            options={downloadSettingsHeaderOptions}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.appLockSetup}
-            options={appLockSetupHeaderOptions}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.appLockDisable}
-            options={appLockDisableHeaderOptions}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.appLockChangePin}
-            options={appLockChangePinHeaderOptions}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.appLockRotateRecovery}
-            options={appLockRotateRecoveryHeaderOptions}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.storage}
-            options={storageHeaderOptions}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.downloadDetails}
-            options={createHiddenHeaderOptions()}
-          />
-          <Stack.Screen
-            name={appStackRouteNames.player}
-            options={{
-              ...createHiddenHeaderOptions(),
-              ...createContentStyleOptions(theme.colors.black),
-              animation: 'fade',
-            }}
-          />
-        </Stack>
-        <MiniPlayerOverlay />
+        <TourAccessibilityScope>
+          {/* #299: "Sign in to download" for a server that asks for a user name and password. */}
+          <DownloadSignInHost />
+          <ReviewPromptHost />
+          {/* The one player session, shared by the Player screen and the mini player (outlives the Player screen). */}
+          <PlayerSessionHost />
+          <IncomingMediaHost />
+          <Stack screenOptions={screenOptions}>
+            <Stack.Screen
+              name={appStackRouteNames.tabs}
+              options={createHiddenHeaderOptions()}
+            />
+            <Stack.Screen name={appStackRouteNames.about} options={aboutHeaderOptions} />
+            <Stack.Screen
+              name={appStackRouteNames.support}
+              options={supportHeaderOptions}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.reportProblem}
+              options={reportProblemHeaderOptions}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.privacy}
+              options={privacyHeaderOptions}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.terms}
+              options={termsHeaderOptions}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.history}
+              options={historyHeaderOptions}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.watchHistory}
+              options={createHiddenHeaderOptions()}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.bookmarks}
+              options={createHiddenHeaderOptions()}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.favorites}
+              options={createHiddenHeaderOptions()}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.downloadSettings}
+              options={downloadSettingsHeaderOptions}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.appLockSetup}
+              options={appLockSetupHeaderOptions}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.appLockDisable}
+              options={appLockDisableHeaderOptions}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.appLockChangePin}
+              options={appLockChangePinHeaderOptions}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.appLockRotateRecovery}
+              options={appLockRotateRecoveryHeaderOptions}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.storage}
+              options={storageHeaderOptions}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.downloadDetails}
+              options={createHiddenHeaderOptions()}
+            />
+            <Stack.Screen
+              name={appStackRouteNames.player}
+              options={{
+                ...createHiddenHeaderOptions(),
+                ...createContentStyleOptions(theme.colors.black),
+                animation: 'fade',
+              }}
+            />
+          </Stack>
+          <OrganizeHosts />
+          <MiniPlayerOverlay />
+          <ClipboardLinkBanner />
+        </TourAccessibilityScope>
+        {/* The first-launch Browser tour, drawn over everything in the app window (tabs included). */}
+        <TourHost />
       </AppLockGate>
     </ProtectedRouteGuard>
   );

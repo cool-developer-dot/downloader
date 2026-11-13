@@ -13,6 +13,7 @@ import com.vidorax.media.model.ProbeRequest
 import com.vidorax.media.model.ProbeResult
 import com.vidorax.media.model.RequestContext
 import com.vidorax.media.model.VariantChoice
+import com.vidorax.media.net.MediaHttpException
 import com.vidorax.media.net.MediaRefusedException
 import com.vidorax.media.model.DownloadErrorCode
 import com.vidorax.media.model.ProcessingStage
@@ -22,19 +23,29 @@ import com.vidorax.media.process.MediaProcessor
 import com.vidorax.media.process.ProcessingInput
 import com.vidorax.media.process.ProcessingOperation
 import com.vidorax.media.process.ProcessingResult
+import com.vidorax.media.plan.HlsPlan
 import com.vidorax.media.plan.HlsPlanResult
 import com.vidorax.media.plan.HlsPlanner
+import com.vidorax.media.plan.HlsSegmentRef
+import com.vidorax.media.plan.LiveWindow
 import com.vidorax.media.plan.Probe
 import com.vidorax.media.transfer.HlsTransfer
 import com.vidorax.media.transfer.HlsTransferOutcome
 import com.vidorax.media.transfer.HlsTransferSpec
+import com.vidorax.media.transfer.LiveHlsRecorder
+import com.vidorax.media.transfer.LiveRecordHost
+import com.vidorax.media.transfer.LiveRecordOutcome
+import com.vidorax.media.transfer.LiveRecordSpec
+import com.vidorax.media.transfer.LiveSegmentIo
 import com.vidorax.media.transfer.ProgressiveTransfer
 import com.vidorax.media.transfer.TransferOutcome
+import com.vidorax.media.transfer.Throttle
 import com.vidorax.media.transfer.TransferSpec
 import com.vidorax.media.verify.VerifyExpectation
 import com.vidorax.media.verify.VerifyResult
 import com.vidorax.media.verify.Verifier
 import java.io.File
+import java.io.RandomAccessFile
 
 /**
  * The download engine orchestrates side effects through these narrow ports rather than the concrete components
@@ -44,6 +55,10 @@ import java.io.File
  */
 internal fun interface Prober {
   suspend fun probe(request: ProbeRequest): ProbeResult
+
+  /** F6: a live HLS stream classified for recording ([SourceKind.LIVE]), with the same refusals as a download. */
+  suspend fun probeLive(request: ProbeRequest): ProbeResult =
+    ProbeResult.Failure(ProbeFailure.LIVE_UNSUPPORTED, null, "Live recording is not available")
 }
 
 internal interface Transfers {
@@ -67,6 +82,20 @@ internal interface HlsDownloads {
   suspend fun plan(url: String, context: RequestContext, choice: VariantChoice?): HlsPlanResult
 
   suspend fun transfer(spec: HlsTransferSpec, onProgress: (bytesDone: Long, totalBytes: Long?) -> Unit): HlsTransferOutcome
+
+  /** F6: a live stream to record (same choice and refusals as [plan]; a playlist without an end is what is wanted). */
+  suspend fun planLive(url: String, context: RequestContext, choice: VariantChoice?): HlsPlanResult =
+    HlsPlanResult.Refused(ProbeResult.Failure(ProbeFailure.LIVE_UNSUPPORTED, null, "Live recording is not available"))
+
+  /** F6: records [plan]'s live playlist until [control] stops it or the stream ends ([LiveHlsRecorder]). */
+  suspend fun record(
+    plan: HlsPlan,
+    context: RequestContext,
+    spec: LiveRecordSpec,
+    throttle: Throttle,
+    control: LiveRecordControl,
+    onProgress: (bytes: Long, recordedUs: Long) -> Unit,
+  ): LiveRecordOutcome = throw MediaRefusedException(ProbeFailure.LIVE_UNSUPPORTED, "Live recording is not available")
 
   companion object {
     /** A host without HLS support: every HLS source is refused as unsupported, never half-downloaded. */
@@ -198,6 +227,8 @@ internal interface GalleryPublisher {
 
 internal class RealProber(private val probe: Probe) : Prober {
   override suspend fun probe(request: ProbeRequest): ProbeResult = probe.probe(request)
+
+  override suspend fun probeLive(request: ProbeRequest): ProbeResult = probe.probeLive(request)
 }
 
 internal class RealTransfers(private val transfer: ProgressiveTransfer) : Transfers {
@@ -219,6 +250,68 @@ internal class RealHlsDownloads(private val planner: HlsPlanner, private val hls
 
   override suspend fun transfer(spec: HlsTransferSpec, onProgress: (Long, Long?) -> Unit): HlsTransferOutcome =
     hls.transfer(spec, onProgress)
+
+  override suspend fun planLive(url: String, context: RequestContext, choice: VariantChoice?): HlsPlanResult =
+    planner.planLive(url, context, choice)
+
+  override suspend fun record(
+    plan: HlsPlan,
+    context: RequestContext,
+    spec: LiveRecordSpec,
+    throttle: Throttle,
+    control: LiveRecordControl,
+    onProgress: (Long, Long) -> Unit,
+  ): LiveRecordOutcome {
+    var playlistUrl = plan.mediaPlaylistUrl
+    // Segments without a token of their own get the playlist's: after a re-plan, the fresh playlist's.
+    var io = hls.liveIo(playlistUrl, context, throttle)
+    var replanned = false
+    val host = object : LiveRecordHost {
+      override suspend fun window(): LiveWindow = try {
+        planner.liveWindow(playlistUrl, context)
+      } catch (e: MediaHttpException) {
+        // A signed playlist link that expired during a long recording: ask the source for a fresh one, once — the
+        // same variant, never another quality.
+        if (e.statusCode !in setOf(401, 403) || replanned) throw e
+        replanned = true
+        val same = plan.selected?.let { VariantChoice(videoId = it.id, audioId = null, maxHeight = null) }
+        val fresh = (planner.planLive(plan.sourceUrl, context, same) as? HlsPlanResult.Ready)?.plan ?: throw e
+        playlistUrl = fresh.mediaPlaylistUrl
+        io = hls.liveIo(playlistUrl, context, throttle)
+        planner.liveWindow(playlistUrl, context)
+      }
+
+      override fun now(): Long = control.now()
+
+      override fun freeBytes(): Long = control.freeBytes()
+
+      override val stopRequested: Boolean get() = control.stopRequested
+
+      override suspend fun pause(ms: Long): Boolean = control.pause(ms)
+    }
+    val current = object : LiveSegmentIo {
+      override suspend fun append(raf: RandomAccessFile, writeAt: Long, ref: HlsSegmentRef, onBytes: (Long) -> Unit): Long =
+        io.append(raf, writeAt, ref, onBytes)
+
+      override suspend fun fetch(ref: HlsSegmentRef, file: File): File = io.fetch(ref, file)
+
+      override suspend fun appendFetched(raf: RandomAccessFile, writeAt: Long, file: File, url: String, onBytes: (Long) -> Unit): Long =
+        io.appendFetched(raf, writeAt, file, url, onBytes)
+    }
+    return LiveHlsRecorder(current).record(spec, host, onProgress)
+  }
+}
+
+/** F6: what the engine gives a recording — its clock, the free space, and the Stop button. */
+internal interface LiveRecordControl {
+  fun now(): Long
+
+  fun freeBytes(): Long
+
+  val stopRequested: Boolean
+
+  /** Waits [ms] or until Stop; true when stopped. */
+  suspend fun pause(ms: Long): Boolean
 }
 
 internal class RealDashDownloads(private val probe: Probe) : DashDownloads {
@@ -227,7 +320,23 @@ internal class RealDashDownloads(private val probe: Probe) : DashDownloads {
 }
 
 internal class RealMediaInspector(private val mediaInfo: MediaInfo) : MediaInspector {
-  override fun inspect(file: File): MediaMetadata = mediaInfo.read(file)
+  override fun inspect(file: File): MediaMetadata = withProgramStreamFacts(file, mediaInfo.read(file))
+}
+
+/**
+ * F4: Android's reader says little about MPEG program streams (no length; for MPEG-1 system streams not even the
+ * video). What it leaves out is filled from the stream's own bytes ([MpegProgramStream.inspect]); what it says wins.
+ */
+internal fun withProgramStreamFacts(file: File, metadata: MediaMetadata): MediaMetadata {
+  if (metadata.durationMs != null && metadata.width != null && metadata.hasVideo) return metadata
+  val ps = com.vidorax.media.plan.MpegProgramStream.inspect(file) ?: return metadata
+  return metadata.copy(
+    durationMs = metadata.durationMs ?: ps.durationMs,
+    width = metadata.width ?: ps.width,
+    height = metadata.height ?: ps.height,
+    hasVideo = metadata.hasVideo || ps.hasVideo,
+    videoCodec = metadata.videoCodec ?: ps.videoCodec,
+  )
 }
 
 internal class RealThumbnails(private val thumbnails: com.vidorax.media.library.Thumbnails) : ThumbnailMaker {
@@ -286,6 +395,23 @@ internal interface NetworkGate {
       override suspend fun awaitUsable(wifiOnly: Boolean) = Unit
 
       override suspend fun awaitUnusable(wifiOnly: Boolean) = kotlinx.coroutines.awaitCancellation()
+    }
+  }
+}
+
+/** F3: battery level, charging and roaming as the download rules need them. */
+internal interface DeviceConditions {
+  fun current(): DeviceSnapshot
+
+  /** The latest snapshot, emitted again whenever battery, charging or roaming change. */
+  val changes: kotlinx.coroutines.flow.Flow<DeviceSnapshot>
+
+  companion object {
+    /** No device information (unit tests, a host without sensors): never holds a download. */
+    val UNKNOWN = object : DeviceConditions {
+      override fun current() = DeviceSnapshot.UNKNOWN
+
+      override val changes: kotlinx.coroutines.flow.Flow<DeviceSnapshot> = kotlinx.coroutines.flow.emptyFlow()
     }
   }
 }

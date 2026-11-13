@@ -74,6 +74,31 @@ export async function runAppInitializer(): Promise<RoutePath> {
 
     syncMmkvFromStores();
 
+    try {
+      const { ensureBrowserProfiles } = await import('@/browser/profiles/profile-service');
+      // B20: WebView and downloads follow the browser profile in use before any page loads; guest data left by an
+      // app closed in guest mode is deleted.
+      await ensureBrowserProfiles();
+      const { ensurePrivacyControls } = await import('@/browser/privacy/privacy.service');
+      // B12: the profile's cookie jar follows Browser settings → Privacy (WebView keeps it only while the app runs).
+      ensurePrivacyControls();
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[bootstrap] browser profiles failed', error);
+      }
+    }
+
+    try {
+      const { runStartupBrowsingDataClear } = await import('@/browser/history/browsing-data.service');
+      // B10 #99: "Clear history on exit" clears the last session's browsing data at this cold start (the active
+      // profile's), before anything shows or reads it.
+      await runStartupBrowsingDataClear();
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('[bootstrap] clear on exit failed', error);
+      }
+    }
+
     await Promise.all([
       (async () => {
         try {
@@ -172,20 +197,65 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureV2DownloadBridge } = await import('@/downloads/v2/ensure-bridge');
       // Mirrors the v2 DownloadEngine (its records and library items) into the downloads store.
       ensureV2DownloadBridge();
+      const { ensureV2ProgressStats } = await import('@/downloads/v2/progress-stats-store');
+      // Average speed, active time and the speed graph of v2 downloads (in memory, this session only).
+      ensureV2ProgressStats();
       const { ensureFavoritesMigration } = await import('@/library/ensure-favorites-migration');
       // One-time: legacy favorites onto the library items they unambiguously name. Off the startup path.
       setTimeout(ensureFavoritesMigration, FAVORITES_MIGRATION_DELAY_MS);
+      const { ensureAfterDownloadAction } = await import('@/downloads/v2/ensure-after-download');
+      // Download Settings → After a download finishes (default: do nothing).
+      ensureAfterDownloadAction();
       const { ensureIncomingLinkHandling } = await import('@/browser/services/incoming-link.service');
       // A link shared to VidoraX, or opened through it as the device's browser, lands in the browser tab.
       ensureIncomingLinkHandling();
+      const { applyStartupOption } = await import('@/browser/startup/startup.service');
+      // B21 #233: Browser settings → Startup ("Continue where you left off" unless changed); a launch link wins.
+      applyStartupOption();
+      const { ensureBookmarkShortcutHandling } = await import('@/browser/bookmarks/bookmarks.service');
+      // B9 #87: a bookmark's home-screen shortcut opens its site in a new tab once App Lock is open.
+      ensureBookmarkShortcutHandling();
+      const { ensureSearchWidgetHandling } = await import('@/browser/urdu/search-widget.service');
+      // B24 #65: the home-screen search widget opens a new tab with the address bar focused, after App Lock.
+      ensureSearchWidgetHandling();
+      const { ensureBrowserWindowEvents } = await import('@/browser/profiles/browser-window.service');
+      // B20 #16: tabs moved to their own window come back, and their visits reach history.
+      ensureBrowserWindowEvents();
+      const { ensureIncomingMediaHandling } = await import('@/player/incoming-media.runtime');
+      // A video or audio file opened with VidoraX from another app plays as an external source (IncomingMediaHost).
+      ensureIncomingMediaHandling();
+      const { ensureFilenameNaming } = await import('@/downloads/v2/ensure-filename-naming');
+      // Download Settings → File naming applies to new downloads (the default keeps titles unchanged).
+      ensureFilenameNaming();
+      const { ensureDownloadOptions } = await import('@/downloads/v2/download-options-store');
+      // Quality sheet → Options: name, folder, per-download Save to Gallery (nothing changes unless used).
+      ensureDownloadOptions();
       downloadAppLifecycle.ensureAttached();
+      const { ensureDefaultTab } = await import('@/navigation/helpers/ensure-default-tab');
+      // Settings → Default tab: where the splash lands a returning user (Browser unless changed).
+      ensureDefaultTab();
       bindDownloadEngineToStore();
+      const { ensureSaveLocationCopies } = await import('@/downloads/v2/ensure-save-location');
+      // Download Settings → Save location: an extra copy of new downloads in a picked folder (off by default).
+      ensureSaveLocationCopies();
       ensureDownloadRecoveryListener();
+      const { ensureDataUsageCounting } = await import('@/downloads/v2/ensure-data-usage');
+      // Settings → Storage → Data usage: counts v2 download bytes (limits off by default; never pauses downloads).
+      ensureDataUsageCounting();
       ensureDownloadNotificationBridge();
+      const { ensureClipboardLinkMonitor } = await import('@/browser/services/clipboard-link-monitor');
+      // Download Settings → Copied links: only when on (default off), only on returning to the foreground.
+      ensureClipboardLinkMonitor();
       if (typeof ensureLibraryCompletionBridge === 'function') {
         ensureLibraryCompletionBridge();
       }
+      const { cleanUpPrivateVault } = await import('@/private-vault/vault-port');
+      // Private: playback files and half-written vault files an earlier run left behind are deleted.
+      cleanUpPrivateVault();
       void downloadEngine.recover();
+      const { ensureDebugLogs } = await import('@/diagnostics/ensure-debug-logs');
+      // Download Settings → History & logs → Debug logs (off by default; in memory only).
+      ensureDebugLogs();
 
       try {
         const { bindPlaybackPersistence } = await import(
@@ -202,6 +272,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
           );
         }
       }
+      const { ensureMediaTagCleanup } = await import('@/media-edit/ensure-media-tags');
+      // Edit after download: an item's artist tag goes with it when it is deleted.
+      ensureMediaTagCleanup();
 
       try {
         const { reconcilePendingExports } = await import(
@@ -213,6 +286,12 @@ export async function runAppInitializer(): Promise<RoutePath> {
           console.warn('[bootstrap] pending export reconcile failed', exportError);
         }
       }
+      const { ensureDuplicateReplacements } = await import('@/downloads/v2/ensure-duplicate-replacements');
+      // Duplicate Action → Replace: the old copy goes once its new copy completed (nothing pending by default).
+      ensureDuplicateReplacements();
+      const { ensureItemOrganizeCleanup } = await import('@/library/item-organize-store');
+      // A saved video's tags and note go with it when it is deleted.
+      ensureItemOrganizeCleanup();
     } catch (error) {
       if (__DEV__) {
         console.warn('[bootstrap] download engine init failed', error);

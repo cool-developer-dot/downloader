@@ -230,6 +230,43 @@ describe('Detecting video… only for the current video while it is actively res
     assert.equal(present(idle, { liveDetecting: false }).statusNotice, null);
   });
 
+  test('detection that runs out of time says the video can’t be downloaded, instead of nothing', () => {
+    playerOver('xa1b2c3');
+    const idle = { ...initialBrowserMediaActionState, pageUrl: PAGE };
+    assert.equal(
+      present(idle, { liveDetecting: false, liveDetectingExhausted: true }).statusNotice,
+      'UNSUPPORTED',
+    );
+  });
+
+  test('the give-up answer never replaces an offer, a verdict or detection still running', () => {
+    const b = playerOver('xd4e5f6');
+    // An offer for the current video: the card wins.
+    const offered = present(offerFor(b), { liveDetecting: false, liveDetectingExhausted: true });
+    assert.equal(offered.showCard, true);
+    assert.equal(offered.statusNotice, null);
+    const idle = { ...initialBrowserMediaActionState, pageUrl: PAGE };
+    // Still resolving, a verdict of its own, a hidden player, or no current video: unchanged.
+    assert.equal(present(idle, { liveDetecting: true, liveDetectingExhausted: false }).statusNotice, 'DETECTING');
+    assert.equal(
+      present(idle, { liveDetecting: false, liveDetectingExhausted: true, liveVerdict: 'PROTECTED' }).statusNotice,
+      'PROTECTED',
+    );
+    assert.equal(
+      present(idle, { liveDetecting: false, liveDetectingExhausted: true, liveOwnerHidden: true }).statusNotice,
+      null,
+    );
+    assert.equal(
+      present(idle, {
+        liveDetecting: false,
+        liveDetectingExhausted: true,
+        liveContentIdentity: null,
+        liveOwnershipConfidence: null,
+      }).statusNotice,
+      null,
+    );
+  });
+
   test('no Detecting while the player is hidden, on Home, or without a current video', () => {
     playerOver('xa1b2c3');
     const idle = { ...initialBrowserMediaActionState, pageUrl: PAGE };

@@ -10,6 +10,7 @@ import { Chip } from '@/components/common/Chip';
 import { SearchField } from '@/components/inputs/SearchField';
 import type { LibraryFilter, LibrarySort, LibraryViewMode } from '@/library';
 import { useTranslation, type TranslationKey } from '@/localization';
+import { PlayerTagFilterChip } from '@/screens/downloads/components/OrganizeFilterChips';
 
 import {
   LIBRARY_FILTER_OPTIONS,
@@ -189,6 +190,7 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
             onPress={onOpenSort}
             testID={`${testID}-sort-chip`}
           />
+          <PlayerTagFilterChip testID={testID} />
         </ScrollView>
 
         <IconButton

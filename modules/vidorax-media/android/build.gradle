@@ -14,10 +14,18 @@ android {
     // On-device instrumented E2E of the real engine (src/androidTest); JVM unit tests are unaffected.
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
   }
+  // Robolectric tests read the module's own string resources (notification texts in values/ and values-ur/).
+  testOptions {
+    unitTests {
+      includeAndroidResources = true
+    }
+  }
 }
 
 dependencies {
   implementation 'com.facebook.react:react-android'
+  // B20: the browser profile's cookie jar (ProfileStore). The same androidx.webkit react-native-webview uses.
+  implementation "androidx.webkit:webkit:1.14.0"
 
   // Must stay identical to the Media3 version in node_modules/expo-video/android/build.gradle:
   // two Media3 versions in one APK crash at runtime.

@@ -1,15 +1,22 @@
 import { memo } from 'react';
-import { ScrollView } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
 import { QuickAccessGrid } from '@/browser/components/QuickAccess';
+import { GuestModeCard } from '@/browser/components/ProfileSwitcher/GuestModeCard';
 import { START_PAGE_QUICK_SITES } from '@/browser/config/quick-sites';
 import { useBrowserHome } from '@/browser/hooks/useBrowserHome';
-import { useTheme } from '@/hooks/use-theme';
+import { ThemeModeOverrideContext, useTheme } from '@/hooks/use-theme';
+import { StartPageBackdrop, useStartPageBackground } from '@/browser/startup/components/StartPageBackdrop';
 import { useTranslation } from '@/localization';
+import { useTourTargetRef } from '@/tour/tour-targets';
+import { useSaverEffects } from '@/browser/data-saver/data-saver.service';
+import { LightweightHome } from '@/browser/data-saver/components/LightweightHome';
 
 import { browserHomeTokens } from './browser-home-tokens';
+import { ScanQrButton } from '@/browser/share-qr/components/ScanQrButton';
+import { StartPageCards } from '@/browser/calendar/components/StartPageCards';
 
 export type BrowserHomeViewProps = {
   testID?: string;
@@ -25,8 +32,15 @@ export const BrowserHomeView = memo(function BrowserHomeView({
   const theme = useTheme();
   const { t } = useTranslation();
   const { openUrl } = useBrowserHome();
+  const quickAccessRef = useTourTargetRef('startPage');
+  // B21 #245: a colour, gradient or photo behind the page (dark layer + dark palette); the theme by default.
+  const background = useStartPageBackground();
+  const custom = background.kind !== 'theme';
+  // B18 #285 / #188: the text-only start page (its own switch, or Lite mode).
+  const lightHome = useSaverEffects().lightHome;
+  if (lightHome) return <LightweightHome onOpen={openUrl} />;
 
-  return (
+  const page = (
     <ScrollView
       testID={testID}
       keyboardShouldPersistTaps="handled"
@@ -35,8 +49,9 @@ export const BrowserHomeView = memo(function BrowserHomeView({
         paddingTop: browserHomeTokens.contentPaddingTop,
         paddingBottom: browserHomeTokens.contentPaddingBottom,
       }}
-      style={{ flex: 1, backgroundColor: theme.colors.background }}
+      style={{ flex: 1, backgroundColor: custom ? 'transparent' : theme.colors.background }}
       accessibilityLabel={t('browser.home.startPageA11y')}>
+      <GuestModeCard />
       <Box
         testID="browser-start-intro"
         style={{
@@ -56,9 +71,13 @@ export const BrowserHomeView = memo(function BrowserHomeView({
           accessibilityLabel={t('browser.home.startSubtitle')}>
           {t('browser.home.startSubtitle')}
         </Text>
+        {/* B22 #30 */}
+        <ScanQrButton testID="browser-home-scan" />
       </Box>
 
       <Box
+        ref={quickAccessRef}
+        collapsable={false}
         gap={browserHomeTokens.quickAccessHeadingGap}
         accessibilityLabel={t('home.quickAccessA11y')}>
         <Text
@@ -74,6 +93,18 @@ export const BrowserHomeView = memo(function BrowserHomeView({
           testID="browser-quick-access-grid"
         />
       </Box>
+      {/* B24 #269 / #270: dates and prayer times (each only when switched on). */}
+      <StartPageCards />
     </ScrollView>
+  );
+
+  if (background.kind === 'theme') {
+    return page;
+  }
+  return (
+    <View style={{ flex: 1 }}>
+      <StartPageBackdrop background={background} />
+      <ThemeModeOverrideContext.Provider value="dark">{page}</ThemeModeOverrideContext.Provider>
+    </View>
   );
 });

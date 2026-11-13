@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Quick Add Shortcut (#515): long-press the app icon -> "Paste link" opens vidorax://paste-link (no permission). -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+  <shortcut
+    android:shortcutId="paste_link"
+    android:enabled="true"
+    android:icon="@mipmap/ic_launcher"
+    android:shortcutShortLabel="@string/shortcut_paste_link_short"
+    android:shortcutLongLabel="@string/shortcut_paste_link_long">
+    <intent
+      android:action="android.intent.action.VIEW"
+      android:data="vidorax://paste-link"
+      android:targetPackage="com.vidorax.fast.videodownloader"
+      android:targetClass="com.anonymous.vidorax.MainActivity" />
+  </shortcut>
+</shortcuts>

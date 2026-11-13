@@ -6,6 +6,7 @@ import {
   type OmniboxSuggestion,
 } from '@/browser/suggestions';
 import { useBookmarksStore } from '@/store/bookmarks';
+import { useSettingsStore } from '@/store/settings';
 import { useHistoryStore } from '@/store/history';
 import { useRecentSearchesStore } from '@/store/recent-searches';
 
@@ -37,7 +38,12 @@ export function useOmniboxSuggestions({
       `${state.total}:${state.items[0]?.id ?? ''}:${state.items[0]?.searchedAt ?? ''}`,
   );
 
-  const sourceEpoch = `${historySig}|${bookmarkSig}|${recentSig}`;
+  // B5 #61: "Address bar suggestions" off → no history, bookmark or recent-search rows (the typed row stays).
+  const localSuggestions = useSettingsStore((state) => state.searchSuggestions !== false);
+  // A search-engine change re-labels the search row.
+  const searchEngine = useSettingsStore((state) => state.searchEngine);
+
+  const sourceEpoch = `${historySig}|${bookmarkSig}|${recentSig}|${localSuggestions ? 1 : 0}|${searchEngine}`;
 
   useEffect(() => {
     suggestionService.invalidate();
@@ -61,7 +67,9 @@ export function useOmniboxSuggestions({
       setLoading(true);
 
       void suggestionService
-        .getSuggestions(query)
+        .getSuggestions(query, {
+          include: { history: localSuggestions, bookmarks: localSuggestions, recentSearches: localSuggestions },
+        })
         .then((results) => {
           if (requestId !== requestIdRef.current) {
             return;
@@ -81,7 +89,7 @@ export function useOmniboxSuggestions({
     return () => {
       clearTimeout(timer);
     };
-  }, [debounceMs, enabled, query, sourceEpoch]);
+  }, [debounceMs, enabled, localSuggestions, query, sourceEpoch]);
 
   const clearSuggestions = useCallback(() => {
     requestIdRef.current += 1;

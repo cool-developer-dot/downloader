@@ -13,7 +13,8 @@ export type BrowserDiagTag =
   | 'BrowserMedia'
   | 'BrowserWebView'
   | 'BrowserHistory'
-  | 'BrowserDesktop';
+  | 'BrowserDesktop'
+  | 'BrowserFullscreen';
 
 export type BrowserNavEvent =
   | 'request'
@@ -319,6 +320,10 @@ export function logBrowserHistory(fields: BrowserDiagFields = {}): void {
   logBrowserDiag('BrowserHistory', fields);
 }
 
+export function logBrowserFullscreen(fields: BrowserDiagFields = {}): void {
+  logBrowserDiag('BrowserFullscreen', fields);
+}
+
 export function logBrowserDesktop(fields: BrowserDiagFields = {}): void {
   logBrowserDiag('BrowserDesktop', fields);
 }
@@ -336,6 +341,7 @@ export const browserRuntimeDiagnosticsContract = {
     'BrowserWebView',
     'BrowserHistory',
     'BrowserDesktop',
+    'BrowserFullscreen',
   ] as const,
   blockedKeys: BLOCKED_KEYS,
 };

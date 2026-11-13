@@ -1,12 +1,14 @@
 package com.vidorax.media.engine
 
 import com.vidorax.media.AlreadyDownloadedException
+import com.vidorax.media.InvalidRequestException
 import com.vidorax.media.InvalidStateException
 import com.vidorax.media.NotFoundException
 import com.vidorax.media.library.MediaMetadata
 import com.vidorax.media.library.MediaTypes
 import com.vidorax.media.library.StoragePaths
 import com.vidorax.media.model.Container
+import com.vidorax.media.model.DownloadBandwidth
 import com.vidorax.media.model.DownloadErrorCode
 import com.vidorax.media.model.DownloadProgress
 import com.vidorax.media.model.DownloadRecord
@@ -22,18 +24,19 @@ import com.vidorax.media.model.ProgressPhase
 import com.vidorax.media.model.RequestContext
 import com.vidorax.media.model.SourceKind
 import com.vidorax.media.model.VariantChoice
+import com.vidorax.media.net.DownloadCredentials
 import com.vidorax.media.net.MediaHttpException
 import com.vidorax.media.net.MediaNetworkException
 import com.vidorax.media.net.MediaRefusedException
-import com.vidorax.media.plan.HlsPlan
-import com.vidorax.media.plan.HlsPlanResult
-import com.vidorax.media.transfer.HlsCheckpoint
-import com.vidorax.media.transfer.HlsTransferSpec
 import com.vidorax.media.plan.DashResolution
 import com.vidorax.media.plan.DashTrack
 import com.vidorax.media.plan.DashTrackSource
+import com.vidorax.media.plan.HlsPlan
+import com.vidorax.media.plan.HlsPlanResult
+import com.vidorax.media.plan.MpegProgramStream
 import com.vidorax.media.plan.SplitResolution
 import com.vidorax.media.plan.TrackRole
+import com.vidorax.media.process.AviHeader
 import com.vidorax.media.process.MediaProcessor
 import com.vidorax.media.process.ProcessingInput
 import com.vidorax.media.process.ProcessingOperation
@@ -41,6 +44,16 @@ import com.vidorax.media.process.ProcessingResult
 import com.vidorax.media.process.TrackContainer
 import com.vidorax.media.process.TrackContainers
 import com.vidorax.media.process.TrackFile
+import com.vidorax.media.transfer.BandwidthLimiter
+import com.vidorax.media.transfer.HlsCheckpoint
+import com.vidorax.media.transfer.HlsTransferSpec
+import com.vidorax.media.transfer.LiveCheckpoint
+import com.vidorax.media.transfer.LiveRecordOutcome
+import com.vidorax.media.transfer.LiveRecordSpec
+import com.vidorax.media.transfer.LiveStopReason
+import com.vidorax.media.transfer.PartProgress
+import com.vidorax.media.transfer.RangedDownload
+import com.vidorax.media.transfer.Throttle
 import com.vidorax.media.transfer.TrackDone
 import com.vidorax.media.transfer.TransferOutcome
 import com.vidorax.media.transfer.TransferSpec
@@ -50,11 +63,12 @@ import java.io.File
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.async
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.coroutineScope
@@ -63,6 +77,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import java.util.TimeZone
 
 /**
  * The download engine. It owns the queue and the `downloads` table and drives each download through:
@@ -95,6 +113,10 @@ internal class DownloadEngine(
   private val paths: StoragePaths,
   private val scope: CoroutineScope,
   private val network: NetworkGate = NetworkGate.ALWAYS_USABLE,
+  /** F3: battery, charging and roaming for the download rules. */
+  private val device: DeviceConditions = DeviceConditions.UNKNOWN,
+  /** F3: the zone the daily download hours are in (the device's own). */
+  private val zone: () -> TimeZone = { TimeZone.getDefault() },
   private val freeSpace: FreeSpace = FreeSpace { Long.MAX_VALUE },
   initialSettings: DownloadSettings = DownloadSettings.DEFAULT,
   /** Persists the settings, so a download that resumes before JavaScript runs still obeys them. */
@@ -105,13 +127,25 @@ internal class DownloadEngine(
   private val split: SplitDownloads = SplitDownloads.UNSUPPORTED,
   /** Keep / remux / merge / transcode of what the transfers downloaded, before it becomes a library file. */
   private val processing: MediaProcessing = MediaProcessing.PASSTHROUGH,
+  /** #494: the file extension each download asked for (a safe alias of its container only); none = today's naming. */
+  private val preferredExtensions: PreferredExtensions = PreferredExtensions(),
+  /** #480: each download's own "Wi-Fi only"; a download without one follows [DownloadSettings.wifiOnly]. */
+  private val networkChoices: NetworkChoices = NetworkChoices(),
   /** Videos the user already has: a second download of one of them is refused as a duplicate. */
   private val savedVideos: SavedVideos = SavedVideos.NONE,
+  /** H12: downloads the user chose to keep although they already had the video; none by default. */
+  private val duplicateBypass: DuplicateBypass = DuplicateBypass(),
   /** The automatic device-gallery copy of each completed download. */
   private val gallery: GalleryPublisher = GalleryPublisher.NONE,
+  /** H4: the user's start order and queues; empty (the default) is today's first-come order. */
+  private val queueOrder: QueueOrderBook = QueueOrderBook(),
   /** Backoff sleeps; injectable so tests do not wait in real time. */
   private val retryDelay: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
+  /** #332 Retry limit ([RetryLimit]): null is Automatic, today's [MAX_NETWORK_ATTEMPTS]. Read at each failure. */
+  private val retryLimit: () -> Int? = { null },
   private val now: () -> Long = System::currentTimeMillis,
+  /** H20 Repair (#412): asks the server about a failed download's partial files; none = never changes anything. */
+  private val partialChecks: PartialChecks = PartialChecks.NONE,
   private val idFactory: () -> String = { UUID.randomUUID().toString() },
 ) : DownloadEngineApi {
   private val progressFlow = sharedFlow<DownloadProgress>()
@@ -123,8 +157,30 @@ internal class DownloadEngine(
 
   private val slots = Slots(initialSettings.maxConcurrent)
 
+  /** Speed limits (F2): the global limit from the settings, per-download limits and Priority from `download_bandwidth`. */
+  private val bandwidth = BandwidthLimiter().apply { setGlobalLimit(initialSettings.speedLimitBytesPerSecond) }
+  private val bandwidthLoaded = AtomicBoolean(false)
+
+  /** F3 "Start at…": per-download start times from `download_schedule`, loaded once per process. */
+  private val schedules = ConcurrentHashMap<String, Long>()
+  private val schedulesLoaded = AtomicBoolean(false)
+
+  /** F3: the rule holding each `waiting_conditions` download, for its record (reason, until when). */
+  private val holds = ConcurrentHashMap<String, Hold>()
+
+  /**
+   * F3: bumped whenever an input of the rules changes — the settings, a start time, the device. Every wait and every
+   * running transfer's rule watch looks again on each bump (and when a time rule is due).
+   */
+  private val policyVersion = MutableStateFlow(0L)
+
+  init {
+    scope.launch { device.changes.collect { policyVersion.update { it + 1 } } }
+  }
+
   /** Serializes all state/generation reads and writes. */
   private val mutex = Mutex()
+  private val leftovers = LeftoverFiles(paths)
 
   /**
    * One finalization at a time, from the duplicate-content check to the library insert, so two downloads of the same
@@ -137,8 +193,20 @@ internal class DownloadEngine(
 
   private val activeJobs = ConcurrentHashMap<String, Job>()
 
+  /** #315: segments done / total of running segment downloads, for their progress events. */
+  private val segmentCounts = SegmentCounts(now)
+
   /** Guards startup reconciliation so it can never run twice and spawn duplicate workers. */
   private val restoreStarted = AtomicBoolean(false)
+
+  init {
+    // H4: the slot scheduler follows the user's queues and start order (today's first-come order when none is set),
+    // and a download that finished or was cancelled leaves them.
+    slots.order = queueOrder
+    scope.launch {
+      stateFlow.collect { if (it.state == DownloadState.COMPLETED || it.state == DownloadState.CANCELLED) queueOrder.forget(listOf(it.id)) }
+    }
+  }
 
   // --- startup reconciliation ---
 
@@ -151,22 +219,34 @@ internal class DownloadEngine(
    * Rules: PAUSED stays paused (bytes reconciled to what is on disk); QUEUED/PROBING re-run from a fresh probe;
    * DOWNLOADING resumes from the `.part` (HLS: from its checkpointed segment); PROCESSING is repaired from its
    * finalized file when one exists and verifies (idempotent, no redownload), otherwise re-run from the `.part`;
-   * COMPLETED/FAILED/CANCELLED are left untouched.
+   * COMPLETED/FAILED/CANCELLED are left untouched. With "Automatically resume interrupted downloads" off
+   * ([DownloadSettings.autoResume]), a download that had started (probing, downloading or waiting) is paused instead,
+   * with its bytes, for the user's Resume; one still queued keeps its place.
    */
   internal suspend fun restore() {
     if (!restoreStarted.compareAndSet(false, true)) return
-    for (listed in store.list(now())) {
+    // H4: downloads that finished meanwhile leave the start order, and the rest restart in it (a failed one keeps its
+    // queue for Retry), so the first free slots go to the user's first downloads.
+    val rows = store.list(now())
+    queueOrder.pruneTo(rows.filter { !it.state.isTerminal || it.state == DownloadState.FAILED }.map { it.id })
+    for (listed in QueueOrder.inStartOrder(rows, queueOrder.snapshot) { it.id }) {
       if (activeJobs.containsKey(listed.id)) continue
       val row = withIdentity(listed)
+      val resumeInterrupted = settings.autoResume
       when (row.state) {
         DownloadState.PAUSED -> reconcilePausedBytes(row)
-        DownloadState.QUEUED,
+        DownloadState.QUEUED -> requeueFromPart(row, keepBytes = false)
         DownloadState.PROBING,
         DownloadState.WAITING_NETWORK,
         DownloadState.WAITING_RETRY,
-        -> requeueFromPart(row, keepBytes = false)
-        DownloadState.DOWNLOADING -> requeueFromPart(row, keepBytes = true)
+        -> if (resumeInterrupted) requeueFromPart(row, keepBytes = false) else pauseInterrupted(row)
+        // Held by a rule, possibly mid-transfer: back in the queue with its bytes; the rules are looked at again.
+        DownloadState.WAITING_CONDITIONS,
+        DownloadState.DOWNLOADING,
+        -> if (resumeInterrupted) requeueFromPart(row, keepBytes = true) else pauseInterrupted(row)
         DownloadState.PROCESSING -> recoverProcessing(row)
+        // F6: a recording the process death interrupted is finalized from its checkpoint; it never records on.
+        DownloadState.RECORDING -> recoverRecording(row)
         DownloadState.COMPLETED, DownloadState.FAILED, DownloadState.CANCELLED -> Unit
       }
     }
@@ -192,7 +272,8 @@ internal class DownloadEngine(
 
   private fun checkpointFileFor(id: String): File = File(paths.workDir(id), HLS_CHECKPOINT_NAME)
 
-  private fun physicalPartBytes(id: String): Long = partFileFor(id).let { if (it.isFile) it.length() else 0L }
+  /** Bytes really downloaded into the `.part` (a multi-connection `.part` is pre-sized: its parts say how much). */
+  private fun physicalPartBytes(id: String): Long = PartProgress.bytesOnDisk(partFileFor(id))
 
   private fun audioPartFor(id: String): File = File(paths.workDir(id), AUDIO_PART_NAME)
 
@@ -205,9 +286,12 @@ internal class DownloadEngine(
   private fun resumableBytes(row: DownloadRow): Long = when (row.kind) {
     SourceKind.HLS ->
       (HlsCheckpoint.read(checkpointFileFor(row.id))?.partBytes ?: 0L) + (HlsCheckpoint.read(audioCheckpointFor(row.id))?.partBytes ?: 0L)
-    SourceKind.DASH, SourceKind.SPLIT -> physicalPartBytes(row.id) + audioPartFor(row.id).let { if (it.isFile) it.length() else 0L }
+    SourceKind.DASH, SourceKind.SPLIT -> physicalPartBytes(row.id) + PartProgress.bytesOnDisk(audioPartFor(row.id))
+    SourceKind.LIVE -> LiveCheckpoint.read(liveCheckpointFor(row.id))?.partBytes ?: 0L
     else -> physicalPartBytes(row.id)
   }
+
+  private fun liveCheckpointFor(id: String): File = File(paths.workDir(id), LIVE_CHECKPOINT_NAME)
 
   /** Paused work stays paused; only its byte counter is corrected to what is on disk so a later resume is truthful. */
   private suspend fun reconcilePausedBytes(row: DownloadRow) {
@@ -228,8 +312,20 @@ internal class DownloadEngine(
       val bytes = if (keepBytes) resumableBytes(row) else 0L
       save(current.copy(state = DownloadState.QUEUED, bytesDone = bytes, errorCode = null, errorMessage = null, updatedAt = now()))
     }
-    stateFlow.tryEmit(requeued.toRecord())
+    stateFlow.tryEmit(recordOf(requeued))
     launchWorker(row.id)
+  }
+
+  /**
+   * "Automatically resume interrupted downloads" is off: a download the process death or reboot interrupted waits
+   * paused, with what is on disk, until the user resumes it.
+   */
+  private suspend fun pauseInterrupted(row: DownloadRow) {
+    val paused = mutex.withLock {
+      val current = store.find(row.id) ?: return
+      save(current.copy(state = DownloadState.PAUSED, bytesDone = resumableBytes(row), errorCode = null, errorMessage = null, updatedAt = now()))
+    }
+    stateFlow.tryEmit(recordOf(paused))
   }
 
   private suspend fun recoverProcessing(row: DownloadRow) {
@@ -241,7 +337,7 @@ internal class DownloadEngine(
       val current = store.find(row.id) ?: return
       save(current.copy(state = DownloadState.QUEUED, bytesDone = resumableBytes(row), filePath = null, updatedAt = now()))
     }
-    stateFlow.tryEmit(requeued.toRecord())
+    stateFlow.tryEmit(recordOf(requeued))
     launchWorker(row.id)
   }
 
@@ -260,14 +356,14 @@ internal class DownloadEngine(
     val same = finalizeLock.withLock {
       runCatching { savedVideos.findByContent(dest, excludeId = row.id, audioOnly = audioOnly) }.getOrNull()
     }
-    if (same != null) {
+    if (same != null && !duplicateBypass.contains(row.id)) {
       dest.delete()
       val failed = mutex.withLock {
         val current = store.find(row.id) ?: return@withLock null
         if (current.state.isTerminal) return@withLock null
         save(current.copy(state = DownloadState.FAILED, errorCode = DownloadErrorCode.DUPLICATE, errorMessage = DUPLICATE_MESSAGE, updatedAt = now()))
       }
-      failed?.let { stateFlow.tryEmit(it.toRecord()) }
+      failed?.let { stateFlow.tryEmit(recordOf(it)) }
       cleanupWork(row.id)
       return true
     }
@@ -283,7 +379,7 @@ internal class DownloadEngine(
       saveCompleted(current.copy(state = DownloadState.COMPLETED, bytesDone = dest.length(), totalBytes = dest.length(), errorCode = null, errorMessage = null, updatedAt = now()))
     }
     completed?.let {
-      stateFlow.tryEmit(it.toRecord())
+      stateFlow.tryEmit(recordOf(it))
       cleanupWork(row.id)
       if (toGallery) gallery.publish(row.id)
     }
@@ -298,9 +394,27 @@ internal class DownloadEngine(
   override suspend fun probe(request: ProbeRequest): ProbeResult {
     // A stream verdict is about one variant: classify the one enqueue would pick with the same choice and settings.
     val classified = if (request.kind.isStream()) request.copy(variant = streamChoice(request.variant)) else request
+    if (classified.kind == SourceKind.LIVE) return probeLive(classified)
     val first = prober.probe(classified)
-    if (!needsSession(first, classified.request)) return first
-    return prober.probe(classified.copy(request = classified.request.copy(useCookies = true)))
+    if (!needsSession(first, classified.request)) return liveOffer(classified, first) ?: first
+    val second = prober.probe(classified.copy(request = classified.request.copy(useCookies = true)))
+    return liveOffer(classified.copy(request = classified.request.copy(useCookies = true)), second) ?: second
+  }
+
+  /**
+   * F6: with "Live recording (beta)" on, an HLS stream refused only because it is live is offered for recording
+   * ([SourceKind.LIVE]) — classified as a recording would meet it, so an encrypted or DRM live stream is still
+   * refused as protected. Live DASH stays refused.
+   */
+  private suspend fun liveOffer(request: ProbeRequest, result: ProbeResult): ProbeResult? {
+    if (request.kind != SourceKind.HLS) return null
+    if (result !is ProbeResult.Failure || result.reason != ProbeFailure.LIVE_UNSUPPORTED) return null
+    return if (settings.liveRecording) probeLive(request) else null
+  }
+
+  private suspend fun probeLive(request: ProbeRequest): ProbeResult {
+    if (!settings.liveRecording) return ProbeResult.Failure(ProbeFailure.LIVE_UNSUPPORTED, null, "Live recording is off")
+    return prober.probeLive(request)
   }
 
   /**
@@ -311,9 +425,12 @@ internal class DownloadEngine(
   private fun needsSession(result: ProbeResult, context: RequestContext): Boolean =
     result is ProbeResult.Failure && result.reason == ProbeFailure.HTTP_403 && !context.useCookies
 
-  /** The request context this download uses now (the stored one: a session adopted mid-way sticks). */
+  /**
+   * The request context this download uses now (the stored one: a session adopted mid-way sticks), keyed to the
+   * download so the HTTP client can add its own sign-in (#299, net/DownloadCredentials; the key is never stored).
+   */
   private suspend fun currentRequest(id: String, fallback: DownloadRow): RequestContext =
-    store.find(id)?.request ?: fallback.request
+    (store.find(id)?.request ?: fallback.request).copy(authKey = id)
 
   /** Records that this download needs the browsing session from now on — the flag only, never a cookie value. */
   private suspend fun adoptSession(id: String, gen: Long): RequestContext? = mutex.withLock {
@@ -348,11 +465,15 @@ internal class DownloadEngine(
   override suspend fun enqueueUnique(request: EnqueueRequest): EnqueueResult {
     val identity = identityOf(request)
     val result = mutex.withLock {
+      // H12 (#386): "Keep both" / "Replace" — this one request is not checked against the videos the user has.
+      skipNextDuplicateCheck = request.allowDuplicate && identity != null
       identity?.let { duplicateLocked(it) }?.let { return@withLock it }
-      EnqueueResult.Enqueued(createRow(request, identity).toRecord())
+      EnqueueResult.Enqueued(recordOf(createRow(request, identity)))
     }
     when (result) {
       is EnqueueResult.Enqueued -> {
+        // H12: its finished file is kept even when the user already has the same bytes (Keep both / Replace).
+        if (request.allowDuplicate) duplicateBypass.add(result.record.id, live = liveDownloadIds())
         stateFlow.tryEmit(result.record)
         launchWorker(result.record.id)
       }
@@ -363,17 +484,34 @@ internal class DownloadEngine(
     return result
   }
 
-  /** The identity of the video a request is for, with the variant exactly as the row would store it. */
-  private fun identityOf(request: EnqueueRequest): String? = DownloadIdentity.of(
+  /**
+   * The identity of the video a request is for, with the variant exactly as the row would store it. None for a live
+   * recording (F6): every recording is new content, and an earlier recording of the stream must not block this one.
+   */
+  private fun identityOf(request: EnqueueRequest): String? = if (request.kind == SourceKind.LIVE) null else DownloadIdentity.of(
     url = request.identityUrl ?: request.url,
     variant = if (request.kind.isStream()) streamChoice(request.variant) else null,
     pageUrl = request.pageUrl,
   )
 
+  /**
+   * H12 (#386): set under [mutex] right before an `allowDuplicate` enqueue checks for the video, and consumed by that
+   * very check ([duplicateLocked]), so only that one request skips it.
+   */
+  private var skipNextDuplicateCheck = false
+
+  /** Downloads that can still finish (a failed one may be retried). */
+  private suspend fun liveDownloadIds(): List<String> =
+    store.list(now()).filter { !it.state.isTerminal || it.state == DownloadState.FAILED }.map { it.id }
+
   /** Must be called while holding [mutex]. A live download of the video first, then a saved copy of it. */
   private suspend fun duplicateLocked(identity: String): EnqueueResult? {
+    if (skipNextDuplicateCheck) {
+      skipNextDuplicateCheck = false
+      return null
+    }
     store.list(now()).firstOrNull { it.identityKey == identity && !it.state.isTerminal }
-      ?.let { return EnqueueResult.AlreadyDownloading(it.toRecord()) }
+      ?.let { return EnqueueResult.AlreadyDownloading(recordOf(it)) }
     val saved = runCatching { savedVideos.findByIdentity(identity) }.getOrNull() ?: return null
     return EnqueueResult.AlreadyDownloaded(saved.libraryItemId, saved.galleryUri)
   }
@@ -382,6 +520,16 @@ internal class DownloadEngine(
   private suspend fun createRow(request: EnqueueRequest, identity: String?): DownloadRow {
     val id = idFactory()
     val ts = now()
+    // #494: kept until the finished file is named; only a safe alias of its container is ever used.
+    PreferredExtensions.normalize(request.preferredExtension)?.let { extension ->
+      val live = store.list(ts).filter { !it.state.isTerminal || it.state == DownloadState.FAILED }.map { it.id }
+      preferredExtensions.put(id, extension, live)
+    }
+    // #480: kept while the download can still run (a failed one may be retried); none = the app setting.
+    request.wifiOnly?.let { wifiOnly ->
+      val live = store.list(ts).filter { !it.state.isTerminal || it.state == DownloadState.FAILED }.map { it.id }
+      networkChoices.put(id, wifiOnly, live)
+    }
     val row = DownloadRow(
       id = id,
       state = DownloadState.QUEUED,
@@ -406,10 +554,12 @@ internal class DownloadEngine(
       audioUrl = request.audioUrl.takeIf { request.kind == SourceKind.SPLIT },
     )
     store.create(row)
+    // #299: the sign-in the server asked for, held in memory for this download only (pinned to its https origin).
+    request.credentials?.let { DownloadCredentials.put(id, request.url, it) }
     return row
   }
 
-  private fun SourceKind?.isStream(): Boolean = this == SourceKind.HLS || this == SourceKind.DASH
+  private fun SourceKind?.isStream(): Boolean = this == SourceKind.HLS || this == SourceKind.DASH || this == SourceKind.LIVE
 
   /**
    * The variant an HLS or DASH download keeps for its whole life: the one the user picked, else the
@@ -420,6 +570,44 @@ internal class DownloadEngine(
     if (requested?.videoId == null && requested?.audioId == null && maxHeight == null) return null
     return VariantChoice(videoId = requested?.videoId, audioId = requested?.audioId, maxHeight = maxHeight)
   }
+
+  // --- start order and queues (H4: Priority #305, Move Priority #334, Multiple Queues #343) ---
+
+  override suspend fun downloadQueues(): QueueOrderSnapshot = pruneQueueOrder()
+
+  override suspend fun setDownloadOrder(ids: List<String>): QueueOrderSnapshot =
+    changeQueues { QueueOrder.withOrder(it, ids) }
+
+  override suspend fun moveDownloadsToQueue(ids: List<String>, queueId: String): QueueOrderSnapshot =
+    changeQueues { QueueOrder.withMoved(it, ids, queueId) }
+
+  override suspend fun setDownloadQueues(queues: List<DownloadQueue>): QueueOrderSnapshot =
+    changeQueues { QueueOrder.withQueues(it, queues) }
+
+  override fun isQueueHeld(downloadId: String): Boolean = queueOrder.snapshot.isHeld(downloadId)
+
+  /**
+   * Applies a change to the start order or the queues; no download changes state. Free slots then go to downloads
+   * that may start now (a resumed queue), and a waiting download whose queue was held or resumed is announced again,
+   * so the background runner stops or starts counting it as work.
+   */
+  private suspend fun changeQueues(change: (QueueOrderSnapshot) -> QueueOrderSnapshot): QueueOrderSnapshot {
+    val before = pruneQueueOrder()
+    val after = try {
+      queueOrder.update(change)
+    } catch (e: IllegalArgumentException) {
+      throw InvalidRequestException(e.message ?: "Invalid queue change")
+    }
+    slots.reconsider()
+    for (row in store.list(now())) {
+      if (row.state == DownloadState.QUEUED && before.isHeld(row.id) != after.isHeld(row.id)) stateFlow.tryEmit(row.toRecord())
+    }
+    return after
+  }
+
+  /** Only downloads that can still start keep a place: finished, cancelled and removed ones are dropped. */
+  private suspend fun pruneQueueOrder(): QueueOrderSnapshot =
+    queueOrder.pruneTo(store.list(now()).filter { !it.state.isTerminal || it.state == DownloadState.FAILED }.map { it.id })
 
   override suspend fun pause(id: String) {
     val paused = mutex.withLock {
@@ -433,7 +621,7 @@ internal class DownloadEngine(
     // Returns only once the transfer has really stopped: no bytes land after the caller sees PAUSED, and a
     // resume that follows cannot start a second writer on the same `.part`.
     stopWorker(id) // transfer sees CancellationException and preserves the .part
-    paused?.let { stateFlow.tryEmit(it.toRecord()) }
+    paused?.let { stateFlow.tryEmit(recordOf(it)) }
   }
 
   override suspend fun resume(id: String) =
@@ -441,6 +629,29 @@ internal class DownloadEngine(
 
   override suspend fun retry(id: String) =
     restart(id, allowed = setOf(DownloadState.FAILED), bumpAttempts = true, alreadyRunning = RUNNING)
+
+  /**
+   * H20 Repair Partial File (#412): checks a failed download's partial files against the server (PartialRepair) and
+   * retries it — from where it stopped when they check out, from zero when the server's file changed or the partial is
+   * damaged, re-fetching a damaged last segment. When the server cannot be asked now nothing changes. Only the
+   * download's own work files are touched (under [mutex], while it is still failed), never a finished file.
+   */
+  override suspend fun repairPartial(id: String): RepairOutcome {
+    val row = store.find(id) ?: throw NotFoundException("Unknown download $id")
+    if (row.state != DownloadState.FAILED) throw InvalidStateException("Cannot repair a ${row.state.wire} download")
+    val plan = PartialRepairer(paths::workDir, hls, dash, partialChecks).inspect(row, currentRequest(id, row))
+    if (plan.outcome == RepairOutcome.UNREACHABLE || plan.outcome == RepairOutcome.NOTHING) return plan.outcome
+    mutex.withLock {
+      val current = store.find(id) ?: throw NotFoundException("Unknown download $id")
+      // A Retry or Cancel meanwhile owns the files now: leave them alone.
+      if (current.state != DownloadState.FAILED) {
+        throw InvalidStateException("Cannot repair a ${current.state.wire} download")
+      }
+      plan.apply()
+    }
+    retry(id)
+    return plan.outcome
+  }
 
   private suspend fun restart(
     id: String,
@@ -463,7 +674,7 @@ internal class DownloadEngine(
         ),
       )
     }
-    stateFlow.tryEmit(requeued.toRecord())
+    stateFlow.tryEmit(recordOf(requeued))
     launchWorker(id)
   }
 
@@ -477,7 +688,7 @@ internal class DownloadEngine(
     // Wait for the worker to stop before deleting its work directory, so nothing recreates the `.part` after it.
     stopWorker(id)
     cleanupWork(id)
-    stateFlow.tryEmit(cancelled.toRecord())
+    stateFlow.tryEmit(recordOf(cancelled))
   }
 
   override suspend fun removeDownload(id: String) {
@@ -487,6 +698,9 @@ internal class DownloadEngine(
       bumpGenerationLocked(id)
       store.delete(id)
     }
+    bandwidth.forget(id)
+    schedules.remove(id)
+    holds.remove(id)
     cleanupWork(id)
   }
 
@@ -497,36 +711,77 @@ internal class DownloadEngine(
   }
 
   override suspend fun resumeAll() {
-    for (row in store.list(now())) {
+    for (row in QueueOrder.inStartOrder(store.list(now()), queueOrder.snapshot) { it.id }) {
       if (row.state == DownloadState.PAUSED) runCatching { resume(row.id) }
     }
   }
 
-  override suspend fun listDownloads(): List<DownloadRecord> = store.list(now()).map { it.toRecord() }
+  override suspend fun listDownloads(): List<DownloadRecord> {
+    loadSchedules()
+    return store.list(now()).map { recordOf(it) }
+  }
 
   override suspend fun setDownloadSettings(settings: DownloadSettings) {
     this.settings = settings
     slots.setLimit(settings.maxConcurrent)
+    bandwidth.setGlobalLimit(settings.speedLimitBytesPerSecond)
     runCatching { onSettingsChanged(settings) }
+    // F3: a changed rule applies at once to waiting and running downloads.
+    policyVersion.update { it + 1 }
+  }
+
+  override suspend fun setDownloadBandwidth(
+    id: String,
+    speedLimitBytesPerSecond: Long?,
+    priority: Boolean,
+  ): List<DownloadBandwidth> {
+    loadBandwidth()
+    store.find(id) ?: throw NotFoundException("Unknown download $id")
+    val limit = speedLimitBytesPerSecond?.takeIf { it > 0 }
+    store.saveBandwidth(DownloadBandwidth(id, limit, priority))
+    bandwidth.setDownloadLimit(id, limit)
+    if (priority) {
+      bandwidth.setPriority(id)
+    } else if (bandwidth.priority == id) {
+      bandwidth.setPriority(null)
+    }
+    return listDownloadBandwidth()
+  }
+
+  override suspend fun listDownloadBandwidth(): List<DownloadBandwidth> = store.listBandwidth()
+
+  /** Once per process: the persisted per-download limits and Priority (they survive restarts). */
+  private suspend fun loadBandwidth() {
+    if (!bandwidthLoaded.compareAndSet(false, true)) return
+    runCatching { store.listBandwidth() }.getOrNull()?.forEach { entry ->
+      bandwidth.setDownloadLimit(entry.id, entry.speedLimitBytesPerSecond)
+      if (entry.priority) bandwidth.setPriority(entry.id)
+    }
   }
 
   override suspend fun listCompletions(): List<CompletionRecord> = store.listCompletions()
 
   override suspend fun acknowledgeCompletions(ids: List<String>) = store.acknowledgeCompletions(ids)
 
-  override suspend fun clearTempFiles(): Long {
-    val keep = store.list(now()).filterNot { it.state.isTerminal }
+  override suspend fun clearTempFiles(): Long = cleanLeftovers(keepLegacyIds = null).bytes
+
+  override suspend fun measureLeftovers(keepLegacyIds: Set<String>?): LeftoverSummary =
+    // Under the engine's lock: no download can be created or finish between deciding what to keep and looking.
+    mutex.withLock { leftovers.measure(leftovers.find(keptWorkNames(), keepLegacyIds)) }
+
+  override suspend fun cleanLeftovers(keepLegacyIds: Set<String>?): LeftoverSummary =
+    mutex.withLock { leftovers.delete(leftovers.find(keptWorkNames(), keepLegacyIds)) }
+
+  /**
+   * The keep rule (F15): the work folder of every download still listed that may yet use it — queued, probing,
+   * downloading, paused, waiting, processing, recording, and failed (Retry resumes from its part). Only completed and
+   * cancelled downloads, and folders of no listed download, are leftovers.
+   */
+  private suspend fun keptWorkNames(): Set<String> =
+    store.list(now())
+      .filter { it.state != DownloadState.COMPLETED && it.state != DownloadState.CANCELLED }
       .map { paths.workDir(it.id).name }
       .toSet()
-    var freed = 0L
-    paths.workRoot.listFiles()?.forEach { dir ->
-      if (dir.isDirectory && dir.name !in keep) {
-        freed += dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
-        dir.deleteRecursively()
-      }
-    }
-    return freed
-  }
 
   // --- worker ---
 
@@ -563,9 +818,11 @@ internal class DownloadEngine(
 
   private suspend fun runWorker(id: String, gen: Long) {
     val start = store.find(id) ?: return
-    if (!awaitNetwork(id, gen)) return
+    loadBandwidth()
+    // F3: a download held by a rule waits here, before it takes a slot, so it never blocks the queue.
+    if (!awaitAllowed(id, gen)) return
     // Beyond the configured limit the download simply stays QUEUED until a slot frees.
-    slots.acquire()
+    slots.acquire(id)
     try {
       runTransfer(id, gen, start)
     } finally {
@@ -579,6 +836,7 @@ internal class DownloadEngine(
       SourceKind.HLS -> return runHls(id, gen, start)
       SourceKind.DASH -> return runDash(id, gen, start)
       SourceKind.SPLIT -> return runSplit(id, gen, start)
+      SourceKind.LIVE -> return runRecording(id, gen, start)
       else -> Unit
     }
     val probe = probeOrFail(id, gen, start) ?: return
@@ -641,7 +899,13 @@ internal class DownloadEngine(
     ) {
       // The transfer resumes against the validator it recorded beside the `.part`, so If-Range also holds after a
       // process death, a reboot or a renewed (re-signed) link.
-      val spec = TransferSpec(url = probe.finalUrl, context = currentRequest(id, start), partFile = partFile)
+      val spec = TransferSpec(
+        url = probe.finalUrl,
+        context = currentRequest(id, start),
+        partFile = partFile,
+        connections = connectionsFor(probe.sizeBytes),
+        throttle = bandwidth.throttleFor(id),
+      )
       streamWithProgress(id, gen) { onProgress -> transfers.transfer(spec, onProgress) }.also { TrackDone.mark(partFile) }
     } ?: return
 
@@ -655,7 +919,12 @@ internal class DownloadEngine(
 
     val expectation = VerifyExpectation(container = probe.container, expectedBytes = probe.sizeBytes ?: outcome.totalBytes)
     if (!verifiedOrFail(id, gen, partFile, expectation)) return
-    if (failedAsAudioOnly(id, gen, partFile, "This file has no video")) return
+    // An AVI whose own header declares a video stream is a video even when Android cannot decode its picture (DivX 3):
+    // it is kept for "Open with" (MediaProcessor), never refused as an audio file.
+    val declaredAviVideo = probe.container == Container.AVI && AviHeader.declaresVideoStream(partFile)
+    // Likewise an MPEG program stream with video packets: Android's reader misses the video of MPEG-1 system streams.
+    val programStreamVideo = probe.container == Container.MPEG_PS && MpegProgramStream.hasVideoStream(partFile)
+    if (!declaredAviVideo && !programStreamVideo && failedAsAudioOnly(id, gen, partFile, "This file has no video")) return
     // Kept byte for byte when it already is a playable file; a fragmented MP4, AVI or FLV is remuxed into an MP4.
     processAndFinalize(
       id,
@@ -781,6 +1050,172 @@ internal class DownloadEngine(
     plan.audio?.let { TrackJob.Segmented(TrackRole.AUDIO, it, audioPartFor(id), audioCheckpointFor(id)) },
   )
 
+  // --- live recording (F6) ---
+
+  /** Stop buttons of the recordings running now. */
+  private val recordingControls = ConcurrentHashMap<String, RecordingControl>()
+
+  private inner class RecordingControl : LiveRecordControl {
+    private val stop = MutableStateFlow(false)
+
+    fun stop() {
+      stop.value = true
+    }
+
+    override fun now(): Long = this@DownloadEngine.now()
+
+    override fun freeBytes(): Long = runCatching { freeSpace.bytes() }.getOrDefault(Long.MAX_VALUE)
+
+    override val stopRequested: Boolean get() = stop.value
+
+    override suspend fun pause(ms: Long): Boolean =
+      withTimeoutOrNull(ms.coerceAtLeast(0)) { stop.first { it } } != null || stop.value
+  }
+
+  /**
+   * F6: records a live stream from now until Stop, its end, the maximum length, low storage or a stall
+   * ([LiveHlsRecorder]), then finalizes what was recorded like any download. A recording that already has segments
+   * on disk (Retry, a restart) is finalized as it is — never continued with a hole in it.
+   */
+  private suspend fun runRecording(id: String, gen: Long, start: DownloadRow) {
+    if (!settings.liveRecording) {
+      fail(id, gen, DownloadErrorCode.LIVE_UNSUPPORTED, "Live recording is off")
+      return
+    }
+    LiveCheckpoint.read(liveCheckpointFor(id))?.takeIf { it.partBytes > 0 }?.let { saved ->
+      finalizeRecording(id, gen, start, saved.partBytes, saved.container ?: Container.TS, saved.hasDiscontinuities)
+      return
+    }
+    val plan = planOrFail(id, gen, start, live = true) ?: return
+    // The Stop button exists before the row says RECORDING: a Stop in between is never mistaken for a dead recording.
+    val control = RecordingControl()
+    recordingControls[id] = control
+    if (setState(id, gen, DownloadState.RECORDING) == null) {
+      recordingControls.remove(id, control)
+      return
+    }
+    paths.workDir(id).mkdirs()
+    val recorded = AtomicLong(0)
+    val spec = LiveRecordSpec(
+      partFile = partFileFor(id),
+      checkpointFile = liveCheckpointFor(id),
+      maxDurationUs = settings.liveRecordingMaxMinutes * 60L * 1_000_000L,
+      connections = settings.connectionsPerFile,
+    )
+    val outcome: LiveRecordOutcome? = try {
+      streamWithProgress(id, gen, recorded) { onProgress ->
+        hls.record(plan, currentRequest(id, start), spec, bandwidth.throttleFor(id), control) { bytes, recordedUs ->
+          recorded.set(recordedUs)
+          onProgress(bytes, null)
+        }
+      }
+    } catch (e: NetworkNoLongerAllowed) {
+      // Wi-Fi only, or a download rule, ended it: what was recorded is kept.
+      null
+    } catch (e: MediaRefusedException) {
+      fail(id, gen, mapProbeFailure(e.reason), e.message)
+      cleanupWork(id)
+      return
+    } finally {
+      recordingControls.remove(id, control)
+    }
+    val saved = LiveCheckpoint.read(liveCheckpointFor(id))
+    finalizeRecording(
+      id,
+      gen,
+      start,
+      bytes = outcome?.bytesWritten ?: saved?.partBytes ?: 0L,
+      container = outcome?.container ?: saved?.container ?: Container.TS,
+      hasDiscontinuities = outcome?.hasDiscontinuities ?: saved?.hasDiscontinuities ?: false,
+      reason = outcome?.reason,
+    )
+  }
+
+  /**
+   * The recorded segments → the library: verified like a downloaded stream, remuxed into an MP4 (an fMP4 or a
+   * transport stream), or kept as the transport stream it is when its timeline restarts (discontinuities), as a VOD
+   * stream with discontinuities is. Nothing recorded is a failure.
+   */
+  private suspend fun finalizeRecording(
+    id: String,
+    gen: Long,
+    start: DownloadRow,
+    bytes: Long,
+    container: Container,
+    hasDiscontinuities: Boolean,
+    reason: LiveStopReason? = null,
+  ) {
+    if (bytes <= 0L) {
+      when (reason) {
+        LiveStopReason.LOW_STORAGE -> fail(id, gen, DownloadErrorCode.NO_SPACE, "Not enough free space to record")
+        LiveStopReason.STOPPED -> fail(id, gen, DownloadErrorCode.NETWORK, "Stopped before anything was recorded")
+        else -> fail(id, gen, DownloadErrorCode.NETWORK, "Nothing was recorded: the stream sent no video")
+      }
+      cleanupWork(id)
+      return
+    }
+    val part = partFileFor(id)
+    // A crash can leave the start of a segment after the last whole one: the checkpoint says what is whole.
+    runCatching { java.io.RandomAccessFile(part, "rw").use { if (it.length() > bytes) it.setLength(bytes) } }
+    persistProgress(id, gen, bytes, bytes)
+    if (setState(id, gen, DownloadState.PROCESSING) == null) return
+    val expectation = VerifyExpectation(container = container.takeIf { it == Container.TS || it == Container.MP4 }, expectedBytes = bytes)
+    if (!verifiedOrFail(id, gen, part, expectation)) return
+    if (failedAsAudioOnly(id, gen, part, "This stream has no video")) return
+    if (hasDiscontinuities && container == Container.TS) {
+      finalizeAndComplete(id, gen, start, part, Container.TS, contentType = null)
+      return
+    }
+    processAndFinalize(
+      id,
+      gen,
+      start,
+      ProcessingInput.Single(TrackFile(part, MediaProcessor.trackContainer(container))),
+      keptContainer = container,
+      contentType = null,
+    )
+  }
+
+  /** F6: after a process death, finalize what an interrupted recording's checkpoint describes (no new segments). */
+  private suspend fun recoverRecording(row: DownloadRow) {
+    stopWorker(row.id)
+    val gen = mutex.withLock { bumpGenerationLocked(row.id) }
+    lateinit var job: Job
+    job = scope.launch(start = CoroutineStart.LAZY) {
+      try {
+        val saved = LiveCheckpoint.read(liveCheckpointFor(row.id))
+        finalizeRecording(row.id, gen, row, saved?.partBytes ?: 0L, saved?.container ?: Container.TS, saved?.hasDiscontinuities ?: false)
+      } catch (c: kotlinx.coroutines.CancellationException) {
+        throw c
+      } catch (e: Throwable) {
+        fail(row.id, gen, mapThrowable(e))
+      } finally {
+        activeJobs.remove(row.id, job)
+      }
+    }
+    activeJobs[row.id] = job
+    job.start()
+  }
+
+  override suspend fun stopRecording(id: String): DownloadRecord {
+    val row = store.find(id) ?: throw NotFoundException("Unknown download $id")
+    if (row.kind != SourceKind.LIVE || row.state.isTerminal || row.state == DownloadState.PROCESSING) {
+      throw InvalidStateException("This download is not recording")
+    }
+    recordingControls[id]?.let { control ->
+      // The recorder notices within one wait and the worker finalizes what was recorded.
+      control.stop()
+      return recordOf(row)
+    }
+    if (row.state == DownloadState.RECORDING) {
+      recoverRecording(row)
+      return recordOf(row)
+    }
+    // Not recording yet (queued, waiting, preparing): there is nothing to keep.
+    cancel(id)
+    return recordOf(store.find(id) ?: row)
+  }
+
   // --- split video + audio files ---
 
   /**
@@ -864,7 +1299,7 @@ internal class DownloadEngine(
 
   /** What is durably on disk for [job] right now (progress and the retry budget's high-water mark). */
   private fun onDisk(job: TrackJob): Long = when (job) {
-    is TrackJob.Whole -> if (job.partFile.isFile) job.partFile.length() else 0L
+    is TrackJob.Whole -> PartProgress.bytesOnDisk(job.partFile)
     is TrackJob.Segmented -> HlsCheckpoint.read(job.checkpoint)?.partBytes ?: 0L
   }
 
@@ -905,12 +1340,16 @@ internal class DownloadEngine(
       segmented = jobs.any { it is TrackJob.Segmented },
     ) {
       val context = currentRequest(id, start)
+      segmentCounts.track(
+        id,
+        jobs.filterIsInstance<TrackJob.Segmented>().map { SegmentCounts.Track(it.checkpoint, it.plan.segments.size) },
+      )
       streamWithProgress(id, gen) { onProgress ->
         val done = ArrayList<TrackResult>(jobs.size)
         var before = 0L
         for ((index, job) in jobs.withIndex()) {
           val later = jobs.drop(index + 1).sumOf { it.expectedBytes ?: 0L }
-          val result = runJob(job, context) { bytes, total ->
+          val result = runJob(job, context, bandwidth.throttleFor(id)) { bytes, total ->
             onProgress(before + bytes, total?.let { before + it + later })
           }
           done += result
@@ -919,6 +1358,7 @@ internal class DownloadEngine(
         done
       }
     } ?: return
+    segmentCounts.forget(id)
 
     val bytes = results.sumOf { it.bytes }
     persistProgress(id, gen, bytes, bytes)
@@ -948,18 +1388,46 @@ internal class DownloadEngine(
     processAndFinalize(id, gen, start, input, keptContainer = videoContainer, contentType = null)
   }
 
-  private suspend fun runJob(job: TrackJob, context: RequestContext, onProgress: (Long, Long?) -> Unit): TrackResult =
+  /**
+   * "Connections per file" for a file of [sizeBytes]: one for a file known to be too small to split (its requests stay
+   * exactly as they always were), the setting otherwise — the transfer still needs the server to prove its ranges.
+   */
+  private fun connectionsFor(sizeBytes: Long?): Int =
+    if (sizeBytes != null && sizeBytes < RangedDownload.MIN_PARALLEL_BYTES) 1 else settings.connectionsPerFile
+
+  private suspend fun runJob(
+    job: TrackJob,
+    context: RequestContext,
+    throttle: Throttle,
+    onProgress: (Long, Long?) -> Unit,
+  ): TrackResult =
     when (job) {
       is TrackJob.Whole -> {
         val bytes = TrackDone.length(job.partFile) ?: run {
-          val outcome = transfers.transfer(TransferSpec(url = job.url, context = context, partFile = job.partFile), onProgress)
+          val spec = TransferSpec(
+            url = job.url,
+            context = context,
+            partFile = job.partFile,
+            connections = connectionsFor(job.expectedBytes),
+            throttle = throttle,
+          )
+          val outcome = transfers.transfer(spec, onProgress)
           TrackDone.mark(job.partFile)
           outcome.bytesWritten
         }
         TrackResult(job, bytes, TrackContainers.sniff(job.partFile), job.timeOffsetUs)
       }
       is TrackJob.Segmented -> {
-        val outcome = hls.transfer(HlsTransferSpec(job.plan, context, job.partFile, job.checkpoint, job.role), onProgress)
+        val spec = HlsTransferSpec(
+          job.plan,
+          context,
+          job.partFile,
+          job.checkpoint,
+          job.role,
+          connections = settings.connectionsPerFile,
+          throttle = throttle,
+        )
+        val outcome = hls.transfer(spec, onProgress)
         val container = if (outcome.packedAudio) TrackContainer.PACKED_AUDIO else MediaProcessor.trackContainer(outcome.container)
         // Packed audio carries its position on the stream clock in its ID3 tag; everything else in its samples.
         TrackResult(job, outcome.bytesWritten, container, outcome.timestampUs ?: job.timeOffsetUs)
@@ -1062,13 +1530,15 @@ internal class DownloadEngine(
   }
 
   /** The HLS counterpart of [probeOrFail]: resolves the persisted variant choice to one classified media playlist. */
-  private suspend fun planOrFail(id: String, gen: Long, row: DownloadRow, expired: Boolean = false): HlsPlan? {
+  private suspend fun planOrFail(id: String, gen: Long, row: DownloadRow, expired: Boolean = false, live: Boolean = false): HlsPlan? {
     var attempt = 0
     while (true) {
       val context = currentRequest(id, row)
-      var result = hls.plan(row.url, context, row.variant)
+      val planner: suspend (RequestContext) -> HlsPlanResult =
+        { ctx -> if (live) hls.planLive(row.url, ctx, row.variant) else hls.plan(row.url, ctx, row.variant) }
+      var result = planner(context)
       if (result is HlsPlanResult.Refused && needsSession(result.failure, context)) {
-        result = hls.plan(row.url, context.copy(useCookies = true), row.variant)
+        result = planner(context.copy(useCookies = true))
         if (result is HlsPlanResult.Ready && adoptSession(id, gen) == null) return null
       }
       when (result) {
@@ -1086,7 +1556,12 @@ internal class DownloadEngine(
   }
 
   private suspend fun failClassification(id: String, gen: Long, failure: ProbeResult.Failure, expired: Boolean) {
-    val code = if (expired && failure.reason in EXPIRY_FAILURES) DownloadErrorCode.SOURCE_EXPIRED else mapProbeFailure(failure.reason)
+    val code = when {
+      // #299: a download started with sign-in that is refused with a 401 needs the user name and password (again).
+      failure.httpStatus == 401 && DownloadCredentials.usesSignIn(id) -> DownloadErrorCode.AUTH_REQUIRED
+      expired && failure.reason in EXPIRY_FAILURES -> DownloadErrorCode.SOURCE_EXPIRED
+      else -> mapProbeFailure(failure.reason)
+    }
     val message = if (code == DownloadErrorCode.SOURCE_EXPIRED) EXPIRED_MESSAGE else failure.message
     fail(id, gen, code, message)
   }
@@ -1104,7 +1579,7 @@ internal class DownloadEngine(
   private suspend fun waitBeforeRetry(id: String, gen: Long, delayMs: Long, resumeAs: DownloadState): Boolean {
     if (setState(id, gen, DownloadState.WAITING_RETRY) == null) return false
     retryDelay(delayMs)
-    if (!awaitNetwork(id, gen, force = true)) return false
+    if (!awaitAllowed(id, gen, force = true)) return false
     return setState(id, gen, resumeAs) != null
   }
 
@@ -1157,9 +1632,9 @@ internal class DownloadEngine(
         transientCode = DownloadErrorCode.HTTP_ERROR
         transientMessage = "Server returned HTTP ${e.statusCode}"
       } catch (e: NetworkNoLongerAllowed) {
-        // Not a failure and not an attempt: the download waits for a connection it may use, then resumes
-        // from the bytes already on disk.
-        if (!awaitNetwork(id, gen, force = true)) return null
+        // Not a failure and not an attempt: the download waits for a connection it may use (or for a rule that
+        // stopped it — F3 — to clear), then resumes from the bytes already on disk.
+        if (!awaitAllowed(id, gen, force = true)) return null
         if (setState(id, gen, DownloadState.DOWNLOADING) == null) return null
         continue
       } catch (e: MediaNetworkException) {
@@ -1182,7 +1657,7 @@ internal class DownloadEngine(
         failures = 0
       }
       failures += 1
-      if (failures > MAX_NETWORK_ATTEMPTS) {
+      if (failures > RetryLimit.attempts(retryLimit())) {
         fail(id, gen, transientCode, transientMessage)
         return null
       }
@@ -1229,7 +1704,8 @@ internal class DownloadEngine(
     contentType: String?,
   ) {
     val mediaType = MediaTypes.forContainer(container)
-    val extension = mediaType?.extension ?: container.wire.takeIf { it != Container.UNKNOWN.wire } ?: "bin"
+    val extension = preferredExtensionFor(id, container, partFile)
+      ?: mediaType?.extension ?: container.wire.takeIf { it != Container.UNKNOWN.wire } ?: "bin"
     val dest = paths.newLibraryFile(start.site, start.title, id, extension)
     // Persist the intended final path *before* the move, so a crash between the move and the COMPLETED commit is
     // recoverable at startup by the real file. Superseded (paused/cancelled) → abort and leave temp for cleanup.
@@ -1253,7 +1729,7 @@ internal class DownloadEngine(
       } catch (e: Exception) {
         null // an unreadable candidate is not a duplicate; the download completes as usual
       }
-      if (same != null) {
+      if (same != null && !duplicateBypass.contains(id)) {
         dest.delete()
         cleanupWork(id)
         fail(id, gen, DownloadErrorCode.DUPLICATE, DUPLICATE_MESSAGE)
@@ -1284,7 +1760,7 @@ internal class DownloadEngine(
       }
     }
     if (completed != null) {
-      stateFlow.tryEmit(completed.toRecord())
+      stateFlow.tryEmit(recordOf(completed))
       cleanupWork(id)
       // After COMPLETED, never before: only the final verified file is ever published, and a gallery failure can
       // no longer touch the download or its library item.
@@ -1297,11 +1773,23 @@ internal class DownloadEngine(
   }
 
   /**
+   * #494: the extension [id] asked for when it is a safe alias for [container] ([PreferredExtensions.resolve]); null
+   * keeps the usual one. Only an MP4 with a preference is looked at (whether it has a picture).
+   */
+  private suspend fun preferredExtensionFor(id: String, container: Container, file: File): String? {
+    val preferred = preferredExtensions.get(id) ?: return null
+    if (container != Container.MP4) return null
+    val metadata = runCatching { inspector.inspect(file) }.getOrNull()
+    val audioOnly = metadata != null && !metadata.hasVideo && metadata.hasAudio
+    return PreferredExtensions.resolve(preferred, container, audioOnly)
+  }
+
+  /**
    * Holds the download in WAITING_NETWORK until there is a network it is allowed to use. Returns false when the
    * user superseded it meanwhile (paused, cancelled), so the caller stops without touching the row.
    */
   private suspend fun awaitNetwork(id: String, gen: Long, force: Boolean = false): Boolean {
-    val wifiOnly = settings.wifiOnly
+    val wifiOnly = NetworkChoices.effective(networkChoices.wifiOnly(id), settings.wifiOnly)
     if (!force && network.isUsable(wifiOnly)) return true
     if (network.isUsable(wifiOnly)) return true
     if (setState(id, gen, DownloadState.WAITING_NETWORK) == null) return false
@@ -1309,10 +1797,119 @@ internal class DownloadEngine(
     return store.find(id)?.let { generations[id] == gen && !it.state.isTerminal } ?: false
   }
 
+  // --- F3: rules (start time, download hours, roaming, charging, battery) ---
+
+  /** The download's own record, with what holds it (F3) and its start time. */
+  private fun recordOf(row: DownloadRow): DownloadRecord {
+    val hold = holds[row.id]?.takeIf { row.state == DownloadState.WAITING_CONDITIONS }
+    val recordedMs = if (row.kind == SourceKind.LIVE) LiveCheckpoint.read(liveCheckpointFor(row.id))?.recordedUs?.div(1000) else null
+    return row.toRecord().copy(waitReason = hold?.reason, waitUntil = hold?.until, startAt = schedules[row.id], recordedMs = recordedMs)
+  }
+
+  private fun holdFor(id: String): Hold? = DownloadRules.hold(schedules[id], settings, device.current(), now(), zone())
+
+  /** How long until the time part of the rules next changes for [id] (null: nothing timed). */
+  private fun untilNextTimeChange(id: String): Long? =
+    DownloadRules.nextTimeChange(schedules[id], settings, now(), zone())?.let { (it - now()).coerceAtLeast(1L) }
+
+  /** Waits for the next change of any rule input, or until the time rules are due. */
+  private suspend fun awaitPolicyChange(id: String, version: Long) {
+    withTimeoutOrNull(untilNextTimeChange(id) ?: Long.MAX_VALUE) { policyVersion.first { it != version } }
+  }
+
+  /** Once per process: the persisted start times (they survive restarts and reboots). */
+  private suspend fun loadSchedules() {
+    if (!schedulesLoaded.compareAndSet(false, true)) return
+    runCatching { store.listSchedules() }.getOrNull()?.let { schedules.putAll(it) }
+  }
+
+  /** The rules, then the network: true once the download may run, false when it was superseded meanwhile. */
+  private suspend fun awaitAllowed(id: String, gen: Long, force: Boolean = false): Boolean {
+    if (!awaitConditions(id, gen)) return false
+    return awaitNetwork(id, gen, force)
+  }
+
+  /**
+   * Holds the download in WAITING_CONDITIONS while a rule holds it, with the rule and its end time in the record
+   * ("Scheduled for 02:00", "Waiting for charging"…), then lets it go on. False when the user superseded it.
+   */
+  private suspend fun awaitConditions(id: String, gen: Long): Boolean {
+    loadSchedules()
+    var held = false
+    while (true) {
+      val version = policyVersion.value
+      val hold = holdFor(id)
+      if (hold == null) {
+        holds.remove(id)
+        // A start time that has arrived has done its job.
+        schedules[id]?.takeIf { it <= now() }?.let {
+          schedules.remove(id)
+          runCatching { store.saveSchedule(id, null) }
+        }
+        return !held || setState(id, gen, DownloadState.QUEUED) != null
+      }
+      val reported = holds.put(id, hold)
+      if (!held || reported != hold) {
+        if (setState(id, gen, DownloadState.WAITING_CONDITIONS) == null) {
+          holds.remove(id)
+          return false
+        }
+      }
+      held = true
+      awaitPolicyChange(id, version)
+      if (store.find(id)?.let { generations[id] == gen && !it.state.isTerminal } != true) {
+        holds.remove(id)
+        return false
+      }
+    }
+  }
+
+  /** Returns once a rule holds [id]; a running transfer is then stopped and waits (see [streamWithProgress]). */
+  private suspend fun awaitHeld(id: String) {
+    while (true) {
+      val version = policyVersion.value
+      if (holdFor(id) != null) return
+      awaitPolicyChange(id, version)
+    }
+  }
+
+  override suspend fun setDownloadStartAt(id: String, startAt: Long?): DownloadRecord {
+    loadSchedules()
+    val row = store.find(id) ?: throw NotFoundException("Unknown download $id")
+    if (row.state.isTerminal) throw InvalidStateException("Cannot schedule a ${row.state.wire} download")
+    store.saveSchedule(id, startAt)
+    if (startAt == null) schedules.remove(id) else schedules[id] = startAt
+    policyVersion.update { it + 1 }
+    val later = startAt != null && startAt > now()
+    when {
+      // A paused download given a start time starts then by itself.
+      row.state == DownloadState.PAUSED && later -> restart(id, allowed = setOf(DownloadState.PAUSED), bumpAttempts = false)
+      // A running one gives its slot back and waits (its bytes stay); one already waiting just looks again.
+      later && row.state in RUNNING && row.state != DownloadState.WAITING_CONDITIONS -> launchWorker(id)
+      else -> Unit
+    }
+    return recordOf(store.find(id) ?: row)
+  }
+
+  override suspend fun wakePlan(): WakePlan? {
+    loadSchedules()
+    val waiting = store.list(now()).filter { it.state == DownloadState.WAITING_CONDITIONS }
+    if (waiting.isEmpty()) return null
+    val current = settings
+    val earliest = waiting.minOf { row -> holdFor(row.id)?.until ?: now() }
+    return WakePlan(
+      earliestAt = earliest,
+      requiresCharging = current.onlyWhileCharging,
+      requiresBatteryNotLow = current.pauseOnLowBattery,
+      notRoaming = current.notOnRoaming,
+      unmetered = current.wifiOnly,
+    )
+  }
+
   /** Refuses before the first byte when the volume cannot hold the file, instead of failing near the end. */
   private suspend fun hasRoomFor(id: String, gen: Long, sizeBytes: Long?, partFile: File): Boolean {
     val needed = sizeBytes ?: return true
-    val onDisk = if (partFile.isFile) partFile.length() else 0L
+    val onDisk = PartProgress.bytesOnDisk(partFile)
     val free = runCatching { freeSpace.bytes() }.getOrDefault(Long.MAX_VALUE)
     if (free >= needed - onDisk + FREE_SPACE_MARGIN_BYTES) return true
     fail(id, gen, DownloadErrorCode.NO_SPACE, "Not enough storage left for this video")
@@ -1331,39 +1928,69 @@ internal class DownloadEngine(
    * How many downloads may actually run at once. Extra taps stay QUEUED — which is what the word means — so a
    * user who starts ten videos gets a working queue instead of ten transfers fighting for the same connection,
    * the same disk and the same CPU.
+   *
+   * Internal (not private) only so DownloadEngineSlotsTest can drive it directly.
    */
-  private class Slots(limit: Int) {
+  internal class Slots(limit: Int) {
     private val lock = Mutex()
     private val waiting = ArrayDeque<kotlinx.coroutines.CompletableDeferred<Unit>>()
     private var limit = limit.coerceAtLeast(1)
     private var used = 0
 
-    suspend fun acquire() {
+    /** H4: the download each waiter is; [waiting] keeps their arrival order. */
+    private val waiterIds = HashMap<kotlinx.coroutines.CompletableDeferred<Unit>, String>()
+
+    /** H4: the user's queues and start order; null or default = today's first-come order. */
+    @Volatile var order: QueueOrderBook? = null
+
+    suspend fun acquire(id: String) {
       val waiter = lock.withLock {
-        if (used < limit) {
+        // A download of a held queue (H4) waits even when a slot is free.
+        if (used < limit && !isHeld(id)) {
           used += 1
           return
         }
-        kotlinx.coroutines.CompletableDeferred<Unit>().also { waiting.addLast(it) }
+        kotlinx.coroutines.CompletableDeferred<Unit>().also {
+          waiting.addLast(it)
+          waiterIds[it] = id
+        }
       }
       try {
         waiter.await()
       } catch (c: kotlinx.coroutines.CancellationException) {
-        // A download paused or cancelled while queued must not hold a place in the line.
-        lock.withLock { waiting.remove(waiter) }
+        // A download paused or cancelled while queued must not hold a place in the line — nor keep a slot that was
+        // handed to it just as it was stopped: that one goes on to the next download (or is freed), or the queue
+        // would stall for good. NonCancellable: this coroutine is already cancelled, and a busy lock must not skip it.
+        kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+          lock.withLock {
+            waiterIds.remove(waiter)
+            if (!waiting.remove(waiter) && waiter.isCompleted) {
+              handOnLocked()
+            }
+          }
+        }
         throw c
       }
     }
 
     suspend fun release() {
-      lock.withLock {
-        val next = waiting.removeFirstOrNull()
-        if (next != null) {
-          // The slot moves straight to the next download: `used` stays as it is.
-          next.complete(Unit)
-        } else {
-          used = (used - 1).coerceAtLeast(0)
-        }
+      // Runs in the `finally` of a worker that may have just been paused or cancelled: a busy lock must not skip it.
+      kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+        lock.withLock { handOnLocked() }
+      }
+    }
+
+    /**
+     * Must be called while holding [lock]: a slot given up moves straight to the next download that may start
+     * (H4: [nextLocked]), or is freed.
+     */
+    private fun handOnLocked() {
+      val next = nextLocked()
+      if (next != null) {
+        // The slot moves straight to the next download: `used` stays as it is.
+        next.complete(Unit)
+      } else {
+        used = (used - 1).coerceAtLeast(0)
       }
     }
 
@@ -1371,11 +1998,42 @@ internal class DownloadEngine(
       lock.withLock {
         limit = next.coerceAtLeast(1)
         while (used < limit) {
-          val waiter = waiting.removeFirstOrNull() ?: break
+          val waiter = nextLocked() ?: break
           used += 1
           waiter.complete(Unit)
         }
       }
+    }
+
+    /** H4: hands free slots to downloads that may start now — after a queue was resumed or a download left one. */
+    suspend fun reconsider() {
+      lock.withLock {
+        while (used < limit) {
+          val waiter = nextLocked() ?: break
+          used += 1
+          waiter.complete(Unit)
+        }
+      }
+    }
+
+    private fun isHeld(id: String): Boolean = order?.snapshot?.isHeld(id) == true
+
+    /**
+     * Must be called while holding [lock]: takes the waiter that starts next out of the line. Today's first in line,
+     * unless the user set queues or an order — then [QueueOrder.pickNext] (queue, the user's order, then arrival),
+     * skipping held queues; null when no waiter may start.
+     */
+    private fun nextLocked(): kotlinx.coroutines.CompletableDeferred<Unit>? {
+      val snapshot = order?.snapshot
+      val next = if (snapshot == null || snapshot.isDefault) {
+        waiting.firstOrNull()
+      } else {
+        val candidates = waiting.mapIndexed { index, waiter -> QueueOrder.Candidate(waiterIds[waiter].orEmpty(), index.toLong()) }
+        QueueOrder.pickNext(candidates, snapshot)?.let { waiting[it.arrival.toInt()] }
+      } ?: return null
+      waiting.remove(next)
+      waiterIds.remove(next)
+      return next
     }
   }
 
@@ -1386,11 +2044,13 @@ internal class DownloadEngine(
   private suspend fun <T> streamWithProgress(
     id: String,
     gen: Long,
+    /** F6: a live recording's recorded length, reported with every sample. */
+    recordedUs: AtomicLong? = null,
     block: suspend (onProgress: (Long, Long?) -> Unit) -> T,
   ): T =
     coroutineScope {
       val channel = Channel<ProgressSample>(Channel.CONFLATED)
-      val collector = launch { drainProgress(id, gen, channel) }
+      val collector = launch { drainProgress(id, gen, channel, recordedUs) }
       val stoppedByPolicy = AtomicBoolean(false)
       val transfer = async {
         block { bytes, total -> channel.trySend(ProgressSample(bytes, total)) }
@@ -1398,7 +2058,13 @@ internal class DownloadEngine(
       // Watches the connection for as long as the transfer runs: Wi-Fi-only must hold a download that is
       // already going, not only refuse to start one.
       val watchdog = launch {
-        network.awaitUnusable(settings.wifiOnly)
+        network.awaitUnusable(NetworkChoices.effective(networkChoices.wifiOnly(id), settings.wifiOnly))
+        stoppedByPolicy.set(true)
+        transfer.cancel()
+      }
+      // F3: the same for the download rules — the hours ending, roaming, the charger unplugged, the battery low.
+      val ruleWatch = launch {
+        awaitHeld(id)
         stoppedByPolicy.set(true)
         transfer.cancel()
       }
@@ -1408,6 +2074,7 @@ internal class DownloadEngine(
         if (stoppedByPolicy.get()) throw NetworkNoLongerAllowed() else throw c
       } finally {
         watchdog.cancel()
+        ruleWatch.cancel()
         channel.close()
         collector.join()
       }
@@ -1418,7 +2085,7 @@ internal class DownloadEngine(
    * first sample and a restart from zero go out at once; the newest sample is always emitted before the transfer's
    * next state, so the final numbers are never held back.
    */
-  private suspend fun drainProgress(id: String, gen: Long, channel: ReceiveChannel<ProgressSample>) {
+  private suspend fun drainProgress(id: String, gen: Long, channel: ReceiveChannel<ProgressSample>, recordedUs: AtomicLong? = null) {
     val meter = SpeedMeter()
     var lastBytes = -1L
     var lastPersist = 0L
@@ -1433,7 +2100,9 @@ internal class DownloadEngine(
         persistProgress(id, gen, sample.bytes, sample.total)
         lastPersist = t
       }
-      val progress = buildProgress(id, sample.bytes, sample.total, speed)
+      val progress = buildProgress(id, sample.bytes, sample.total, speed).let { built ->
+        recordedUs?.let { built.copy(recordedMs = it.get() / 1000) } ?: built
+      }
       if (first || restarted || t - lastEmit >= PROGRESS_EMIT_MS) {
         progressFlow.tryEmit(progress)
         lastEmit = t
@@ -1460,7 +2129,7 @@ internal class DownloadEngine(
       if (generations[id] != gen || row.state.isTerminal) return null
       save(mutate(row).copy(state = state, updatedAt = now()))
     }
-    stateFlow.tryEmit(updated.toRecord())
+    stateFlow.tryEmit(recordOf(updated))
     return updated
   }
 
@@ -1470,7 +2139,7 @@ internal class DownloadEngine(
       if (generations[id] != gen || row.state.isTerminal) return
       save(row.copy(state = DownloadState.FAILED, errorCode = code, errorMessage = message, updatedAt = now()))
     }
-    stateFlow.tryEmit(failed.toRecord())
+    stateFlow.tryEmit(recordOf(failed))
   }
 
   private suspend fun persistProgress(id: String, gen: Long, bytes: Long, total: Long?) {
@@ -1499,6 +2168,13 @@ internal class DownloadEngine(
   /** COMPLETED is only ever written here: with the completion recorded for JavaScript in the same transaction. */
   private suspend fun saveCompleted(row: DownloadRow): DownloadRow {
     store.saveCompleted(row)
+    // A finished download no longer needs its own limit or priority.
+    bandwidth.forget(row.id)
+    runCatching { store.deleteBandwidth(row.id) }
+    // …nor its start time (F3).
+    schedules.remove(row.id)
+    holds.remove(row.id)
+    runCatching { store.saveSchedule(row.id, null) }
     return row
   }
 
@@ -1529,8 +2205,11 @@ internal class DownloadEngine(
     sourceUrl = row.url,
     file = dest,
     // The container proven from the bytes names the type; the platform's report only fills in an unknown one.
-    mimeType = MediaTypes.libraryMimeType(container, metadata?.containerMimeType ?: probeContentType)
-      ?: "application/octet-stream",
+    // #494: a `.m4v` is recorded as `video/x-m4v`, the type Android pairs with that name, so no copy gets `.mp4` added.
+    mimeType = PreferredExtensions.libraryMimeType(
+      dest,
+      MediaTypes.libraryMimeType(container, metadata?.containerMimeType ?: probeContentType),
+    ) ?: "application/octet-stream",
     container = container,
     videoCodec = metadata?.videoCodec,
     audioCodec = metadata?.audioCodec,
@@ -1551,6 +2230,7 @@ internal class DownloadEngine(
   private fun buildProgress(id: String, bytes: Long, total: Long?, speedBps: Long): DownloadProgress {
     val fraction = total?.takeIf { it > 0 }?.let { (bytes.toDouble() / it).coerceIn(0.0, 1.0) }
     val eta = if (speedBps > 0 && total != null && total > bytes) (total - bytes) / speedBps else null
+    val segments = segmentCounts.of(id)
     return DownloadProgress(
       id = id,
       phase = ProgressPhase.DOWNLOAD,
@@ -1559,6 +2239,8 @@ internal class DownloadEngine(
       fraction = fraction,
       speedBps = speedBps,
       etaSeconds = eta,
+      segmentsDone = segments?.first,
+      segmentsTotal = segments?.second,
     )
   }
 
@@ -1608,6 +2290,8 @@ internal class DownloadEngine(
   internal companion object {
     const val PART_NAME = "download.part"
     const val HLS_CHECKPOINT_NAME = "hls.checkpoint"
+    /** F6: a recording's checkpoint, next to its `.part`. */
+    const val LIVE_CHECKPOINT_NAME = "live.checkpoint"
     /** The separate audio track of a stream or split download, next to the video's `.part`. */
     const val AUDIO_PART_NAME = "audio.part"
     const val AUDIO_CHECKPOINT_NAME = "audio.checkpoint"
@@ -1633,6 +2317,7 @@ internal class DownloadEngine(
       DownloadState.DOWNLOADING,
       DownloadState.WAITING_NETWORK,
       DownloadState.WAITING_RETRY,
+      DownloadState.WAITING_CONDITIONS,
     )
 
     /** Already-running states: a repeated Resume/Retry is a no-op rather than an error. */
@@ -1642,6 +2327,8 @@ internal class DownloadEngine(
       DownloadState.DOWNLOADING,
       DownloadState.WAITING_NETWORK,
       DownloadState.WAITING_RETRY,
+      DownloadState.WAITING_CONDITIONS,
+      DownloadState.RECORDING,
     )
     val SANITIZED_HEADERS = setOf("cookie", "authorization", "proxy-authorization")
 

@@ -25,6 +25,8 @@ const USER_MESSAGES: Record<PlayerErrorCode, string> = {
   PLAYER_INIT_FAILED: 'Unable to start the video player.',
   PLAYBACK_FAILED: 'Playback failed. Try again.',
   PREPARATION_TIMEOUT: 'This video is taking too long to prepare.',
+  STREAM_LINK_EXPIRED: 'This video link has expired. Reload the page in the browser and tap Play again.',
+  STREAM_NETWORK_ERROR: "Couldn't load the stream. Check your connection and try again.",
 };
 
 const ERROR_TITLES: Record<PlayerErrorCode, string> = {
@@ -37,6 +39,8 @@ const ERROR_TITLES: Record<PlayerErrorCode, string> = {
   PLAYER_INIT_FAILED: 'Player error',
   PLAYBACK_FAILED: 'Playback error',
   PREPARATION_TIMEOUT: 'Still preparing',
+  STREAM_LINK_EXPIRED: 'Link expired',
+  STREAM_NETWORK_ERROR: 'No connection',
 };
 
 export function userMessageForPlayerError(code: PlayerErrorCode): string {
@@ -53,7 +57,8 @@ export function isRecoverablePlayerError(code: PlayerErrorCode): boolean {
     code === 'PLAYER_INIT_FAILED' ||
     code === 'PLAYBACK_FAILED' ||
     code === 'PREPARATION_TIMEOUT' ||
-    code === 'PERMISSION_DENIED'
+    code === 'PERMISSION_DENIED' ||
+    code === 'STREAM_NETWORK_ERROR'
   );
 }
 

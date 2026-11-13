@@ -8,22 +8,31 @@ import { useTranslation } from '@/localization';
 
 export type PlayerTopBarProps = {
   title: string;
+  /** The artist VidoraX keeps for the item (Edit after download → Title & artist); nothing when there is none. */
+  artist?: string | null;
   isFullscreen: boolean;
   visible: boolean;
   orientationIcon: string;
   onBack: () => void;
   onOpenOrientation: () => void;
   onToggleFullscreen: () => void;
+  /** A file opened from another app: "Save to VidoraX". Omitted for library videos. */
+  save?: {
+    state: 'idle' | 'saving' | 'saved';
+    onPress: () => void;
+  } | null;
 };
 
 export const PlayerTopBar = memo(function PlayerTopBar({
   title,
+  artist,
   isFullscreen,
   visible,
   orientationIcon,
   onBack,
   onOpenOrientation,
   onToggleFullscreen,
+  save = null,
 }: PlayerTopBarProps) {
   const { t, rtl } = useTranslation();
   if (!visible) {
@@ -50,6 +59,30 @@ export const PlayerTopBar = memo(function PlayerTopBar({
           style={styles.title}>
           {title}
         </Text>
+        {artist ? (
+          <Text variant="caption" color="white" numberOfLines={1} style={styles.artist}>
+            {artist}
+          </Text>
+        ) : null}
+        {save ? (
+          <IconButton
+            icon={save.state === 'saved' ? 'check-circle-outline' : 'content-save-outline'}
+            size="medium"
+            variant="ghost"
+            color="inverse"
+            disabled={save.state !== 'idle'}
+            accessibilityLabel={
+              save.state === 'saved'
+                ? t('player.savedToLibrary')
+                : save.state === 'saving'
+                  ? t('player.savingToLibrary')
+                  : t('player.saveToLibrary')
+            }
+            accessibilityHint={save.state === 'idle' ? t('player.saveToLibraryHint') : undefined}
+            onPress={save.onPress}
+            testID="player-save-to-library"
+          />
+        ) : null}
         <IconButton
           icon={orientationIcon}
           size="medium"
@@ -94,5 +127,10 @@ const styles = StyleSheet.create({
   title: {
     flex: 1,
     marginHorizontal: 8,
+  },
+  artist: {
+    maxWidth: '35%',
+    marginEnd: 8,
+    opacity: 0.8,
   },
 });

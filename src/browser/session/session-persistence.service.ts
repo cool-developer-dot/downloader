@@ -2,6 +2,7 @@ import { BROWSER_HOMEPAGE, BROWSER_WEBVIEW_BLANK } from '@/browser/constants';
 import { isBrowserHomeUrl } from '@/browser/utils';
 import { mmkvKeys } from '@/storage/constants';
 import { mmkvGetObject, mmkvRemove, mmkvSetObject } from '@/storage/mmkv';
+import { profileScopedKey, subscribeActiveProfile } from '@/storage/profile/active-profile';
 import { getPersistStorageAdapter } from '@/store/shared/persist-storage';
 
 import type {
@@ -9,8 +10,12 @@ import type {
   PersistedBrowserSession,
 } from './session.types';
 import { stripSensitiveAuthQueryParams } from './session-url-sanitizer';
+import { isIncognitoInFront } from '@/browser/incognito/incognito-state';
 
-const SESSION_STORAGE_KEY = mmkvKeys.browserSession;
+/** B20: each browser profile has its own session (and so its own scroll positions). */
+function sessionKey(): string {
+  return profileScopedKey(mmkvKeys.browserSession);
+}
 const MAX_SCROLL_ENTRIES = 24;
 
 const EMPTY_SESSION: PersistedBrowserSession = {
@@ -176,7 +181,7 @@ function sanitizeSession(raw: unknown): PersistedBrowserSession | null {
 }
 
 function readSyncFromMmkv(): PersistedBrowserSession | null {
-  const raw = mmkvGetObject<PersistedBrowserSession>(SESSION_STORAGE_KEY);
+  const raw = mmkvGetObject<PersistedBrowserSession>(sessionKey());
   return sanitizeSession(raw);
 }
 
@@ -187,19 +192,19 @@ function clearWriteTimer(): void {
   }
 }
 
-async function writeToStorage(session: PersistedBrowserSession): Promise<void> {
-  mmkvSetObject(SESSION_STORAGE_KEY, session);
+async function writeToStorage(session: PersistedBrowserSession, key: string = sessionKey()): Promise<void> {
+  mmkvSetObject(key, session);
 
   try {
     const storage = getPersistStorageAdapter();
-    await Promise.resolve(storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session)));
+    await Promise.resolve(storage.setItem(key, JSON.stringify(session)));
   } catch {
     // Persistence is best-effort — browsing must never throw.
   }
 }
 
-function writeMmkvOnly(session: PersistedBrowserSession): void {
-  mmkvSetObject(SESSION_STORAGE_KEY, session);
+function writeMmkvOnly(session: PersistedBrowserSession, key: string): void {
+  mmkvSetObject(key, session);
 }
 
 /**
@@ -217,6 +222,8 @@ function scheduleWrite(session: PersistedBrowserSession, mode: PersistWriteMode 
   clearWriteTimer();
 
   const delay = mode === 'mmkv' && !pendingDurable ? SCROLL_WRITE_DEBOUNCE_MS : WRITE_DEBOUNCE_MS;
+  // The profile this session belongs to, even if the write lands after a profile switch.
+  const key = sessionKey();
 
   writeTimer = setTimeout(() => {
     writeTimer = null;
@@ -228,9 +235,9 @@ function scheduleWrite(session: PersistedBrowserSession, mode: PersistWriteMode 
       return;
     }
     if (durable) {
-      void writeToStorage(next);
+      void writeToStorage(next, key);
     } else {
-      writeMmkvOnly(next);
+      writeMmkvOnly(next, key);
     }
   }, delay);
 }
@@ -256,7 +263,7 @@ export async function readBrowserSession(): Promise<PersistedBrowserSession | nu
 
   try {
     const storage = getPersistStorageAdapter();
-    const raw = await Promise.resolve(storage.getItem(SESSION_STORAGE_KEY));
+    const raw = await Promise.resolve(storage.getItem(sessionKey()));
     if (!raw) {
       return null;
     }
@@ -294,6 +301,8 @@ export function getPersistedScrollForUrl(url: string): number {
  * Persists a browsing snapshot. Only `successful: true` updates lastSuccessful*.
  */
 export function persistBrowserSession(input: BrowserSessionSnapshotInput): void {
+  // B11: an incognito tab's page and scroll place are never saved.
+  if (isIncognitoInFront()) return;
   const previous = getCachedBrowserSession() ?? EMPTY_SESSION;
   const rawUrl = input.url.trim();
   const url = isBrowserHomeUrl(rawUrl)
@@ -328,6 +337,7 @@ export function persistBrowserSession(input: BrowserSessionSnapshotInput): void 
 }
 
 export function updatePersistedScrollPosition(url: string, scrollY: number): void {
+  if (isIncognitoInFront()) return;
   const safeUrl = stripSensitiveAuthQueryParams(url);
   if (!isRestorableBrowserUrl(safeUrl)) {
     return;
@@ -367,10 +377,11 @@ export function clearPersistedBrowserSession(): void {
   pendingWrite = null;
   pendingDurable = false;
   clearWriteTimer();
-  mmkvRemove(SESSION_STORAGE_KEY);
+  const key = sessionKey();
+  mmkvRemove(key);
   try {
     const storage = getPersistStorageAdapter();
-    void Promise.resolve(storage.removeItem(SESSION_STORAGE_KEY));
+    void Promise.resolve(storage.removeItem(key));
   } catch {
     // no-op
   }
@@ -424,3 +435,11 @@ export function resolveRestorableSessionUrl(
 
   return null;
 }
+
+// B20: another profile's session is read fresh (the profile switch flushes this one first).
+subscribeActiveProfile(() => {
+  memoryCache = null;
+  pendingWrite = null;
+  pendingDurable = false;
+  clearWriteTimer();
+});

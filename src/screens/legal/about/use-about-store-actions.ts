@@ -1,11 +1,10 @@
 import { useCallback, useRef, useState } from 'react';
 
 import {
-  appStoreConfig,
   isPlayStoreListingConfigured,
   isUpdateCheckAvailable,
 } from '@/constants/app-identity';
-import { openExternalUrl } from '@/utils/open-external-url';
+import { openPlayStoreListing } from '@/utils/open-play-store-listing';
 
 /**
  * Truthful About update-check states.
@@ -28,7 +27,8 @@ export type UseAboutStoreActionsResult = {
 
 /**
  * Store listing actions for About.
- * Phase 3A: no Expo Updates / version API — Play Store listing only when configured.
+ * No Expo Updates / version API: both actions open the VidoraX Play listing (Play Store app, else the web page),
+ * where Play itself shows whether an update is available.
  */
 export function useAboutStoreActions(): UseAboutStoreActionsResult {
   const [updateStatus, setUpdateStatus] = useState<AboutUpdateStatus>(() =>
@@ -43,7 +43,7 @@ export function useAboutStoreActions(): UseAboutStoreActionsResult {
     if (checkingRef.current) {
       return;
     }
-    if (!isUpdateCheckAvailable() || !appStoreConfig.playStoreListingUrl) {
+    if (!isUpdateCheckAvailable()) {
       setUpdateStatus('unavailable');
       return;
     }
@@ -52,8 +52,8 @@ export function useAboutStoreActions(): UseAboutStoreActionsResult {
     setUpdateStatus('checking');
 
     try {
-      const opened = await openExternalUrl(appStoreConfig.playStoreListingUrl);
-      setUpdateStatus(opened ? 'opened_store' : 'failed');
+      const opened = await openPlayStoreListing();
+      setUpdateStatus(opened === 'failed' ? 'failed' : 'opened_store');
     } catch {
       setUpdateStatus('failed');
     } finally {
@@ -62,11 +62,10 @@ export function useAboutStoreActions(): UseAboutStoreActionsResult {
   }, []);
 
   const rateApp = useCallback(async () => {
-    const url = appStoreConfig.playStoreListingUrl;
-    if (!url || !isPlayStoreListingConfigured()) {
+    if (!isPlayStoreListingConfigured()) {
       return false;
     }
-    return openExternalUrl(url);
+    return (await openPlayStoreListing()) !== 'failed';
   }, []);
 
   return {

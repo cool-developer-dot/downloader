@@ -20,6 +20,7 @@ function tab(id: string, lastMountedAt: number | null): BrowserTab {
     error: null,
     navigationEpoch: 1,
     mountState: 'MOUNTED_INACTIVE',
+    pinned: false,
     lastMountedAt,
   };
 }

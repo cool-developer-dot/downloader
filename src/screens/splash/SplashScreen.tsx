@@ -6,6 +6,7 @@ import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { resolvePostSplashRoute } from '@/navigation/helpers/resolve-post-splash-route';
+import { markLaunchHandedOver, markSplashShown } from '@/navigation/launch-handover';
 import { useAuthBackHandler } from '@/navigation/hooks/use-auth-back-handler';
 import { logOnboardingPersistSnapshot } from '@/bootstrap/onboarding-persist-debug';
 import { useTheme } from '@/hooks/use-theme';
@@ -42,6 +43,10 @@ export function SplashScreen() {
   const isLoading = useAppStore(selectAppLoading);
   const isInitializationComplete = isInitialized && !isLoading;
 
+  useEffect(() => {
+    markSplashShown();
+  }, []);
+
   const sequence = useSplashSequence({ reducedMotion });
   const { playExit } = sequence;
 
@@ -57,6 +62,10 @@ export function SplashScreen() {
       Linking.getInitialURL().catch(() => null),
     ]).then(([, launchUrl]) => {
       router.replace(resolvePostSplashRoute({ onboardingComplete, launchUrl }) as Href);
+      // First launch continues with the onboarding pages, which hand over themselves.
+      if (onboardingComplete) {
+        markLaunchHandedOver();
+      }
     });
   }, []);
 

@@ -21,6 +21,7 @@ import com.vidorax.media.plan.HlsPlanner
 import com.vidorax.media.plan.Probe
 import com.vidorax.media.transfer.HlsCheckpoint
 import com.vidorax.media.transfer.HlsTransfer
+import com.vidorax.media.transfer.TsJoin
 import com.vidorax.media.transfer.ProgressiveTransfer
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
@@ -201,7 +202,7 @@ class DownloadEngineHlsTest {
     val item = library.items[record.id]!!
     assertEquals(Container.TS, item.container)
     assertTrue(item.file.name.endsWith(".ts"))
-    assertArrayEquals("segments in playlist order, byte for byte", seg0 + seg1 + other, item.file.readBytes())
+    assertArrayEquals("segments in playlist order, byte for byte", TsJoin.of(seg0, seg1, other), item.file.readBytes())
     assertEquals(item.file.length(), row.totalBytes)
     assertEquals(item.file.length(), row.bytesDone)
     assertFalse("work dir (part + checkpoint) cleaned", paths.workDir(record.id).exists())
@@ -218,7 +219,7 @@ class DownloadEngineHlsTest {
 
     assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
     assertEquals(400, store.current(record.id)!!.variant!!.maxHeight)
-    assertArrayEquals(seg0 + seg1, library.items[record.id]!!.file.readBytes())
+    assertArrayEquals(TsJoin.of(seg0, seg1), library.items[record.id]!!.file.readBytes())
     assertEquals(0, count("/m/hi/index.m3u8"))
   }
 
@@ -280,7 +281,7 @@ class DownloadEngineHlsTest {
     engine.awaitIdle()
 
     assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
-    assertArrayEquals(seg0 + seg1, library.items[record.id]!!.file.readBytes())
+    assertArrayEquals(TsJoin.of(seg0, seg1), library.items[record.id]!!.file.readBytes())
   }
 
   // ---------- pause / resume / restart ----------
@@ -291,7 +292,9 @@ class DownloadEngineHlsTest {
     serve("/p/s0.ts", seg0)
     serve("/p/s1.ts", big, throttle = true)
     serve("/p/s2.ts", seg1)
-    val engine = engine()
+    // One segment at a time: what this test pins down is that nothing after a pause is fetched (see the parallel
+    // counterpart below for segments fetched ahead).
+    val engine = engine(settings = DownloadSettings.DEFAULT.copy(connectionsPerFile = 1))
     val record = engine.enqueue(request("/p/index.m3u8"))
     val checkpoint = File(paths.workDir(record.id), DownloadEngine.HLS_CHECKPOINT_NAME)
 
@@ -308,7 +311,7 @@ class DownloadEngineHlsTest {
     engine.awaitIdle()
 
     assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
-    assertArrayEquals(seg0 + big + seg1, library.items[record.id]!!.file.readBytes())
+    assertArrayEquals(TsJoin.of(seg0, big, seg1), library.items[record.id]!!.file.readBytes())
     assertEquals("the finished segment is not fetched again", 1, count("/p/s0.ts"))
     assertEquals(1, library.items.size)
   }
@@ -333,7 +336,7 @@ class DownloadEngineHlsTest {
     second.awaitIdle()
 
     assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
-    assertArrayEquals(seg0 + big, library.items[record.id]!!.file.readBytes())
+    assertArrayEquals(TsJoin.of(seg0, big), library.items[record.id]!!.file.readBytes())
     assertEquals(1, count("/r/s0.ts"))
     assertEquals(1, library.insertCalls.get())
   }
@@ -403,7 +406,7 @@ class DownloadEngineHlsTest {
     engine.awaitIdle()
 
     assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
-    assertArrayEquals(seg0 + seg1, library.items[record.id]!!.file.readBytes())
+    assertArrayEquals(TsJoin.of(seg0, seg1), library.items[record.id]!!.file.readBytes())
     assertEquals(1, count("/s/s0.ts"))
   }
 
@@ -424,7 +427,7 @@ class DownloadEngineHlsTest {
 
     assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
     assertEquals(2, playlistReads.get())
-    assertArrayEquals(seg0 + seg1, library.items[record.id]!!.file.readBytes())
+    assertArrayEquals(TsJoin.of(seg0, seg1), library.items[record.id]!!.file.readBytes())
     assertEquals("the segment finished before the refresh is kept", 1, count("/x/s0.ts"))
   }
 
@@ -457,7 +460,7 @@ class DownloadEngineHlsTest {
     engine.awaitIdle()
 
     assertEquals(DownloadState.COMPLETED, store.current(record.id)!!.state)
-    assertArrayEquals(seg0 + seg1, library.items[record.id]!!.file.readBytes())
+    assertArrayEquals(TsJoin.of(seg0, seg1), library.items[record.id]!!.file.readBytes())
     assertTrue(store.current(record.id)!!.request.useCookies)
     assertEquals("one refused try without the session, then everything with it", 1, requests.count { it.getHeader("Cookie") == null })
   }

@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
+import { en } from '@/localization/en';
+
+import { networkWaitLabelKey } from './conditions';
 import { applyV2Progress, projectV2Download, projectV2LibraryItem } from './projection';
 import { downloadRecord, libraryItem, PAGE_URL } from './test-fixtures';
 
@@ -15,6 +18,8 @@ describe('v2 engine state → the existing Downloads row', () => {
       completed: { status: 'COMPLETED', execution: 'COMPLETED' },
       failed: { status: 'FAILED', execution: 'FAILED' },
       cancelled: { status: 'CANCELLED', execution: 'CANCELLED' },
+      waiting_conditions: { status: 'QUEUED', execution: 'QUEUED' },
+      recording: { status: 'DOWNLOADING', execution: 'DOWNLOADING' },
     };
     for (const [state, want] of Object.entries(expected)) {
       const record = downloadRecord({ state: state as never });
@@ -50,6 +55,39 @@ describe('v2 engine state → the existing Downloads row', () => {
       applyV2Progress(completed, { id: 'dl-1', phase: 'download', bytesDone: 10, totalBytes: null, fraction: null, speedBps: 0, etaSeconds: null }),
       null,
     );
+  });
+
+  test('F6: a recording is an active row with its length, no total and Stop instead of Pause', () => {
+    const entry = projectV2Download(
+      downloadRecord({ state: 'recording', kind: 'live', bytesDone: 85_000_000, totalBytes: null, recordedMs: 754_000 }),
+    );
+    assert.equal(entry.item.status, 'DOWNLOADING');
+    assert.equal(entry.transfer.executionState, 'DOWNLOADING');
+    assert.equal(entry.transfer.recording, true);
+    assert.equal(entry.transfer.recordedMs, 754_000);
+    assert.equal(entry.transfer.supportsResume, false, 'never paused');
+    assert.equal(entry.transfer.totalBytes, null);
+    assert.equal(entry.item.progress, 0);
+
+    const moved = applyV2Progress(entry, {
+      id: 'dl-1',
+      phase: 'download',
+      bytesDone: 90_000_000,
+      totalBytes: null,
+      fraction: null,
+      speedBps: 750_000,
+      etaSeconds: null,
+      recordedMs: 760_000,
+    });
+    assert.ok(moved);
+    assert.equal(moved.transfer.recordedMs, 760_000);
+    assert.equal(moved.transfer.bytesWritten, 90_000_000);
+
+    // Stopped: the recording is finalized like any download — no recording line any more.
+    const finishing = projectV2Download(downloadRecord({ state: 'processing', kind: 'live', recordedMs: 760_000 }));
+    assert.equal(finishing.transfer.recording, undefined);
+    assert.equal(finishing.transfer.executionState, 'FINALIZING');
+    assert.equal(projectV2Download(downloadRecord({ state: 'downloading' })).transfer.recording, undefined);
   });
 
   test('8: a completed download points at the verified library file', () => {
@@ -133,6 +171,34 @@ describe('processing stage', () => {
     for (const code of ['VIDEO_TRACK_MISSING', 'AUDIO_TRACK_MISSING', 'TRACK_MISMATCH', 'SEGMENT_FAILED', 'MUX_FAILED', 'TRANSCODE_FAILED', 'INVALID_MEDIA'] as const) {
       const entry = projectV2Download(downloadRecord({ state: 'failed', errorCode: code }));
       assert.ok(entry.item.errorMessage && entry.item.errorMessage !== 'The download failed.', code);
+    }
+  });
+
+  test('F3: a held download carries why and until when; its own start time travels with every state', () => {
+    const held = projectV2Download(
+      downloadRecord({ state: 'waiting_conditions', waitReason: 'scheduled', waitUntil: 1_800_000, startAt: 1_800_000 }),
+    );
+    assert.equal(held.item.status, 'QUEUED');
+    assert.equal(held.transfer.waitReason, 'scheduled');
+    assert.equal(held.transfer.waitUntil, 1_800_000);
+    assert.equal(held.transfer.startAt, 1_800_000);
+    // A stale reason on a running record is never shown.
+    const running = projectV2Download(downloadRecord({ state: 'downloading', waitReason: 'charging', startAt: 5 }));
+    assert.equal(running.transfer.waitReason, null);
+    assert.equal(running.transfer.waitUntil, null);
+    assert.equal(running.transfer.startAt, 5);
+  });
+
+  test('a download the engine holds for the network says so, not just "Queued"', () => {
+    const held = projectV2Download(downloadRecord({ state: 'waiting_network', bytesDone: 1_048_576 }));
+    assert.equal(held.item.status, 'QUEUED');
+    assert.equal(held.transfer.waitingNetwork, true);
+    assert.equal(networkWaitLabelKey(true), 'downloads.waitingWifi');
+    assert.equal(networkWaitLabelKey(false), 'downloads.waitingNetwork');
+    assert.equal(en.downloads.waitingWifi, 'Waiting for Wi-Fi');
+    assert.equal(en.downloads.waitingNetwork, 'Waiting for network');
+    for (const state of ['queued', 'downloading', 'waiting_conditions', 'paused'] as const) {
+      assert.equal(projectV2Download(downloadRecord({ state })).transfer.waitingNetwork, undefined, state);
     }
   });
 });

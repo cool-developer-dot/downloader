@@ -7,6 +7,8 @@ import { Pressable } from '@/components/base/Pressable';
 import { Text } from '@/components/base/Text';
 import { useTranslation } from '@/localization';
 import type { BrowserHistoryEntry } from '@/storage/types';
+import { HighlightedText } from '@/browser/history/components/HighlightedText';
+import { historySubtitle } from '@/browser/history/history-highlight';
 
 import { useHistoryTokens } from '../theme/history-tokens';
 import {
@@ -19,6 +21,8 @@ export type HistoryItemProps = {
   item: BrowserHistoryEntry;
   onPress: (item: BrowserHistoryEntry) => void;
   onDelete: (item: BrowserHistoryEntry) => void;
+  /** B10 #95: the active search; its matches are highlighted. */
+  highlightQuery?: string;
   testID?: string;
 };
 
@@ -26,6 +30,7 @@ export const HistoryItem = memo(function HistoryItem({
   item,
   onPress,
   onDelete,
+  highlightQuery = '',
   testID,
 }: HistoryItemProps) {
   const historyTokens = useHistoryTokens();
@@ -101,12 +106,14 @@ export const HistoryItem = memo(function HistoryItem({
         </Box>
 
         <Box flex={1} gap={2} style={{ minWidth: 0 }}>
-          <Text variant="body" numberOfLines={1}>
-            {title}
-          </Text>
-          <Text variant="caption" color="textSecondary" numberOfLines={1}>
-            {item.hostname || item.url}
-          </Text>
+          <HighlightedText variant="body" numberOfLines={1} text={title} query={highlightQuery} />
+          <HighlightedText
+            variant="caption"
+            color="textSecondary"
+            numberOfLines={1}
+            text={historySubtitle(item, highlightQuery)}
+            query={highlightQuery}
+          />
         </Box>
 
         <Box gap={2} style={{ alignItems: 'flex-end', minWidth: 52 }}>

@@ -22,6 +22,9 @@ export type IconButtonProps = {
   loading?: boolean;
   disabled?: boolean;
   onPress?: () => void;
+  /** Optional long press, also offered to screen readers as an action named `longPressLabel`. */
+  onLongPress?: () => void;
+  longPressLabel?: string;
   /** Override semantic icon color (e.g. headerIcon on branded chrome). */
   color?: IconColorToken;
   accessibilityLabel: string;
@@ -38,6 +41,8 @@ export const IconButton = memo(
       loading = false,
       disabled = false,
       onPress,
+      onLongPress,
+      longPressLabel,
       color,
       accessibilityLabel,
       accessibilityHint,
@@ -68,6 +73,16 @@ export const IconButton = memo(
         ref={ref}
         testID={testID}
         onPress={handlePress}
+        onLongPress={onLongPress && !isDisabled ? onLongPress : undefined}
+        delayLongPress={onLongPress ? 450 : undefined}
+        accessibilityActions={onLongPress && longPressLabel ? [{ name: 'longpress', label: longPressLabel }] : undefined}
+        onAccessibilityAction={
+          onLongPress && !isDisabled
+            ? (event) => {
+                if (event.nativeEvent.actionName === 'longpress') onLongPress();
+              }
+            : undefined
+        }
         disabled={isDisabled}
         disabledOpacity={disabledOpacity}
         accessibilityRole="button"

@@ -10,6 +10,7 @@ import type {
 import type { DownloadItem, DownloadStatus, DownloadWorkerState } from '@/api/types';
 import type { TransferProgressSnapshot } from '@/downloads/engine/types';
 import type { DownloadExecutionState } from '@/downloads/execution/download-execution-state';
+import { getFlattenedCatalog } from '@/localization/translate';
 
 /** One v2 download as the existing Downloads/Library UI renders it: the catalog-shaped row plus its live transfer. */
 export type V2DownloadEntry = {
@@ -31,7 +32,11 @@ const STATES: Record<DownloadState, StateProjection> = {
   probing: { status: 'QUEUED', workerState: 'STARTING', executionState: 'PREPARING', localState: 'not_started' },
   waiting_network: { status: 'QUEUED', workerState: 'WAITING', executionState: 'QUEUED', localState: 'not_started' },
   waiting_retry: { status: 'QUEUED', workerState: 'RETRY_WAIT', executionState: 'RETRYING', localState: 'not_started' },
+  // F3: held by a rule; the row shows why (transfer.waitReason) instead of "Queued".
+  waiting_conditions: { status: 'QUEUED', workerState: 'WAITING', executionState: 'QUEUED', localState: 'not_started' },
   downloading: { status: 'DOWNLOADING', workerState: 'TRANSFERRING', executionState: 'DOWNLOADING', localState: 'transferring' },
+  // F6: a live recording is an active transfer without a total; the row says "Recording · 12:34 · 85 MB".
+  recording: { status: 'DOWNLOADING', workerState: 'TRANSFERRING', executionState: 'DOWNLOADING', localState: 'transferring' },
   // Verify → finalize → library insert: the existing "Finalizing" presentation.
   processing: { status: 'DOWNLOADING', workerState: 'VERIFYING', executionState: 'FINALIZING', localState: 'finalizing' },
   paused: { status: 'PAUSED', workerState: 'PAUSED', executionState: 'PAUSED', localState: 'paused' },
@@ -62,6 +67,7 @@ const FAILURE_MESSAGES: Record<DownloadErrorCode, string> = {
   MUX_FAILED: 'Couldn’t merge the audio and video. Retry to try again.',
   TRANSCODE_FAILED: 'Couldn’t convert this video on this device.',
   INVALID_MEDIA: 'The finished file didn’t play back correctly.',
+  AUTH_REQUIRED: 'This site needs your user name and password. Retry to sign in again.',
 };
 
 /** Existing catalog platform labels (formatPlatform title-cases them); generic websites stay OTHER. */
@@ -80,8 +86,17 @@ function percent(bytes: number, total: number | null): number {
   return Math.max(0, Math.min(100, Math.floor((bytes / total) * 100)));
 }
 
+/**
+ * The reason shown for a failed download, in the app's language (`downloadFailures.<CODE>` in en/ur). A code without
+ * a translation yet keeps its English text from FAILURE_MESSAGES.
+ */
 export function v2FailureMessage(code: DownloadErrorCode | null): string {
-  return (code && FAILURE_MESSAGES[code]) || FAILURE_MESSAGES.UNKNOWN;
+  const key = `downloadFailures.${code ?? 'UNKNOWN'}`;
+  const translated = getFlattenedCatalog()[key];
+  if (translated) {
+    return translated;
+  }
+  return (code && FAILURE_MESSAGES[code]) || getFlattenedCatalog()['downloadFailures.UNKNOWN'] || FAILURE_MESSAGES.UNKNOWN;
 }
 
 /**
@@ -108,7 +123,9 @@ export function projectV2Download(
 ): V2DownloadEntry {
   const projection = STATES[record.state] ?? STATES.failed;
   const library = record.state === 'completed' ? (extras.library ?? null) : null;
-  const progress = record.state === 'downloading' && extras.progress?.id === record.id ? extras.progress : null;
+  const recording = record.state === 'recording';
+  const transferring = record.state === 'downloading' || recording;
+  const progress = transferring && extras.progress?.id === record.id ? extras.progress : null;
   const bytes = progress ? Math.max(progress.bytesDone, record.bytesDone) : record.bytesDone;
   const total = library?.sizeBytes ?? progress?.totalBytes ?? record.totalBytes;
   const completed = record.state === 'completed';
@@ -151,6 +168,14 @@ export function projectV2Download(
     etaSeconds: progress ? progress.etaSeconds : null,
     // A completed record without its library item is not playable yet: never claim a file.
     localUri: library?.fileUri ?? null,
+    // F3: why it waits and its own start time.
+    waitReason: record.state === 'waiting_conditions' ? (record.waitReason ?? null) : null,
+    waitUntil: record.state === 'waiting_conditions' ? (record.waitUntil ?? null) : null,
+    startAt: record.startAt ?? null,
+    // Said on the row ("Waiting for Wi-Fi" / "Waiting for network") instead of a plain "Queued".
+    ...(record.state === 'waiting_network' ? { waitingNetwork: true } : {}),
+    // F6: a recording is stopped, never paused; its length comes with every progress event.
+    ...(recording ? { recording: true, recordedMs: progress?.recordedMs ?? record.recordedMs ?? 0, supportsResume: false } : {}),
     localState: completed && !library ? 'finalizing' : projection.localState,
     workerState: projection.workerState,
     executionState: projection.executionState,
@@ -225,6 +250,7 @@ export function applyV2Progress(
       progress,
       bytesPerSecond: event.speedBps,
       etaSeconds: event.etaSeconds,
+      ...(entry.transfer.recording ? { recordedMs: event.recordedMs ?? entry.transfer.recordedMs ?? 0 } : {}),
     },
   };
 }

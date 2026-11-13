@@ -4,13 +4,15 @@ import {
   BROWSER_EXTERNAL_SCHEMES,
   BROWSER_HOMEPAGE,
   BROWSER_INVALID_INPUT_PATTERNS,
-  BROWSER_SEARCH_BASE_URL,
   isSocialNativeAppScheme as matchSocialNativeAppScheme,
 } from '@/browser/constants/browser.constants';
+import { getSearchEngine } from '@/browser/search/search-engines';
+import { getSearchShortcuts, matchSearchShortcut } from '@/browser/search/search-shortcuts';
 import type {
   BrowserSecurityLevel,
   NavigationIntent,
 } from '@/browser/types';
+import { normalizeAddressDigits } from '@/utils/text-direction';
 
 const IPV4_HOST =
   /^(?:\d{1,3}\.){3}\d{1,3}(?::\d{1,5})?(?:\/.*)?$/;
@@ -175,19 +177,21 @@ export function normalizeBrowserUrl(input: string): string {
   return input.trim();
 }
 
+/** A search on the user's search engine (B5: engine, Safe Search, language, region). */
 export function buildSearchUrl(query: string): string {
-  const normalized = query.trim().replace(/\s+/g, ' ');
-  const url = new URL(BROWSER_SEARCH_BASE_URL);
-  url.searchParams.set('q', normalized);
-  return url.toString();
+  return getSearchEngine().buildSearchUrl(query);
 }
+
+/** B5 #57: `site:example.com` (with or without more words) is a search, not an address with a `site:` scheme. */
+const SITE_OPERATOR = /^site:[^\s/]+(?:\s|$)/i;
 
 /**
  * Classifies omnibox input into a navigation intent.
  * Pure function — no store, no WebView, no side effects.
  */
 export function classifyNavigationInput(rawInput: string): NavigationIntent {
-  const trimmed = rawInput.trim();
+  // B24 #271: an address typed with Eastern digits (۱۹۲.۱۶۸.۱.۱) is the same address; Urdu words stay a search.
+  const trimmed = normalizeAddressDigits(rawInput.trim());
 
   if (!trimmed) {
     return { kind: 'empty' };
@@ -195,6 +199,17 @@ export function classifyNavigationInput(rawInput: string): NavigationIntent {
 
   if (isBrowserHomeUrl(trimmed)) {
     return { kind: 'home' };
+  }
+
+  if (SITE_OPERATOR.test(trimmed)) {
+    const query = trimmed.replace(/\s+/g, ' ');
+    return { kind: 'search', query, url: buildSearchUrl(query) };
+  }
+
+  // B4 #33: `keyword query` searches the shortcut's site.
+  const shortcut = matchSearchShortcut(trimmed, getSearchShortcuts());
+  if (shortcut) {
+    return { kind: 'search', query: shortcut.query, url: shortcut.url, provider: shortcut.shortcut.name };
   }
 
   if (isInvalidLiteral(trimmed)) {
@@ -291,8 +306,8 @@ export function classifyNavigationInput(rawInput: string): NavigationIntent {
     return { kind: 'search', query: trimmed, url: buildSearchUrl(trimmed) };
   }
 
-  // Symbols-only junk
-  if (/^[^a-zA-Z0-9]+$/.test(trimmed)) {
+  // Symbols-only junk — letters and digits of any script count (a single Urdu word is a search, B5).
+  if (/^[^\p{L}\p{N}]+$/u.test(trimmed)) {
     return { kind: 'invalid', category: 'invalid', message: INVALID_MESSAGES.invalid };
   }
 

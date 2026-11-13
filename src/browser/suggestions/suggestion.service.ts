@@ -1,6 +1,8 @@
-import { BROWSER_SEARCH_BASE_URL } from '@/browser/constants';
+import { evaluateCalculation } from '@/browser/address-bar/calculator';
+import type { AutocompleteSource } from '@/browser/address-bar/inline-autocomplete';
+import { getSearchEngine } from '@/browser/search/search-engines';
 import { classifyNavigationInput, buildSearchUrl } from '@/browser/utils';
-import { bookmarkService, historyService, recentSearchService } from '@/storage/services';
+import { translate } from '@/localization/translate';
 import type { BookmarkEntry, BrowserHistoryEntry } from '@/storage/types';
 
 import {
@@ -56,11 +58,33 @@ function applyMatchFlags(
   };
 }
 
+type RecentSearchSnapshot = { id: string; query: string; searchedAt: string };
+
+/**
+ * Where the local suggestion index reads from. The app wires the storage services in (`./storage-sources`); tests
+ * pass in-memory sources, since the storage layer needs expo-sqlite.
+ */
+export type SuggestionSources = {
+  listHistory(limit: number): Promise<BrowserHistoryEntry[]>;
+  listBookmarks(limit: number): Promise<BookmarkEntry[]>;
+  listFrequentlyVisited(limit: number): Promise<(BrowserHistoryEntry & { visitCount: number })[]>;
+  listRecentSearches(limit: number): Promise<RecentSearchSnapshot[]>;
+};
+
+/** Which local sources the address bar may suggest from (B5 #61 turns all off; B10 #101 turns history off). */
+export type SuggestionInclude = { history: boolean; bookmarks: boolean; recentSearches: boolean };
+
+const ALL_LOCAL_SUGGESTIONS: SuggestionInclude = { history: true, bookmarks: true, recentSearches: true };
+
+function includeKey(include: SuggestionInclude): string {
+  return `${include.history ? 'h' : '-'}${include.bookmarks ? 'b' : '-'}${include.recentSearches ? 'r' : '-'}`;
+}
+
 interface SuggestionIndex {
   history: BrowserHistoryEntry[];
   bookmarks: BookmarkEntry[];
   frequent: (BrowserHistoryEntry & { visitCount: number })[];
-  recentSearches: { id: string; query: string; searchedAt: string }[];
+  recentSearches: RecentSearchSnapshot[];
   expiresAt: number;
 }
 
@@ -69,12 +93,17 @@ interface SuggestionIndex {
  * Remote providers (Google Suggest / AI) register via `registerProvider` later.
  */
 export class SuggestionService {
+  private readonly sources: SuggestionSources;
   private index: SuggestionIndex | null = null;
   private warmInFlight: Promise<SuggestionIndex> | null = null;
   private readonly remoteProviders: {
     id: string;
     collect: (context: SuggestionQueryContext) => Promise<RankableCandidate[]>;
   }[] = [];
+
+  constructor(sources: SuggestionSources) {
+    this.sources = sources;
+  }
 
   /**
    * Extension point for future remote suggestion providers.
@@ -110,37 +139,18 @@ export class SuggestionService {
     }
 
     this.warmInFlight = (async () => {
-      const [historyPage, bookmarkPage, frequent, recentPage] = await Promise.all([
-        historyService.list({
-          page: 1,
-          pageSize: SUGGESTION_HISTORY_PAGE_SIZE,
-          sortBy: 'visitedAt',
-          sortDirection: 'desc',
-        }),
-        bookmarkService.list({
-          page: 1,
-          pageSize: SUGGESTION_BOOKMARK_PAGE_SIZE,
-          sortBy: 'updatedAt',
-          sortDirection: 'desc',
-        }),
-        historyService.getFrequentlyVisited(SUGGESTION_FREQUENT_LIMIT),
-        recentSearchService.list({
-          page: 1,
-          pageSize: SUGGESTION_RECENT_SEARCH_LIMIT,
-          sortBy: 'searchedAt',
-          sortDirection: 'desc',
-        }),
+      const [history, bookmarks, frequent, recentSearches] = await Promise.all([
+        this.sources.listHistory(SUGGESTION_HISTORY_PAGE_SIZE),
+        this.sources.listBookmarks(SUGGESTION_BOOKMARK_PAGE_SIZE),
+        this.sources.listFrequentlyVisited(SUGGESTION_FREQUENT_LIMIT),
+        this.sources.listRecentSearches(SUGGESTION_RECENT_SEARCH_LIMIT),
       ]);
 
       const next: SuggestionIndex = {
-        history: historyPage.items,
-        bookmarks: bookmarkPage.items,
+        history,
+        bookmarks,
         frequent,
-        recentSearches: recentPage.items.map((item) => ({
-          id: item.id,
-          query: item.query,
-          searchedAt: item.searchedAt,
-        })),
+        recentSearches,
         expiresAt: Date.now() + SUGGESTION_INDEX_TTL_MS,
       };
 
@@ -156,17 +166,20 @@ export class SuggestionService {
 
   async getSuggestions(
     rawQuery: string,
-    options?: { limit?: number },
+    options?: { limit?: number; include?: Partial<SuggestionInclude> },
   ): Promise<OmniboxSuggestion[]> {
     const query = rawQuery.trim();
     const normalizedQuery = normalizeQuery(query);
     const limit = options?.limit ?? SUGGESTION_LIMIT;
+    const include: SuggestionInclude = { ...ALL_LOCAL_SUGGESTIONS, ...options?.include };
+    // The cache is per query and per set of sources (B5 #61, B10 #101), and per search engine (B5 #56).
+    const cacheKey = `${includeKey(include)}|${getSearchEngine().id}|${normalizedQuery}`;
 
     if (!normalizedQuery) {
-      return this.getEmptyQuerySuggestions(limit);
+      return this.getEmptyQuerySuggestions(limit, include);
     }
 
-    const cached = suggestionCache.get(normalizedQuery);
+    const cached = suggestionCache.get(cacheKey);
     if (cached) {
       return cached.slice(0, limit);
     }
@@ -179,12 +192,13 @@ export class SuggestionService {
     };
 
     const candidates: RankableCandidate[] = [
+      ...this.collectCalculator(context),
       ...this.collectExactUrl(context),
-      ...this.collectBookmarks(index.bookmarks, context),
-      ...this.collectHistory(index.history, context),
-      ...this.collectFrequent(index.frequent, context),
-      ...this.collectDomains(index, context),
-      ...this.collectRecentSearches(index.recentSearches, context),
+      ...(include.bookmarks ? this.collectBookmarks(index.bookmarks, context) : []),
+      ...(include.history ? this.collectHistory(index.history, context) : []),
+      ...(include.history ? this.collectFrequent(index.frequent, context) : []),
+      ...(include.history || include.bookmarks ? this.collectDomains(index, context, include) : []),
+      ...(include.recentSearches ? this.collectRecentSearches(index.recentSearches, context) : []),
       ...this.collectSearchPlaceholder(context),
     ];
 
@@ -199,15 +213,15 @@ export class SuggestionService {
     }
 
     const ranked = rankSuggestions(candidates, query, limit);
-    suggestionCache.set(normalizedQuery, ranked);
+    suggestionCache.set(cacheKey, ranked);
     return ranked;
   }
 
-  private async getEmptyQuerySuggestions(limit: number): Promise<OmniboxSuggestion[]> {
+  private async getEmptyQuerySuggestions(limit: number, include: SuggestionInclude): Promise<OmniboxSuggestion[]> {
     const index = await this.loadIndex();
     const candidates: RankableCandidate[] = [];
 
-    for (const entry of index.frequent.slice(0, 6)) {
+    for (const entry of include.history ? index.frequent.slice(0, 6) : []) {
       candidates.push(
         applyMatchFlags(
           {
@@ -215,7 +229,7 @@ export class SuggestionService {
             kind: 'frequent',
             source: 'frequent',
             title: entry.title || entry.hostname,
-            subtitle: `${entry.visitCount} visits · ${entry.hostname}`,
+            subtitle: translate('browserAddress.visitsWithHost', { count: entry.visitCount, host: entry.hostname }),
             url: entry.url,
             hostname: entry.hostname,
             faviconUrl: buildFaviconUrl(entry.hostname),
@@ -227,7 +241,7 @@ export class SuggestionService {
       );
     }
 
-    for (const entry of index.bookmarks.slice(0, 4)) {
+    for (const entry of include.bookmarks ? index.bookmarks.slice(0, 4) : []) {
       candidates.push(
         applyMatchFlags(
           {
@@ -248,6 +262,47 @@ export class SuggestionService {
     }
 
     return rankSuggestions(candidates, '', limit);
+  }
+
+  /** B4 #268: `12*(3+4)/2` → "= 42" as the first row (copied on tap). */
+  private collectCalculator(context: SuggestionQueryContext): RankableCandidate[] {
+    const result = evaluateCalculation(context.query);
+    if (!result) {
+      return [];
+    }
+    return [
+      {
+        id: `calculator-${result.display}`,
+        kind: 'calculator',
+        source: 'calculator',
+        title: `= ${result.display}`,
+        subtitle: result.expression,
+        url: `calculator:${result.display}`,
+        hostname: '',
+        faviconUrl: null,
+      },
+    ];
+  }
+
+  /** B4 #24: the sites inline autocomplete may complete, from the same local index (visits, bookmarks). */
+  async getAutocompleteSources(include: Partial<SuggestionInclude> = {}): Promise<AutocompleteSource[]> {
+    const use: SuggestionInclude = { ...ALL_LOCAL_SUGGESTIONS, ...include };
+    const index = await this.loadIndex();
+    const sources: AutocompleteSource[] = [];
+    if (use.history) {
+      for (const entry of index.frequent) {
+        sources.push({ host: entry.hostname, visits: entry.visitCount, bookmarked: false });
+      }
+      for (const entry of index.history) {
+        sources.push({ host: entry.hostname, visits: 1, bookmarked: false });
+      }
+    }
+    if (use.bookmarks) {
+      for (const entry of index.bookmarks) {
+        sources.push({ host: entry.hostname, visits: 0, bookmarked: true });
+      }
+    }
+    return sources;
   }
 
   private collectExactUrl(context: SuggestionQueryContext): RankableCandidate[] {
@@ -271,7 +326,7 @@ export class SuggestionService {
           kind: 'exact_url',
           source: 'navigation',
           title: intent.url,
-          subtitle: 'Go to website',
+          subtitle: translate('browser.goToWebsite'),
           url: intent.url,
           hostname,
           faviconUrl: buildFaviconUrl(hostname),
@@ -389,7 +444,7 @@ export class SuggestionService {
             kind: 'frequent',
             source: 'frequent',
             title: entry.title || entry.hostname,
-            subtitle: `${entry.visitCount} visits · ${entry.hostname}`,
+            subtitle: translate('browserAddress.visitsWithHost', { count: entry.visitCount, host: entry.hostname }),
             url: entry.url,
             hostname: entry.hostname,
             faviconUrl: buildFaviconUrl(entry.hostname),
@@ -407,6 +462,7 @@ export class SuggestionService {
   private collectDomains(
     index: SuggestionIndex,
     context: SuggestionQueryContext,
+    include: SuggestionInclude,
   ): RankableCandidate[] {
     const q = context.normalizedQuery;
     if (!q || q.includes(' ') || q.includes('://')) {
@@ -428,13 +484,13 @@ export class SuggestionService {
       }
     };
 
-    for (const entry of index.bookmarks) {
+    for (const entry of include.bookmarks ? index.bookmarks : []) {
       consider(entry.hostname, entry.url, entry.title);
     }
-    for (const entry of index.history) {
+    for (const entry of include.history ? index.history : []) {
       consider(entry.hostname, entry.url, entry.title);
     }
-    for (const entry of index.frequent) {
+    for (const entry of include.history ? index.frequent : []) {
       consider(entry.hostname, entry.url, entry.title);
     }
 
@@ -445,7 +501,7 @@ export class SuggestionService {
           kind: 'domain',
           source: 'domain',
           title: domain.hostname,
-          subtitle: 'Suggested site',
+          subtitle: translate('browserAddress.suggestedSite'),
           url: domain.url,
           hostname: domain.hostname,
           faviconUrl: buildFaviconUrl(domain.hostname),
@@ -456,7 +512,7 @@ export class SuggestionService {
   }
 
   private collectRecentSearches(
-    recentSearches: { id: string; query: string; searchedAt: string }[],
+    recentSearches: RecentSearchSnapshot[],
     context: SuggestionQueryContext,
   ): RankableCandidate[] {
     const q = context.normalizedQuery;
@@ -467,7 +523,9 @@ export class SuggestionService {
         continue;
       }
 
-      const url = buildSearchUrl(entry.query);
+      const recentIntent = classifyNavigationInput(entry.query);
+      const url = recentIntent.kind === 'search' ? recentIntent.url : buildSearchUrl(entry.query);
+      const engineHost = new URL(url).hostname;
       results.push(
         applyMatchFlags(
           {
@@ -475,10 +533,10 @@ export class SuggestionService {
             kind: 'recent_search',
             source: 'recent_searches',
             title: entry.query,
-            subtitle: 'Recent search',
+            subtitle: translate('browserSettings.search.recentSearch'),
             url,
-            hostname: 'www.google.com',
-            faviconUrl: buildFaviconUrl('www.google.com'),
+            hostname: engineHost,
+            faviconUrl: null,
             visitedAt: entry.searchedAt,
           },
           q,
@@ -505,6 +563,8 @@ export class SuggestionService {
 
     const searchUrl =
       intent.kind === 'search' ? intent.url : buildSearchUrl(context.query);
+    const engine = getSearchEngine();
+    const engineHost = new URL(searchUrl).hostname;
 
     return [
       applyMatchFlags(
@@ -512,16 +572,17 @@ export class SuggestionService {
           id: `search-${context.normalizedQuery}`,
           kind: 'search',
           source: 'search',
-          title: `Search Google for “${context.query.trim()}”`,
-          subtitle: BROWSER_SEARCH_BASE_URL.replace('https://', ''),
+          title: translate('browserSettings.search.searchWithEngine', {
+            engine: intent.kind === 'search' && intent.provider ? intent.provider : engine.name,
+            query: intent.kind === 'search' ? intent.query : context.query.trim(),
+          }),
+          subtitle: engineHost,
           url: searchUrl,
-          hostname: 'www.google.com',
-          faviconUrl: buildFaviconUrl('www.google.com'),
+          hostname: engineHost,
+          faviconUrl: null,
         },
         context.normalizedQuery,
       ),
     ];
   }
 }
-
-export const suggestionService = new SuggestionService();

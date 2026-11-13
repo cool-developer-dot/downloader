@@ -13,6 +13,7 @@ import { Divider } from '@/components/common/Divider';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { withAlpha } from '@/theme';
+import { useTourBlocker } from '@/tour/tour-store';
 
 import { BrowserMenuItem } from './BrowserMenuItem';
 import type { BrowserMenuItemModel, BrowserOverflowAnchor } from './types';
@@ -50,9 +51,24 @@ export const BrowserOverflowMenu = memo(function BrowserOverflowMenu({
     if (!anchor) {
       return {
         top: insets.top + 56,
+        bottom: undefined,
         right: 12,
         width: menuWidth,
         maxHeight: MENU_MAX_HEIGHT,
+      };
+    }
+
+    const right = Math.max(12, windowWidth - (anchor.x + anchor.width));
+    const maxRight = Math.max(12, windowWidth - menuWidth - 12);
+    // B4 #28: with the address bar at the bottom the menu opens upward from its button.
+    if (anchor.y > windowHeight / 2) {
+      const bottom = windowHeight - anchor.y + ANCHOR_GAP;
+      return {
+        top: undefined,
+        bottom,
+        right: Math.min(right, maxRight),
+        width: menuWidth,
+        maxHeight: Math.min(MENU_MAX_HEIGHT, anchor.y - ANCHOR_GAP - insets.top - 12),
       };
     }
 
@@ -65,13 +81,12 @@ export const BrowserOverflowMenu = memo(function BrowserOverflowMenu({
     const maxTop = windowHeight - insets.bottom - Math.min(maxHeight, 200) - 12;
     const top = Math.min(Math.max(preferredTop, insets.top + 8), Math.max(insets.top + 8, maxTop));
 
-    const right = Math.max(12, windowWidth - (anchor.x + anchor.width));
     // Keep menu fully on-screen for narrow/landscape widths.
-    const maxRight = Math.max(12, windowWidth - menuWidth - 12);
     const clampedRight = Math.min(right, maxRight);
 
     return {
       top,
+      bottom: undefined,
       right: clampedRight,
       width: menuWidth,
       maxHeight: Math.min(maxHeight, windowHeight - top - insets.bottom - 12),
@@ -79,6 +94,8 @@ export const BrowserOverflowMenu = memo(function BrowserOverflowMenu({
   }, [anchor, insets.bottom, insets.top, windowHeight, windowWidth]);
 
   const surfaceBorder = withAlpha(theme.colors.textPrimary, 0.08);
+
+  useTourBlocker(visible);
 
   // Unmount when dismissed — Android transparent Modal can intercept touches
   // after visible=false, leaving the Browser chrome unresponsive.
@@ -113,6 +130,7 @@ export const BrowserOverflowMenu = memo(function BrowserOverflowMenu({
             theme.elevation.lg,
             {
               top: menuPosition.top,
+              bottom: menuPosition.bottom,
               right: menuPosition.right,
               width: menuPosition.width,
               maxHeight: menuPosition.maxHeight,

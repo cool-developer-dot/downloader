@@ -51,6 +51,25 @@ export function buildBrowserChromeInjectedScript(): string {
     return null;
   }
 
+  // B17 #280: the picture under a long press (its current source), for "Download image".
+  function closestImage(node) {
+    var el = node;
+    for (var i = 0; el && i < 4; i++) {
+      if (el.tagName && el.tagName.toLowerCase() === 'img') return el;
+      el = el.parentElement || el.parentNode;
+    }
+    return null;
+  }
+
+  function imageSrcOf(image) {
+    try {
+      var src = image ? String(image.currentSrc || image.src || '') : '';
+      return (src.indexOf('http://') === 0 || src.indexOf('https://') === 0) && src.length <= 8192 ? src : '';
+    } catch (e) {
+      return '';
+    }
+  }
+
   function safeHref(anchor) {
     try {
       var href = anchor.href;
@@ -78,46 +97,52 @@ export function buildBrowserChromeInjectedScript(): string {
     touchMoved = false;
   }
 
-  function emitLongPress(anchor, x, y) {
-    var href = safeHref(anchor);
-    if (!href) return;
-    var text = (anchor.innerText || anchor.textContent || '').trim().slice(0, 500);
+  function emitLongPress(anchor, x, y, image) {
+    var href = anchor ? safeHref(anchor) : null;
+    var imageSrc = imageSrcOf(image);
+    if (!href && !imageSrc) return;
+    var text = anchor ? (anchor.innerText || anchor.textContent || '').trim().slice(0, 500) : '';
     post('link_long_press', {
-      href: href,
+      href: href || '',
       text: text,
       x: x || 0,
       y: y || 0,
-      pageUrl: location.href
+      pageUrl: location.href,
+      imageSrc: imageSrc
     });
   }
 
   function onContextMenu(event) {
     var anchor = closestAnchor(event.target);
-    if (!anchor) return;
-    var href = safeHref(anchor);
-    if (!href) return;
+    var image = closestImage(event.target);
+    if (anchor && !safeHref(anchor)) anchor = null;
+    if (!anchor && !imageSrcOf(image)) return;
     try { event.preventDefault(); } catch (e) {}
     try { event.stopPropagation(); } catch (e) {}
     emitLongPress(
       anchor,
       event.clientX || 0,
-      event.clientY || 0
+      event.clientY || 0,
+      image
     );
   }
 
   function onTouchStart(event) {
     if (!event.touches || event.touches.length !== 1) return;
     var anchor = closestAnchor(event.target);
-    if (!anchor || !safeHref(anchor)) return;
+    var image = closestImage(event.target);
+    if (anchor && !safeHref(anchor)) anchor = null;
+    if (!anchor && !imageSrcOf(image)) return;
     var touch = event.touches[0];
     startX = touch.clientX || 0;
     startY = touch.clientY || 0;
     touchMoved = false;
-    pressTarget = anchor;
+    pressTarget = anchor || image;
+    var pressImage = image;
     if (pressTimer) clearTimeout(pressTimer);
     pressTimer = setTimeout(function() {
       if (!pressTarget || touchMoved) return;
-      emitLongPress(pressTarget, startX, startY);
+      emitLongPress(anchor, startX, startY, pressImage);
       pressTarget = null;
     }, LONG_PRESS_MS);
   }
@@ -140,19 +165,50 @@ export function buildBrowserChromeInjectedScript(): string {
     (document.head || document.documentElement).appendChild(style);
   } catch (e) {}
 
+  // The last position of a scroll is always reported (≤ 210 ms after it stops), not dropped by the throttle: the
+  // address bar's auto-hide (B4) and the jump button (B6) need where the page came to rest.
+  var scrollTrailTimer = null;
   function onScroll() {
     var now = Date.now();
-    if (now - lastScrollPost < SCROLL_THROTTLE_MS) return;
+    if (now - lastScrollPost < SCROLL_THROTTLE_MS) {
+      if (!scrollTrailTimer) {
+        scrollTrailTimer = setTimeout(function () {
+          scrollTrailTimer = null;
+          onScroll();
+        }, SCROLL_THROTTLE_MS - (now - lastScrollPost) + 10);
+      }
+      return;
+    }
     lastScrollPost = now;
     var y = window.scrollY || window.pageYOffset ||
       (document.documentElement && document.documentElement.scrollTop) || 0;
     var pageUrl = location.href;
-    var payload = { scrollY: y };
+    var root = document.scrollingElement || document.documentElement;
+    var payload = { scrollY: y, height: (root && root.scrollHeight) || 0, viewHeight: window.innerHeight || 0 };
     if (pageUrl !== lastPostedPageUrl) {
       lastPostedPageUrl = pageUrl;
       payload.pageUrl = pageUrl;
     }
     post('scroll', payload);
+  }
+
+  // B6 #240: is the page playing something audible? Volume keys keep their job then (muted autoplay loops don't count).
+  var mediaPlaying = false;
+  function audibleMediaPlaying() {
+    try {
+      var media = document.querySelectorAll('video, audio');
+      for (var i = 0; i < media.length; i++) {
+        var m = media[i];
+        if (!m.paused && !m.ended && !m.muted && m.volume > 0) return true;
+      }
+    } catch (e) {}
+    return false;
+  }
+  function onMediaEvent() {
+    var playing = audibleMediaPlaying();
+    if (playing === mediaPlaying) return;
+    mediaPlaying = playing;
+    post('media_state', { playing: playing });
   }
 
   function pageScrollY() {
@@ -251,7 +307,13 @@ export function buildBrowserChromeInjectedScript(): string {
       window.removeEventListener('touchmove', onPullTouchMoveHandled, false);
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('pagehide', cleanup);
+      document.removeEventListener('playing', onMediaEvent, true);
+      document.removeEventListener('pause', onMediaEvent, true);
+      document.removeEventListener('ended', onMediaEvent, true);
+      document.removeEventListener('emptied', onMediaEvent, true);
+      document.removeEventListener('volumechange', onMediaEvent, true);
       if (routeTitleTimer) { clearTimeout(routeTitleTimer); routeTitleTimer = null; }
+      if (scrollTrailTimer) { clearTimeout(scrollTrailTimer); scrollTrailTimer = null; }
       window.__VIDORAX_BROWSER_CHROME__ = false;
     } catch (e) {}
   }
@@ -268,6 +330,12 @@ export function buildBrowserChromeInjectedScript(): string {
   window.addEventListener('touchmove', onPullTouchMoveHandled, { capture: false, passive: true });
   window.addEventListener('scroll', onScroll, { passive: true });
   window.addEventListener('pagehide', cleanup);
+  // Media events don't bubble; capture on the document sees every video and audio element.
+  document.addEventListener('playing', onMediaEvent, true);
+  document.addEventListener('pause', onMediaEvent, true);
+  document.addEventListener('ended', onMediaEvent, true);
+  document.addEventListener('emptied', onMediaEvent, true);
+  document.addEventListener('volumechange', onMediaEvent, true);
 
   // An SPA names its new route after pushState returns (after rendering, often after a fetch): the title read at the
   // route change is still the previous route's. Look again for a few seconds and report the name once it changes.
@@ -322,7 +390,242 @@ export function buildBrowserChromeInjectedScript(): string {
 })();`;
 }
 
-/** Lightweight before-content stub so the flag survives SPA navigations that re-inject. */
+/**
+ * How long after leaving fullscreen the page is scrolled back to where it was (react-native-webview's video view
+ * resets the page to the top; the rotation back to portrait relayouts it). A touch on the page ends it sooner.
+ */
+export const FULLSCREEN_RESTORE_MS = 1500;
+
+/** Elements searched for the fullscreen video (open shadow roots and same-origin frames included). */
+const FULLSCREEN_SCAN_MAX_NODES = 3000;
+
+/**
+ * Document-start script for every main-frame document. Resets the long-press/scroll script's flag so it re-installs
+ * after SPA navigations, and installs the fullscreen observer: on `fullscreenchange` it posts `fullscreen` with the
+ * fullscreen video's size (src/browser/fullscreen decides the orientation), and keeps the page's place across
+ * fullscreen. Fixed script string only — never interpolated from page content.
+ */
 export function buildBrowserChromeBeforeContentScript(): string {
-  return `(function(){ try { window.__VIDORAX_BROWSER_CHROME__ = false; } catch(e) {} true; })();`;
+  return `(function(){
+  try { window.__VIDORAX_BROWSER_CHROME__ = false; } catch (e) {}
+  try {
+    if (window.__VIDORAX_FULLSCREEN__) { return true; }
+    window.__VIDORAX_FULLSCREEN__ = true;
+  } catch (e) { return true; }
+
+  var CHANNEL = ${JSON.stringify(BROWSER_CHROME_CHANNEL)};
+  var MAX_NODES = ${FULLSCREEN_SCAN_MAX_NODES};
+  var RESTORE_MS = ${FULLSCREEN_RESTORE_MS};
+  var NUMERIC_LENGTH = /^\\s*\\d+(\\.\\d+)?\\s*(px)?\\s*$/i;
+  var lastKey = 'false:0x0';
+  var watched = null;
+  var lastX = 0;
+  var lastY = 0;
+  var saved = null;
+  var restoring = null;
+  var restoreTimer = null;
+
+  function post(payload) {
+    try {
+      if (!window.ReactNativeWebView || !window.ReactNativeWebView.postMessage) { return; }
+      window.ReactNativeWebView.postMessage(JSON.stringify({
+        channel: CHANNEL,
+        type: 'fullscreen',
+        payload: payload,
+        ts: Date.now()
+      }));
+    } catch (e) {}
+  }
+
+  function fullscreenElement() {
+    var d = document;
+    return d.fullscreenElement || d.webkitFullscreenElement || null;
+  }
+
+  function tagOf(node) {
+    return node && node.tagName ? String(node.tagName).toLowerCase() : '';
+  }
+
+  function videoSize(video) {
+    var w = video.videoWidth, h = video.videoHeight;
+    return w > 0 && h > 0 ? { width: w, height: h } : null;
+  }
+
+  function frameSize(frame) {
+    try {
+      var w = frame.getAttribute('width'), h = frame.getAttribute('height');
+      if (!NUMERIC_LENGTH.test(w || '') || !NUMERIC_LENGTH.test(h || '')) { return null; }
+      w = parseFloat(w); h = parseFloat(h);
+      return w > 0 && h > 0 ? { width: w, height: h } : null;
+    } catch (e) { return null; }
+  }
+
+  function scan(root) {
+    var found = { videos: [], frames: [] };
+    var stack = [root];
+    var seen = 0;
+    while (stack.length && seen < MAX_NODES) {
+      var node = stack.pop();
+      seen++;
+      var tag = tagOf(node);
+      if (tag === 'video') {
+        found.videos.push(node);
+      } else if (tag === 'iframe' || tag === 'frame') {
+        var doc = null;
+        try { doc = node.contentDocument; } catch (e) {}
+        if (doc && doc.documentElement) { stack.push(doc.documentElement); } else { found.frames.push(node); }
+      }
+      if (node.shadowRoot) { stack.push(node.shadowRoot); }
+      var kids = node.children;
+      if (kids) {
+        for (var i = kids.length - 1; i >= 0; i--) { stack.push(kids[i]); }
+      }
+    }
+    return found;
+  }
+
+  function area(el) {
+    try { var r = el.getBoundingClientRect(); return r.width * r.height; } catch (e) { return 0; }
+  }
+
+  function pick(videos) {
+    var best = null, bestRank = -1, bestArea = -1;
+    for (var i = 0; i < videos.length; i++) {
+      var v = videos[i];
+      var rank = (!v.paused && !v.ended ? 2 : 0) + (videoSize(v) ? 1 : 0);
+      var a = area(v);
+      if (rank > bestRank || (rank === bestRank && a > bestArea)) {
+        best = v; bestRank = rank; bestArea = a;
+      }
+    }
+    return best;
+  }
+
+  function describe(el) {
+    var found = scan(el);
+    var video = pick(found.videos);
+    var size = video ? videoSize(video) : null;
+    for (var i = 0; !size && i < found.frames.length; i++) { size = frameSize(found.frames[i]); }
+    return { video: video, size: size };
+  }
+
+  function unwatch() {
+    if (watched) {
+      try {
+        watched.removeEventListener('loadedmetadata', report);
+        watched.removeEventListener('resize', report);
+      } catch (e) {}
+    }
+    watched = null;
+  }
+
+  function watch(video) {
+    if (watched === video) { return; }
+    unwatch();
+    watched = video;
+    if (video) {
+      try {
+        video.addEventListener('loadedmetadata', report);
+        video.addEventListener('resize', report);
+      } catch (e) {}
+    }
+  }
+
+  function report() {
+    var el = fullscreenElement();
+    var payload = { active: false };
+    if (el) {
+      var d = describe(el);
+      watch(d.video);
+      payload = d.size ? { active: true, width: d.size.width, height: d.size.height } : { active: true };
+    } else {
+      unwatch();
+    }
+    var key = payload.active + ':' + (payload.width || 0) + 'x' + (payload.height || 0);
+    if (key === lastKey) { return; }
+    lastKey = key;
+    post(payload);
+  }
+
+  // Layout viewport width: unlike innerWidth it does not follow pinch zoom (pages without a viewport meta).
+  function viewportWidth() {
+    var root = document.documentElement;
+    return (root && root.clientWidth) || window.innerWidth || 0;
+  }
+
+  function stopRestore() {
+    restoring = null;
+    if (restoreTimer) { clearInterval(restoreTimer); restoreTimer = null; }
+  }
+
+  function tryRestore() {
+    var target = restoring;
+    if (!target) { return; }
+    if (Date.now() > target.until) { stopRestore(); return; }
+    if (viewportWidth() !== target.width) { return; }
+    var x = window.scrollX || 0, y = window.scrollY || 0;
+    if (Math.abs(x - target.x) > 2 || Math.abs(y - target.y) > 2) {
+      try { window.scrollTo(target.x, target.y); } catch (e) {}
+    }
+  }
+
+  function startRestore(place) {
+    stopRestore();
+    if (!place.x && !place.y) { return; }
+    restoring = { x: place.x, y: place.y, width: place.width, until: Date.now() + RESTORE_MS };
+    tryRestore();
+    restoreTimer = setInterval(tryRestore, 100);
+  }
+
+  function onFullscreenChange() {
+    var el = fullscreenElement();
+    if (el && !saved) {
+      stopRestore();
+      var x = window.scrollX || 0, y = window.scrollY || 0;
+      if (!x && !y) { x = lastX; y = lastY; }
+      saved = { x: x, y: y, width: viewportWidth() };
+    } else if (!el && saved) {
+      var place = saved;
+      saved = null;
+      startRestore(place);
+    }
+    report();
+  }
+
+  function onScroll() {
+    if (fullscreenElement() || restoring) { return; }
+    lastX = window.scrollX || 0;
+    lastY = window.scrollY || 0;
+  }
+
+  function onUserInput() {
+    if (restoring) { stopRestore(); }
+  }
+
+  try {
+    document.addEventListener('fullscreenchange', onFullscreenChange, true);
+    document.addEventListener('webkitfullscreenchange', onFullscreenChange, true);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('touchstart', onUserInput, { capture: true, passive: true });
+    window.addEventListener('wheel', onUserInput, { capture: true, passive: true });
+    window.addEventListener('keydown', onUserInput, true);
+  } catch (e) {}
+  true;
+})();`;
+}
+
+/** Asks the page to leave fullscreen (the app's Back, a tab switch, backgrounding, leaving the Browser). */
+export function buildBrowserExitFullscreenScript(): string {
+  return `(function(){
+  try {
+    var d = document;
+    if (d.fullscreenElement && d.exitFullscreen) {
+      var p = d.exitFullscreen();
+      if (p && p.catch) { p.catch(function(){}); }
+    } else if (d.webkitFullscreenElement && d.webkitExitFullscreen) {
+      d.webkitExitFullscreen();
+    }
+  } catch (e) {}
+})();
+true;`;
 }

@@ -14,7 +14,12 @@ import {
 } from '@/storage/types';
 import { createId, extractHostname, normalizeUrl, nowIso } from '@/storage/utils';
 
-import { getDatabase, withDatabaseTransaction } from '../sqlite/client';
+// B20: the active browser profile's database (the app database for the default profile).
+import {
+  getBrowserDatabase as getDatabase,
+  withBrowserDatabaseTransaction as withDatabaseTransaction,
+} from '../sqlite/browser-database';
+import { titleUrlHostSearchClause } from './title-url-search';
 
 interface BookmarkRow {
   id: string;
@@ -49,18 +54,8 @@ function buildSearchClause(query: string | undefined): {
   clause: string;
   params: string[];
 } {
-  const normalized = query?.trim();
-
-  if (!normalized) {
-    return { clause: '', params: [] };
-  }
-
-  const like = `%${normalized}%`;
-
-  return {
-    clause: `WHERE (title LIKE ? OR url LIKE ? OR hostname LIKE ?)`,
-    params: [like, like, like],
-  };
+  // B24 #271: shared with bookmarks, with the Urdu fold (title-url-search.ts; same clause as before otherwise).
+  return titleUrlHostSearchClause(query);
 }
 
 export class BookmarkRepository {

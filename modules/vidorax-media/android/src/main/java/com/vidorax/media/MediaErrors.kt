@@ -22,5 +22,8 @@ class StorageException(message: String, cause: Throwable? = null) : CodedExcepti
 
 class NoAppException(message: String) : CodedException("ERR_NO_APP", message, null)
 
+/** `importIncomingMedia`: not enough free storage for the copy. */
+class NoSpaceException(message: String) : CodedException("ERR_NO_SPACE", message, null)
+
 /** `enqueue`: the same video is already in the library (or in the gallery copy VidoraX saved). */
 class AlreadyDownloadedException(message: String) : CodedException("ERR_ALREADY_DOWNLOADED", message, null)

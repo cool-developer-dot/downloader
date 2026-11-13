@@ -3,6 +3,7 @@ package com.vidorax.media.verify
 import com.vidorax.media.model.Container
 import com.vidorax.media.model.ProbeFailure
 import com.vidorax.media.plan.MediaSniffer
+import com.vidorax.media.plan.MpegProgramStream
 import com.vidorax.media.plan.SniffResult
 import java.io.File
 import java.io.RandomAccessFile
@@ -33,7 +34,7 @@ internal sealed interface VerifyResult {
  * [MediaSniffer] so "what we accept to download" and "what we accept as finished" can never drift apart.
  *
  * MPEG-TS is accepted only when the caller expects it: that is the file an HLS download assembles from TS
- * segments. An ISO-BMFF file's `moov` is found wherever it sits and checked for encrypted tracks, because the
+ * segments. An MPEG program stream is checked for scrambled (CSS) packets over its first megabytes. An ISO-BMFF file's `moov` is found wherever it sits and checked for encrypted tracks, because the
  * header read alone cannot see a `moov` stored after the media data.
  */
 internal object Verifier {
@@ -72,6 +73,9 @@ internal object Verifier {
             VerifyResult.Invalid("container mismatch: expected ${expected.wire}, file is ${verdict.container.wire}")
           isIsoBmff(verdict.container) && hasEncryptedTracks(file) ->
             VerifyResult.Invalid("encrypted (DRM) tracks in moov", ProbeFailure.DRM_PROTECTED)
+          // F4: the probe saw only the first bytes; a DVD title can turn scrambled after unprotected opening packs.
+          verdict.container == Container.MPEG_PS && MpegProgramStream.isScrambled(file) ->
+            VerifyResult.Invalid("scrambled (CSS) MPEG program stream", ProbeFailure.DRM_PROTECTED)
           else -> VerifyResult.Valid
         }
       }
@@ -82,7 +86,8 @@ internal object Verifier {
     }
   }
 
-  private fun isIsoBmff(container: Container): Boolean = container == Container.MP4 || container == Container.MOV
+  private fun isIsoBmff(container: Container): Boolean =
+    container == Container.MP4 || container == Container.MOV || container == Container.THREE_G2
 
   /** Walks the top-level boxes of the finished file (seeks only) and scans the `moov` for encryption boxes. */
   private fun hasEncryptedTracks(file: File): Boolean = runCatching {

@@ -38,6 +38,18 @@ const ERROR_COPY: Record<BrowserErrorCode, ErrorCopy> = {
     title: 'Unable to open this page',
     message: 'The website could not be loaded.',
   },
+  https_unavailable: {
+    title: 'No secure version of this site',
+    message: 'HTTPS-only mode opens pages over a secure connection, and this site didn’t answer on one.',
+  },
+  https_required: {
+    title: 'No secure version of this site',
+    message: 'VidoraX opens websites only over a secure connection, and this site didn’t answer on one.',
+  },
+  site_blocked: {
+    title: 'This site is blocked',
+    message: 'You chose to block this site.',
+  },
   http_error: {
     title: 'Unable to open this page',
     message: 'The website could not be loaded.',

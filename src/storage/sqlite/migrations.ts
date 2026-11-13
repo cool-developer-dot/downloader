@@ -4,6 +4,7 @@ import { DATABASE_VERSION } from '@/storage/constants';
 import { StorageError, toStorageError } from '@/storage/types';
 
 import {
+  applyBrowserTables,
   applyCatalogSchema,
   applySchema,
   configureDatabasePragmas,
@@ -31,6 +32,43 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
       // Upgrade: add catalog tables without touching existing browser data or files.
       await applyCatalogSchema(db);
       await db.execAsync('PRAGMA user_version = 2');
+    }
+
+    if (currentVersion < 3) {
+      // B9: bookmark folders, tags, notes, order and the reading list. Existing bookmarks stay (root folder, same
+      // order); safe to run twice.
+      await applyBrowserTables(db);
+      await db.execAsync('PRAGMA user_version = 3');
+    }
+
+    if (currentVersion < 4) {
+      // B14: the site-blocking tables (new tables only, IF NOT EXISTS; safe to run twice).
+      await applyBrowserTables(db);
+      await db.execAsync('PRAGMA user_version = 4');
+    }
+
+    if (currentVersion < 5) {
+      // B22: the notes table (a new table only, IF NOT EXISTS; safe to run twice).
+      await applyBrowserTables(db);
+      await db.execAsync('PRAGMA user_version = 5');
+    }
+
+    if (currentVersion < 6) {
+      // B19: the user-scripts table (a new table only, IF NOT EXISTS; safe to run twice).
+      await applyBrowserTables(db);
+      await db.execAsync('PRAGMA user_version = 6');
+    }
+
+    if (currentVersion < 7) {
+      // B23: highlights and watched pages (new tables only, IF NOT EXISTS; safe to run twice).
+      await applyBrowserTables(db);
+      await db.execAsync('PRAGMA user_version = 7');
+    }
+
+    if (currentVersion < 8) {
+      // B17: the saved-pages table (a new table only, IF NOT EXISTS; safe to run twice).
+      await applyBrowserTables(db);
+      await db.execAsync('PRAGMA user_version = 8');
     }
   } catch (error) {
     throw toStorageError(error, 'Failed to migrate local database', 'DATABASE_INIT_FAILED');

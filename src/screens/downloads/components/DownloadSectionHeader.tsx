@@ -9,12 +9,15 @@ export type DownloadSectionHeaderProps = {
   title: string;
   count?: number;
   testID?: string;
+  /** Shown at the end of the header (H4: the Queued section's Reorder button). */
+  action?: import('react').ReactNode;
 };
 
 export const DownloadSectionHeader = memo(function DownloadSectionHeader({
   title,
   count,
   testID,
+  action,
 }: DownloadSectionHeaderProps) {
   const downloadsTokens = useDownloadsTokens();
   const label = typeof count === 'number' ? `${title} · ${count}` : title;
@@ -36,6 +39,15 @@ export const DownloadSectionHeader = memo(function DownloadSectionHeader({
         style={{ textTransform: 'uppercase', letterSpacing: 0.6 }}>
         {label}
       </Text>
+      {action ? (
+        <Box
+          row
+          rtlRow
+          center
+          style={{ position: 'absolute', top: 0, bottom: 0, end: downloadsTokens.spacing.screenX }}>
+          {action}
+        </Box>
+      ) : null}
     </Box>
   );
 });

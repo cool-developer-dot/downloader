@@ -1,0 +1,17 @@
+VidoraX ad and tracker lists (ads.txt, trackers.txt)
+
+Source: EasyList (ads.txt) and EasyPrivacy (trackers.txt) by The EasyList authors (https://easylist.to/),
+version 202611081815 (8 November 2026).
+
+The EasyList repository is dual licensed under the GNU General Public License version 3 or later and the Creative
+Commons Attribution-ShareAlike 3.0 Unported licence or later (https://easylist.to/pages/licence.html). VidoraX uses
+these lists under Creative Commons Attribution-ShareAlike 3.0 Unported:
+https://creativecommons.org/licenses/by-sa/3.0/
+
+Changes: only whole-host rules (||host^, optionally limited to third-party requests or resource types) and plain
+path-prefix rules (||host/path, no options) were kept, written one per line as "host" or "host/path-prefix"; hosts that
+a generic exception (@@||host^) allows were removed, and hosts covered by a listed parent were dropped
+(scripts/dev/generate-blocklists.mjs in the VidoraX source). These adapted lists are shared under the same licence,
+CC BY-SA 3.0.
+
+The lists ship inside the app and are never downloaded or updated online.

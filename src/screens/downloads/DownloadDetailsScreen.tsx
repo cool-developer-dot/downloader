@@ -26,18 +26,30 @@ import {
   getDownloadSupportContext,
 } from '@/support';
 import { openSupportWithContext } from '@/support/support-navigation';
+import { DownloadIntegritySection } from './components/DownloadIntegritySection';
 import type { DownloadItem } from '@/store/downloads';
 import { useDownloadsStore } from '@/store/downloads';
+import { useSettingsStore } from '@/store/settings';
 import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
+import { DownloadTagsAndNote } from '@/screens/downloads/components/DownloadTagsAndNote';
 import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
+import { DownloadSaveLocationAction } from '@/screens/downloads/components/DownloadSaveLocationAction';
 import { renameMediaFileOnDevice } from '@/downloads/engine';
+import { DownloadEditActions } from '@/screens/downloads/components/DownloadEditActions';
 import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads/v2';
+import { DownloadMoveToPrivateAction } from '@/screens/downloads/components/DownloadMoveToPrivateAction';
 
+import { DownloadBandwidthControls } from './components/DownloadBandwidthControls';
 import { DownloadDeleteDialog } from './components/DownloadDeleteDialog';
+import { DownloadStartAtControl } from './components/DownloadStartAtControl';
+import { DownloadDetailsLinkActions } from './components/DownloadDetailsLinkActions';
 import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
+import { DownloadSaveThumbnailAction } from './components/DownloadSaveThumbnailAction';
 import { useDownloadDetailsScreen } from './hooks/useDownloadDetailsScreen';
+import { DownloadSubtitlesSection } from './components/DownloadSubtitlesSection';
 import { useDownloadsTokens } from './theme/downloads-tokens';
+import { DownloadProgressDetailsRows } from './components/DownloadProgressDetailsRows';
 import {
   extractMediaType,
   formatDownloadDate,
@@ -50,13 +62,17 @@ import {
   formatSourceHost,
   formatTransferSpeed,
   getExecutionStatusLabel,
+  recordingLabelFor,
   sanitizeErrorMessage,
+  waitingLabelFor,
   type DownloadCardAction,
 } from './utils/download-format';
 import { formatDuration } from '@/media-detection/utils';
+import { formatRecordedTime } from '@/downloads/v2/live-recording';
 
 const PRIMARY_LABEL_KEYS: Record<
   DownloadCardAction,
+  | 'downloads.primaryStop'
   | 'downloads.primaryPause'
   | 'downloads.primaryResume'
   | 'downloads.primaryCancel'
@@ -65,6 +81,7 @@ const PRIMARY_LABEL_KEYS: Record<
   | 'downloads.primaryShare'
   | 'downloads.primaryRemove'
 > = {
+  stop: 'downloads.primaryStop',
   pause: 'downloads.primaryPause',
   resume: 'downloads.primaryResume',
   cancel: 'downloads.primaryCancel',
@@ -78,6 +95,7 @@ const PRIMARY_VARIANT: Record<
   DownloadCardAction,
   'primary' | 'destructive' | 'outline'
 > = {
+  stop: 'primary',
   pause: 'primary',
   resume: 'primary',
   cancel: 'destructive',
@@ -162,15 +180,22 @@ const DetailsBody = memo(function DetailsBody({
   const { t } = useTranslation();
   const [thumbFailed, setThumbFailed] = useState(false);
   const transfer = useDownloadsStore((s) => s.transferById[item.id] ?? null);
+  const wifiOnly = useSettingsStore((s) => s.wifiOnly);
 
   const title = item.title?.trim() || item.fileName?.trim() || t('downloads.untitled');
   const showInternalPlay = item.status === 'COMPLETED' && canUseLocalFile;
-  const statusLabel = getExecutionStatusLabel({
-    status: item.status,
-    workerState: item.workerState,
-    downloadId: item.id,
-    processingStage: transfer?.processingStage ?? null,
-  });
+  // F6: a live recording shows its length and size so far instead of a percentage.
+  const recordingLine = item.status === 'DOWNLOADING' ? recordingLabelFor(transfer) : null;
+  const statusLabel = recordingLine
+    ? t('downloads.statusRecording')
+    : getExecutionStatusLabel({
+        status: item.status,
+        workerState: item.workerState,
+        downloadId: item.id,
+        processingStage: transfer?.processingStage ?? null,
+        // The engine holds it for a network it may use: "Waiting for Wi-Fi" / "Waiting for network", not "Queued".
+        ...(transfer?.waitingNetwork ? { waitingReason: wifiOnly ? 'WAITING_FOR_WIFI' : 'OFFLINE' } : {}),
+      });
   const statusColors = downloadsTokens.status[item.status];
   const mediaType = extractMediaType(item.fileName);
   const platform = formatPlatform(item.platform);
@@ -216,6 +241,8 @@ const DetailsBody = memo(function DetailsBody({
     item.status === 'DOWNLOADING' || item.status === 'PAUSED'
       ? formatEtaSeconds(transfer?.etaSeconds ?? null)
       : null;
+  // F3: why a queued download is held ("Scheduled for 02:00", "Waiting for charging"…).
+  const waitingLabel = waitingLabelFor(transfer);
   const localAvailability =
     transfer?.localState === 'missing'
       ? t('downloads.missingOnDevice')
@@ -304,7 +331,24 @@ const DetailsBody = memo(function DetailsBody({
         </Text>
       </Box>
 
-      {showProgress ? (
+      {recordingLine ? (
+        <Box gap={10} testID="download-details-recording">
+          <Text
+            variant="display"
+            color="textPrimary"
+            style={{ fontSize: 40, lineHeight: 48, fontWeight: '700' }}
+            importantForAccessibility="no"
+            accessibilityElementsHidden>
+            {formatRecordedTime(transfer?.recordedMs)}
+          </Text>
+          <Box row rtlRow gap={6} style={{ alignItems: 'center' }}>
+            <Icon name="record-circle" size={16} color="error" />
+            <Text variant="bodySmall" color="textSecondary" style={{ flex: 1 }}>
+              {recordingLine}
+            </Text>
+          </Box>
+        </Box>
+      ) : showProgress ? (
         <Box gap={10}>
           <Text
             variant="display"
@@ -335,10 +379,19 @@ const DetailsBody = memo(function DetailsBody({
               {totalSize}
             </Text>
           ) : null}
-          {speedLabel || etaLabel ? (
+          {speedLabel || etaLabel || item.status === 'DOWNLOADING' ? (
+            // Kept while downloading even when a tick has no speed yet, so the controls below never jump a line.
             <Text variant="bodySmall" color="textSecondary">
-              {[speedLabel, etaLabel].filter(Boolean).join(' · ')}
+              {[speedLabel, etaLabel].filter(Boolean).join(' · ') || '\u00A0'}
             </Text>
+          ) : null}
+          {waitingLabel ? (
+            <Box row rtlRow gap={6} style={{ alignItems: 'center' }} testID="download-details-wait">
+              <Icon name="clock-outline" size={16} color="secondary" />
+              <Text variant="bodySmall" color="textSecondary" style={{ flex: 1 }}>
+                {waitingLabel}
+              </Text>
+            </Box>
           ) : null}
         </Box>
       ) : null}
@@ -416,6 +469,9 @@ const DetailsBody = memo(function DetailsBody({
         </Box>
       ) : null}
 
+      {/* H20 File integrity: the checksum, Repair, or Play while downloading — as the download's state allows. */}
+      <DownloadIntegritySection id={item.id} status={item.status} workerState={item.workerState} />
+
       {actionError ? (
         <Text variant="caption" color="error" accessibilityLiveRegion="polite">
           {actionError}
@@ -444,6 +500,8 @@ const DetailsBody = memo(function DetailsBody({
         />
       ) : null}
 
+      <DownloadSubtitlesSection id={item.id} />
+
       {!showInternalPlay && secondaryActions.length > 0 ? (
         <Box row gap={10} style={{ flexWrap: 'wrap' }}>
           {secondaryActions.map((action) => (
@@ -464,6 +522,9 @@ const DetailsBody = memo(function DetailsBody({
           ))}
         </Box>
       ) : null}
+      <DownloadEditActions id={item.id} />
+
+      <DownloadDetailsLinkActions id={item.id} disabled={mutating} />
 
       <Box mt={8} gap={4}>
         <Text variant="label" color="textSecondary" style={{ letterSpacing: 0.5 }}>
@@ -507,9 +568,22 @@ const DetailsBody = memo(function DetailsBody({
           item.status === 'QUEUED') ? (
           <InfoRow label={t('downloads.infoDownloaded')} value={downloadedSize} />
         ) : null}
+        <DownloadProgressDetailsRows id={item.id} />
         {created ? <InfoRow label={t('downloads.infoCreatedDate')} value={created} /> : null}
         {completed ? <InfoRow label={t('downloads.infoDownloadedDate')} value={completed} /> : null}
+        <DownloadTagsAndNote id={item.id} />
       </Box>
+      <DownloadSaveLocationAction id={item.id} />
+
+      <DownloadSaveThumbnailAction id={item.id} />
+
+      {/* A live recording keeps up with the stream: no start time, no speed limit of its own. */}
+      {(item.status === 'DOWNLOADING' || item.status === 'PAUSED' || item.status === 'QUEUED') && !recordingLine ? (
+        <>
+          <DownloadStartAtControl downloadId={item.id} startAt={transfer?.startAt ?? null} />
+          <DownloadBandwidthControls downloadId={item.id} />
+        </>
+      ) : null}
 
       {(sourceHost || item.sourceUrl) && (
         <Box mt={8} gap={8}>
@@ -537,6 +611,7 @@ const DetailsBody = memo(function DetailsBody({
           </Text>
         </Box>
       )}
+      <DownloadMoveToPrivateAction id={item.id} />
     </ScrollView>
   );
 });

@@ -5,8 +5,10 @@ import { Box } from '@/components/base/Box';
 import { Icon } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
 import { useTranslation, type TranslationKey } from '@/localization';
+import { showTourAgain } from '@/tour';
 
 import { useSettingsTokens } from '../theme/settings-tokens';
+import { SettingsRow } from './SettingsRow';
 import { SettingsSection } from './SettingsSection';
 
 const STEP_KEYS: readonly TranslationKey[] = [
@@ -19,13 +21,20 @@ const STEP_KEYS: readonly TranslationKey[] = [
   'settings.howToUseStep7',
 ];
 
-const NOTE_KEYS: readonly TranslationKey[] = ['settings.howToUseNoteYouTube', 'settings.howToUseNoteDrm'];
+const NOTE_KEYS: readonly TranslationKey[] = [
+  'settings.howToUseNoteYouTube',
+  'settings.howToUseNoteDrm',
+  'settings.howToUsePermittedUse',
+];
 
 export type HowToUseSectionProps = {
   testID?: string;
 };
 
-/** Settings → How to use VidoraX: the download flow in seven short steps, and what can't be downloaded. */
+/**
+ * Settings → How to use VidoraX: the download flow in seven short steps, what can't be downloaded, what may be
+ * downloaded, and the guided tour of the real screens again.
+ */
 export const HowToUseSection = memo(function HowToUseSection({
   testID = 'settings-how-to-use',
 }: HowToUseSectionProps) {
@@ -76,6 +85,15 @@ export const HowToUseSection = memo(function HowToUseSection({
           </Box>
         ))}
       </View>
+      <SettingsRow
+        title={t('tour.showAgain')}
+        description={t('tour.showAgainHint')}
+        icon="compass-outline"
+        onPress={showTourAgain}
+        showDivider={false}
+        accessibilityHint={t('tour.showAgainA11y')}
+        testID={`${testID}-tour`}
+      />
     </SettingsSection>
   );
 });

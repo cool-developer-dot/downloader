@@ -2,8 +2,11 @@ package com.vidorax.media.bridge
 
 import com.vidorax.media.InvalidRequestException
 import com.vidorax.media.analyze.PageFetchRequest
+import com.vidorax.media.engine.PreferredExtensions
 import com.vidorax.media.library.Titles
+import com.vidorax.media.model.BasicCredentials
 import com.vidorax.media.model.DownloadSettings
+import com.vidorax.media.model.DownloadWindow
 import com.vidorax.media.model.EnqueueRequest
 import com.vidorax.media.model.LegacyMetadata
 import com.vidorax.media.model.LibraryQuery
@@ -29,6 +32,7 @@ data class RequestContextRecord(
   @Field val origin: String? = null,
   @Field val headers: Map<String, String>? = null,
   @Field val useCookies: Boolean = false,
+  @Field val cookieProfile: String? = null,
 ) : Record {
   fun toModel() = RequestContext(
     userAgent = userAgent.nonBlank(),
@@ -37,6 +41,8 @@ data class RequestContextRecord(
     // Cookies only ever come from CookieManager.
     headers = headers.orEmpty().filterKeys { !it.equals("Cookie", ignoreCase = true) },
     useCookies = useCookies,
+    // B11: only an incognito session name; anything else is dropped (today's request).
+    cookieProfile = cookieProfile?.takeIf { com.vidorax.media.net.IncognitoWebCookies.isIncognitoName(it) },
   )
 }
 
@@ -112,9 +118,17 @@ data class EnqueueRequestRecord(
   @Field val thumbnailUrl: String? = null,
   @Field val durationMs: Double? = null,
   @Field val estimatedBytes: Double? = null,
+  /** #299: sign-in for this download only (https). Never stored with the download, never sent back to JavaScript. */
+  @Field val credentials: CredentialsRecord? = null,
   @Field val qualityLabel: String? = null,
   @Field val saveToGallery: Boolean? = null,
+  /** #494: "mp4" / "m4v" / "m4a"; missing or anything else = the usual extension. */
+  @Field val preferredExtension: String? = null,
+  /** #480: this download's own "Wi-Fi only"; missing = Download Settings decides. */
+  @Field val wifiOnly: Boolean? = null,
   @Field val identityUrl: String? = null,
+  /** H12: "Keep both" / "Replace" — download it although it is already saved. Missing = false (today). */
+  @Field val allowDuplicate: Boolean? = null,
 ) : Record {
   fun toModel(): EnqueueRequest {
     val sourceKind = parseWire<SourceKind>(kind, "kind")
@@ -134,27 +148,150 @@ data class EnqueueRequestRecord(
       thumbnailUrl = thumbnailUrl.nonBlank(),
       durationMs = durationMs.positiveLong(),
       estimatedBytes = estimatedBytes.positiveLong(),
+      credentials = credentials?.toModel(url),
       qualityLabel = qualityLabel.nonBlank()?.trim(),
       saveToGallery = saveToGallery,
+      preferredExtension = PreferredExtensions.normalize(preferredExtension),
+      wifiOnly = wifiOnly,
       // Only an identity hint: an unusable value falls back to `url` instead of refusing the download.
       identityUrl = identityUrl?.trim()?.takeIf { it.toHttpUrlOrNull() != null },
+      allowDuplicate = allowDuplicate == true,
     )
+  }
+}
+
+/**
+ * #299: a user name and password from JavaScript. A plain class (not a data class) so it is never printed: [toString]
+ * hides both. Rejected with ERR_INVALID_REQUEST — the message never holds either value — when they cannot be sent.
+ */
+class CredentialsRecord(
+  @Field val username: String = "",
+  @Field val password: String = "",
+) : Record {
+  override fun toString(): String = "CredentialsRecord(<redacted>)"
+
+  /** For a download of [downloadUrl]: https only (the credentials are pinned to its origin). */
+  fun toModel(downloadUrl: String): BasicCredentials {
+    if (!downloadUrl.trim().startsWith("https://", ignoreCase = true)) invalid("Sign-in details are only sent over https")
+    return toModel()
+  }
+
+  /** RFC 7617: a user-id has no colon; neither value may hold control characters; both are bounded. */
+  fun toModel(): BasicCredentials {
+    if (username.isEmpty() || username.length > MAX_LENGTH) invalid("The user name must be 1-$MAX_LENGTH characters")
+    if (password.length > MAX_LENGTH) invalid("The password must be at most $MAX_LENGTH characters")
+    if (':' in username) invalid("The user name cannot contain a colon")
+    if (username.any { it.isISOControl() } || password.any { it.isISOControl() }) {
+      invalid("Sign-in details contain control characters")
+    }
+    return BasicCredentials(username, password)
+  }
+
+  private companion object {
+    const val MAX_LENGTH = 256
   }
 }
 
 data class DownloadSettingsRecord(
   @Field val maxConcurrent: Int = DownloadSettings.DEFAULT.maxConcurrent,
   @Field val wifiOnly: Boolean = DownloadSettings.DEFAULT.wifiOnly,
+  /** Advanced network (net/NetworkOptions): each is sent only when the user changed it; null = today's behaviour. */
+  @Field val userAgent: String? = null,
+  @Field val customHeaders: Map<String, String>? = null,
+  @Field val connectTimeoutSeconds: Int? = null,
+  @Field val readTimeoutSeconds: Int? = null,
+  /** #332 Retry limit (engine/RetryLimit): sent only when the user changed it; null = Automatic (5). Clamped to 1..10. */
+  @Field val retryLimit: Int? = null,
   @Field val autoSaveToGallery: Boolean = DownloadSettings.DEFAULT.autoSaveToGallery,
   @Field val preferredMaxHeight: Int? = null,
+  /** Missing from an older JavaScript bundle: the default. */
+  @Field val connectionsPerFile: Int? = null,
+  /** Missing, null or 0: no speed limit. */
+  @Field val speedLimitBytesPerSecond: Double? = null,
+  /** F3: the daily download hours; missing or null = any time. */
+  @Field val downloadWindow: DownloadWindowRecord? = null,
+  @Field val notOnRoaming: Boolean = false,
+  @Field val pauseOnLowBattery: Boolean = false,
+  @Field val onlyWhileCharging: Boolean = false,
+  /** The app's language ("en" / "ur") for the F3 notification texts. */
+  @Field val language: String? = null,
+  /** F6: "Live recording (beta)". */
+  @Field val liveRecording: Boolean = false,
+  /** F6: minutes after which a recording stops by itself (missing = 120). */
+  @Field val liveRecordingMaxMinutes: Int? = null,
+  /** Finished/failed notification alerts (runner/NotificationOptions); null = not sent, keep the saved value. */
+  @Field val notificationSound: Boolean? = null,
+  @Field val notificationVibrate: Boolean? = null,
+  @Field val notificationSilent: Boolean? = null,
+  /** "Automatically resume interrupted downloads"; missing from an older JavaScript bundle = on (the default). */
+  @Field val autoResume: Boolean? = null,
 ) : Record {
   fun toModel(): DownloadSettings {
     if (maxConcurrent !in DownloadSettings.MIN_CONCURRENT..DownloadSettings.MAX_CONCURRENT) {
       invalid("maxConcurrent must be ${DownloadSettings.MIN_CONCURRENT}-${DownloadSettings.MAX_CONCURRENT}")
     }
     if (preferredMaxHeight != null && preferredMaxHeight <= 0) invalid("preferredMaxHeight must be positive")
-    return DownloadSettings(maxConcurrent, wifiOnly, autoSaveToGallery, preferredMaxHeight)
+    val connections = connectionsPerFile ?: DownloadSettings.DEFAULT_CONNECTIONS
+    if (connections !in DownloadSettings.MIN_CONNECTIONS..DownloadSettings.MAX_CONNECTIONS) {
+      invalid("connectionsPerFile must be ${DownloadSettings.MIN_CONNECTIONS}-${DownloadSettings.MAX_CONNECTIONS}")
+    }
+    val speedLimit = speedLimitBytesPerSecond
+    if (speedLimit != null && (speedLimit.isNaN() || speedLimit < 0)) invalid("speedLimitBytesPerSecond must be 0 or more")
+    val liveMinutes = liveRecordingMaxMinutes ?: DownloadSettings.DEFAULT_LIVE_MAX_MINUTES
+    if (liveMinutes !in DownloadSettings.MIN_LIVE_MAX_MINUTES..DownloadSettings.MAX_LIVE_MAX_MINUTES) {
+      invalid("liveRecordingMaxMinutes must be ${DownloadSettings.MIN_LIVE_MAX_MINUTES}-${DownloadSettings.MAX_LIVE_MAX_MINUTES}")
+    }
+    return DownloadSettings(
+      maxConcurrent,
+      wifiOnly,
+      autoSaveToGallery,
+      preferredMaxHeight,
+      connections,
+      speedLimit?.toLong()?.takeIf { it > 0 },
+      window = downloadWindow?.toModel(),
+      notOnRoaming = notOnRoaming,
+      pauseOnLowBattery = pauseOnLowBattery,
+      onlyWhileCharging = onlyWhileCharging,
+      language = if (language == "ur") "ur" else "en",
+      liveRecording = liveRecording,
+      liveRecordingMaxMinutes = liveMinutes,
+      autoResume = autoResume ?: true,
+    )
   }
+}
+
+/** F3: `DownloadSettings.downloadWindow` — minutes after midnight and ISO weekdays (at least one). */
+data class DownloadWindowRecord(
+  @Field val startMinute: Int = 0,
+  @Field val endMinute: Int = 0,
+  @Field val days: List<Int> = emptyList(),
+) : Record {
+  fun toModel(): DownloadWindow {
+    val range = 0 until DownloadWindow.MINUTES_PER_DAY
+    if (startMinute !in range || endMinute !in range) invalid("downloadWindow minutes must be 0-1439")
+    if (days.isEmpty() || days.any { it !in 1..7 }) invalid("downloadWindow days must be ISO weekdays 1-7, at least one")
+    return DownloadWindow(startMinute, endMinute, days.toSet())
+  }
+}
+
+/** `setDownloadBandwidth` options: both are applied — a missing limit is no limit, a missing priority is off. */
+data class DownloadBandwidthRecord(
+  @Field val speedLimitBytesPerSecond: Double? = null,
+  @Field val priority: Boolean? = null,
+) : Record {
+  fun limit(): Long? {
+    val value = speedLimitBytesPerSecond ?: return null
+    if (value.isNaN() || value < 0) invalid("speedLimitBytesPerSecond must be 0 or more")
+    return value.toLong().takeIf { it > 0 }
+  }
+}
+
+/** F15: `measureLeftoverFiles` / `cleanLeftoverFiles` options. */
+data class LeftoverFilesRecord(
+  @Field val keepLegacyIds: List<String>? = null,
+) : Record {
+  /** v1 downloads whose temporary parts stay (an empty list keeps none). */
+  fun keep(): Set<String> = keepLegacyIds.orEmpty().filter { it.isNotBlank() }.toSet()
 }
 
 data class LibraryQueryRecord(

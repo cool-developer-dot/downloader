@@ -3,6 +3,7 @@ import type { EnqueueRequest, RequestContext, SiteId } from '@modules/vidorax-me
 import type { DownloadQualityOption } from '@/downloads/quality/types';
 import type { MediaRequestContext } from '@/downloads/types/request-context';
 import { isLikelyMediaSegment } from '@/media-detection/services/false-positive.filter';
+import { incognitoCookieProfile } from '@/browser/incognito/incognito-state';
 
 /** Why a verified browser variant is not handed to the v2 engine. */
 export type V2HandoffRejection =
@@ -61,6 +62,14 @@ const PROGRESSIVE_VIDEO_CONTAINERS = new Set([
   'ts',
   'flv',
   '3gp',
+  '3g2',
+  // F4V is MP4 and DivX is AVI by their bytes; the engine names the finished file by its container.
+  'f4v',
+  'divx',
+  // MPEG program streams (F4); the engine converts them to MP4 when this device decodes their tracks.
+  'mpg',
+  'mpeg',
+  'vob',
   'unknown',
 ]);
 
@@ -209,7 +218,15 @@ export function toV2RequestContext(ctx: MediaRequestContext | null, pageUrl: str
     ...(origin ? { origin } : {}),
     ...(Object.keys(headers).length > 0 ? { headers } : {}),
     useCookies: Boolean(ctx?.cookiesRequired || ctx?.hasCookies),
+    // B11: media found in an incognito tab uses that session's cookie jar, never the normal profile's.
+    ...cookieProfileField(),
   };
+}
+
+/** B11: the incognito session while an incognito tab is in front (detection and downloads follow the tab in front). */
+function cookieProfileField(): { cookieProfile?: string } {
+  const cookieProfile = incognitoCookieProfile();
+  return cookieProfile ? { cookieProfile } : {};
 }
 
 function positiveBytes(option: DownloadQualityOption): number | undefined {
@@ -258,6 +275,8 @@ export function buildV2EnqueueRequest(input: V2HandoffInput): V2EnqueueDecision 
   const estimatedBytes = positiveBytes(option);
   const qualityLabel = option.label?.trim();
   const stream = hls || dash;
+  // F6: a live HLS offer is recorded, not downloaded.
+  const live = hls && option.isLive === true;
   const maxHeight = stream && typeof option.height === 'number' && option.height > 0 ? Math.trunc(option.height) : null;
   // The exact DASH representation / HLS variant the user picked: downloaded as chosen, or refused — never swapped.
   const videoId = stream ? option.representationId?.trim() || null : null;
@@ -266,7 +285,7 @@ export function buildV2EnqueueRequest(input: V2HandoffInput): V2EnqueueDecision 
     ok: true,
     request: {
       url: option.sourceUrl,
-      kind: split ? 'split' : hls ? 'hls' : dash ? 'dash' : 'progressive',
+      kind: split ? 'split' : live ? 'live' : hls ? 'hls' : dash ? 'dash' : 'progressive',
       ...(audioSource ? { audioUrl: audioSource.toString() } : {}),
       ...(maxHeight || videoId
         ? { variant: { ...(videoId ? { videoId } : {}), ...(maxHeight ? { maxHeight } : {}) } }

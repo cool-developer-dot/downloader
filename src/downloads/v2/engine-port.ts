@@ -2,10 +2,14 @@ import { getVidoraMedia, isVidoraMediaAvailable } from '@modules/vidorax-media';
 import type {
   CompletedDownload,
   DeviceVideoPage,
+  DownloadBandwidth,
+  DownloadCredentials,
   DownloadRecord,
   DownloadSettings,
   EnqueueRequest,
   EnqueueResult,
+  LeftoverFiles,
+  LeftoverFilesOptions,
   LibraryItem,
   LibraryPage,
   LibraryQuery,
@@ -32,12 +36,36 @@ export type V2EnginePort = {
   findDuplicate?(request: EnqueueRequest): Promise<EnqueueResult | null>;
   pause(id: string): Promise<void>;
   resume(id: string): Promise<void>;
+  /** H4 queues and start order (see `VidoraMediaModuleApi`). Missing on older native builds: no Reorder mode then. */
+  getDownloadQueues?(): Promise<import('@modules/vidorax-media/src/VidoraMedia.types').DownloadQueueState>;
+  setDownloadOrder?(ids: string[]): Promise<import('@modules/vidorax-media/src/VidoraMedia.types').DownloadQueueState>;
+  moveDownloadsToQueue?(
+    ids: string[],
+    queueId: string,
+  ): Promise<import('@modules/vidorax-media/src/VidoraMedia.types').DownloadQueueState>;
+  setDownloadQueues?(
+    queues: import('@modules/vidorax-media/src/VidoraMedia.types').DownloadQueue[],
+  ): Promise<import('@modules/vidorax-media/src/VidoraMedia.types').DownloadQueueState>;
   retry(id: string): Promise<void>;
+  /** #299: where a download started with sign-in must sign in again; null when not needed. Older builds: missing. */
+  downloadNeedsCredentials?(id: string): { origin: string; realm: string | null } | null;
+  /** #299: the credentials again for such a download (never read back). Older builds: missing. */
+  setDownloadCredentials?(id: string, credentials: DownloadCredentials): Promise<boolean>;
   cancel(id: string): Promise<void>;
   removeDownload(id: string): Promise<void>;
+  /** Pauses every pausable download (the engine's own). Missing on older native builds: per-item `pause` then. */
+  pauseAll?(): Promise<void>;
+  /** Resumes every paused download (the engine's own). Missing on older native builds: per-item `resume` then. */
+  resumeAll?(): Promise<void>;
   listDownloads(): Promise<DownloadRecord[]>;
   listLibrary(query: LibraryQuery): Promise<LibraryPage>;
   getLibraryItem(id: string): Promise<LibraryItem | null>;
+  /** H19 Subtitles (see subtitles.types.ts). Missing on older native builds: no subtitles then. */
+  probeSubtitles?(request: ProbeRequest): Promise<import('@modules/vidorax-media/src/subtitles.types').SubtitleTrackInfo[]>;
+  setDownloadSubtitles?(id: string, trackIds: string[]): Promise<void>;
+  getDownloadSubtitles?(id: string): Promise<import('@modules/vidorax-media/src/subtitles.types').DownloadSubtitles | null>;
+  readSubtitle?(id: string, index: number): Promise<string>;
+  shareSubtitleText?(fileName: string, text: string): Promise<void>;
   getLibraryItems(ids: string[]): Promise<LibraryItem[]>;
   deleteLibraryItems(ids: string[]): Promise<void>;
   /** Changes a library item's title (the file keeps its name). Missing on older native builds. */
@@ -45,7 +73,22 @@ export type V2EnginePort = {
   openWith(id: string): Promise<void>;
   share(ids: string[]): Promise<void>;
   saveToGallery(ids: string[]): Promise<void>;
+  /** The item's thumbnail as a JPEG in Pictures/VidoraX. Missing on older native builds: the action is hidden. */
+  saveThumbnailToGallery?(id: string): Promise<string>;
   setDownloadSettings(settings: DownloadSettings): Promise<void>;
+  /** A download's own speed limit / Priority mark (F2). Missing on older native builds. */
+  setDownloadBandwidth?(
+    id: string,
+    options: { speedLimitBytesPerSecond?: number | null; priority?: boolean },
+  ): Promise<DownloadBandwidth[]>;
+  listDownloadBandwidth?(): Promise<DownloadBandwidth[]>;
+  /** F3 "Start at…" (epoch ms; null = now). Missing on older native builds: the control is hidden. */
+  setDownloadStartAt?(id: string, startAt: number | null): Promise<DownloadRecord>;
+  /** F6: stops a live recording and finalizes what was recorded. Missing on older native builds. */
+  stopRecording?(id: string): Promise<DownloadRecord>;
+  /** Download files that belong to nothing (F15). Missing on older native builds: the Storage row is not shown. */
+  measureLeftoverFiles?(options?: LeftoverFilesOptions): Promise<LeftoverFiles>;
+  cleanLeftoverFiles?(options?: LeftoverFilesOptions): Promise<LeftoverFiles>;
   setFavorite(id: string, favorite: boolean): Promise<void>;
   /** Missing on older native builds; callers check before use. */
   listDeviceVideos?(limit: number, offset: number): Promise<DeviceVideoPage>;

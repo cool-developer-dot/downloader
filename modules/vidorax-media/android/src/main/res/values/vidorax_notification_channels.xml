@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The download notification channels' names and descriptions (Android Settings → Apps → VidoraX → Notifications). -->
+<resources>
+  <string name="vidorax_channel_progress_name">Downloads in progress</string>
+  <string name="vidorax_channel_progress_description">Shows videos VidoraX is downloading.</string>
+  <string name="vidorax_channel_status_name">Finished downloads</string>
+  <string name="vidorax_channel_status_description">Tells you when a download finishes or fails.</string>
+</resources>

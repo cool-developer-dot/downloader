@@ -2,6 +2,7 @@ import type { EnqueueRequest, EnqueueResult, ProbeFailure } from '@modules/vidor
 
 import type { DownloadStatus } from '@/api/types';
 
+import { applyDuplicateBypass, hasDuplicateBypass } from './duplicate-action';
 import {
   buildV2EnqueueRequest,
   v2HandoffRejectionMessage,
@@ -9,9 +10,13 @@ import {
   type V2HandoffRejection,
 } from './enqueue-request';
 import type { V2EnginePort } from './engine-port';
+import { applyDownloadOptions } from './download-options';
+import { namedTitleFor, preferredExtensionFor } from './filename-naming';
 import { ensureGalleryPermission } from './gallery-permission';
+import { attachSubtitleChoice } from './subtitle-store';
 import { ensureDownloadNotificationPermission } from './notification-permission';
 import { projectV2Download, type V2DownloadEntry } from './projection';
+import { notifyIncognitoDownload } from '@/browser/incognito/incognito-state';
 
 /**
  * DUPLICATE outcomes: the user asked for a video they already have, so nothing new was started. Never a failure —
@@ -82,6 +87,10 @@ export async function findExistingDownload(
   deps: Pick<V2HandoffDeps, 'engine' | 'applyEntries'>,
 ): Promise<Extract<V2HandoffResult, { ok: true }> | null> {
   const decision = buildV2EnqueueRequest(input);
+  // H12 (#386): a video the user chose to download again (Keep both / Replace) is not looked up.
+  if (decision.ok && hasDuplicateBypass(decision.request)) {
+    return null;
+  }
   if (!decision.ok || !deps.engine?.findDuplicate) {
     return null;
   }
@@ -167,6 +176,8 @@ export async function handOffVerifiedVariant(
   if (!decision.ok) {
     return { ok: false, reason: decision.reason, message: v2HandoffRejectionMessage(decision.reason) };
   }
+  // H12 (#386): Keep both / Replace — this one request skips the engine's duplicate checks (Keep both: "Title (2)").
+  applyDuplicateBypass(decision.request);
   const key = input.variantKey;
   const accepted = acceptedByVariant.get(key);
   if (accepted) {
@@ -196,7 +207,8 @@ export async function handOffVerifiedVariant(
     if (existing) {
       return existing;
     }
-    if (decision.request.kind === 'hls' || decision.request.kind === 'dash' || decision.request.kind === 'split') {
+    const kind = decision.request.kind;
+    if (kind === 'hls' || kind === 'dash' || kind === 'split' || kind === 'live') {
       // Streams and split tracks: the native classifier decides for the exact variant / pair about to be enqueued.
       const verdict = await classifyStream(deps.engine, decision.request);
       if (!verdict.ok) {
@@ -211,6 +223,15 @@ export async function handOffVerifiedVariant(
         };
       }
     }
+    // Filename Template (#379): the engine names the file after this title; the default template keeps it as is.
+    decision.request.title = namedTitleFor(decision.request);
+    // Custom Extension (#494): sent only when the user chose one; the engine uses it only for a matching container.
+    const preferredExtension = preferredExtensionFor();
+    if (preferredExtension) {
+      decision.request.preferredExtension = preferredExtension;
+    }
+    // The quality sheet's Options (H8): an edited name, per-download Save to Gallery. Untouched = nothing changes.
+    applyDownloadOptions(decision.request);
     // The engine checks for the same video again and creates the download in one atomic step: two taps, two entry
     // points or a tap racing a restart still start one download.
     const result: EnqueueResult = deps.engine.enqueueUnique
@@ -223,7 +244,11 @@ export async function handOffVerifiedVariant(
       }
       return duplicate;
     }
+    // B11 #107: started from an incognito tab (its session's cookies): it stays in the library afterwards.
+    if (decision.request.request.cookieProfile) notifyIncognitoDownload();
     const record = result.record;
+    // H19: the stream's subtitles, chosen by Download Settings (off by default), are fetched once it completed.
+    void attachSubtitleChoice(deps.engine, record.id, decision.request);
     acceptedByVariant.set(key, record.id);
     // Ask for the permissions from this gesture; a refusal never affects the download itself.
     void ensureDownloadNotificationPermission().then(() => ensureGalleryPermission());

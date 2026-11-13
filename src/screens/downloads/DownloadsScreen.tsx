@@ -9,6 +9,7 @@ import { ScreenHeader } from '@/components/headers/ScreenHeader';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
+import { BatchAddHeaderButton } from '@/screens/batch-add/BatchAddHeaderButton';
 
 import {
   DownloadDeleteDialog,
@@ -18,12 +19,15 @@ import {
   DownloadsList,
   DownloadSkeleton,
 } from './components';
+import { DownloadsBulkBar } from './components/DownloadsBulkBar';
 import { useDownloadsScreen } from './hooks/useDownloadsScreen';
+import { useTapToToggle } from './hooks/useTapToToggle';
 import {
   registerQualitySelectionDownloadListener,
   useQualitySelectionContext,
 } from './quality';
 import { useDownloadsTokens } from './theme/downloads-tokens';
+import { DownloadsTotalSpeed } from './components/DownloadsTotalSpeed';
 
 const TOAST_MS = 2200;
 
@@ -60,6 +64,10 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
 
   const qualitySelection = useQualitySelectionContext();
   const openPasteLink = qualitySelection.open;
+  // The empty state's "Open Browser" just opens it; only the paste button reads the clipboard.
+  const openBrowser = useCallback(() => {
+    navigation.navigate(routePaths.browser);
+  }, []);
 
   const {
     orderedIds,
@@ -161,11 +169,16 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
     [onShare],
   );
 
+  const tapToggle = useTapToToggle({ pause: handlePause, resume: handleResume });
+
   const handlePressItem = useCallback(
     (id: string) => {
+      if (tapToggle(id)) {
+        return;
+      }
       openDetails(id);
     },
-    [openDetails],
+    [openDetails, tapToggle],
   );
 
   const openFavorites = useCallback(() => {
@@ -216,10 +229,13 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
               color="headerIcon"
               testID="downloads-favorites-button"
             />
+            <BatchAddHeaderButton />
           </Box>
         }
         testID="downloads-header"
       />
+
+      <DownloadsBulkBar />
 
       <Box py={12} gap={4}>
         <DownloadsHeaderControls
@@ -239,6 +255,7 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
           onSelectSort={onSelectSort}
           onReset={resetControls}
         />
+        <DownloadsTotalSpeed />
       </Box>
 
       {error && status === 'ready' ? (
@@ -261,7 +278,7 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
 
       {status === 'empty' ? (
         <DownloadEmptyState
-          onActionPress={openPasteLink}
+          onActionPress={openBrowser}
           refreshing={refreshing}
           onRefresh={handleRefresh}
         />
@@ -302,6 +319,7 @@ export const DownloadsScreen = memo(function DownloadsScreen() {
           onRefresh={handleRefresh}
           onEndReached={handleEndReached}
           onPressItem={handlePressItem}
+          onLongPressItem={openDetails}
           onPause={handlePause}
           onResume={handleResume}
           onCancel={handleCancel}

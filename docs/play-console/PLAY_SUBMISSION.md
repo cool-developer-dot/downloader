@@ -181,11 +181,59 @@ The user's download would stop part-way as soon as they leave the app, and the f
 
 - **Video (required):** screen-record: open a page with a video, then tap Download, press Home, pull down the notification shade to show the progress notification, tap Pause/Resume, then open Downloads to show the finished file. Upload it (unlisted YouTube or Drive link) and paste the link.
 
-**`mediaPlayback` is not declared.** The manifest used to declare expo-video's `mediaPlayback` service, but no
-code starts it: the player pauses when the app is backgrounded, PiP needs no foreground service, and no player sets
-`staysActiveInBackground`/`showNowPlayingNotification`. It was removed on 2026-10-01 so Play does not ask for a
-declaration of an unused service. If Play Console still lists a Media playback question, answer that the app
-does not use it.
+### B2. Foreground service (`FOREGROUND_SERVICE_MEDIA_PLAYBACK`, type `mediaPlayback`) — added with F16/F18, 2026-10
+
+Where the code uses it: expo-video's `ExpoVideoPlaybackService` (a Media3 `MediaSessionService`, declared in the app
+manifest). It runs **only** when the user has turned on Settings → Player → **"Keep playing in background"** (off by
+default) and a video is playing in VidoraX's own player: leaving the app or locking the screen then keeps the sound
+going with a media notification (title, artwork, play/pause, seek; the same controls on the lock screen). It stops
+when the user pauses and dismisses it, closes the player, or the video reaches its end. With the setting off (the
+default) it never starts — the player pauses in the background as before, and picture-in-picture needs no service.
+
+- **Task type:** Media playback → *Media playback (audio or video)*.
+- **Description:**
+
+```
+VidoraX has an optional setting, "Keep playing in background" (off by default). When the user turns it on and plays a video in the app's player, the mediaPlayback foreground service keeps the audio playing after the user leaves the app or locks the screen, with a media notification and lock-screen controls (play/pause, seek). It runs only while that user-started playback is active and stops when the user pauses and dismisses it, closes the player, or the video ends.
+```
+
+- **Impact if deferred or interrupted:**
+
+```
+Playback the user started and asked to continue in the background would stop as soon as they leave the app or the screen turns off. Media playback is immediate and continuous, so it cannot be deferred.
+```
+
+- **Video (required):** screen-record: Settings → Player → turn on "Keep playing in background"; open the Player tab
+  and play a video; press Home — the media notification appears and the sound continues; pull down the shade and use
+  play/pause and seek; lock the screen and show the lock-screen controls; unlock, open VidoraX and close the player —
+  the notification disappears. Upload it (unlisted YouTube or Drive link) and paste the link.
+
+### B3. Foreground service (`FOREGROUND_SERVICE_MEDIA_PROCESSING`, type `mediaProcessing`) — added with H23, 2026-10
+
+Where the code uses it: `MediaEditService` (`modules/vidorax-media/.../library/`, declared in the app manifest with
+`mediaProcessing|dataSync`). Download details → **Edit** → Trim or Convert (MP4 / audio only) makes a NEW file from a
+video the user already downloaded, on the device, with Media3 Transformer. A long edit keeps running while the user
+leaves the app, with a progress notification and Cancel: type `mediaProcessing` on **Android 15+**, `dataSync` (local
+file processing) on Android 10–14. It starts only when the user taps Trim/Convert and stops when the edit finishes,
+fails or is cancelled. Nothing is uploaded or downloaded.
+
+- **Task type:** Media processing → *Processing media files (transcoding / editing)*.
+- **Description:**
+
+```
+VidoraX lets the user trim or convert a video they already saved (for example, keep only part of it or save just the audio). After the user taps Trim or Convert, the mediaProcessing foreground service keeps that on-device edit running while the app is in the background, with an ongoing notification that shows progress and Cancel. It runs only while a user-started edit is active and stops as soon as the edit finishes, fails or is cancelled.
+```
+
+- **Impact if deferred or interrupted:**
+
+```
+The edit the user started would stop part-way when they leave the app, the partial output would be deleted, and the new file they asked for would not be created until they start the edit again. The user expects the result right away, so it cannot be deferred.
+```
+
+- **Video (required):** screen-record: Player tab → open a downloaded video's Download details → Edit → Trim, set a
+  range, tap Save; press Home and pull down the shade to show the edit's progress notification with Cancel; open
+  VidoraX again and show the new trimmed video in the Player tab. Upload it (unlisted YouTube or Drive link) and paste
+  the link.
 
 ### C. Other declarations: none required
 
@@ -195,16 +243,20 @@ Checked against every permission in the final merged manifest:
 | --- | --- |
 | `INTERNET`, `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE`, `WAKE_LOCK`, `VIBRATE`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED` (resume downloads after reboot), `FOREGROUND_SERVICE` | No |
 | `RUN_USER_INITIATED_JOBS` | No (not a foreground-service type) |
-| `USE_BIOMETRIC` / `USE_FINGERPRINT` (from `androidx.biometric` via expo-secure-store) | No |
+| `USE_BIOMETRIC` / `USE_FINGERPRINT` (App Lock fingerprint/face unlock, expo-local-authentication; also `androidx.biometric` via expo-secure-store) | No |
+| Home-screen widget receiver (H22), static app shortcut "Paste link" (H7), non-exported content provider for Play while downloading (H20) | No |
 | `READ/WRITE_EXTERNAL_STORAGE` (maxSdk 28, "Save to Gallery" on Android 7–9) | No |
 | `c2dm.permission.RECEIVE` (Firebase library in expo-notifications, inactive) | No |
 | `BIND_GET_INSTALL_REFERRER_SERVICE` (install-referrer library, never called) | No |
 | Launcher badge permissions (ShortcutBadger in expo-notifications) | No |
 | `http`/`https` VIEW intent filters (can be default browser) | No |
 
+| `content`/`file` VIEW intent filters for `video/*` and `audio/*` ("Open with VidoraX", F16) | No |
+
 Not present (the ones that *would* need forms): `QUERY_ALL_PACKAGES`, `MANAGE_EXTERNAL_STORAGE`,
 `REQUEST_INSTALL_PACKAGES`, `ACCESS_*LOCATION`, `SCHEDULE_EXACT_ALARM`/`USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT`,
-`BIND_ACCESSIBILITY_SERVICE`, `BIND_VPN_SERVICE`, SMS/Call Log, `AD_ID`, other foreground-service types.
+`BIND_ACCESSIBILITY_SERVICE`, `BIND_VPN_SERVICE`, `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`, `SYSTEM_ALERT_WINDOW`, SMS/Call
+Log, `AD_ID`, foreground-service types other than `dataSync`, `mediaPlayback` and `mediaProcessing`.
 
 ## Intellectual-property note (not a form)
 

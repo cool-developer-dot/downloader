@@ -1,4 +1,5 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useState } from 'react';
+import { AccessibilityInfo, Platform, ToastAndroid } from 'react-native';
 
 import { Box } from '@/components/base/Box';
 import { IconButton } from '@/components/buttons/IconButton';
@@ -8,8 +9,12 @@ import { SearchField } from '@/components/inputs/SearchField';
 import { useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
 import type { BrowserHistoryEntry } from '@/storage/types';
+import { ClearBrowsingDataSheet } from '@/browser/history/components/ClearBrowsingDataSheet';
+import { HistoryOffBanner } from '@/browser/history/components/HistoryOffBanner';
+import { exportHistoryToFile } from '@/browser/history/history-export.service';
 
 import {
+  HistoryClearSearchesRow,
   HistoryDeleteDialog,
   HistoryEmptyState,
   HistoryErrorState,
@@ -45,10 +50,39 @@ export const HistoryScreen = memo(function HistoryScreen() {
     openClear,
     cancelClear,
     confirmClear,
+    recentSearchTotal,
+    clearSearchesVisible,
+    clearingSearches,
+    openClearSearches,
+    cancelClearSearches,
+    confirmClearSearches,
     openBrowser,
     refresh,
     loadMore,
+    query,
   } = useHistoryScreen();
+
+  // B10 #98 / #103: clear by time range, export as CSV.
+  const [rangeSheetVisible, setRangeSheetVisible] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const handleExport = useCallback(async () => {
+    if (exporting) return;
+    setExporting(true);
+    const notify = (message: string) => {
+      if (Platform.OS === 'android') ToastAndroid.show(message, ToastAndroid.SHORT);
+      AccessibilityInfo.announceForAccessibility(message);
+    };
+    try {
+      const outcome = await exportHistoryToFile();
+      if (outcome === 'empty') notify(t('browserHistory.exportEmpty'));
+      else if (outcome === 'saved' || outcome === 'shared') notify(t('browserHistory.exportSaved'));
+      else if (outcome === 'failed') notify(t('browserHistory.exportFailed'));
+    } catch {
+      notify(t('browserHistory.exportFailed'));
+    } finally {
+      setExporting(false);
+    }
+  }, [exporting, t]);
 
   const handleBack = useCallback(() => {
     navigation.back();
@@ -88,6 +122,10 @@ export const HistoryScreen = memo(function HistoryScreen() {
     void confirmClear();
   }, [confirmClear]);
 
+  const handleConfirmClearSearches = useCallback(() => {
+    void confirmClearSearches();
+  }, [confirmClearSearches]);
+
   const canClear = items.length > 0 || total > 0;
 
   return (
@@ -102,14 +140,33 @@ export const HistoryScreen = memo(function HistoryScreen() {
         onBackPress={handleBack}
         actions={
           canClear ? (
-            <IconButton
-              icon="delete-sweep-outline"
-              accessibilityLabel={t('history.clearAllA11y')}
-              onPress={openClear}
-              variant="ghost"
-              color="headerIcon"
-              testID="history-clear-button"
-            />
+            <Box row style={{ alignItems: 'center' }}>
+              <IconButton
+                icon="file-export-outline"
+                accessibilityLabel={t('browserHistory.exportA11y')}
+                onPress={() => void handleExport()}
+                disabled={exporting}
+                variant="ghost"
+                color="headerIcon"
+                testID="history-export-button"
+              />
+              <IconButton
+                icon="delete-clock-outline"
+                accessibilityLabel={t('browserHistory.clearDataA11y')}
+                onPress={() => setRangeSheetVisible(true)}
+                variant="ghost"
+                color="headerIcon"
+                testID="history-clear-range-button"
+              />
+              <IconButton
+                icon="delete-sweep-outline"
+                accessibilityLabel={t('history.clearAllA11y')}
+                onPress={openClear}
+                variant="ghost"
+                color="headerIcon"
+                testID="history-clear-button"
+              />
+            </Box>
           ) : null
         }
         testID="history-header"
@@ -124,6 +181,12 @@ export const HistoryScreen = memo(function HistoryScreen() {
           testID="history-search-field"
         />
       </Box>
+
+      <HistoryOffBanner />
+
+      {recentSearchTotal > 0 ? (
+        <HistoryClearSearchesRow onPress={openClearSearches} disabled={clearingSearches} />
+      ) : null}
 
       {status === 'loading' ? <HistorySkeleton /> : null}
 
@@ -145,6 +208,7 @@ export const HistoryScreen = memo(function HistoryScreen() {
           onEndReached={handleEndReached}
           onPressItem={handlePressItem}
           onDeleteItem={handleDeleteItem}
+          highlightQuery={query}
         />
       ) : null}
 
@@ -162,6 +226,20 @@ export const HistoryScreen = memo(function HistoryScreen() {
         loading={clearing}
         onConfirm={handleConfirmClear}
         onCancel={cancelClear}
+      />
+
+      <HistoryDeleteDialog
+        mode="clearSearches"
+        visible={clearSearchesVisible}
+        loading={clearingSearches}
+        onConfirm={handleConfirmClearSearches}
+        onCancel={cancelClearSearches}
+      />
+
+      <ClearBrowsingDataSheet
+        visible={rangeSheetVisible}
+        onClose={() => setRangeSheetVisible(false)}
+        testID="history-clear-range"
       />
     </SafeAreaScreen>
   );

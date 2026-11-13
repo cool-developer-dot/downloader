@@ -125,6 +125,48 @@ class DownloadRunnerTest {
   }
 
   @Test
+  fun `a progress update racing the completion never leaves "Finishing up" behind`() {
+    // dl-1 has a notification of its own (two live downloads), and its last progress update is being posted when the
+    // download completes on another thread.
+    val inShow = java.util.concurrent.CountDownLatch(1)
+    val release = java.util.concurrent.CountDownLatch(1)
+    val landed = java.util.Collections.synchronizedList(mutableListOf<DownloadNotificationContent>())
+    val slowNotifier = object : DownloadNotifier {
+      @Volatile var blockActive = false
+
+      override fun show(content: DownloadNotificationContent) {
+        if (blockActive && content.downloadId == "dl-1" && content.kind == DownloadNotificationContent.Kind.ACTIVE) {
+          blockActive = false
+          inShow.countDown()
+          release.await(5, java.util.concurrent.TimeUnit.SECONDS)
+        }
+        landed += content
+      }
+
+      override fun clear(downloadId: String) = Unit
+    }
+    val raced = DownloadRunner(FakeHost(), slowNotifier) { now }
+    raced.onState(record(id = "dl-1", state = DownloadState.PROCESSING, bytesDone = 1_000))
+    raced.onState(record(id = "dl-2", state = DownloadState.DOWNLOADING))
+    slowNotifier.blockActive = true
+    tick(10)
+    val progressThread = Thread {
+      raced.onProgress(DownloadProgress("dl-1", ProgressPhase.PROCESSING, 1_000, 1_000, 0.9, 0, null, ProcessingStage.MERGING))
+    }.apply { start() }
+    assertTrue(inShow.await(5, java.util.concurrent.TimeUnit.SECONDS))
+    val completeThread = Thread {
+      raced.onState(record(id = "dl-1", state = DownloadState.COMPLETED, bytesDone = 1_000))
+    }.apply { start() }
+    completeThread.join(300) // before the fix the completion was posted here, ahead of the progress update
+    release.countDown()
+    progressThread.join(5_000)
+    completeThread.join(5_000)
+
+    val last = landed.last { it.downloadId == "dl-1" }
+    assertEquals(DownloadNotificationContent.Kind.COMPLETED, last.kind)
+  }
+
+  @Test
   fun `1 a live download keeps the background host running while it transfers`() {
     runner.onState(record(state = DownloadState.DOWNLOADING))
     assertEquals("the host starts as soon as work is live", 1, host.starts)
@@ -282,6 +324,17 @@ class DownloadRunnerTest {
   }
 
   @Test
+  fun `F3 a download held in the last process loses its waiting notification once it runs again`() {
+    // The old process posted "Waiting for charging" as this download's own notification; on the wake-up the engine
+    // requeues the row before the runner restores, so the runner only ever sees it live.
+    runner.restore(listOf(record(state = DownloadState.QUEUED, bytesDone = 400)))
+
+    assertEquals("the leftover notification is taken away", listOf("dl-1"), notifier.cleared)
+    assertEquals("the runner's notification shows it", 1, host.summary.activeCount)
+    assertNull("and it is not posted twice", notifier.latest("dl-1"))
+  }
+
+  @Test
   fun `9 a restored download reconnects to its notification`() {
     runner.restore(listOf(record(state = DownloadState.DOWNLOADING, bytesDone = 400)))
 
@@ -359,6 +412,35 @@ class DownloadRunnerTest {
     val done = notifier.latest("dl-1")!!
     assertEquals(DownloadNotificationContent.Target.LIBRARY, done.target)
     assertTrue(done.actions.isEmpty())
+  }
+
+  @Test
+  fun `F6 a recording shows its length and size with Stop and Cancel, in the app's language`() {
+    val recording = record(state = DownloadState.RECORDING, bytesDone = 0, totalBytes = null).copy(kind = SourceKind.LIVE)
+    runner.onState(recording)
+    tick()
+    runner.onProgress(progress(bytesDone = 2_500_000, totalBytes = null).copy(recordedMs = 754_000))
+    assertTrue(host.summary.text, host.summary.text.startsWith("Recording · 12:34 · 2.5 MB"))
+    assertEquals("the host keeps running while it records", 0, host.stops)
+
+    val content = notificationContentFor(recording.copy(bytesDone = 85_000_000), recordedMs = 4_503_000)!!
+    assertEquals("Recording · 1:15:03 · 85 MB", content.text)
+    assertTrue(content.ongoing)
+    assertEquals(
+      listOf(DownloadNotificationContent.Action.STOP, DownloadNotificationContent.Action.CANCEL),
+      content.actions,
+    )
+    try {
+      DownloadNotificationText.language = "ur"
+      assertEquals("ریکارڈنگ · \u200E0:07\u200E", notificationContentFor(recording, recordedMs = 7_900)!!.text)
+      assertEquals(
+        "the size stays \"3.3 MB\" in an RTL line",
+        "ریکارڈنگ · \u200E0:38\u200E · \u200E3.3 MB\u200E",
+        notificationContentFor(recording.copy(bytesDone = 3_300_000), recordedMs = 38_000)!!.text,
+      )
+    } finally {
+      DownloadNotificationText.language = "en"
+    }
   }
 
   @Test

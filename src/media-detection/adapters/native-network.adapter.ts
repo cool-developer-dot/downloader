@@ -10,6 +10,8 @@ import { EXTENSION_TO_MIME } from '../constants';
 import { logGeneralNetworkTrace } from '../general-media/general-media-diagnostics';
 import { recordPipelineOutcome } from '../pipeline/pipeline-outcome';
 import { buildMediaRequestContextSync } from '../services/request-context.service';
+import { routeRiskyDownload } from './dangerous-download';
+import { confirmSystemDownload } from './dangerous-download-dialog';
 import { resolveNativeObservationScope } from './native-observation-scope';
 import {
   nativeCandidateEventFromObservation,
@@ -19,6 +21,7 @@ import {
   type NativeMediaCandidate,
   type NativeMediaCandidateEvent,
 } from './native-network.contract';
+import { notifyIncognitoDownload } from '@/browser/incognito/incognito-state';
 
 export type { NativeMediaCandidate, NativeMediaCandidateEvent };
 export { processNativeMediaCandidateEvent } from './native-network.contract';
@@ -159,6 +162,26 @@ async function identifyUnnamedDownload(event: WebDownloadEvent): Promise<string 
   }
 }
 
+/**
+ * B17 #280: a file the user asked to download (a long-pressed image) through the same system-download handoff as
+ * the WebView's own downloads (B11: an incognito tab's session cookies). No download rule changes.
+ */
+export function downloadThroughSystem(input: { url: string; userAgent: string; viewTag: number; webProfile?: string | null }): Promise<void> {
+  return handOffToSystemDownloader(
+    {
+      viewTag: input.viewTag,
+      url: input.url,
+      userAgent: input.userAgent,
+      contentDisposition: null,
+      mimeType: null,
+      contentLength: null,
+      hint: 'unknown',
+      ...(input.webProfile ? { webProfile: input.webProfile } : {}),
+    },
+    'download_image',
+  );
+}
+
 async function handOffToSystemDownloader(event: WebDownloadEvent, reason: string): Promise<void> {
   logGeneralNetworkTrace('RESOURCE_REJECTED', {
     rejectionReason: reason,
@@ -166,6 +189,21 @@ async function handOffToSystemDownloader(event: WebDownloadEvent, reason: string
     observationSource: 'webview-download',
   });
   try {
+    // B11: from an incognito tab, DownloadManager gets that session's cookies (never another profile's).
+    if (event.webProfile) {
+      const web = getVidoraWeb();
+      const started = web.startSystemDownloadInProfile
+        ? await web.startSystemDownloadInProfile(
+            event.url,
+            event.userAgent,
+            event.contentDisposition,
+            event.mimeType,
+            event.webProfile,
+          )
+        : false;
+      if (started) notifyIncognitoDownload();
+      return;
+    }
     await getVidoraWeb().startSystemDownload(event.url, event.userAgent, event.contentDisposition, event.mimeType);
   } catch {
     // The system downloader could not be reached; nothing else can take the file.
@@ -179,14 +217,31 @@ async function handOffToSystemDownloader(event: WebDownloadEvent, reason: string
  * phone's Downloads folder. What turns out not to be a video, or has no tab, goes back to the system downloader.
  */
 export async function handleWebDownload(event: WebDownloadEvent): Promise<void> {
+  if (event.hint === 'pdf') {
+    // B17 #265: a PDF, sent here only for the open choice; Download hands it to the system downloader as before.
+    const { routePdfDownload } = await import('@/browser/capture/pdf.service');
+    await routePdfDownload(event, () => handOffToSystemDownloader(event, 'download_pdf'));
+    return;
+  }
+  if (event.hint === 'risky') {
+    // H17: an app or program file, routed here natively only for the warning; never a video candidate.
+    await routeRiskyDownload(event, confirmSystemDownload, () => handOffToSystemDownloader(event, 'download_risky'));
+    return;
+  }
   const observedAt = Date.now();
   const mimeType = event.hint === 'unknown' ? await identifyUnnamedDownload(event) : mimeOfWebDownload(event);
   if (event.hint === 'unknown' && !mimeType) {
+    if (!(await confirmSystemDownload(event))) {
+      return;
+    }
     await handOffToSystemDownloader(event, 'download_not_video');
     return;
   }
   const candidate = nativeCandidateFromWebDownload({ viewTag: event.viewTag, url: event.url, mimeType, observedAt });
   if (!candidate || !candidateHandler) {
+    if (!(await confirmSystemDownload(event))) {
+      return;
+    }
     await handOffToSystemDownloader(event, 'download_without_owner');
     return;
   }

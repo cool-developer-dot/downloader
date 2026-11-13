@@ -3,18 +3,58 @@ import type { IconName } from '@/components/base/Icon';
 export type BrowserMenuActionId =
   | 'active_downloads'
   | 'recent_downloads'
+  | 'grab_links'
   | 'continue_watching'
   | 'recently_watched'
   | 'new_tab'
+  // B11 #104
+  | 'new_incognito_tab'
+  // B22 #249 / #252
+  | 'qr_code'
+  | 'save_page_note'
+  | 'notes'
+  // B19
+  | 'devtools'
+  // B17
+  | 'screenshot'
+  | 'full_page'
+  | 'print_page'
+  | 'save_offline'
+  | 'saved_pages'
+  // B23
+  | 'highlights_page'
+  | 'highlights'
+  | 'draw'
+  | 'watch_page'
+  | 'reopen_closed_tab'
+  | 'duplicate_tab'
+  | 'move_to_window'
+  | 'profile'
+  | 'search_site'
   | 'add_bookmark'
   | 'bookmarks'
   | 'copy_link'
   | 'share'
+  | 'translate'
+  /** B7 #66 */
+  | 'find_in_page'
+  /** B9 #89 */
+  | 'reading_list_add'
+  /** B15 #161 */
+  | 'reader_mode'
+  /** B16 */
+  | 'page_display'
+  | 'hard_reload'
+  | 'scroll_top'
+  | 'scroll_bottom'
+  | 'auto_scroll'
   | 'history'
   | 'desktop_site'
   | 'open_external'
   | 'downloads'
-  | 'settings';
+  | 'settings'
+  /** B10 #99: shown while "Clear history on exit" is on. */
+  | 'exit';
 
 export type BrowserMenuItemKind = 'action' | 'toggle';
 

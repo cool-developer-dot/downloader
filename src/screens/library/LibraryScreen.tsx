@@ -7,6 +7,7 @@ import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { ScreenHeader } from '@/components/headers/ScreenHeader';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import { useShowInFolderSheetActions } from '@/screens/library/hooks/useShowInFolderSheetAction';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
 
 import {
@@ -20,11 +21,16 @@ import {
 import { navigation, routePaths } from '@/navigation';
 
 import { useLibraryScreen } from './hooks/useLibraryScreen';
+import { useWithSaveThumbnailAction } from './hooks/useSaveThumbnailSheetAction';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
 import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
+import { useTagSheetActions } from '@/screens/downloads/hooks/useTagSheetActions';
 import { useFoldersStore } from '@/store/organization/folders';
 import { EmptyState } from '@/components/common/EmptyState';
+import { usePrivateMoveSheet } from '@/screens/library/hooks/usePrivateMoveSheet';
+import { PrivateHeaderButton } from '@/screens/private/PrivateHeaderButton';
+import { PrivateMoveDialog } from '@/screens/private/PrivateMoveDialog';
 
 export const LibraryScreen = memo(function LibraryScreen() {
   const theme = useTheme();
@@ -81,9 +87,12 @@ export const LibraryScreen = memo(function LibraryScreen() {
     openDownloads,
     openWatchHistory,
   } = useLibraryScreen();
+  const showInFolderActionsFor = useShowInFolderSheetActions();
 
   const foldersById = useFoldersStore((s) => s.itemsById);
+  const tagActionsFor = useTagSheetActions();
   const folderOrderedIds = useFoldersStore((s) => s.orderedIds);
+  const { privateMoveActionsFor, privateMove } = usePrivateMoveSheet();
 
   const completedActions = useMemo<ActionSheetItem[]>(() => {
     if (!actionItemId) {
@@ -99,6 +108,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
           void openItemExternal(id);
         },
       },
+      ...tagActionsFor(id, closeItemActions),
       {
         id: 'share',
         label: t('library.share'),
@@ -107,6 +117,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
           void shareItem(id);
         },
       },
+      ...showInFolderActionsFor(id, closeItemActions),
       {
         id: 'save',
         label: t('library.saveToDevice'),
@@ -115,6 +126,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
           void saveItemToDevice(id);
         },
       },
+      ...privateMoveActionsFor(id, closeItemActions),
       {
         id: 'delete',
         label: t('library.deleteFromVidoraX'),
@@ -127,12 +139,16 @@ export const LibraryScreen = memo(function LibraryScreen() {
   }, [
     actionItemId,
     closeItemActions,
+    showInFolderActionsFor,
     openItemExternal,
+    privateMoveActionsFor,
     requestDeleteItem,
     saveItemToDevice,
+    tagActionsFor,
     shareItem,
     t,
   ]);
+  const completedActionsWithThumbnail = useWithSaveThumbnailAction(completedActions, actionItemId, closeItemActions);
 
   const folderSelectionActions = useMemo<ActionSheetItem[]>(
     () => {
@@ -190,6 +206,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
         title={t('library.title')}
         subtitle={subtitle}
         actions={
+          <>
           <Pressable
             testID="library-device-videos"
             accessibilityRole="button"
@@ -199,6 +216,8 @@ export const LibraryScreen = memo(function LibraryScreen() {
             style={{ padding: 8 }}>
             <Icon name="cellphone-play" size="md" color="headerIcon" />
           </Pressable>
+          <PrivateHeaderButton />
+          </>
         }
         testID="library-header"
       />
@@ -244,7 +263,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
         onClose={closeItemActions}
         title={t('library.actionsTitle')}
         subtitle={actionSubtitle}
-        actions={completedActions}
+        actions={completedActionsWithThumbnail}
         testID="library-completed-actions"
       />
 
@@ -262,6 +281,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
         loading={deleteLoading}
         testID="library-delete-dialog"
       />
+      <PrivateMoveDialog controller={privateMove} testID="library-private-move" />
 
       {status === 'loading' ? (
         <LibrarySkeleton />

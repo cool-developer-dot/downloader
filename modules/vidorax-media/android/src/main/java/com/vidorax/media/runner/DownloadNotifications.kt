@@ -11,6 +11,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.util.Log
+import com.vidorax.media.R
 
 /**
  * Posts the download notifications. Everything shown comes from the persisted record — title, state, byte
@@ -25,9 +26,14 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
   @Volatile
   private var channelsReady = false
 
+  /** Finished-download channels other than CHANNEL_STATUS created by this instance (see NotificationOptions). */
+  private val createdStatusChannels: MutableSet<String> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
   override fun show(content: DownloadNotificationContent) {
     val manager = manager ?: return
     if (!canPost()) return
+    // "Download notifications" off: no notification of a download's own (the required one is only minimized).
+    if (!DownloadNotificationsToggle.postsOwnNotifications(DownloadNotificationsToggle.isEnabled(context))) return
     ensureChannels()
     runCatching { manager.notify(notificationIdFor(content.downloadId), build(content)) }
       .onFailure { Log.w(TAG, "notification refused: ${it.javaClass.simpleName}") }
@@ -51,6 +57,32 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
       .isSuccess
   }
 
+  /**
+   * A notice on the finished-downloads channel that belongs to no download (H6 #422: a data limit was crossed). It
+   * replaces an earlier notice with the same [id], and tapping it opens [deepLink]. False when it was not posted.
+   */
+  fun showNotice(id: Int, title: String, text: String, deepLink: String): Boolean {
+    val manager = manager ?: return false
+    if (!canPost()) return false
+    ensureChannels()
+    val open = (viewIntent(deepLink) ?: context.packageManager.getLaunchIntentForPackage(context.packageName))?.let {
+      it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+      runCatching { PendingIntent.getActivity(context, id, it, immutableFlags(PendingIntent.FLAG_UPDATE_CURRENT)) }
+        .getOrNull()
+    }
+    val builder = builder(CHANNEL_STATUS)
+      .setContentTitle(title)
+      .setContentText(text)
+      .setStyle(Notification.BigTextStyle().bigText(text))
+      .setSmallIcon(android.R.drawable.stat_sys_warning)
+      .setAutoCancel(true)
+      .setOnlyAlertOnce(true)
+    open?.let { builder.setContentIntent(it) }
+    return runCatching { manager.notify(id, builder.build()) }
+      .onFailure { Log.w(TAG, "notice refused: ${it.javaClass.simpleName}") }
+      .isSuccess
+  }
+
   fun canPost(): Boolean {
     val manager = manager ?: return false
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -67,7 +99,11 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
       DownloadNotificationContent.Kind.ACTIVE, DownloadNotificationContent.Kind.PAUSED -> CHANNEL_PROGRESS
       DownloadNotificationContent.Kind.COMPLETED, DownloadNotificationContent.Kind.FAILED -> CHANNEL_STATUS
     }
-    val builder = builder(channel)
+    // Finished/failed notifications follow the user's alert options (NotificationOptions); with the defaults they
+    // stay on CHANNEL_STATUS exactly as before. Progress notifications are never affected.
+    val alertOptions = if (channel == CHANNEL_STATUS) NotificationOptions.load(context) else null
+    val postChannel = alertOptions?.let { statusChannelId(it) } ?: channel
+    val builder = builder(postChannel)
       .setContentTitle(content.title)
       .setContentText(content.text)
       .setSmallIcon(iconFor(content.kind))
@@ -83,7 +119,44 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
         builder.setAutoCancel(true)
     }
     addActions(builder, content.downloadId, content.actions)
+    alertOptions?.let { applyLegacyAlerts(builder, it) }
     return builder.build()
+  }
+
+  /** The channel a finished/failed notification goes to; CHANNEL_STATUS if its own channel cannot be created. */
+  private fun statusChannelId(options: NotificationOptions): String {
+    val spec = NotificationOptions.statusChannelFor(options)
+    return if (ensureStatusChannel(spec)) spec.id else CHANNEL_STATUS
+  }
+
+  private fun ensureStatusChannel(spec: StatusChannel): Boolean {
+    if (spec == StatusChannel.EXISTING || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return true
+    if (spec.id in createdStatusChannels) return true
+    val manager = manager ?: return false
+    val nameRes = spec.nameRes ?: return false
+    return runCatching {
+      manager.createNotificationChannel(
+        NotificationChannel(spec.id, context.getString(nameRes), NotificationManager.IMPORTANCE_DEFAULT).apply {
+          description = context.getString(R.string.vidorax_status_channel_options_description)
+          if (!spec.playsSound) setSound(null, null)
+          enableVibration(spec.vibrates)
+        },
+      )
+    }.isSuccess.also { created -> if (created) createdStatusChannels.add(spec.id) }
+  }
+
+  /**
+   * Android 7.x has no channels: the builder carries the alert. The defaults leave it exactly as it was (low
+   * priority, no sound, no vibration); Silent, or sound and vibration both off, is that same quiet notification.
+   */
+  private fun applyLegacyAlerts(builder: Notification.Builder, options: NotificationOptions) {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O || options.isDefault) return
+    var defaults = 0
+    if (options.playsSound) defaults = defaults or Notification.DEFAULT_SOUND
+    if (options.vibrates) defaults = defaults or Notification.DEFAULT_VIBRATE
+    if (defaults == 0) return
+    @Suppress("DEPRECATION")
+    builder.setDefaults(defaults).setPriority(Notification.PRIORITY_DEFAULT)
   }
 
   fun buildSummary(summary: RunnerSummaryContent): Notification {
@@ -100,7 +173,17 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
       .setProgress(100, summary.percent ?: 0, summary.indeterminate)
     // With one live download this notification *is* that download, so it carries its buttons too.
     summary.downloadId?.let { addActions(builder, it, summary.actions) }
+    // "Download notifications" off: Android still requires this one while downloads run, so it is only minimized.
+    if (!DownloadNotificationsToggle.isEnabled(context)) minimize(builder)
     return builder.build()
+  }
+
+  /** As unobtrusive as the foreground-service rules allow: shown only if the work lasts (Android 12+), no time. */
+  private fun minimize(builder: Notification.Builder) {
+    builder.setShowWhen(false)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+      builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_DEFERRED)
+    }
   }
 
   private fun addActions(
@@ -121,6 +204,7 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
     DownloadNotificationContent.Action.RESUME -> android.R.drawable.ic_media_play
     DownloadNotificationContent.Action.RETRY -> android.R.drawable.ic_popup_sync
     DownloadNotificationContent.Action.CANCEL -> android.R.drawable.ic_menu_close_clear_cancel
+    DownloadNotificationContent.Action.STOP -> android.R.drawable.ic_media_pause
   }
 
   private fun builder(channelId: String): Notification.Builder =
@@ -182,14 +266,22 @@ internal class DownloadNotifications(private val context: Context) : DownloadNot
       if (channelsReady) return
       runCatching {
         manager.createNotificationChannel(
-          NotificationChannel(CHANNEL_PROGRESS, "Downloads in progress", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Shows videos VidoraX is downloading."
+          NotificationChannel(
+            CHANNEL_PROGRESS,
+            context.getString(R.string.vidorax_channel_progress_name),
+            NotificationManager.IMPORTANCE_LOW,
+          ).apply {
+            description = context.getString(R.string.vidorax_channel_progress_description)
             setShowBadge(false)
           },
         )
         manager.createNotificationChannel(
-          NotificationChannel(CHANNEL_STATUS, "Finished downloads", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "Tells you when a download finishes or fails."
+          NotificationChannel(
+            CHANNEL_STATUS,
+            context.getString(R.string.vidorax_channel_status_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+          ).apply {
+            description = context.getString(R.string.vidorax_channel_status_description)
           },
         )
       }

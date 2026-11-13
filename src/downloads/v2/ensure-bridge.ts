@@ -11,14 +11,17 @@ import {
   subscribeV2Downloads,
   type V2BridgeSink,
 } from './bridge';
+import { ensureV2NotificationToggle } from './ensure-notification-toggle';
 import { getV2Engine } from './engine-port';
 import { projectV2LibraryItem } from './projection';
 import { createLibraryReconciler } from './library-reconcile';
 import { pushV2DownloadSettings } from './settings';
+import { getNetworkOptionsInput, subscribeNetworkOptions } from './network-options-store';
 
 let attached = false;
 let detach: (() => void) | null = null;
 let detachSettings: (() => void) | null = null;
+let detachNetworkOptions: (() => void) | null = null;
 let detachAppState: (() => void) | null = null;
 let libraryHydration: Promise<void> | null = null;
 let libraryHydrationTimer: ReturnType<typeof setTimeout> | null = null;
@@ -98,18 +101,36 @@ export function ensureV2DownloadBridge(): void {
     return;
   }
   attached = true;
-  // The engine keeps its own copy of the settings, so Wi-Fi-only applies to downloads that resume before the
-  // app's JavaScript is running at all.
+  // The engine keeps its own copy of the settings, so Wi-Fi-only, the connections per file and the speed limit apply to downloads that
+  // resume before the app's JavaScript is running at all.
   const pushSettings = () => {
     const settings = useSettingsStore.getState();
     void pushV2DownloadSettings(engine, {
       wifiOnly: settings.wifiOnly,
+      network: getNetworkOptionsInput(),
       maxConcurrentDownloads: settings.maxConcurrentDownloads,
       saveToGallery: settings.saveToGallery,
+      connectionsPerFile: settings.connectionsPerFile,
+      speedLimitBytesPerSecond: settings.downloadSpeedLimit,
+      downloadHours: settings.downloadHours,
+      notOnRoaming: settings.notOnRoaming,
+      pauseOnLowBattery: settings.pauseOnLowBattery,
+      onlyWhileCharging: settings.onlyWhileCharging,
+      liveRecording: settings.liveRecording,
+      liveRecordingMaxMinutes: settings.liveRecordingMaxMinutes,
+      language: settings.language,
+      autoResume: settings.autoResume,
+      notificationSound: settings.notificationSound,
+      notificationVibrate: settings.notificationVibrate,
+      notificationSilent: settings.notificationSilent,
     });
   };
+  // The "Download notifications" setting reaches the native runner too.
+  ensureV2NotificationToggle();
   pushSettings();
   detachSettings = useSettingsStore.subscribe(pushSettings);
+  // Download Settings → Advanced network (and its headers once read from the secure store).
+  detachNetworkOptions = subscribeNetworkOptions(pushSettings);
   const sink = storeSink();
   // Subscribe before hydrating so a completion during startup is never missed.
   detach = subscribeV2Downloads(engine, sink);
@@ -195,6 +216,8 @@ export function resetV2DownloadBridgeForTests(): void {
   detach = null;
   detachSettings?.();
   detachSettings = null;
+  detachNetworkOptions?.();
+  detachNetworkOptions = null;
   detachAppState?.();
   detachAppState = null;
   if (libraryHydrationTimer) {

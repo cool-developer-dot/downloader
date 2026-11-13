@@ -11,7 +11,7 @@ import { DETECTION_TIMING } from '../constants';
 import { MEDIA_BRIDGE_CHANNEL } from '../types';
 
 const VIDEO_EXTS =
-  'mp4|webm|mov|m4v|mkv|avi|mpeg|mpg|m2ts|3gp|3g2|flv|wmv|ogv';
+  'mp4|webm|mov|m4v|f4v|mkv|avi|divx|mpeg|mpg|vob|m2ts|3gp|3g2|flv|wmv|ogv';
 const AUDIO_EXTS = 'mp3|m4a|aac|ogg|opus|wav|flac';
 const STREAM_EXTS = 'm3u8|mpd';
 /** .ts excluded from extension-alone matching — segment noise. */
@@ -45,6 +45,7 @@ const MSE_OBSERVATION_SOURCE = `
       sourcesByUrl: Object.create(null),
       recent: [],
       bufferUrls: typeof WeakMap === 'function' ? new WeakMap() : null,
+      recentBytes: [],
       emeRequested: false,
       listener: null
     };
@@ -64,15 +65,38 @@ const MSE_OBSERVATION_SOURCE = `
     var STREAM_MATCH_KNOWN_MS = 1000;
     state.streamChunks = [];
     state.streamBytes = 0;
+    // Responses read as whole bytes, for naming a copy of them (size + leading bytes, never the bytes themselves).
+    var MAX_COPIED_RESPONSES = 48;
+    var COPIED_MATCH_MS = 20000;
+    var COPIED_SIG_BYTES = 16;
     var VIDEO_CODEC_RE = /^(avc[1-4]|hev1|hvc1|dvh[1e]|dva[1v]|vp0?[89]|vp09|av01|mp4v|theora)/i;
     var AUDIO_CODEC_RE = /^(mp4a|opus|vorbis|flac|ac-3|ec-3|mp3|alac|dtsc)/i;
     function notify(event, detail) {
       try { if (typeof state.listener === 'function') state.listener(event, detail); } catch (e) {}
     }
+    function byteSignature(view, count) {
+      var out = '';
+      for (var i = 0; i < count; i++) out += view[i].toString(16) + ',';
+      return out;
+    }
     function rememberBuffer(buf, url) {
       try {
         if (state.bufferUrls && buf && typeof buf === 'object' && url && /^https?:/i.test(String(url))) {
           state.bufferUrls.set(buf, String(url).slice(0, 2048));
+        }
+      } catch (e) {}
+      // Size and leading bytes of what each file answered, so a copy of those bytes can still name its file.
+      try {
+        var len = buf && typeof ArrayBuffer === 'function' && buf instanceof ArrayBuffer ? buf.byteLength : 0;
+        if (len >= MIN_STREAM_MATCH_BYTES && url && /^https?:/i.test(String(url))) {
+          var n = Math.min(COPIED_SIG_BYTES, len);
+          state.recentBytes.push({
+            url: String(url).slice(0, 2048),
+            len: len,
+            sig: byteSignature(new Uint8Array(buf, 0, n), n),
+            at: Date.now()
+          });
+          while (state.recentBytes.length > MAX_COPIED_RESPONSES) state.recentBytes.shift();
         }
       } catch (e) {}
     }
@@ -143,6 +167,25 @@ const MSE_OBSERVATION_SOURCE = `
         };
         sendHooked.__vidoraxBuffers = true;
         XP.send = sendHooked;
+      }
+      // The load listener above is registered inside send(), so a page that set onload earlier reads the bytes and
+      // appends them before it runs. Reading xhr.response is the moment the page takes the bytes: name the file then.
+      if (XP && !XP.__vidoraxResponseHooked) {
+        var responseDesc = Object.getOwnPropertyDescriptor(XP, 'response');
+        if (responseDesc && typeof responseDesc.get === 'function') {
+          Object.defineProperty(XP, 'response', {
+            configurable: true,
+            enumerable: responseDesc.enumerable,
+            get: function() {
+              var value = responseDesc.get.call(this);
+              try {
+                if (this.responseType === 'arraybuffer') rememberBuffer(value, this.responseURL || this.__vidoraxUrl);
+              } catch (e4) {}
+              return value;
+            }
+          });
+          XP.__vidoraxResponseHooked = true;
+        }
       }
     } catch (e) {}
     function isMediaResponse(res) {
@@ -299,6 +342,33 @@ const MSE_OBSERVATION_SOURCE = `
       }
       return false;
     }
+    // The file a copy of its bytes came from: the one response read moments earlier whose size and leading bytes are
+    // exactly those of the appended data. A player that appends a fresh ArrayBuffer (bilibili's desktop player does)
+    // loses the identity the WeakMap matches on, but not those. Two responses that match equally name neither.
+    function copiedFileOf(data) {
+      try {
+        var list = state.recentBytes;
+        if (!list || !list.length || !data) return null;
+        var isBuffer = typeof ArrayBuffer === 'function' && data instanceof ArrayBuffer;
+        var len = data.byteLength;
+        if (!(len >= MIN_STREAM_MATCH_BYTES)) return null;
+        var n = Math.min(COPIED_SIG_BYTES, len);
+        var view = isBuffer ? new Uint8Array(data, 0, n) : new Uint8Array(data.buffer, data.byteOffset, n);
+        var sig = byteSignature(view, n);
+        var now = Date.now();
+        var found = null;
+        for (var i = list.length - 1; i >= 0; i--) {
+          var entry = list[i];
+          if (now - entry.at > COPIED_MATCH_MS) break;
+          if (entry.len !== len || entry.sig !== sig) continue;
+          if (found && found !== entry.url) return null;
+          found = entry.url;
+        }
+        return found;
+      } catch (e) {
+        return null;
+      }
+    }
     // The streamed file the appended bytes were copied from: the one file (a byte range of it is the same file) whose
     // recent chunks hold them. The same bytes in two files name neither.
     function streamedFileOf(data) {
@@ -392,6 +462,12 @@ const MSE_OBSERVATION_SOURCE = `
         if (!ms || !kind) return;
         var url = state.bufferUrls.get(data.buffer || data);
         var streamed = false;
+        var copied = false;
+        // A copy of a whole response, appended as its own ArrayBuffer: named by that response's size and first bytes.
+        if (!url) {
+          url = copiedFileOf(data);
+          copied = !!url;
+        }
         if (!url && state.streamChunks.length) {
           // Bytes copied out of a streamed response: looked up in its chunks, often while the file is unknown, then
           // now and then (a recycled player's buffer fed the next item's file).
@@ -406,7 +482,7 @@ const MSE_OBSERVATION_SOURCE = `
         if (!ms.__vidoraxFiles) ms.__vidoraxFiles = { v: null, a: null };
         var current = ms.__vidoraxFiles[kind];
         // Another byte range of the streamed file already named is the same file.
-        if (current !== url && !(streamed && current && fileOf(current) === fileOf(url))) {
+        if (current !== url && !((streamed || copied) && current && fileOf(current) === fileOf(url))) {
           ms.__vidoraxFiles[kind] = url;
           notify('files', null);
         }
@@ -955,6 +1031,14 @@ ${MSE_OBSERVATION_SOURCE}
         mediaFromElement(sources[s], 'dom_source');
       }
     }
+    var shadowed = shadowVideoScan(doc).videos;
+    for (var sv = 0; sv < shadowed.length; sv++) {
+      mediaFromElement(shadowed[sv], 'dom_video');
+      var shadowSources = shadowed[sv].querySelectorAll('source');
+      for (var ss = 0; ss < shadowSources.length; ss++) {
+        mediaFromElement(shadowSources[ss], 'dom_source');
+      }
+    }
     var audios = doc.querySelectorAll('audio');
     for (var a = 0; a < audios.length; a++) {
       mediaFromElement(audios[a], 'dom_audio');
@@ -988,6 +1072,8 @@ ${MSE_OBSERVATION_SOURCE}
   function scanDom() {
     pageUrl = location.href;
     scanDocument(document);
+    var shadowRoots = shadowVideoScan(document).roots;
+    for (var r = 0; r < shadowRoots.length; r++) attachMediaListeners(shadowRoots[r]);
     var frameDocs = sameOriginFrameDocuments();
     for (var i = 0; i < frameDocs.length; i++) {
       // Media events inside a subframe never reach the top document, so each one needs its own listeners.
@@ -1279,6 +1365,48 @@ ${MSE_OBSERVATION_SOURCE}
   var lastActiveVideoKey = '';
   var MAX_TRACKED_VIDEOS = 12;
   var MAX_TRACKED_IFRAMES = 8;
+  var MAX_SHADOW_SCAN_NODES = 3000;
+  var SHADOW_SCAN_REUSE_MS = 1000;
+  var shadowScan = null;
+  var shadowScanAt = 0;
+
+  /**
+   * <video> elements inside open shadow roots, and the roots holding them. Web-component players (Reddit's
+   * <shreddit-player>, for one) keep their video there, where querySelectorAll does not reach — without it such a
+   * player gives no evidence and its stream is never offered. A bounded walk of the document, reused for a second
+   * because scans run often. Media events don't leave a shadow root, so the roots get their own listeners.
+   */
+  function shadowVideoScan(doc) {
+    var top = doc === document;
+    var now = Date.now();
+    if (top && shadowScan && now - shadowScanAt < SHADOW_SCAN_REUSE_MS) return shadowScan;
+    var found = { videos: [], roots: [] };
+    try {
+      var stack = doc && doc.documentElement ? [doc.documentElement] : [];
+      var seen = 0;
+      while (stack.length && seen < MAX_SHADOW_SCAN_NODES) {
+        var node = stack.pop();
+        seen++;
+        if (!node) continue;
+        var root = node.shadowRoot;
+        if (root) {
+          var inner = root.querySelectorAll ? root.querySelectorAll('video') : [];
+          if (inner.length) found.roots.push(root);
+          for (var v = 0; v < inner.length && found.videos.length < MAX_TRACKED_VIDEOS; v++) found.videos.push(inner[v]);
+          stack.push(root);
+        }
+        var kids = node.children;
+        if (kids) {
+          for (var i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
+        }
+      }
+    } catch (e) {}
+    if (top) {
+      shadowScan = found;
+      shadowScanAt = now;
+    }
+    return found;
+  }
   var iframeSeq = 0;
   var trackedIframes = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
 
@@ -1299,6 +1427,10 @@ ${MSE_OBSERVATION_SOURCE}
       var limit = Math.min(videos.length, MAX_TRACKED_VIDEOS);
       for (var i = 0; i < limit; i++) out.push(videos[i]);
     } catch (e) {}
+    try {
+      var shadowed = shadowVideoScan(document).videos;
+      for (var s = 0; s < shadowed.length && out.length < MAX_TRACKED_VIDEOS; s++) out.push(shadowed[s]);
+    } catch (e3) {}
     try {
       var iframes = document.querySelectorAll('iframe');
       var maxFrames = Math.min(iframes.length, MAX_TRACKED_IFRAMES);

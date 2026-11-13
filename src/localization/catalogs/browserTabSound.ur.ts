@@ -1,0 +1,32 @@
+import type { CatalogStrings } from '../types';
+import type { browserTabSoundEn } from './browserTabSound.en';
+
+export const browserTabSoundUr: CatalogStrings<typeof browserTabSoundEn> = {
+  playing: 'آواز چل رہی ہے',
+  muted: 'آواز بند',
+  mute: 'ٹیب کی آواز بند کریں',
+  unmute: 'ٹیب کی آواز کھولیں',
+  muteA11y: '{title} کی آواز بند کریں',
+  unmuteA11y: '{title} کی آواز کھولیں',
+  volume: 'ٹیب کا والیوم',
+  volumeTitle: 'اس ٹیب کا والیوم',
+  volumeHint: 'اس ٹیب کی ویڈیوز اور آوازوں کے لیے (Web Audio سے بنی آوازیں اور دوسری سائٹوں کے فریم میں پلیئر شامل نہیں)',
+  volumePercent: '{percent}٪',
+  volumeLower: 'والیوم کم کریں',
+  volumeRaise: 'والیوم بڑھائیں',
+  done: 'ہو گیا',
+  section: 'ٹیبز',
+  sectionDescription: 'سوئے ہوئے ٹیبز اور میموری',
+  sleep: 'غیر استعمال شدہ ٹیبز کو سلائیں',
+  sleepHint: 'غیر استعمال شدہ ٹیب اپنا صفحہ چھوڑ دیتا ہے اور کھولنے پر دوبارہ لوڈ کرتا ہے۔ وہ ٹیب کبھی نہیں جس پر آپ ہیں، یا جس میں آواز چل رہی ہو۔',
+  sleepOff: 'بند',
+  sleep15m: '۱۵ منٹ بعد',
+  sleep30m: '۳۰ منٹ بعد',
+  sleep1h: '۱ گھنٹے بعد',
+  sleep3h: '۳ گھنٹے بعد',
+  memory: 'میموری',
+  memoryValue: '{used} MB استعمال · {awake} ٹیب جاگ رہے، {asleep} سو رہے',
+  memoryHint: 'VidoraX کی اپنی میموری۔ ویب صفحات اینڈرائیڈ کے WebView پروسیس میں چلتے ہیں، جو شامل نہیں۔',
+  memoryUnavailable: 'میموری دیکھنے کے لیے ایپ کا نیا ورژن چاہیے · {awake} ٹیب جاگ رہے، {asleep} سو رہے',
+  memoryLow: 'فون میں میموری کم ہے',
+};

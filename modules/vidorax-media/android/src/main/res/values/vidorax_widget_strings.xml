@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- H22 Home Widget (#456). Urdu: values-ur. -->
+<resources>
+  <string name="vidorax_widget_label">VidoraX downloads</string>
+  <string name="vidorax_widget_description">Your active downloads and a Paste link button</string>
+  <string name="vidorax_widget_title">Downloads</string>
+  <string name="vidorax_widget_open_downloads">Open Downloads</string>
+  <string name="vidorax_widget_paste_link">Paste link</string>
+  <string name="vidorax_widget_empty">No active downloads</string>
+  <string name="vidorax_widget_untitled">Video</string>
+  <string name="vidorax_widget_status_downloading">Downloading</string>
+  <string name="vidorax_widget_status_processing">Finishing</string>
+  <string name="vidorax_widget_status_queued">Queued</string>
+  <string name="vidorax_widget_status_waiting_network">Waiting for network</string>
+  <string name="vidorax_widget_status_waiting_retry">Retrying soon</string>
+  <string name="vidorax_widget_status_waiting">Waiting</string>
+  <string name="vidorax_widget_status_paused">Paused</string>
+  <!-- %1$d: whole percent; %2$s: one of the statuses above. -->
+  <string name="vidorax_widget_row_status">%1$d%% · %2$s</string>
+</resources>

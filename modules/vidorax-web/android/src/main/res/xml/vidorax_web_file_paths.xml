@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- B22 #249: only the QR images VidoraWeb writes; nothing else in the app is reachable through this provider.
+     B23 #279: and the drawings it exports. -->
+<paths>
+  <cache-path name="qr" path="qr/" />
+  <cache-path name="drawings" path="drawings/" />
+</paths>

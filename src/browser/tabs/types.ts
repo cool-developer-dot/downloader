@@ -24,6 +24,8 @@ export type BrowserTab = {
   navigationEpoch: number;
   mountState: TabMountState;
   lastMountedAt: number | null;
+  /** B1 #5: pinned tabs lead the list and survive Close other / Close all unless the user asks. */
+  pinned: boolean;
 };
 
 /** Safe restoration metadata only — never cookies / auth / media / history stacks. */
@@ -35,6 +37,12 @@ export type PersistedTabMetadata = {
   lastActiveAt: number;
   desktopMode: boolean;
   desktopModeSource: DesktopModeSource;
+  /** Schema 2 (B1). Older envelopes have neither; see tab-envelope.ts. */
+  pinned?: boolean;
+  /** Schema 2 (B1): index in the user's tab order. */
+  position?: number;
+  /** Schema 3 (B2): the tab's group (normal tabs only). */
+  groupId?: string;
 };
 
 export type PersistedBrowserTabsEnvelope = {
@@ -42,6 +50,8 @@ export type PersistedBrowserTabsEnvelope = {
   activeTabId: string;
   tabs: PersistedTabMetadata[];
   updatedAt: number;
+  /** Schema 3 (B2): the tab groups (normal tabs only; incognito groups are never saved). */
+  groups?: { id: string; name: string; color: string; collapsed: boolean }[];
 };
 
 export type CreateTabResult =

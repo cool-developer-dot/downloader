@@ -3,6 +3,7 @@ import { AppState, type AppStateStatus } from 'react-native';
 
 import { useBrowserEngineContext } from '@/browser/engine';
 import { pendingNavigationService } from '@/browser/services';
+import { startupOpenedTab } from '@/browser/startup/startup.service';
 import { browserSyncService } from '@/browser/services/browser-sync.service';
 import {
   isRestorableBrowserUrl,
@@ -55,6 +56,10 @@ export function useBrowserSessionContinuity(): void {
     void (async () => {
       // Pending cross-screen navigation always wins.
       if (pendingNavigationService.peek()) {
+        return;
+      }
+      // B21 #233: "Open the start page / the homepage" put that tab in front on purpose.
+      if (startupOpenedTab()) {
         return;
       }
 

@@ -1,13 +1,23 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
   <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+  <!-- App Lock "Unlock with fingerprint or face" (expo-local-authentication; its own manifest declares it too). -->
+  <uses-permission android:name="android.permission.USE_BIOMETRIC"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
   <!-- Gallery export on Android 7-9 only. Android 10+ publishes through MediaStore without storage permissions. -->
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="28" tools:replace="android:maxSdkVersion"/>
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" tools:replace="android:maxSdkVersion"/>
-  <!-- No expo-video background playback service: the player pauses in the background (PiP excepted) and never sets
-       staysActiveInBackground / showNowPlayingNotification, so an unused mediaPlayback FGS type is not declared to Play.
-       Re-add the service and FOREGROUND_SERVICE_MEDIA_PLAYBACK together if background audio is ever shipped. -->
+  <!-- Background play (F18): expo-video's mediaPlayback service, used only while Settings → Player → "Keep playing in
+       background" is on (off by default) and a video plays — the player then sets staysActiveInBackground and
+       showNowPlayingNotification. Declared to Play: docs/play-console/PLAY_SUBMISSION.md (B2). FOREGROUND_SERVICE
+       itself comes from the vidorax-media module (downloads). -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+  <!-- H23: a long trim or conversion keeps running in the background (MediaEditService): mediaProcessing on Android 15+,
+       dataSync (local file processing) on Android 10-14. Declare this foreground service in Play Console in the same
+       release. -->
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROCESSING"/>
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
   <queries>
     <intent>
       <action android:name="android.intent.action.VIEW"/>
@@ -48,6 +58,20 @@
       <action android:name="android.intent.action.VIEW"/>
       <data android:scheme="mailto"/>
     </intent>
+    <!-- B22 #255: a page's camera upload (accept="image/*" capture) opens the system camera through this intent;
+         without it Android 11+ finds no camera app and the page's file field never answers. No CAMERA permission. -->
+    <intent>
+      <action android:name="android.media.action.IMAGE_CAPTURE"/>
+    </intent>
+    <!-- B22 #273 "Open in app": exactly these apps (never QUERY_ALL_PACKAGES). -->
+    <package android:name="com.google.android.youtube"/>
+    <package android:name="com.instagram.android"/>
+    <package android:name="com.facebook.katana"/>
+    <package android:name="com.facebook.lite"/>
+    <package android:name="com.zhiliaoapp.musically"/>
+    <package android:name="com.ss.android.ugc.trill"/>
+    <package android:name="com.twitter.android"/>
+    <package android:name="com.google.android.apps.maps"/>
   </queries>
   <application android:name=".MainApplication" android:label="@string/app_name" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:allowBackup="true" android:theme="@style/AppTheme" android:supportsRtl="true" android:enableOnBackInvokedCallback="false" android:fullBackupContent="@xml/secure_store_backup_rules" android:dataExtractionRules="@xml/secure_store_data_extraction_rules">
     <meta-data android:name="com.google.firebase.messaging.default_notification_channel_id" android:value="vidorax_download_events"/>
@@ -90,6 +114,25 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="about"/>
       </intent-filter>
+      <!-- "Open with VidoraX" for video and audio files from other apps (Files, Photos, a download): played as an
+           external source, read by the VidoraMedia module. Local files only — web links have the filter above. -->
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW"/>
+        <category android:name="android.intent.category.DEFAULT"/>
+        <data android:scheme="content"/>
+        <data android:scheme="file"/>
+        <data android:mimeType="video/*"/>
+        <data android:mimeType="audio/*"/>
+      </intent-filter>
+      <!-- Quick Add Shortcut (#515): the static "Paste link" app shortcut. -->
+      <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts"/>
     </activity>
+    <service android:name="expo.modules.video.playbackService.ExpoVideoPlaybackService" android:exported="false" android:foregroundServiceType="mediaPlayback">
+      <intent-filter>
+        <action android:name="androidx.media3.session.MediaSessionService"/>
+      </intent-filter>
+    </service>
+    <!-- H23: edits nothing itself; only keeps a long edit's process alive and shows its progress with Cancel. -->
+    <service android:name="com.vidorax.media.library.MediaEditService" android:exported="false" android:foregroundServiceType="mediaProcessing|dataSync"/>
   </application>
 </manifest>

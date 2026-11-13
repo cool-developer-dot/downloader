@@ -1,0 +1,194 @@
+{
+  "screens": [
+    {
+      "id": "01-browser",
+      "en": {
+        "headline": "Browse & paste video links",
+        "highlight": "paste",
+        "subtitle": "A built-in browser made for saving videos",
+        "badge": {
+          "icon": "link-variant",
+          "text": "Paste & go"
+        }
+      },
+      "ur": {
+        "headline": "براؤز کریں، لنک پیسٹ کریں",
+        "highlight": "لنک پیسٹ",
+        "subtitle": "ویڈیوز محفوظ کرنے کے لیے بنا بلٹ اِن براؤزر",
+        "badge": {
+          "icon": "link-variant",
+          "text": "پیسٹ کریں اور جائیں"
+        }
+      }
+    },
+    {
+      "id": "02-video-available",
+      "en": {
+        "headline": "Tap to save the video",
+        "highlight": "save",
+        "subtitle": "A “Video available” bar appears when a video can be saved",
+        "badge": {
+          "icon": "download",
+          "text": "Video available"
+        }
+      },
+      "ur": {
+        "headline": "ٹیپ کریں، ویڈیو محفوظ کریں",
+        "highlight": "محفوظ",
+        "subtitle": "جب ویڈیو محفوظ ہو سکے تو \"ویڈیو دستیاب\" بار ظاہر ہوتا ہے",
+        "badge": {
+          "icon": "download",
+          "text": "ویڈیو دستیاب"
+        }
+      }
+    },
+    {
+      "id": "03-quality",
+      "en": {
+        "headline": "Choose your quality",
+        "highlight": "quality",
+        "subtitle": "Pick HD or a smaller file when the page offers more than one",
+        "badge": {
+          "icon": "high-definition",
+          "text": "HD quality"
+        }
+      },
+      "ur": {
+        "headline": "اپنی پسند کی کوالٹی",
+        "highlight": "کوالٹی",
+        "subtitle": "جب پیج ایک سے زیادہ دے تو HD یا چھوٹا سائز چنیں",
+        "badge": {
+          "icon": "high-definition",
+          "text": "HD کوالٹی"
+        }
+      },
+      "badgeAt": 0.2
+    },
+    {
+      "id": "04-downloads",
+      "en": {
+        "headline": "Pause & resume anytime",
+        "highlight": "resume",
+        "subtitle": "Downloads keep running in the background, with progress",
+        "badge": {
+          "icon": "pause-circle",
+          "text": "Background downloads"
+        }
+      },
+      "ur": {
+        "headline": "کسی بھی وقت روکیں، جاری رکھیں",
+        "highlight": "روکیں",
+        "subtitle": "ڈاؤن لوڈز پس منظر میں پیش رفت کے ساتھ چلتے رہتے ہیں",
+        "badge": {
+          "icon": "pause-circle",
+          "text": "پس منظر میں ڈاؤن لوڈ"
+        }
+      },
+      "badgeAt": 0.2
+    },
+    {
+      "id": "05-library",
+      "en": {
+        "headline": "Your videos, offline",
+        "highlight": "offline",
+        "subtitle": "One private library with search, favorites and sorting",
+        "badge": {
+          "icon": "folder-play",
+          "text": "Works offline"
+        }
+      },
+      "ur": {
+        "headline": "آپ کی ویڈیوز، آف لائن",
+        "highlight": "آف لائن",
+        "subtitle": "تلاش، پسندیدہ اور ترتیب کے ساتھ ایک پرائیویٹ لائبریری",
+        "badge": {
+          "icon": "folder-play",
+          "text": "انٹرنیٹ کے بغیر"
+        }
+      }
+    },
+    {
+      "id": "06-player",
+      "en": {
+        "headline": "A smooth video player",
+        "highlight": "smooth",
+        "subtitle": "Swipe for brightness and volume, plus Picture-in-Picture and speed",
+        "badge": {
+          "icon": "picture-in-picture-bottom-right",
+          "text": "Picture-in-Picture"
+        }
+      },
+      "ur": {
+        "headline": "آسان ویڈیو پلیئر",
+        "highlight": "پلیئر",
+        "subtitle": "روشنی اور آواز کے لیے سوائپ، Picture-in-Picture اور رفتار",
+        "badge": {
+          "icon": "picture-in-picture-bottom-right",
+          "text": "Picture-in-Picture"
+        }
+      }
+    },
+    {
+      "id": "07-private",
+      "en": {
+        "headline": "Private by design",
+        "highlight": "Private",
+        "subtitle": "No account, no ads, no tracking. Optional PIN App Lock",
+        "badge": {
+          "icon": "shield-lock",
+          "text": "App Lock"
+        }
+      },
+      "ur": {
+        "headline": "پرائیویسی پہلے",
+        "highlight": "پرائیویسی",
+        "subtitle": "نہ اکاؤنٹ، نہ اشتہارات، نہ ٹریکنگ۔ اختیاری PIN ایپ لاک",
+        "badge": {
+          "icon": "shield-lock",
+          "text": "ایپ لاک"
+        }
+      }
+    },
+    {
+      "id": "08-languages",
+      "en": {
+        "headline": "English or Urdu",
+        "highlight": "Urdu",
+        "subtitle": "Switch the whole app instantly, right-to-left included",
+        "badge": {
+          "icon": "translate",
+          "text": "English · اردو"
+        }
+      },
+      "ur": {
+        "headline": "اردو یا انگریزی",
+        "highlight": "اردو",
+        "subtitle": "پوری ایپ فوراً بدلیں، دائیں سے بائیں سمیت",
+        "badge": {
+          "icon": "translate",
+          "text": "اردو · English"
+        }
+      }
+    }
+  ],
+  "feature": {
+    "en": {
+      "title": "VidoraX",
+      "tagline": "Save videos. Watch offline.",
+      "pills": [
+        "HD downloads",
+        "Offline player",
+        "App Lock"
+      ]
+    },
+    "ur": {
+      "title": "VidoraX",
+      "tagline": "ویڈیوز محفوظ کریں، آف لائن دیکھیں",
+      "pills": [
+        "HD ڈاؤن لوڈز",
+        "آف لائن پلیئر",
+        "ایپ لاک"
+      ]
+    }
+  }
+}

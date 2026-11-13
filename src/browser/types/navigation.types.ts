@@ -25,7 +25,13 @@ export type NavigationIntent =
         'domain' | 'www_domain' | 'https_url' | 'http_url' | 'ip' | 'localhost'
       >;
     }
-  | { kind: 'search'; url: string; query: string }
+  | {
+      kind: 'search';
+      url: string;
+      query: string;
+      /** B4 #33: a search shortcut's site (`w Lahore` → "Wikipedia"); absent for the default engine. */
+      provider?: string;
+    }
   | { kind: 'invalid'; message: string; category: 'invalid' }
   | { kind: 'blocked'; message: string; category: 'blocked' };
 
@@ -39,6 +45,12 @@ export type BrowserErrorCode =
   | 'connection_interrupted'
   | 'timeout'
   | 'ssl_error'
+  /** B12 #124: HTTPS-only opened an http page over https and the site didn't answer securely. */
+  | 'https_unavailable'
+  /** B12 #124: the same in a build that can't open plain http at all (release): nothing to fall back to. */
+  | 'https_required'
+  /** B14 #276 / #277 / #278: the user's site blocker, a used-up daily limit or focus mode (`retryUrl` = the page). */
+  | 'site_blocked'
   | 'http_error'
   | 'unsupported'
   | 'process_terminated'

@@ -163,6 +163,11 @@ export type BrowserDownloadPresentationInput = {
   consumedNotice?: BrowserDownloadProgressNotice | null;
   /** The current video is being actively resolved right now (no offer, no final verdict yet). */
   liveDetecting?: boolean;
+  /**
+   * Detection ran out of time on the current video and produced nothing: no offer, no verdict. Without this the bar
+   * simply vanished after "Detecting video", leaving the user waiting for an answer that never came.
+   */
+  liveDetectingExhausted?: boolean;
   /** The current video's player is hidden: no video is on screen right now. */
   liveOwnerHidden?: boolean;
 };
@@ -194,6 +199,16 @@ const FORMAT_FROM_CONTAINER: Record<string, string> = {
 };
 
 /** Reject targets that must never become Download Video. */
+/**
+ * A proven split pair: one row that carries both the video file and the audio file, which the engine downloads and
+ * merges. Its video half may be named like a segment, so the checks that refuse a lone segment must know it is not one.
+ */
+export function isSplitOffer(
+  analysis: { variants?: { audioSourceUrl?: string | null }[] } | null | undefined,
+): boolean {
+  return Boolean(analysis?.variants?.some((variant) => variant.audioSourceUrl?.trim()));
+}
+
 export function isRejectedDownloadTarget(url: string | null | undefined): boolean {
   if (!url || typeof url !== 'string') {
     return true;
@@ -568,7 +583,11 @@ export function isBrowserDownloadCtaEligible(
   }
 
   const mediaUrl = actionState.mediaUrl ?? actionState.analysis.finalUrl ?? null;
-  if (isRejectedDownloadTarget(mediaUrl)) {
+  // A split pair's video file is a whole file the engine proved; only its own row may offer it, never on its own.
+  if (!isSplitOffer(actionState.analysis) && isRejectedDownloadTarget(mediaUrl)) {
+    return false;
+  }
+  if (isSplitOffer(actionState.analysis) && !isSafeMediaUrl(mediaUrl ?? '')) {
     return false;
   }
 
@@ -810,6 +829,11 @@ function resolveStatusNotice(args: {
   // offer for a previous one is already gone: TRACKING), never after its final verdict.
   if (liveStrong && input.liveDetecting && shellState === 'TRACKING_CURRENT_VIDEO') {
     return 'DETECTING';
+  }
+  // Detection gave up on a video we are sure is playing here (a site whose player feeds the page from pieces we
+  // cannot download, for example). Saying so is the answer; silence is not.
+  if (liveStrong && input.liveDetectingExhausted && shellState === 'TRACKING_CURRENT_VIDEO') {
+    return 'UNSUPPORTED';
   }
   return null;
 }

@@ -10,6 +10,7 @@ import { Chip } from '@/components/common/Chip';
 import { SearchField } from '@/components/inputs/SearchField';
 import { useTranslation, type TranslationKey } from '@/localization';
 import type { DownloadSortOption, DownloadUiFilter } from '@/store/downloads';
+import { DownloadsOrganizeFilterChips } from '@/screens/downloads/components/OrganizeFilterChips';
 
 import {
   DOWNLOAD_FILTER_OPTIONS,
@@ -146,6 +147,7 @@ export const DownloadsHeaderControls = memo(function DownloadsHeaderControls({
             onPress={onOpenSort}
             testID={`${testID}-sort-chip`}
           />
+          <DownloadsOrganizeFilterChips testID={testID} />
         </ScrollView>
 
         {controlsDirty ? (

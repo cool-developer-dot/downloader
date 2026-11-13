@@ -202,6 +202,23 @@ class ProgressiveTransferTest {
     assertEquals("\"new\"", ResumeValidator.read(part))
   }
 
+  @Test fun aPartialStartedWithAnUnquotedEtagResumesWithTheQuotedForm() = runBlocking {
+    // An older build recorded the server's ETag exactly as it came, without quotes.
+    val full = ByteArray(3000) { (it % 199).toByte() }
+    val part = tmp.newFile("k.part").apply { writeBytes(full.copyOfRange(0, 1000)) }
+    ResumeValidator.fileFor(part).writeText("19a40f3e")
+    server.enqueue(
+      MockResponse().setResponseCode(206).setHeader("ETag", "19a40f3e")
+        .setHeader("Content-Range", "bytes 1000-2999/3000")
+        .setBody(Buffer().write(full.copyOfRange(1000, 3000))),
+    )
+
+    transfer.transfer(spec(part))
+
+    assertEquals("\"19a40f3e\"", server.takeRequest().getHeader("If-Range"))
+    assertArrayEquals(full, part.readBytes())
+  }
+
   @Test fun diskWriteReportsAFailedWriteAsStorageNotNetwork() {
     val failure = assertThrows(StorageWriteException::class.java) {
       diskWrite { throw java.io.IOException("write failed: ENOSPC (No space left on device)") }

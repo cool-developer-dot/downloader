@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- H22 Home Widget (#456), Urdu. -->
+<resources>
+  <string name="vidorax_widget_label">VidoraX ڈاؤن لوڈز</string>
+  <string name="vidorax_widget_description">آپ کے جاری ڈاؤن لوڈز اور لنک پیسٹ کرنے کا بٹن</string>
+  <string name="vidorax_widget_title">ڈاؤن لوڈز</string>
+  <string name="vidorax_widget_open_downloads">ڈاؤن لوڈز کھولیں</string>
+  <string name="vidorax_widget_paste_link">لنک پیسٹ کریں</string>
+  <string name="vidorax_widget_empty">کوئی جاری ڈاؤن لوڈ نہیں</string>
+  <string name="vidorax_widget_untitled">ویڈیو</string>
+  <string name="vidorax_widget_status_downloading">ڈاؤن لوڈ ہو رہا ہے</string>
+  <string name="vidorax_widget_status_processing">مکمل ہو رہا ہے</string>
+  <string name="vidorax_widget_status_queued">قطار میں</string>
+  <string name="vidorax_widget_status_waiting_network">نیٹ ورک کا انتظار</string>
+  <string name="vidorax_widget_status_waiting_retry">جلد دوبارہ کوشش</string>
+  <string name="vidorax_widget_status_waiting">انتظار میں</string>
+  <string name="vidorax_widget_status_paused">رکا ہوا</string>
+  <string name="vidorax_widget_row_status">%1$d%% · %2$s</string>
+</resources>

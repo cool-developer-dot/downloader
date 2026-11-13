@@ -39,11 +39,14 @@ import { openIntentOrExternal } from '@/browser/navigation/external-navigation.s
 import { useTranslation } from '@/localization';
 
 import type { BrowserChromeBridgeBindings } from '@/browser/hooks';
-import { browserUserAgentMode } from '@/browser/constants';
+import { BROWSER_WEBVIEW_BLANK, browserUserAgentMode } from '@/browser/constants';
 import { resolveWebViewUserAgentForTab } from '@/browser/constants/user-agent';
 import { useBrowserEngineContext } from '@/browser/engine';
+import { webFullscreen } from '@/browser/fullscreen/web-fullscreen.runtime';
 import { useBrowserEngineEvents } from '@/browser/hooks';
 import { useBrowserStore } from '@/browser/stores';
+import { hardReloadRequests } from '@/browser/services/hard-reload';
+import { pagePreload } from '@/browser/preload/page-preload.service';
 import { isBrowserHomeUrl } from '@/browser/utils';
 import {
   BROWSER_WEBVIEW_CACHE_MODE_DEFAULT,
@@ -58,6 +61,46 @@ import {
   isBrowserRouteVisible,
   subscribeBrowserRouteVisible,
 } from '@/browser/webview/webview-activity';
+import { clearTabWebViewTag, setTabWebViewTag } from '@/browser/webview/webview-view-tags';
+import { DO_NOT_TRACK_PAGE_SCRIPT } from '@/browser/privacy/privacy-page-script';
+import { SPELL_CHECK_OFF_PAGE_SCRIPT } from '@/browser/startup/spell-check';
+import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
+import { tabAudioScript } from '@/browser/tab-sound/tab-audio-script';
+import { SITE_PERMISSION_PAGE_SCRIPT } from '@/browser/site-permissions/site-permission-script';
+import { readerMode } from '@/browser/reader/reader-mode.service';
+import { applyPageDisplayNative, pageDisplayNative, usePageDisplay } from '@/browser/page-display/use-page-display';
+import { applySaverNative, saverNative, useSaverEffects } from '@/browser/data-saver/data-saver.service';
+import { LITE_PAGE_SCRIPT } from '@/browser/data-saver/data-saver-settings';
+import { webViewSourceFor } from '@/browser/data-saver/source-headers';
+import { AUTOPLAY_BLOCK_ALL_SCRIPT, autoplayNeedsTap } from '@/browser/blocking/blocking-settings';
+import { useAutoplayPolicy } from '@/browser/blocking/autoplay.service';
+import { applyBlockingPage, blockingNative } from '@/browser/blocking/content-blocking.service';
+import { isIncognitoTabId, liveIncognitoProfile } from '@/browser/incognito/incognito-state';
+import {
+  forgetIncognitoWebView,
+  useIncognitoVerified,
+  verifyIncognitoWebView,
+} from '@/browser/incognito/incognito.service';
+import { FORM_FIELD_SCRIPT } from '@/browser/form-snippets/form-snippets';
+import { devtoolsDocumentStartScript, devtoolsUserAgent, emulatedWidth, userScriptsAtEnd } from '@/browser/devtools/devtools-core';
+import { parseAnnotateMessage } from '@/browser/highlights/highlights-core';
+import { bindHighlightsInjector, onRestored, restoreHighlights } from '@/browser/highlights/highlights.service';
+import { LANGUAGE_MESSAGE_SCRIPT } from '@/browser/language/language-detect';
+import { onPageLanguage } from '@/browser/language/translate-offer.service';
+import {
+  bindDevtoolsInjector,
+  handleDevtoolsMessage,
+  resetTabPage,
+  useTabDevtools,
+  useUserScripts,
+} from '@/browser/devtools/devtools.service';
+import { bindSnippetInserter, handleFormFieldMessage } from '@/browser/form-snippets/form-snippets.service';
+import {
+  isJavaScriptAllowed,
+  normalizeCookiePolicy,
+  parseJavaScriptExceptions,
+} from '@/browser/privacy/privacy-settings';
+import { useSettingsStore } from '@/store/settings';
 
 /**
  * Page DevTools in a pipeline-trace build (EXPO_PUBLIC_VIDORAX_PIPELINE_TRACE=1, inlined at bundle time) — a device-test
@@ -97,6 +140,7 @@ export const BrowserWebView = memo(function BrowserWebView({
     webViewRef,
     sourceUri,
     reload,
+    stopLoading,
     loadUrl,
     navigationEpochRef,
     webViewInstanceGenerationRef,
@@ -118,6 +162,57 @@ export const BrowserWebView = memo(function BrowserWebView({
     onMessage: onMediaDetectionMessage,
   } = useMediaDetectionBridge();
 
+  // B12: the privacy settings that are WebView props (per profile, B20).
+  const cookiePolicy = useSettingsStore((s) => normalizeCookiePolicy(s.cookiePolicy));
+  const doNotTrack = useSettingsStore((s) => s.doNotTrack === true);
+  // B18 #184: Save-Data: on while the Data saver setting is on (with the DNT headers, in the source).
+  const saveData = useSettingsStore((s) => s.dataSaver === true);
+  // B21 #237: Spell check off — pages get a document-start script that turns it off in their fields.
+  const spellCheckOff = useSettingsStore((s) => s.spellCheck === false);
+  // B3 #8 / #220: a muted or turned-down tab's next pages start with its sound settings.
+  useSyncExternalStore(tabAudio.subscribe, tabAudio.getVersion, tabAudio.getVersion);
+  const tabAudioState = tabId && tabAudio.isAdjusted(tabId) ? tabAudio.get(tabId) : null;
+  const tabAudioStart = tabAudioState ? tabAudioScript(tabAudioState.muted, tabAudioState.volume) : '';
+  const javaScriptDefault = useSettingsStore((s) => s.javaScript !== false);
+  const javaScriptExceptionsRaw = useSettingsStore((s) => s.javaScriptExceptions);
+  const javaScriptExceptions = useMemo(
+    () => parseJavaScriptExceptions(javaScriptExceptionsRaw),
+    [javaScriptExceptionsRaw],
+  );
+  const owningTabUrl = useBrowserStore((s) =>
+    tabId ? (s.tabs.find((tab) => tab.id === tabId)?.url ?? '') : s.currentUrl,
+  );
+  // #135: the site this tab is on decides; the navigation guard reloads through the browser when the next site differs.
+  const javaScriptEnabled = isJavaScriptAllowed(owningTabUrl, javaScriptDefault, javaScriptExceptions);
+  // B16: Page display — text size, force dark, the page script, and the native layout / colour filter.
+  const pageDisplay = usePageDisplay({ tabId, url: owningTabUrl, webViewRef });
+  // B18 #188: Lite mode's page style (animations off) for the pages that load while it is on.
+  const pageAnimationsOff = useSaverEffects().pageAnimationsOff;
+  // B14 #187 / #218: the autoplay policy for this tab's site ('sound' = today's WebView setting, no script).
+  const autoplayPolicy = useAutoplayPolicy(owningTabUrl);
+  const autoplayBlockAll = autoplayPolicy === 'all';
+  // B11: an incognito tab's WebView is created in the session's profile (the `webProfile` prop, read natively when the
+  // view is created — it can't change later) and loads nothing but a blank page until that is confirmed (fail closed).
+  const incognitoTab = isIncognitoTabId(tabId);
+  const [incognitoProfile] = useState(() => (incognitoTab ? liveIncognitoProfile() : null));
+  const incognitoVerified = useIncognitoVerified(tabId);
+  // B19: Developer tools — while off (the default) nothing of theirs reaches the page (devtoolsDocumentStartScript).
+  const devtoolsOn = useSettingsStore((s) => s.devTools === true);
+  // B23 #263: the page's language is read only while the offer is on.
+  const offerTranslate = useSettingsStore((s) => s.offerTranslate !== false);
+  const tabDevtools = useTabDevtools(tabId);
+  const userScripts = useUserScripts();
+  const devtoolsStart = useMemo(
+    () => devtoolsDocumentStartScript({ enabled: devtoolsOn, tab: tabDevtools, scripts: userScripts, incognito: incognitoTab }),
+    [devtoolsOn, incognitoTab, tabDevtools, userScripts],
+  );
+  // B22 #274: the focused-field script only while the user has form snippets (otherwise nothing is injected).
+  const snippetsOn = useSettingsStore((s) => typeof s.formSnippets === 'string' && s.formSnippets.length > 2);
+  // B14 #276–#278: a tab showing "This site is blocked" keeps its WebView paused (like a parked tab).
+  const siteBlocked = useBrowserStore((s) =>
+    (tabId ? s.tabs.find((tab) => tab.id === tabId)?.error?.code : s.error?.code) === 'site_blocked',
+  );
+
   const [pullToRefreshEnabled, setPullToRefreshEnabled] = useState(() =>
     computePullToRefreshEnabled(useBrowserStore.getState()),
   );
@@ -125,6 +220,30 @@ export const BrowserWebView = memo(function BrowserWebView({
   const [cacheMode, setCacheMode] = useState<BrowserWebViewCacheMode>(
     BROWSER_WEBVIEW_CACHE_MODE_DEFAULT,
   );
+  // B6 #42 Hard reload: one reload without the HTTP cache (the desktop-mode switch's LOAD_NO_CACHE path);
+  // finalizeLoadEnd puts the cache mode back. The counter re-runs it while the cache mode is already off.
+  const [hardReloadSeq, setHardReloadSeq] = useState(0);
+  const handledHardReloadRef = useRef(0);
+
+  useEffect(() => {
+    if (!tabId) return undefined;
+    return hardReloadRequests.subscribe((requested) => {
+      if (requested !== tabId) return;
+      const tab = useBrowserStore.getState().tabs.find((t) => t.id === tabId);
+      if (!tab || isBrowserHomeUrl(tab.url)) return;
+      if (tab.loading) stopLoading();
+      setCacheMode(BROWSER_WEBVIEW_CACHE_MODE_UA_RELOAD);
+      setHardReloadSeq((seq) => seq + 1);
+    });
+  }, [stopLoading, tabId]);
+
+  useEffect(() => {
+    if (hardReloadSeq === handledHardReloadRef.current || cacheMode !== BROWSER_WEBVIEW_CACHE_MODE_UA_RELOAD) {
+      return;
+    }
+    handledHardReloadRef.current = hardReloadSeq;
+    reload();
+  }, [cacheMode, hardReloadSeq, reload]);
 
   useEffect(() => {
     return useBrowserStore.subscribe((state) => {
@@ -158,7 +277,7 @@ export const BrowserWebView = memo(function BrowserWebView({
   // Only the active tab's WebView runs, and only while the Browser route is in front; every other one is paused
   // natively (see webview-activity.ts).
   const browserRouteVisible = useSyncExternalStore(subscribeBrowserRouteVisible, isBrowserRouteVisible);
-  const runsPage = isActive && browserRouteVisible;
+  const runsPage = isActive && browserRouteVisible && !siteBlocked;
 
   const nativeViewTagRef = useRef<number | null>(null);
   const nativeScopeCleanupRef = useRef<(() => void) | null>(null);
@@ -168,6 +287,15 @@ export const BrowserWebView = memo(function BrowserWebView({
       forgetNativeWebViewActivity(nativeViewTagRef.current);
     }
     nativeViewTagRef.current = tag;
+    setTabWebViewTag(tabId, tag);
+    // B16: the native layout / colour matrix for the page now loading (its own site's values).
+    applyPageDisplayNative(tag, pageUrl);
+    // B18: pictures off / software layer for the page now loading.
+    applySaverNative(tag, pageUrl);
+    // B14: the page's site, for "Allow ads on this site" (only while ad or tracker blocking is on).
+    applyBlockingPage(tag, pageUrl);
+    // B11: confirm an incognito WebView is in the session's profile before its page loads.
+    if (tabId && isIncognitoTabId(tabId)) void verifyIncognitoWebView(tabId, tag);
     applyNativeWebViewActivity(tag, runsPage);
     const previousCleanup = nativeScopeCleanupRef.current;
     nativeScopeCleanupRef.current = registerNativeObservationScope(tag, {
@@ -193,6 +321,14 @@ export const BrowserWebView = memo(function BrowserWebView({
       nativeScopeCleanupRef.current = null;
       if (nativeViewTagRef.current != null) {
         forgetNativeWebViewActivity(nativeViewTagRef.current);
+        pageDisplayNative.forget(nativeViewTagRef.current);
+        saverNative.forget(nativeViewTagRef.current);
+        blockingNative.forget(nativeViewTagRef.current);
+      }
+      if (tabId) {
+        clearTabWebViewTag(tabId, nativeViewTagRef.current);
+        // B11: a later WebView for this incognito tab (after sleep / the mount pool) is checked again.
+        forgetIncognitoWebView(tabId);
       }
       // A queued scroll inject must never reach a WebView that is going away.
       scrollPositionService.cancelRestore(tabId);
@@ -454,10 +590,20 @@ export const BrowserWebView = memo(function BrowserWebView({
     executeDesktopReload(desktopMode, 'activate_reconcile');
   }, [appliedDesktopMode, desktopMode, executeDesktopReload, isActive, tabLoading]);
 
+  // B19 #226 / #227: a user agent chosen in Developer tools (or an emulated device's) wins while the tools are on.
+  const devtoolsUa = devtoolsUserAgent(tabDevtools, devtoolsOn);
   const userAgent = useMemo(
-    () => resolveWebViewUserAgentForTab({ desktopMode: appliedDesktopMode }),
-    [appliedDesktopMode],
+    () => devtoolsUa ?? resolveWebViewUserAgentForTab({ desktopMode: appliedDesktopMode }),
+    [appliedDesktopMode, devtoolsUa],
   );
+  // B19: after the new user agent / page width has been committed, the page loads again with it.
+  const devtoolsLoadKey = `${devtoolsUa ?? ''}|${devtoolsOn ? (emulatedWidth(tabDevtools.device) ?? '') : ''}`;
+  const devtoolsLoadKeyRef = useRef(devtoolsLoadKey);
+  useEffect(() => {
+    if (devtoolsLoadKeyRef.current === devtoolsLoadKey) return;
+    devtoolsLoadKeyRef.current = devtoolsLoadKey;
+    if (!isBrowserHomeUrl(tabUrl)) reload();
+  }, [devtoolsLoadKey, reload, tabUrl]);
 
   /** Per-tab viewport: Desktop → wide+overview; Mobile → no leftover desktop viewport. */
   const scalesPageToFit = useMemo(
@@ -476,7 +622,12 @@ export const BrowserWebView = memo(function BrowserWebView({
     });
   }, [appliedDesktopMode, isActive, scalesPageToFit, tabId, userAgent]);
 
-  const webViewSource = useMemo(() => ({ uri: sourceUri }), [sourceUri]);
+  // #115: the pages the browser opens itself carry the Do Not Track headers; B18 #184 adds Save-Data: on (Data saver).
+  const webViewSource = useMemo(
+    () =>
+      incognitoVerified ? webViewSourceFor(sourceUri, { doNotTrack, saveData }) : { uri: BROWSER_WEBVIEW_BLANK },
+    [doNotTrack, incognitoVerified, saveData, sourceUri],
+  );
 
   const injectedJavaScript = useMemo(
     () => `${chromeBridge.injectedJavaScript}\n${mediaInjected}`,
@@ -485,8 +636,33 @@ export const BrowserWebView = memo(function BrowserWebView({
 
   const injectedJavaScriptBeforeContentLoaded = useMemo(
     () =>
-      `${chromeBridge.injectedJavaScriptBeforeContentLoaded}\n${mediaBeforeContent}`,
-    [chromeBridge.injectedJavaScriptBeforeContentLoaded, mediaBeforeContent],
+      // B13: every page's location / camera / mic / notification requests and pop-ups without a tap are answered
+      // in the page (site-permission-script.ts).
+      `${chromeBridge.injectedJavaScriptBeforeContentLoaded}\n${mediaBeforeContent}\n${SITE_PERMISSION_PAGE_SCRIPT}${
+        doNotTrack ? `\n${DO_NOT_TRACK_PAGE_SCRIPT}` : ''
+      }${spellCheckOff ? `\n${SPELL_CHECK_OFF_PAGE_SCRIPT}` : ''}${tabAudioStart ? `\n${tabAudioStart}` : ''}${
+        // B14 #187 / #218: Block all — nothing plays until the user taps (after B3's wrapper; either order works).
+        autoplayBlockAll ? `
+${AUTOPLAY_BLOCK_ALL_SCRIPT}` : ''
+      }\n${
+        // B16: font style, Urdu in Nastaliq, Force enable zoom (page-display-script.ts).
+        pageDisplay.script
+      }${devtoolsStart ? `
+${devtoolsStart}` : ''}${snippetsOn ? `
+${FORM_FIELD_SCRIPT}` : ''}${pageAnimationsOff ? `
+${LITE_PAGE_SCRIPT}` : ''}`,
+    [
+      autoplayBlockAll,
+      devtoolsStart,
+      snippetsOn,
+      chromeBridge.injectedJavaScriptBeforeContentLoaded,
+      doNotTrack,
+      mediaBeforeContent,
+      pageAnimationsOff,
+      pageDisplay.script,
+      spellCheckOff,
+      tabAudioStart,
+    ],
   );
 
   const finalizeLoadEnd = useCallback(
@@ -507,8 +683,22 @@ export const BrowserWebView = memo(function BrowserWebView({
         });
       }
       onLoadEnd(url);
+      // B23 #261: this page's highlights again; #263: its language (for "Translate this page?"). Never in incognito.
+      if (tabId && !incognitoTab && !isBrowserHomeUrl(url)) {
+        void restoreHighlights(tabId, url);
+        if (offerTranslate && isActive) webViewRef.current?.injectJavaScript(LANGUAGE_MESSAGE_SCRIPT);
+      }
+      // B19 #199: the user's end-time scripts (each isolated; they check the page address themselves). Nothing while off.
+      for (const script of userScriptsAtEnd({ enabled: devtoolsOn, scripts: userScripts, incognito: incognitoTab })) {
+        webViewRef.current?.injectJavaScript(`${script}
+true;`);
+      }
+      // B6 #55: the page in front names its next page → fetch it ahead (Preload pages).
+      if (isActive && !isBrowserHomeUrl(url)) {
+        pagePreload.afterPageLoad((script) => webViewRef.current?.injectJavaScript(script));
+      }
     },
-    [appliedDesktopMode, cacheMode, isActive, onLoadEnd, tabId],
+    [appliedDesktopMode, cacheMode, devtoolsOn, incognitoTab, isActive, offerTranslate, onLoadEnd, tabId, userScripts, webViewRef],
   );
 
   useEffect(() => {
@@ -527,13 +717,44 @@ export const BrowserWebView = memo(function BrowserWebView({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- true unmount only (not isActive flips)
   }, []);
 
+  // B23 #261: highlights run their page scripts (anchor request, marking) in this tab.
+  useEffect(() => {
+    if (!tabId) return undefined;
+    return bindHighlightsInjector(tabId, (script) => webViewRef.current?.injectJavaScript(script));
+  }, [tabId, webViewRef]);
+
+  // B19: Developer tools run their commands in this tab's page (only while they are on).
+  useEffect(() => {
+    if (!devtoolsOn || !tabId) return undefined;
+    return bindDevtoolsInjector(tabId, (script) => webViewRef.current?.injectJavaScript(script));
+  }, [devtoolsOn, tabId, webViewRef]);
+
+  // B22 #274: the tab in front inserts the snippet the user taps into its focused field.
+  useEffect(() => {
+    if (!isActive || !tabId) return undefined;
+    return bindSnippetInserter(tabId, (script) => webViewRef.current?.injectJavaScript(script));
+  }, [isActive, tabId, webViewRef]);
+
+  // A fullscreen page that navigates away, crashes or unmounts sends no `fullscreenchange`: forget it here.
+  useEffect(() => {
+    const ownTabId = tabId;
+    return () => {
+      if (ownTabId) {
+        webFullscreen.onPageGone(ownTabId, 'unmount');
+      }
+    };
+  }, [tabId]);
+
   const handleLoadStart = useCallback(
     (event: WebViewNavigationEvent | WebViewErrorEvent) => {
+      webFullscreen.onPageGone(tabId ?? useBrowserStore.getState().activeTabId, 'navigation');
       onLoadStart(event.nativeEvent.url);
+      // B19: the old page's console, network list etc. go with it.
+      if (tabId) resetTabPage(tabId);
       const target = (event.nativeEvent as { target?: number }).target;
       bindNativeScope(typeof target === 'number' ? target : nativeViewTagRef.current, event.nativeEvent.url);
     },
-    [bindNativeScope, onLoadStart],
+    [bindNativeScope, onLoadStart, tabId],
   );
 
   const handleLoadEnd = useCallback(
@@ -577,22 +798,34 @@ export const BrowserWebView = memo(function BrowserWebView({
   );
 
   const handleShouldStartLoadWithRequest = useCallback(
-    (request: ShouldStartLoadRequest) => onShouldStartLoadWithRequest(request),
+    (request: ShouldStartLoadRequest) => {
+      // B18: a new top-level page gets its pictures setting before it starts loading (the load start is later).
+      if (
+        (request as { isTopFrame?: boolean }).isTopFrame !== false &&
+        /^https?:/i.test(request.url) &&
+        nativeViewTagRef.current != null
+      ) {
+        applySaverNative(nativeViewTagRef.current, request.url);
+      }
+      return onShouldStartLoadWithRequest(request);
+    },
     [onShouldStartLoadWithRequest],
   );
 
   const handleContentProcessDidTerminate = useCallback(
     (event: WebViewTerminatedEvent) => {
+      webFullscreen.onPageGone(tabId ?? useBrowserStore.getState().activeTabId, 'render_process_gone');
       onContentProcessDidTerminate(event);
     },
-    [onContentProcessDidTerminate],
+    [onContentProcessDidTerminate, tabId],
   );
 
   const handleRenderProcessGone = useCallback(
     (event: WebViewRenderProcessGoneEvent) => {
+      webFullscreen.onPageGone(tabId ?? useBrowserStore.getState().activeTabId, 'render_process_gone');
       onRenderProcessGone(event);
     },
-    [onRenderProcessGone],
+    [onRenderProcessGone, tabId],
   );
 
   const handleOpenWindow = useCallback(
@@ -635,6 +868,25 @@ export const BrowserWebView = memo(function BrowserWebView({
   const handleMessage = useCallback(
     (event: WebViewMessageEvent) => {
       const raw = event.nativeEvent.data;
+      // B15 #161: reader mode's answers have their own channel (articles are larger than the chrome channel's cap).
+      if (readerMode.handleMessage(tabId, raw)) {
+        return;
+      }
+      // B23: how many highlights were restored, the page's language.
+      const annotate = parseAnnotateMessage(raw);
+      if (annotate) {
+        if (annotate.kind === 'restored') onRestored(tabId, annotate.found, annotate.of);
+        else if (isActive && !incognitoTab) onPageLanguage(tabId, tabUrl, annotate);
+        return;
+      }
+      // B19: console, network, inspect, source, storage and user-script reports (kept only while the tools are on).
+      if (handleDevtoolsMessage(tabId, raw)) {
+        return;
+      }
+      // B22 #274: which kind of field has focus (nothing else comes back from that script).
+      if (handleFormFieldMessage(tabId, raw)) {
+        return;
+      }
       if (chromeBridge.handleChromeMessage(raw)) {
         return;
       }
@@ -644,7 +896,7 @@ export const BrowserWebView = memo(function BrowserWebView({
       }
       onMediaDetectionMessage(raw);
     },
-    [chromeBridge, isActive, onMediaDetectionMessage],
+    [chromeBridge, incognitoTab, isActive, onMediaDetectionMessage, tabId, tabUrl],
   );
 
   const config = browserWebViewConfiguration;
@@ -659,11 +911,17 @@ export const BrowserWebView = memo(function BrowserWebView({
       ref={webViewRef}
       testID={testID}
       source={webViewSource}
+      // B11: read once, natively, when the WebView is created (RNCWebViewManager → beforeWebViewSetup); normal tabs omit it.
+      {...(incognitoProfile ? ({ webProfile: incognitoProfile } as object) : {})}
       style={[styles.webview, { backgroundColor: theme.colors.background }]}
       {...(userAgent ? { userAgent } : {})}
-      javaScriptEnabled={config.javaScriptEnabled}
+      // B16 #164 / #163: set only once a Page display setting has differed from its default (today's WebView otherwise).
+      {...(pageDisplay.textZoom != null ? { textZoom: pageDisplay.textZoom } : {})}
+      {...(pageDisplay.forceDarkOn != null ? { forceDarkOn: pageDisplay.forceDarkOn } : {})}
+      javaScriptEnabled={config.javaScriptEnabled && javaScriptEnabled}
       domStorageEnabled={config.domStorageEnabled}
-      thirdPartyCookiesEnabled={config.thirdPartyCookiesEnabled}
+      // B12 #113: third-party cookies only with "Allow all cookies" (#112 "Block all" turns the jar off natively).
+      thirdPartyCookiesEnabled={config.thirdPartyCookiesEnabled && cookiePolicy === 'allow-all'}
       sharedCookiesEnabled={config.sharedCookiesEnabled}
       cacheEnabled={config.cacheEnabled}
       cacheMode={cacheMode}
@@ -675,7 +933,11 @@ export const BrowserWebView = memo(function BrowserWebView({
       geolocationEnabled={config.geolocationEnabled}
       allowsBackForwardNavigationGestures={config.allowsBackForwardNavigationGestures}
       allowsInlineMediaPlayback={config.allowsInlineMediaPlayback}
-      mediaPlaybackRequiresUserAction={config.mediaPlaybackRequiresUserAction}
+      // B14 #218: only "Allow" (all sites, or this site) lets pages start sound by themselves; otherwise today's value.
+      mediaPlaybackRequiresUserAction={config.mediaPlaybackRequiresUserAction && autoplayNeedsTap(autoplayPolicy)}
+      // Only the active tab can cover the app: a parked tab gets react-native-webview's plain chrome client (no
+      // fullscreen support, so the page's request is refused), and losing it closes the tab's video view natively.
+      allowsFullscreenVideo={config.allowsFullscreenVideo && isActive}
       setSupportMultipleWindows={config.setSupportMultipleWindows}
       javaScriptCanOpenWindowsAutomatically={config.javaScriptCanOpenWindowsAutomatically}
       startInLoadingState={config.startInLoadingState}

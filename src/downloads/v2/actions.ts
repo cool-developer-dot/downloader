@@ -3,7 +3,7 @@ import type { DownloadStatus } from '@/api/types';
 import type { V2EnginePort } from './engine-port';
 import { SOURCE_EXPIRED_MESSAGE } from './source-refresh';
 
-export type EngineDownloadAction = 'pause' | 'resume' | 'retry' | 'cancel';
+export type EngineDownloadAction = 'pause' | 'resume' | 'retry' | 'cancel' | 'stopRecording';
 
 const ENGINE_MISSING = 'Downloads are unavailable in this build.';
 
@@ -72,6 +72,14 @@ export async function runEngineDownloadAction(
 ): Promise<void> {
   if (!engine) {
     throw new Error(ENGINE_MISSING);
+  }
+  if (action === 'stopRecording') {
+    // F6: a native build older than live recording has no recordings to stop.
+    if (!engine.stopRecording) {
+      throw new Error(ENGINE_MISSING);
+    }
+    await engine.stopRecording(id);
+    return;
   }
   await engine[action](id);
 }

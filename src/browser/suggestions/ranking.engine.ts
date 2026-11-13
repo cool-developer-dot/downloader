@@ -79,6 +79,9 @@ export function scoreCandidate(candidate: RankableCandidate): number {
     case 'remote_suggest':
       base = SUGGESTION_BASE_SCORES.remote_suggest;
       break;
+    case 'calculator':
+      base = SUGGESTION_BASE_SCORES.calculator;
+      break;
     default:
       base = SUGGESTION_BASE_SCORES.search;
   }

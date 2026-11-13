@@ -8,6 +8,13 @@ import {
   type BrowserActionContext,
   type BrowserLinkLongPressPayload,
 } from '@/browser/actions';
+import { canOpenInNewTab, openLinkInNewTab } from '@/browser/actions/open-link-in-new-tab';
+import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
+import { useBrowserStore } from '@/browser/stores';
+import { backgroundTabNotice } from '@/browser/tabs/background-tab-notice';
+import { useTranslation } from '@/localization';
+import { isIncognitoInFront, liveIncognitoProfile } from '@/browser/incognito/incognito-state';
+import { downloadImage } from '@/browser/capture/image-download';
 
 function isActionableLink(url: string): boolean {
   const trimmed = url.trim().toLowerCase();
@@ -32,6 +39,7 @@ export type BrowserLongPressController = {
  * Owns long-press action sheet state. Presentation-only consumers bind to this.
  */
 export function useBrowserLongPressActions(): BrowserLongPressController {
+  const { t } = useTranslation();
   const [payload, setPayload] = useState<BrowserLinkLongPressPayload | null>(null);
 
   const dismiss = useCallback(() => {
@@ -39,15 +47,16 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
   }, []);
 
   const present = useCallback((next: BrowserLinkLongPressPayload) => {
-    if (!isActionableLink(next.href)) {
+    if (!isActionableLink(next.href) && !next.imageSrc) {
       return;
     }
     setPayload(next);
-    AccessibilityInfo.announceForAccessibility('Link actions available');
-  }, []);
+    AccessibilityInfo.announceForAccessibility(t('browser.linkActions.announce'));
+  }, [t]);
 
   const context: BrowserActionContext | null = useMemo(() => {
-    if (!payload) {
+    // B17 #280: an image without a link has no link actions, only "Download image".
+    if (!payload || !isActionableLink(payload.href)) {
       return null;
     }
     return {
@@ -55,22 +64,52 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
       linkText: payload.text,
       pageUrl: payload.pageUrl,
       title: payload.text,
-      openInNewTab: (_url: string) => {
-        // Tabs phase will wire this callback via registry re-registration.
+      openInNewTab: (url: string) => {
+        // B11: a link opened from an incognito tab stays in incognito (its session is live: the tab exists).
+        const incognito = isIncognitoInFront() && liveIncognitoProfile() != null;
+        openLinkInNewTab(url, {
+          createTab: (options) =>
+            useBrowserStore.getState().createTab({ ...options, ...(incognito ? { incognito: true } : {}) }),
+          onLimitReached: announceTabsLimitReached,
+        });
+      },
+      openInBackground: (url: string, title?: string) => {
+        if (!canOpenInNewTab(url)) return;
+        const incognito = isIncognitoInFront() && liveIncognitoProfile() != null;
+        const outcome = useBrowserStore
+          .getState()
+          .openTabInBackground(url.trim(), { title, ...(incognito ? { incognito: true } : {}) });
+        if (outcome.status === 'LIMIT_REACHED') {
+          announceTabsLimitReached();
+          return;
+        }
+        backgroundTabNotice.offer(outcome.tabId);
       },
     };
   }, [payload]);
 
   const actions: ActionSheetItem[] = useMemo(() => {
+    const image: ActionSheetItem[] = payload?.imageSrc
+      ? [
+          {
+            id: 'download_image',
+            label: t('browserCapture.downloadImage'),
+            icon: 'download',
+            onPress: () => {
+              void downloadImage(payload.imageSrc!, payload.pageUrl);
+            },
+          },
+        ]
+      : [];
     if (!context) {
-      return [];
+      return image;
     }
 
-    return browserActionRegistry.resolve(context).map((action) => {
+    return [...browserActionRegistry.resolve(context).map((action) => {
       const enabled = action.enabled !== false;
       return {
         id: action.id,
-        label: enabled ? action.label : `${action.label} (Soon)`,
+        label: t(action.labelKey),
         icon: action.icon,
         destructive: action.destructive,
         onPress: enabled
@@ -79,13 +118,13 @@ export function useBrowserLongPressActions(): BrowserLongPressController {
             }
           : undefined,
       };
-    });
-  }, [context]);
+    }), ...image];
+  }, [context, payload, t]);
 
   return {
     visible: payload != null,
-    title: 'Link options',
-    subtitle: payload?.href ?? '',
+    title: t('browser.linkActions.title'),
+    subtitle: payload?.href || payload?.imageSrc || '',
     actions,
     present,
     dismiss,

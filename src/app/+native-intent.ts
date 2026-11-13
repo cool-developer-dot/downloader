@@ -21,6 +21,7 @@ import { Platform } from 'react-native';
 
 import { afterNavigationContainerReady } from '@/bootstrap/after-navigation-ready';
 import { isBrowserWebLink } from '@/browser/services/incoming-link';
+import { isIncomingFileLink } from '@/player/external-media';
 
 export function redirectSystemPath({
   path,
@@ -33,7 +34,9 @@ export function redirectSystemPath({
     return path;
   }
 
-  if (isBrowserWebLink(path)) {
+  // A file opened with VidoraX ("Open with" → content:// or file://) is not a route either: the VidoraMedia module
+  // hands it to the player as a token (IncomingMediaHost). Routing it would stack a second app tree, as above.
+  if (isBrowserWebLink(path) || isIncomingFileLink(path)) {
     // A launch by a web link starts the app exactly like a normal launch (the root URL expo-router uses when there
     // is no deep link); the browser then opens the link itself.
     return initial ? afterNavigationContainerReady().then(() => Linking.createURL('/')) : null;

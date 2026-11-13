@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- H16: the finished-download channels for the alert options (sound / vibration / silent). -->
+<resources>
+  <string name="vidorax_status_channel_sound_vibrate">Finished downloads (sound and vibration)</string>
+  <string name="vidorax_status_channel_vibrate">Finished downloads (vibration only)</string>
+  <string name="vidorax_status_channel_silent">Finished downloads (silent)</string>
+  <string name="vidorax_status_channel_options_description">Tells you when a download finishes or fails.</string>
+</resources>

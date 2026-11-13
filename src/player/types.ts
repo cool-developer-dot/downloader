@@ -12,7 +12,11 @@ export type PlayerErrorCode =
   | 'PERMISSION_DENIED'
   | 'PLAYER_INIT_FAILED'
   | 'PLAYBACK_FAILED'
-  | 'PREPARATION_TIMEOUT';
+  | 'PREPARATION_TIMEOUT'
+  /** An online stream's link was refused (401/403/404/410): it expired or needs the page again (F17). */
+  | 'STREAM_LINK_EXPIRED'
+  /** An online stream could not be reached (no network, connection failed or timed out) (F17). */
+  | 'STREAM_NETWORK_ERROR';
 
 /** Internal playback source — URI never crosses navigation/props boundaries. */
 export type PlaybackSource = {
@@ -20,6 +24,14 @@ export type PlaybackSource = {
   uri: string;
   displayName: string;
   mimeType: string | null;
+  /** Online stream (F17): the page's request headers, sent with every request the player makes. */
+  headers?: Record<string, string>;
+  /** Online stream (F17): HLS / DASH / a single file; local files leave it to expo-video ('auto'). */
+  contentType?: 'progressive' | 'hls' | 'dash';
+  /** Online stream (F17): artwork for the media notification (the offer's thumbnail). */
+  artworkUrl?: string | null;
+  /** True for an online stream: no library row, no resume record, no Watch history. */
+  remote?: boolean;
 };
 
 export type PlayerSessionPhase =

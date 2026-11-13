@@ -32,6 +32,7 @@ import {
   shouldShowMiniPlayer,
   usePlayerSessionHostStore,
   useRedrawOnAttach,
+  useVideoSurfaceAttachment,
   type LivePlayerSession,
 } from '@/player/session-host';
 
@@ -67,7 +68,8 @@ const MiniPlayerCard = memo(function MiniPlayerCard({
   const { session, controller, player, replay, markFirstFrameRendered, key, requestedMediaId } = live;
   // Took the picture over from the full Player: a paused or finished video must still show its frame here — also
   // when it finishes while shown here.
-  useRedrawOnAttach(player, true, session.isCompleted);
+  const surface = useVideoSurfaceAttachment();
+  useRedrawOnAttach(player, true, `${session.isCompleted}:${surface.generation}`);
 
   const title = session.displayName ?? t('player.untitled');
   const action = miniPlayerPrimaryAction({
@@ -196,6 +198,7 @@ const MiniPlayerCard = memo(function MiniPlayerCard({
           accessibilityHint={t('player.mini.openHint')}
           testID="mini-player-open">
           <View style={[styles.preview, { backgroundColor: theme.colors.black }]}>
+            {surface.attached ? (
             <VideoView
               player={player}
               style={StyleSheet.absoluteFill}
@@ -209,6 +212,7 @@ const MiniPlayerCard = memo(function MiniPlayerCard({
               pointerEvents="none"
               onFirstFrameRender={markFirstFrameRendered}
             />
+            ) : null}
             {session.isSurfaceRevealed ? null : (
               <View style={[StyleSheet.absoluteFill, styles.previewCover, { backgroundColor: theme.colors.black }]}>
                 <Icon name="play-circle-outline" size="sm" color="inverse" />

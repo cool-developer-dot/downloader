@@ -3,6 +3,7 @@ package com.vidorax.media.engine
 import com.vidorax.media.library.MediaMetadata
 import com.vidorax.media.library.StoragePaths
 import com.vidorax.media.model.Container
+import com.vidorax.media.model.DownloadSettings
 import com.vidorax.media.model.DownloadState
 import com.vidorax.media.model.ProbeResult
 import com.vidorax.media.model.RequestContext
@@ -94,6 +95,51 @@ class DownloadEngineRestartTest {
     engine.restore(); engine.awaitIdle()
 
     assertEquals("transfer must resume from the physical .part, not a DB counter", 500L, resumedFrom)
+    assertEquals(DownloadState.COMPLETED, store.current("d")!!.state)
+  }
+
+  // ---------- 3b. "Automatically resume interrupted downloads" off ----------
+
+  @Test fun autoResumeOffKeepsInterruptedDownloadsPausedAndQueuedOnesQueued() = runBlocking {
+    seed(row("d", DownloadState.DOWNLOADING, bytesDone = 0))
+    writePart("d", 500)
+    seed(row("w", DownloadState.WAITING_NETWORK))
+    seed(row("c", DownloadState.WAITING_CONDITIONS, bytesDone = 100))
+    writePart("c", 200)
+    seed(row("q", DownloadState.QUEUED))
+    var resumedFrom = -1L
+    val engine = engine(
+      prober = probeSuccess(size = 1000),
+      transfers = FakeTransfers { _, spec, onProgress ->
+        if (spec.partFile.parentFile == paths.workDir("d")) resumedFrom = spec.partFile.length()
+        spec.partFile.parentFile?.mkdirs(); spec.partFile.writeBytes(ByteArray(1000))
+        onProgress(1000, 1000)
+        TransferOutcome.Completed(1000, 1000, null, spec.url)
+      },
+      settings = DownloadSettings.DEFAULT.copy(autoResume = false),
+    )
+    engine.restore(); engine.awaitIdle()
+
+    assertEquals(DownloadState.PAUSED, store.current("d")!!.state)
+    assertEquals("paused with what is on disk", 500L, store.current("d")!!.bytesDone)
+    assertEquals(DownloadState.PAUSED, store.current("w")!!.state)
+    assertEquals(DownloadState.PAUSED, store.current("c")!!.state)
+    assertEquals(200L, store.current("c")!!.bytesDone)
+    assertEquals("a download that never started keeps its place and runs", DownloadState.COMPLETED, store.current("q")!!.state)
+    assertEquals("nothing interrupted was transferred on its own", -1L, resumedFrom)
+
+    // The user's Resume continues from the part.
+    engine.resume("d"); engine.awaitIdle()
+    assertEquals(500L, resumedFrom)
+    assertEquals(DownloadState.COMPLETED, store.current("d")!!.state)
+  }
+
+  @Test fun autoResumeOnIsTodaysBehaviour() = runBlocking {
+    assertTrue(DownloadSettings.DEFAULT.autoResume)
+    seed(row("d", DownloadState.DOWNLOADING))
+    writePart("d", 500)
+    val engine = engine(prober = probeSuccess(size = 1000), transfers = writes(1000))
+    engine.restore(); engine.awaitIdle()
     assertEquals(DownloadState.COMPLETED, store.current("d")!!.state)
   }
 
@@ -266,7 +312,9 @@ class DownloadEngineRestartTest {
     transfers: Transfers,
     verification: Verification = Verification { _, _ -> VerifyResult.Valid },
     inspector: MediaInspector = MediaInspector { metadata() },
+    settings: DownloadSettings = DownloadSettings.DEFAULT,
   ) = DownloadEngine(
+    initialSettings = settings,
     store = store,
     prober = prober,
     transfers = transfers,

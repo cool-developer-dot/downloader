@@ -1,0 +1,53 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <application>
+    <!--
+      B20 #16 Move tab to new window: one tab in a task of its own (next to the app in split screen). Not exported:
+      only VidoraX opens it. No permission.
+    -->
+    <activity
+      android:name="com.vidorax.web.window.BrowserWindowActivity"
+      android:exported="false"
+      android:resizeableActivity="true"
+      android:autoRemoveFromRecents="true"
+      android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density"
+      android:windowSoftInputMode="adjustResize"
+      android:theme="@android:style/Theme.Material.NoActionBar" />
+
+    <!-- B22 #249: shares the QR image (only <cacheDir>/qr/). Not exported; no permission. -->
+    <provider
+      android:name="com.vidorax.web.share.WebFileProvider"
+      android:authorities="${applicationId}.vidorax.web.files"
+      android:exported="false"
+      android:grantUriPermissions="true">
+      <meta-data
+        android:name="android.support.FILE_PROVIDER_PATHS"
+        android:resource="@xml/vidorax_web_file_paths" />
+    </provider>
+
+    <!--
+      B17 #178: a saved page, read-only (no JavaScript, no network, only that archive). Not exported; closes when the
+      app leaves the screen. No permission.
+    -->
+    <activity
+      android:name="com.vidorax.web.offline.OfflinePageActivity"
+      android:exported="false"
+      android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|uiMode|density"
+      android:theme="@android:style/Theme.DeviceDefault" />
+
+    <!--
+      B24 #65 search widget (4x1, resizable): a tap opens a new tab with the address bar focused, after App Lock.
+      Not exported (only the launcher's widget host talks to it); no permission.
+    -->
+    <receiver
+      android:name="com.vidorax.web.widget.SearchWidgetProvider"
+      android:exported="false"
+      android:label="@string/vidorax_search_widget_label">
+      <intent-filter>
+        <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+      </intent-filter>
+      <meta-data
+        android:name="android.appwidget.provider"
+        android:resource="@xml/vidorax_search_widget_info" />
+    </receiver>
+  </application>
+</manifest>

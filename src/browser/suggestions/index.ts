@@ -1,3 +1,6 @@
+import { storageSuggestionSources } from './storage-sources';
+import { SuggestionService } from './suggestion.service';
+
 export type {
   OmniboxSuggestion,
   RankableCandidate,
@@ -15,4 +18,6 @@ export {
 
 export { searchRankingEngine, rankSuggestions, scoreCandidate } from './ranking.engine';
 export { suggestionCache, SuggestionCache } from './suggestion.cache';
-export { suggestionService, SuggestionService } from './suggestion.service';
+export { SuggestionService, type SuggestionSources } from './suggestion.service';
+
+export const suggestionService = new SuggestionService(storageSuggestionSources);
