@@ -181,7 +181,15 @@ const NEWARCH_MANAGER_SOURCE = `    @NonNull
     public void setAllowFileAccess(RNCWebViewWrapper view, boolean value) {
 `;
 
-function createPackage(t, { client, manager, view = VIEW_SOURCE, newarch = null }) {
+// B11: excerpt of react-native-webview 13.16.1 src/RNCWebViewNativeComponent.ts around the anchor.
+const SPEC = 'RNCWebViewNativeComponent.ts';
+const SPEC_SOURCE = `  allowFileAccessFromFileURLs?: boolean;
+  allowUniversalAccessFromFileURLs?: boolean;
+  applicationNameForUserAgent?: string;
+  basicAuthCredential?: Readonly<{
+`;
+
+function createPackage(t, { client, manager, view = VIEW_SOURCE, newarch = null, spec = SPEC_SOURCE }) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rnwv-patch-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   fs.mkdirSync(path.join(dir, SOURCE_DIR), { recursive: true });
@@ -192,9 +200,15 @@ function createPackage(t, { client, manager, view = VIEW_SOURCE, newarch = null 
   if (newarch != null) {
     fs.mkdirSync(path.join(dir, NEWARCH_DIR), { recursive: true });
     fs.writeFileSync(path.join(dir, NEWARCH_DIR, NEWARCH_MANAGER), newarch);
+    if (spec != null) {
+      fs.mkdirSync(path.join(dir, 'src'), { recursive: true });
+      fs.writeFileSync(path.join(dir, 'src', SPEC), spec);
+    }
   }
   return dir;
 }
+
+const readSpec = (dir) => fs.readFileSync(path.join(dir, 'src', SPEC), 'utf8');
 
 const readNewarch = (dir) => fs.readFileSync(path.join(dir, NEWARCH_DIR, NEWARCH_MANAGER), 'utf8');
 
@@ -355,9 +369,17 @@ test('B16: sources patched before the interceptRequest hook end up the same as a
 test('B11: the new-architecture manager hands the initial webProfile prop to beforeWebViewSetup', (t) => {
   const dir = createPackage(t, { client: PRISTINE_CLIENT, manager: MANAGER_SOURCE, newarch: NEWARCH_MANAGER_SOURCE });
 
-  assert.deepEqual(patchReactNativeWebView(dir), [CLIENT, MANAGER, VIEW, NEWARCH_MANAGER, HOOKS]);
+  assert.deepEqual(patchReactNativeWebView(dir), [CLIENT, MANAGER, VIEW, NEWARCH_MANAGER, SPEC, HOOKS]);
   const manager = readNewarch(dir);
+  const spec = readSpec(dir);
   const { hooks } = readSources(dir);
+
+  // The new architecture only sends declared props: the spec declares webProfile, and the manager accepts it (no-op).
+  assert.equal(occurrences(spec, '  webProfile?: string;\n'), 1);
+  assert.match(
+    manager,
+    /@Override\s+@ReactProp\(name = "webProfile"\)\s+public void setWebProfile\(RNCWebViewWrapper view, @Nullable String value\) \{\s+\}/,
+  );
 
   // One 4-argument override; the pending name is set before super and cleared in finally.
   assert.equal(occurrences(manager, 'protected RNCWebViewWrapper createViewInstance('), 2);
@@ -376,11 +398,35 @@ test('B11: the new-architecture manager hands the initial webProfile prop to bef
   assert.ok(!/`/.test(hooks), 'no template backtick leaked into the Java source');
 
   // Run twice: nothing changes.
-  const once = { ...readSources(dir), newarch: manager };
+  const once = { ...readSources(dir), newarch: manager, spec };
   const result = runScript(dir);
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /Already patched/);
-  assert.deepEqual({ ...readSources(dir), newarch: readNewarch(dir) }, once);
+  assert.deepEqual({ ...readSources(dir), newarch: readNewarch(dir), spec: readSpec(dir) }, once);
+});
+
+test('B11: a package already patched without the declared prop gets the spec line and the setter', (t) => {
+  const dir = createPackage(t, { client: PRISTINE_CLIENT, manager: MANAGER_SOURCE, newarch: NEWARCH_MANAGER_SOURCE });
+  patchReactNativeWebView(dir);
+  // The patch as it was before the spec edit: no setter in the manager, the spec untouched.
+  const older = readNewarch(dir).replace(/\n\n    \/\/ B11: read once[\s\S]*?public void setWebProfile\([^)]*\) \{\n    \}/, '');
+  fs.writeFileSync(path.join(dir, NEWARCH_DIR, NEWARCH_MANAGER), older);
+  fs.writeFileSync(path.join(dir, 'src', SPEC), SPEC_SOURCE);
+
+  assert.deepEqual(patchReactNativeWebView(dir), [NEWARCH_MANAGER, SPEC]);
+  assert.equal(occurrences(readNewarch(dir), 'public void setWebProfile('), 1);
+  assert.equal(occurrences(readNewarch(dir), 'protected RNCWebViewWrapper createViewInstance('), 2);
+  assert.equal(occurrences(readSpec(dir), 'webProfile?: string;'), 1);
+});
+
+test('B11: a new-architecture package without the component spec fails and writes nothing', (t) => {
+  const dir = createPackage(t, { client: PRISTINE_CLIENT, manager: MANAGER_SOURCE, newarch: NEWARCH_MANAGER_SOURCE, spec: null });
+
+  const result = runScript(dir);
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /RNCWebViewNativeComponent\.ts not found/);
+  assert.equal(readNewarch(dir), NEWARCH_MANAGER_SOURCE);
 });
 
 test('B11: a new-architecture manager without the anchor fails and writes nothing', (t) => {

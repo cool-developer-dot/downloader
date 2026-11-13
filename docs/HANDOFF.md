@@ -2237,6 +2237,11 @@ only. Hamza's unfinished B8 start is parked on `hamza/b8-wip`.
   Clear site data. All per profile. Native VidoraWeb `setCookiesEnabled`, `getCertificate`, `listSiteData`,
   `clearSiteData`, `clearAllSiteData`, `getCookieCount`, `isCleartextAllowed`. Known WebView limits (cookies kept while
   blocked, Cache Storage on WebView without `DELETE_BROWSING_DATA`) are in the work log. No new permission or library.
+- **Integration (2026-11-13, branch `integration/browser`).** `hamza/browser` + `faran/browser`. Final test fixed
+  incognito (the `webProfile` prop is now declared in react-native-webview's codegen spec by the patch script), React
+  Compiler cached reads of external stores (tab groups, capture, devtools, data saver, tab sound, incognito state —
+  `'use no memo'` or a real snapshot), and the reader's header under the status bar. Coverage and what wasn't
+  re-checked: `docs/work-log/faran-browser.md`, "Integration".
 
 ## 5. How to resume
 

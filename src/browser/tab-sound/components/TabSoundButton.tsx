@@ -9,6 +9,7 @@ import { tabAudio } from '../tab-audio.service';
 
 /** Whether the tab's page plays sound (B6's `media_state`) and whether the user muted it. */
 export function useTabSound(tabId: string): { playing: boolean; muted: boolean } {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   const playing = useSyncExternalStore(pageActivity.subscribe, () => pageActivity.isMediaPlaying(tabId));
   useSyncExternalStore(tabAudio.subscribe, tabAudio.getVersion, tabAudio.getVersion);
   return { playing, muted: tabAudio.get(tabId).muted };

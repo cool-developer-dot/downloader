@@ -11,7 +11,8 @@
  * itself (the bundled Nastaliq font; B14's blocking) — one shouldInterceptRequest override, observeRequest first.
  * B11: the new-architecture RNCWebViewManager reads a WebView's initial `webProfile` prop (an incognito tab's
  * temporary profile) in the 4-argument createViewInstance and hands it to beforeWebViewSetup; without the prop
- * nothing changes.
+ * nothing changes. The prop is declared in the component's codegen spec (src/RNCWebViewNativeComponent.ts): the new
+ * architecture drops undeclared props before they reach native code.
  *
  * Runs at postinstall and is idempotent. Every edit is an exact text replacement: when an anchor is missing, for example
  * after upgrading react-native-webview, it exits non-zero rather than shipping a browser without media detection.
@@ -32,6 +33,10 @@ const HOOKS = 'RNCWebViewHooks.java';
 // B11: the new-architecture view manager (the app builds with newArchEnabled=true).
 const NEWARCH_DIR = path.join('android', 'src', 'newarch', 'com', 'reactnativecommunity', 'webview');
 const NEWARCH_MANAGER = 'RNCWebViewManager.java';
+// B11: the component's codegen spec. The new architecture only sends a native view the props its spec declares, so
+// `webProfile` has to be declared there to reach createViewInstance at all.
+const SPEC_DIR = 'src';
+const SPEC = 'RNCWebViewNativeComponent.ts';
 
 const HOOKS_SOURCE = `package com.reactnativecommunity.webview;
 
@@ -485,6 +490,32 @@ const EDITS = {
         }
     }`,
     },
+    {
+      name: 'accept the declared webProfile prop (B11)',
+      from: `            RNCWebViewHooks.setPendingWebProfile(null);
+        }
+    }`,
+      to: `            RNCWebViewHooks.setPendingWebProfile(null);
+        }
+    }
+
+    // B11: read once, in createViewInstance above; a WebView can't move to another profile afterwards.
+    @Override
+    @ReactProp(name = "webProfile")
+    public void setWebProfile(RNCWebViewWrapper view, @Nullable String value) {
+    }`,
+    },
+  ],
+  [SPEC]: [
+    {
+      name: 'declare the webProfile prop (B11)',
+      from: `  applicationNameForUserAgent?: string;
+`,
+      to: `  applicationNameForUserAgent?: string;
+  // VidoraX B11: an incognito tab's WebView profile, read natively once when the view is created.
+  webProfile?: string;
+`,
+    },
   ],
   [VIEW]: [
     {
@@ -572,6 +603,12 @@ function patchReactNativeWebView(packageDir) {
     }
     const original = fs.readFileSync(file, 'utf8');
     results.push({ file, original, patched: patchSource(NEWARCH_MANAGER, original, version) });
+    const spec = path.join(packageDir, SPEC_DIR, SPEC);
+    if (!fs.existsSync(spec)) {
+      throw new Error(`${SPEC} not found in ${path.join(packageDir, SPEC_DIR)} (react-native-webview ${version}).`);
+    }
+    const specOriginal = fs.readFileSync(spec, 'utf8');
+    results.push({ file: spec, original: specOriginal, patched: patchSource(SPEC, specOriginal, version) });
   }
   const hooksFile = path.join(sourceDir, HOOKS);
   results.push({

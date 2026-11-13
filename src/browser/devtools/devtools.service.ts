@@ -167,6 +167,7 @@ export function getTabDevtools(tabId: string | null | undefined): TabDevtools {
 }
 
 export function useTabDevtools(tabId: string | null | undefined): TabDevtools {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   useDevtoolsVersion();
   return getTabDevtools(tabId);
 }

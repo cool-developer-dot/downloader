@@ -175,6 +175,7 @@ export function forgetIncognitoWebView(tabId: string | undefined): void {
 
 /** Whether an incognito tab's WebView was confirmed in the session's profile (always true for a normal tab). */
 export function useIncognitoVerified(tabId: string | undefined): boolean {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   useSyncExternalStore(
     subscribe,
     () => version,

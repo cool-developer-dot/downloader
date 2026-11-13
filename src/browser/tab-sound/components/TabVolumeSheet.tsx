@@ -21,6 +21,7 @@ export const TabVolumeSheet = memo(function TabVolumeSheet({
   title: string;
   onClose: () => void;
 }) {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   const { t, rtl } = useTranslation();
   useSyncExternalStore(tabAudio.subscribe, tabAudio.getVersion, tabAudio.getVersion);
   const state = tabId ? tabAudio.get(tabId) : null;

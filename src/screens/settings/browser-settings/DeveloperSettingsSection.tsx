@@ -32,6 +32,7 @@ function notify(message: string): void {
 
 /** B19 — Browser settings → Developer: Developer tools (off by default), remote debugging, user scripts. */
 export const DeveloperSettingsSection = memo(function DeveloperSettingsSection() {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   const { t } = useTranslation();
   useDevtoolsVersion();
   const update = useSettingsStore((s) => s.updateSetting);

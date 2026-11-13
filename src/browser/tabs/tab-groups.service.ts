@@ -30,7 +30,7 @@ import {
   type GroupColor,
   type GroupsState,
 } from './tab-groups';
-import { getGroupsState, groupsVersion, setGroupsState, subscribeGroups } from './tab-groups-state';
+import { getGroupsState, setGroupsState, subscribeGroups } from './tab-groups-state';
 import { persistTabEngineState } from './tab-persistence.service';
 
 /**
@@ -46,8 +46,9 @@ function notify(message: string): void {
 }
 
 export function useTabGroups(): GroupsState {
-  useSyncExternalStore(subscribeGroups, groupsVersion, groupsVersion);
-  return getGroupsState();
+  // The state object is replaced on every change, so it is the snapshot (a getter call after a discarded subscription
+  // was cached by the React Compiler: new groups never showed).
+  return useSyncExternalStore(subscribeGroups, getGroupsState, getGroupsState);
 }
 
 function commit(next: GroupsState): void {

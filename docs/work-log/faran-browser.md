@@ -277,3 +277,43 @@ testing before a release.
   here** (no newer WebView on this machine); final testing on a phone with a current WebView should check case 17.
 - Typing the address a tab already shows on an error page does nothing (the same-document check; older navigation code).
 - The insecure warning and "Open unsecured" can only appear in a build that allows cleartext (debug today).
+
+## Integration — `hamza/browser` + `faran/browser` (2026-11-13)
+
+Branch `integration/browser`: Hamza's cleaned `hamza/browser` (82dac31, all 18 packages and DATABASE_VERSION 8) with
+`faran/browser` merged in (B12 and the Reddit shadow-root fix). Release builds, AVD `VidoraX_Browser_F` (API 35,
+WebView 124).
+
+### Fixed during the final test
+
+- **Incognito never opened (B11).** Every incognito tab closed with "Incognito isn't available on this phone". The new
+  architecture only sends a native view the props its codegen spec declares, so the `webProfile` prop never reached
+  `createViewInstance`; the WebView stayed in the normal profile and the B11 check closed it. The patch script now also
+  declares `webProfile?: string` in `src/RNCWebViewNativeComponent.ts` and adds a no-op `setWebProfile` to the
+  new-architecture manager (2 new tests). Device: logcat `B11 webProfile prop received; incognito profile joined=true`;
+  cookies separate both ways (httpbin); screenshots blocked in incognito, back on a normal tab.
+- **React Compiler froze external-store reads.** Hooks that subscribe with `useSyncExternalStore` (or a `use…Version()`
+  hook), ignore its value and then call a getter were compiled into "compute once" (or once per `tabId`). Found by
+  compiling every file in `src` with the project's compiler and checking each such hook. Affected: tab groups (a new
+  group was saved but never shown), incognito "verified" state (the tab would stay blank), page capture, tab mute and
+  volume, data saver effects and per-site images, Browsing data usage, Developer tools (all panel sections, per-tab
+  settings) and the Remote debugging switch. `useTabGroups` now returns the store snapshot; the rest start with the
+  compiler's `'use no memo'` directive. Device: groups show, console prints `← Karachi - Wikipedia`, Network lists
+  requests, Remote debugging switch shows its state.
+- **Reader mode header under the status bar (B15).** The reader's window is edge to edge like the app: it now pads for
+  the status bar (as Draw on page does). The Read aloud icon (`text-to-speech`, not in the icon font, drawn as "?") is
+  now `account-voice`.
+
+### Device checks (release build)
+
+Upgrade over seeded 1.1.0 vc4: tabs, cookies, history, downloads (paused and completed) and bookmarks kept (bookmarks
+check redone after finding the seed script never saved any: 1.1.0's menu scrolls and "Add bookmark" was off-screen).
+Then: Find in page (count, next, whole word, close), reader + read aloud, incognito, tab groups, page picture → Pictures,
+QR code, notes, Draw opens, Save offline + Saved pages, Developer tools console / network, remote debugging, profile
+switch + guest mode (separate cookies, Personal back after leaving), ad + tracker blocker (site sheet "Blocked on this
+page"), selection menu Search, HLS detection + quality sheet + play online, MP4 download completed. No crash or JS
+error in logcat. Automated: tsc, eslint, 1869 unit tests, 12 patch-script tests.
+
+Not re-checked on the device this round: B3 tab sound (fix verified in the compiled output only), B9 folders, B14 site
+blocker / limits / focus, B16 filters, B18 data saver, B24 calendar / prayer / widget, startup and toolbar options,
+history clearing, site permissions, Urdu and dark passes — Hamza's device lists cover them for final testing.

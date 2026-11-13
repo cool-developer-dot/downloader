@@ -143,6 +143,7 @@ const LEVEL_COLOR: Record<ConsoleEntry['level'], 'error' | 'warning' | 'textSeco
 };
 
 const ConsoleSection = memo(function ConsoleSection({ tabId }: { tabId: string }) {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   const theme = useTheme();
   const { t, rtl } = useTranslation();
   useDevtoolsVersion();
@@ -198,6 +199,7 @@ const ConsoleSection = memo(function ConsoleSection({ tabId }: { tabId: string }
 });
 
 const NetworkSection = memo(function NetworkSection({ tabId }: { tabId: string }) {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   const { t, rtl } = useTranslation();
   useDevtoolsVersion();
   const network = getTabData(tabId).network;
@@ -230,6 +232,7 @@ const NetworkSection = memo(function NetworkSection({ tabId }: { tabId: string }
 });
 
 const InspectSection = memo(function InspectSection({ tabId }: { tabId: string }) {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   const { t, rtl } = useTranslation();
   useDevtoolsVersion();
   const info = getTabData(tabId).inspect;
@@ -277,6 +280,7 @@ const InspectSection = memo(function InspectSection({ tabId }: { tabId: string }
 });
 
 const SourceSection = memo(function SourceSection({ tabId }: { tabId: string }) {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   const theme = useTheme();
   const { t, rtl } = useTranslation();
   useDevtoolsVersion();
@@ -329,6 +333,7 @@ const SourceSection = memo(function SourceSection({ tabId }: { tabId: string }) 
 });
 
 const StorageSection = memo(function StorageSection({ tabId }: { tabId: string }) {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   const { t, rtl } = useTranslation();
   useDevtoolsVersion();
   const url = useBrowserStore((s) => s.tabs.find((tab) => tab.id === tabId)?.url ?? '');
@@ -411,6 +416,7 @@ const StorageSection = memo(function StorageSection({ tabId }: { tabId: string }
 });
 
 const SecuritySection = memo(function SecuritySection({ tabId }: { tabId: string }) {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   const { t, rtl } = useTranslation();
   useDevtoolsVersion();
   const url = useBrowserStore((s) => s.tabs.find((tab) => tab.id === tabId)?.url ?? '');
@@ -457,6 +463,7 @@ const SecuritySection = memo(function SecuritySection({ tabId }: { tabId: string
 });
 
 const ScriptsSection = memo(function ScriptsSection({ tabId }: { tabId: string }) {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   const { t, rtl } = useTranslation();
   useDevtoolsVersion();
   const scripts = useUserScripts();
@@ -489,6 +496,7 @@ const UA_LABELS: Record<DevtoolsUaMode, TranslationKey> = {
 };
 
 const DeviceSection = memo(function DeviceSection({ tabId }: { tabId: string }) {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   const { t, rtl } = useTranslation();
   useDevtoolsVersion();
   const state = getTabDevtools(tabId);

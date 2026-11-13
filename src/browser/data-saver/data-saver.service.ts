@@ -204,6 +204,7 @@ const getVersion = () => version;
 
 /** The saver effects now; re-renders on a setting, network or Battery Saver change. */
 export function useSaverEffects(): SaverEffects {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   useSyncExternalStore(subscribe, getVersion, getVersion);
   // Settings changes re-render through the store too (the subscription above only covers started services).
   useSettingsStore((s) => `${s.dataSaver}|${s.liteMode}|${s.lightweightHome}|${s.batterySaver}|${s.hardwareAcceleration}|${s.imagesWifiOnly}|${s.blockImages}`);
@@ -212,6 +213,7 @@ export function useSaverEffects(): SaverEffects {
 
 /** Whether the reader / a page at `url` shows pictures now; re-renders on changes. */
 export function useImagesOffFor(url: string): boolean {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   useSyncExternalStore(subscribe, getVersion, getVersion);
   useSettingsStore((s) => `${s.dataSaver}|${s.liteMode}|${s.imagesWifiOnly}|${s.blockImages}|${s.imageExceptions}`);
   return imagesOffForUrl(url);

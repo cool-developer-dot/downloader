@@ -29,6 +29,7 @@ function emit(): void {
 }
 
 export function useCapture(): { capture: Capture | null; busy: boolean } {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   useSyncExternalStore(
     (l) => {
       listeners.add(l);

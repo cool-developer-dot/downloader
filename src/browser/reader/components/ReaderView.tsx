@@ -61,9 +61,10 @@ const ReaderView = memo(function ReaderView() {
   const darkPalette = palette.background === readerPalette('dark', true).background;
 
   return (
-    <Modal visible animationType="slide" onRequestClose={close} statusBarTranslucent={false} testID="reader-view">
+    // The app is edge to edge, so the reader's window is too: pad for the status bar (as Draw on page does).
+    <Modal visible animationType="slide" onRequestClose={close} statusBarTranslucent testID="reader-view">
       <StatusBar barStyle={darkPalette ? 'light-content' : 'dark-content'} backgroundColor={palette.background} />
-      <View style={{ flex: 1, backgroundColor: palette.background, paddingBottom: insets.bottom }}>
+      <View style={{ flex: 1, backgroundColor: palette.background, paddingTop: insets.top, paddingBottom: insets.bottom }}>
         <ReaderTopBar palette={palette} onClose={close} onAppearance={() => setAppearance(true)} />
         {open?.status === 'ready' ? (
           <ArticleBody article={open.article} palette={palette} />
@@ -259,7 +260,7 @@ const ReadAloudBar = memo(function ReadAloudBar({ article, palette }: { article:
           onPress={() => void readAloud.play(article, rate)}
           testID="reader-read-aloud"
           style={{ minHeight: 48, flexDirection: rtl.rowDirection, alignItems: 'center', gap: 8, paddingHorizontal: 8 }}>
-          <PaperIcon source="text-to-speech" size={24} color={palette.link} />
+          <PaperIcon source="account-voice" size={24} color={palette.link} />
           <RNText style={{ color: palette.link, fontSize: 16 }}>{t('browserReader.readAloud')}</RNText>
         </Pressable>
       </View>

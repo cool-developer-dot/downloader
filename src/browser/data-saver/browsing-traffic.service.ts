@@ -136,6 +136,7 @@ function subscribe(listener: () => void): () => void {
 const getVersion = () => version;
 
 export function useBrowsingSummary(): { todayBytes: number; monthBytes: number } {
+  'use no memo'; // Reads external state each render (subscribed above): compiled, the React Compiler cached the first read.
   useSyncExternalStore(subscribe, getVersion, getVersion);
   return browsingSummary();
 }
