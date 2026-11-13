@@ -376,6 +376,34 @@ B23 page alerts (forced job), B19 user scripts.
   that a ranged `.m4s` can be a whole file and pairing two of them without a manifest: a new engine capability that
   touches the rule protecting every other site from junk-segment offers — **not done here; owner's call.**
 
+**Worked on: naming the two files of a split player (toward Bilibili desktop).** The engine can already download a
+video file and an audio file and merge them (`split-tracks.ts`, "a split pair the engine proves and merges"), and the
+page observation names the file behind each SourceBuffer by remembering which URL answered the bytes that were
+appended (`injected-script.ts`, `bufferUrls`). Measured on the real page: Bilibili's desktop player appends a **copy**
+of each response (`isView:false`, a fresh ArrayBuffer), so that identity is lost and nothing was ever named — and its
+XHRs are plain main-thread `arraybuffer` requests of **two whole files** (`Content-Range … /12322966` video,
+`… /3743812` audio), not a stream of chunks. Two changes, both generic:
+
+- An appended copy is matched to the response it came from by **exact size and first 16 bytes**, among the responses
+  read in the last 20 s; two responses that match equally name neither, and the engine still proves the pair from the
+  files' own bytes afterwards.
+- The bytes are recorded when the page **reads `xhr.response`**, not only from our `load` listener. A page that set
+  `onload` before `send()` runs first and appends the bytes before our listener is ever called — measured on the
+  fixture: at append time the recent-response list was still empty.
+
+Device (debug build, a local fixture that is Bilibili's shape — one video-only `.m4s` and one audio-only `.m4s`,
+ranged XHR, appended as copies): both files are now named and the page sends the app
+`mseTracks:"split"` with `mseFiles:{video,audio}`; before the change `__vidoraxFiles` stayed `null`. 5 tests in
+`observers/split-track-files.test.ts`.
+
+**Not finished: Bilibili desktop still does not offer a download.** With the files named and delivered, the app did
+not turn that evidence into an offer on the fixture (it ends at the give-up message), so the remaining work is in the
+app-side split-pair resolution (`useBrowserMediaAction` / `classifyMsePlayback`), not in the page. Bilibili's own
+desktop page could not be loaded on the AVD at all to confirm end to end: it answers Android WebView with the mobile
+site whatever UA Desktop site sets, because WebView still sends `Sec-CH-UA-Mobile: ?1` (worth a look of its own —
+Desktop site does not convince sites that read Client Hints). **The mobile site keeps working and is what users get:**
+re-checked on the final build — "Video available", downloaded.
+
 **Fixed: the silent dead end.** Detection has a 10 s window and a 30 s cap (`useBrowserMediaAction.ts`). When the cap
 passed with no offer and no verdict, the notice became `null` and the bar simply vanished — the user was left waiting
 for an answer that never came (the last 13 s of the client's recording show exactly this). The presentation now has
