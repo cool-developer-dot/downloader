@@ -955,6 +955,14 @@ ${MSE_OBSERVATION_SOURCE}
         mediaFromElement(sources[s], 'dom_source');
       }
     }
+    var shadowed = shadowVideoScan(doc).videos;
+    for (var sv = 0; sv < shadowed.length; sv++) {
+      mediaFromElement(shadowed[sv], 'dom_video');
+      var shadowSources = shadowed[sv].querySelectorAll('source');
+      for (var ss = 0; ss < shadowSources.length; ss++) {
+        mediaFromElement(shadowSources[ss], 'dom_source');
+      }
+    }
     var audios = doc.querySelectorAll('audio');
     for (var a = 0; a < audios.length; a++) {
       mediaFromElement(audios[a], 'dom_audio');
@@ -988,6 +996,8 @@ ${MSE_OBSERVATION_SOURCE}
   function scanDom() {
     pageUrl = location.href;
     scanDocument(document);
+    var shadowRoots = shadowVideoScan(document).roots;
+    for (var r = 0; r < shadowRoots.length; r++) attachMediaListeners(shadowRoots[r]);
     var frameDocs = sameOriginFrameDocuments();
     for (var i = 0; i < frameDocs.length; i++) {
       // Media events inside a subframe never reach the top document, so each one needs its own listeners.
@@ -1279,6 +1289,48 @@ ${MSE_OBSERVATION_SOURCE}
   var lastActiveVideoKey = '';
   var MAX_TRACKED_VIDEOS = 12;
   var MAX_TRACKED_IFRAMES = 8;
+  var MAX_SHADOW_SCAN_NODES = 3000;
+  var SHADOW_SCAN_REUSE_MS = 1000;
+  var shadowScan = null;
+  var shadowScanAt = 0;
+
+  /**
+   * <video> elements inside open shadow roots, and the roots holding them. Web-component players (Reddit's
+   * <shreddit-player>, for one) keep their video there, where querySelectorAll does not reach — without it such a
+   * player gives no evidence and its stream is never offered. A bounded walk of the document, reused for a second
+   * because scans run often. Media events don't leave a shadow root, so the roots get their own listeners.
+   */
+  function shadowVideoScan(doc) {
+    var top = doc === document;
+    var now = Date.now();
+    if (top && shadowScan && now - shadowScanAt < SHADOW_SCAN_REUSE_MS) return shadowScan;
+    var found = { videos: [], roots: [] };
+    try {
+      var stack = doc && doc.documentElement ? [doc.documentElement] : [];
+      var seen = 0;
+      while (stack.length && seen < MAX_SHADOW_SCAN_NODES) {
+        var node = stack.pop();
+        seen++;
+        if (!node) continue;
+        var root = node.shadowRoot;
+        if (root) {
+          var inner = root.querySelectorAll ? root.querySelectorAll('video') : [];
+          if (inner.length) found.roots.push(root);
+          for (var v = 0; v < inner.length && found.videos.length < MAX_TRACKED_VIDEOS; v++) found.videos.push(inner[v]);
+          stack.push(root);
+        }
+        var kids = node.children;
+        if (kids) {
+          for (var i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
+        }
+      }
+    } catch (e) {}
+    if (top) {
+      shadowScan = found;
+      shadowScanAt = now;
+    }
+    return found;
+  }
   var iframeSeq = 0;
   var trackedIframes = typeof WeakMap !== 'undefined' ? new WeakMap() : null;
 
@@ -1299,6 +1351,10 @@ ${MSE_OBSERVATION_SOURCE}
       var limit = Math.min(videos.length, MAX_TRACKED_VIDEOS);
       for (var i = 0; i < limit; i++) out.push(videos[i]);
     } catch (e) {}
+    try {
+      var shadowed = shadowVideoScan(document).videos;
+      for (var s = 0; s < shadowed.length && out.length < MAX_TRACKED_VIDEOS; s++) out.push(shadowed[s]);
+    } catch (e3) {}
     try {
       var iframes = document.querySelectorAll('iframe');
       var maxFrames = Math.min(iframes.length, MAX_TRACKED_IFRAMES);
