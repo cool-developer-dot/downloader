@@ -1640,6 +1640,9 @@ export function useBrowserMediaAction(
     (!detectingExpiry ||
       browserMediaActionService.hasPendingVerdict(liveIdentity) ||
       (!detectingExpiry.capped && browserMediaActionService.isVerifying(liveIdentity)));
+  // The cap passed and nothing came of it: the bar says so instead of disappearing without an answer.
+  const liveDetectingExhausted =
+    Boolean(liveIdentity) && !liveOwner.hidden && Boolean(detectingExpiry?.capped) && !liveDetecting;
 
   const presentation = useMemo(
     () =>
@@ -1661,11 +1664,13 @@ export function useBrowserMediaAction(
         offerDuplicateNotice,
         consumedNotice,
         liveDetecting,
+        liveDetectingExhausted,
         liveOwnerHidden: liveOwner.hidden,
       }),
     [
       consumedNotice,
       liveDetecting,
+      liveDetectingExhausted,
       offerDuplicateNotice,
       liveOwner.hidden,
       serviceRevision,

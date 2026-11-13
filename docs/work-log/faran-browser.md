@@ -358,3 +358,28 @@ not reproduced.
 Still not checked on a device: Clear site data on a WebView with `DELETE_BROWSING_DATA` (the AVD has WebView 124), B22
 camera upload on a phone with no camera app (needs a patch change), TalkBack and font scale 1.3 passes, the B24 widget,
 B23 page alerts (forced job), B19 user scripts.
+
+### Client report (2026-11-13): a Bilibili link shows "Detecting video" and never offers
+
+**Reproduced and measured.** `https://www.bilibili.com/en/video/BV1BVaC6KEnw/`:
+
+- **On the mobile site it works.** With the app's normal (mobile) identity the link redirects to `m.bilibili.com`,
+  whose player streams one progressive MP4 — "Video available", downloaded here as MP4 360p, 18.1 MB, plays with sound.
+- **On the desktop page it cannot work.** The client's recording is `www.bilibili.com` (desktop layout). There the
+  player feeds a `blob:` MediaSource from **two separate whole files fetched by byte range** — video
+  `…-1-100022.m4s` and audio `…-1-30216.m4s` on `upos-*.akamaized.net` — with **no DASH manifest anywhere**: the stream
+  list comes from `api.bilibili.com/x/player/wbi/playurl`, a WBI-signed call that answers an anti-bot HTML page for
+  anyone else (checked). The engine merges a split video+audio pair only when a manifest names both files
+  (`inline-dash.ts`, `DashPlanner`), and `.m4s` is rejected as a segment by the general classifier
+  (`general-network-resource.ts`, `SEGMENT_EXT`) — correctly, since a `.m4s` is normally one chunk of many. So the page
+  offers the engine nothing it can prove, and detection ends with no answer. Supporting it means teaching the engine
+  that a ranged `.m4s` can be a whole file and pairing two of them without a manifest: a new engine capability that
+  touches the rule protecting every other site from junk-segment offers — **not done here; owner's call.**
+
+**Fixed: the silent dead end.** Detection has a 10 s window and a 30 s cap (`useBrowserMediaAction.ts`). When the cap
+passed with no offer and no verdict, the notice became `null` and the bar simply vanished — the user was left waiting
+for an answer that never came (the last 13 s of the client's recording show exactly this). The presentation now has
+`liveDetectingExhausted` and says **"This video can't be downloaded"** (en + ur) for a video it is sure is playing on
+the page. An offer, a verdict, a hidden player or detection still running all still win over it (4 new cases in
+`browser-download-presentation.test.ts`). Device: the release build still offers the Bilibili mobile video, and a local
+MSE page built from one `.m4s` (the desktop-Bilibili shape) now ends with the message instead of silence.

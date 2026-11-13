@@ -163,6 +163,11 @@ export type BrowserDownloadPresentationInput = {
   consumedNotice?: BrowserDownloadProgressNotice | null;
   /** The current video is being actively resolved right now (no offer, no final verdict yet). */
   liveDetecting?: boolean;
+  /**
+   * Detection ran out of time on the current video and produced nothing: no offer, no verdict. Without this the bar
+   * simply vanished after "Detecting video", leaving the user waiting for an answer that never came.
+   */
+  liveDetectingExhausted?: boolean;
   /** The current video's player is hidden: no video is on screen right now. */
   liveOwnerHidden?: boolean;
 };
@@ -810,6 +815,11 @@ function resolveStatusNotice(args: {
   // offer for a previous one is already gone: TRACKING), never after its final verdict.
   if (liveStrong && input.liveDetecting && shellState === 'TRACKING_CURRENT_VIDEO') {
     return 'DETECTING';
+  }
+  // Detection gave up on a video we are sure is playing here (a site whose player feeds the page from pieces we
+  // cannot download, for example). Saying so is the answer; silence is not.
+  if (liveStrong && input.liveDetectingExhausted && shellState === 'TRACKING_CURRENT_VIDEO') {
+    return 'UNSUPPORTED';
   }
   return null;
 }
