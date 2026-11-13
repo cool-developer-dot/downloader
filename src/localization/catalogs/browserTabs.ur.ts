@@ -43,7 +43,7 @@ export const browserTabsUr: CatalogStrings<typeof browserTabsEn> = {
   movedTo: '{count} میں سے مقام {position} پر منتقل ہو گیا',
   closeTab: 'ٹیب بند کریں',
   closeTabA11y: '{title} بند کریں',
-  cardHint: 'کھولنے کے لیے دو بار تھپتھپائیں۔ منتقل کرنے یا مزید اختیارات کے لیے دبا کر رکھیں۔',
+  cardHint: 'کھولنے کے لیے دو بار تھپتھپائیں۔ منتقل کرنے، کسی دوسرے ٹیب پر چھوڑ کر گروپ بنانے یا مزید اختیارات کے لیے دبا کر رکھیں۔',
   cardHintNoDrag: 'کھولنے کے لیے دو بار تھپتھپائیں۔ مزید اختیارات کے لیے دبا کر رکھیں۔',
   previewA11y: '{title} کا پیش منظر',
   noPreview: 'ابھی پیش منظر نہیں',

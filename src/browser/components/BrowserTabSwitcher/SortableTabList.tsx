@@ -15,6 +15,7 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import type { BrowserTab } from '@/browser/tabs/types';
+import { placeDraggedTab } from '@/browser/tabs/tab-drop';
 
 import { TabCard, TAB_CARD_HEIGHT } from './TabCard';
 
@@ -62,6 +63,8 @@ export type SortableTabListProps = {
   onOptions: (tabId: string) => void;
   onMove: (tabId: string, toIndex: number) => void;
   onMoveBy: (tabId: string, delta: -1 | 1) => void;
+  /** B2: a tab dropped onto another (held over it, then let go) — group the two. Without it, drags only reorder. */
+  onDropOnto?: (tabId: string, targetId: string) => void;
 };
 
 export const SortableTabList = memo(function SortableTabList({
@@ -75,8 +78,11 @@ export const SortableTabList = memo(function SortableTabList({
   onOptions,
   onMove,
   onMoveBy,
+  onDropOnto,
 }: SortableTabListProps) {
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  // B2: the tab the lifted card would be dropped onto now (highlighted), or null.
+  const dropTarget = useSharedValue<string | null>(null);
   const positions = useSharedValue<Positions>(indexMap(tabs));
   const scrollY = useSharedValue(0);
   const viewportHeight = useSharedValue(0);
@@ -142,6 +148,8 @@ export const SortableTabList = memo(function SortableTabList({
           onOptions={onOptions}
           onMove={onMove}
           onMoveBy={onMoveBy}
+          dropTarget={dropTarget}
+          onDropOnto={onDropOnto}
         />
       ))}
     </Animated.ScrollView>
@@ -167,6 +175,8 @@ type SortableTabRowProps = {
   onOptions: (tabId: string) => void;
   onMove: (tabId: string, toIndex: number) => void;
   onMoveBy: (tabId: string, delta: -1 | 1) => void;
+  dropTarget: SharedValue<string | null>;
+  onDropOnto?: (tabId: string, targetId: string) => void;
 };
 
 const SortableTabRow = memo(function SortableTabRow({
@@ -188,7 +198,10 @@ const SortableTabRow = memo(function SortableTabRow({
   onOptions,
   onMove,
   onMoveBy,
+  dropTarget,
+  onDropOnto,
 }: SortableTabRowProps) {
+  const canGroup = onDropOnto != null;
   const top = useSharedValue(index * TAB_ROW_HEIGHT);
   const lifted = useSharedValue(false);
   const startTop = useSharedValue(0);
@@ -211,10 +224,23 @@ const SortableTabRow = memo(function SortableTabRow({
     () => (lifted.value ? startTop.value + translation.value + (scrollY.value - startScroll.value) : null),
     (y) => {
       if (y == null) return;
-      const slot = Math.min(maxIndex, Math.max(minIndex, Math.round(y / TAB_ROW_HEIGHT)));
+      const current = positions.value[id] ?? index;
+      const { slot, dropOnto } = placeDraggedTab(y / TAB_ROW_HEIGHT, current, minIndex, maxIndex, canGroup);
       if (positions.value[id] !== slot) {
         positions.value = moveInMap(positions.value, id, slot);
       }
+      // B2: the tab under the lifted card (held over it), the one a release groups it with.
+      let target: string | null = null;
+      if (dropOnto !== 0) {
+        const map = positions.value;
+        for (const other of Object.keys(map)) {
+          if (other !== id && map[other] === slot + dropOnto) {
+            target = other;
+            break;
+          }
+        }
+      }
+      if (dropTarget.value !== target) dropTarget.value = target;
       const inViewport = y - scrollY.value;
       autoScroll.value =
         inViewport < AUTO_SCROLL_EDGE * 0.5
@@ -226,15 +252,16 @@ const SortableTabRow = memo(function SortableTabRow({
   );
 
   const finishDrag = useCallback(
-    (moved: boolean, slot: number) => {
+    (moved: boolean, slot: number, target: string | null) => {
       onDragChange(false);
       if (moved) {
         onMove(id, slot);
+        if (target) onDropOnto?.(id, target);
       } else {
         onOptions(id);
       }
     },
-    [id, onDragChange, onMove, onOptions],
+    [id, onDragChange, onDropOnto, onMove, onOptions],
   );
 
   const startDrag = useCallback(() => onDragChange(true), [onDragChange]);
@@ -257,21 +284,25 @@ const SortableTabRow = memo(function SortableTabRow({
         .onEnd(() => {
           const moved = Math.abs(translation.value) > MOVE_SLOP;
           const slot = positions.value[id] ?? index;
+          const target = dropTarget.value;
+          dropTarget.value = null;
           lifted.value = false;
           autoScroll.value = 0;
           top.value = withTiming(slot * TAB_ROW_HEIGHT, { duration: 160 });
-          runOnJS(finishDrag)(moved, slot);
+          runOnJS(finishDrag)(moved, slot, target);
         })
         .onFinalize((_event, success) => {
           if (!success && lifted.value) {
             lifted.value = false;
             autoScroll.value = 0;
+            // A cancelled drag never groups.
+            dropTarget.value = null;
             const slot = positions.value[id] ?? index;
             top.value = withTiming(slot * TAB_ROW_HEIGHT, { duration: 160 });
-            runOnJS(finishDrag)(true, slot);
+            runOnJS(finishDrag)(true, slot, null);
           }
         }),
-    [autoScroll, finishDrag, id, index, lifted, positions, scrollY, startDrag, startScroll, startTop, top, translation],
+    [autoScroll, dropTarget, finishDrag, id, index, lifted, positions, scrollY, startDrag, startScroll, startTop, top, translation],
   );
 
   const hold = useMemo(
@@ -288,12 +319,18 @@ const SortableTabRow = memo(function SortableTabRow({
     const y = lifted.value
       ? startTop.value + translation.value + (scrollY.value - startScroll.value)
       : top.value;
+    // B2: the drop target shrinks a little and dims, so the lifted card visibly lands "into" it.
+    const isDropTarget = dropTarget.value === id;
     return {
       position: 'absolute',
       left: 0,
       right: 0,
       height: TAB_CARD_HEIGHT,
-      transform: [{ translateY: y }, { scale: withTiming(lifted.value ? 1.03 : 1, { duration: 120 }) }],
+      opacity: withTiming(isDropTarget ? 0.6 : 1, { duration: 120 }),
+      transform: [
+        { translateY: y },
+        { scale: withTiming(lifted.value ? 1.03 : isDropTarget ? 0.94 : 1, { duration: 120 }) },
+      ],
       zIndex: lifted.value ? 10 : 1,
       elevation: lifted.value ? 8 : 0,
     };

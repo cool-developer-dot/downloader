@@ -17,6 +17,7 @@ import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
 
 import { isYouTubeLink, shouldAnalyzePastedLink } from './pasted-link';
 import { loadUrlForTab } from './active-tab-navigation.service';
+import { pendingNavigationService } from './pending-navigation.service';
 
 export { isYouTubeLink, shouldAnalyzePastedLink };
 
@@ -32,11 +33,11 @@ export function openPastedLink(url: string, options: { source: 'omnibox' | 'shar
     return false;
   }
   if (!shouldAnalyzePastedLink(trimmed) || !isDirectAnalysisAvailable()) {
-    return loadUrlForTab(tabId, trimmed);
+    return loadNowOrWhenReady(tabId, trimmed);
   }
   const controller = tabControllerRegistry.get(tabId);
   if (!controller || controller.tabId !== tabId) {
-    return loadUrlForTab(tabId, trimmed);
+    return loadNowOrWhenReady(tabId, trimmed);
   }
 
   // A navigation the user starts in this tab meanwhile (Back, Home, another link) wins over the deferred one.
@@ -63,4 +64,17 @@ export function openPastedLink(url: string, options: { source: 'omnibox' | 'shar
   // The page itself starts loading after the first fetch; show that the link was taken meanwhile.
   useBrowserStore.getState().updateTab(tabId, { loading: true, progress: 0.02 });
   return true;
+}
+
+/**
+ * Loads `url` in `tabId` now, or — when the tab has no WebView yet (a link that started the app arrives before the
+ * browser has mounted) — hands it to BrowserScreen, which loads it as soon as that tab's controller is ready. Without
+ * the second part a link from another app was dropped on a cold start and the restored tab stayed in front.
+ */
+function loadNowOrWhenReady(tabId: string, url: string): boolean {
+  if (loadUrlForTab(tabId, url)) {
+    return true;
+  }
+  pendingNavigationService.set(url, { targetTabId: tabId });
+  return pendingNavigationService.peek()?.url === url;
 }

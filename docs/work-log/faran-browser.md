@@ -314,6 +314,47 @@ switch + guest mode (separate cookies, Personal back after leaving), ad + tracke
 page"), selection menu Search, HLS detection + quality sheet + play online, MP4 download completed. No crash or JS
 error in logcat. Automated: tsc, eslint, 1869 unit tests, 12 patch-script tests.
 
-Not re-checked on the device this round: B3 tab sound (fix verified in the compiled output only), B9 folders, B14 site
-blocker / limits / focus, B16 filters, B18 data saver, B24 calendar / prayer / widget, startup and toolbar options,
-history clearing, site permissions, Urdu and dark passes — Hamza's device lists cover them for final testing.
+### Second pass (same day): the rest of the device lists, and Hamza's open questions
+
+Fixed:
+
+- **A link from another app was lost on a cold start** (older than the browser work: 1.1.0 has the same path). The
+  launch link arrives before the tab's WebView exists, `loadUrlForTab` found no controller and returned false, and the
+  restored tab stayed in front. `openPastedLink` now hands such a link to `pendingNavigationService`, which BrowserScreen
+  loads as soon as that tab's controller is ready. Device: force-stop, `am start -a VIEW -d https://www.wikipedia.org/`
+  → Wikipedia in front.
+- **B2: tab options unreachable once a group exists.** The grouped list draws plain `TabCard`s without B1's gesture, so
+  a long-press did nothing (pin, mute, volume, add to / remove from group only through TalkBack). `TabCard` takes
+  `longPressOptions`; the grouped list sets it.
+- **B2: drop a tab onto another (Hamza's open item 5), built.** In B1's flat list, a dragged card held 30–70 % over a
+  neighbour dims and shrinks that neighbour; letting go there groups the two (or adds the tab to the target's group).
+  Past 70 % it reorders as before (B1 swapped at 50 %). `tabs/tab-drop.ts` (pure, worklet, 6 tests),
+  `groupTabWith`, "Tabs grouped" toast (en / ur), card hint updated. Device: dragged W3Schools onto Example → a
+  2-tab group.
+- **B3: the tab sheet said "Mute tab" on a muted tab** (its memoized list never saw the sound state). It now subscribes
+  to the options tab's muted state.
+- **B24: Urdu prayer countdown cut off.** `'\u2068{prayer}\u2069 میں \u2068{time}\u2069'` was measured too narrow
+  and the time wrapped onto a hidden line. The Urdu string has no isolates now (Urdu name, Urdu digits and the colon
+  keep their order) and the label is one line that doesn't shrink. Device: "عصر میں ۲:۰۱" in full.
+
+Device checks (release build, all passed): cold-start link; B13 location / camera + microphone / notifications refused
+with the bar, timer pop-up blocked with Allow once; B14 blocked site; B18 Block images (0 of 15 images vs 14 of 14);
+B16 Grayscale (page grey, app bars red); B21 homepage → Home, "Open the homepage" after a force-stop (tabs kept);
+B10 history search (on Enter, as in 1.1.0) and Clear last hour; B9 new folder, move a bookmark, breadcrumbs; B24
+calendar (13 November 2026 = 3 Jumada al-Thani 1448) and Lahore prayer times; B17 print dialog and the PDF choice
+sheet; Urdu + Dark start page and menu; the earlier checks above. Twice a page showed "Website unavailable" (HTTP
+error) on Wikipedia / w3.org after many loads from the emulator; the same pages loaded on retry — server rate limiting,
+not reproduced.
+
+**Hamza's open questions — decided (owner can still change them):**
+
+1. B17 offline viewer with file access: **kept** — one archive, JavaScript and network off, not exported, closes when
+   the app leaves the screen.
+2. / 4. New defaults: **kept** — PDF links ask (with Remember, reset in Settings); "Translate this page?" once per site.
+3. Page detectability: **accepted** — `__vidoraxConsole` only while Developer tools are on, the B23 message type and
+   B1's guard identify the app, not the user.
+5. Drop a tab onto another: **built** (above).
+
+Still not checked on a device: Clear site data on a WebView with `DELETE_BROWSING_DATA` (the AVD has WebView 124), B22
+camera upload on a phone with no camera app (needs a patch change), TalkBack and font scale 1.3 passes, the B24 widget,
+B23 page alerts (forced job), B19 user scripts.

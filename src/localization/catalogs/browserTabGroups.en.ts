@@ -31,6 +31,7 @@ export const browserTabGroupsEn = {
   restore: 'Restore',
   restoredSome: 'Restored {restored} of {total} tabs: the tab limit was reached.',
   chooseGroup: 'Add to which group?',
+  droppedIntoGroup: 'Tabs grouped',
   openerSetting: 'Tabs opened from a page join its group',
   openerSettingHint: 'Links opened in a new tab go into the group of the page they came from',
   section: 'Tab groups',

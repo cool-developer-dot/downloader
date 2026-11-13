@@ -42,7 +42,7 @@ import { matchesSearch } from '@/utils/search-text';
 import { CloseTabsDialog, type CloseTabsDialogRequest } from './CloseTabsDialog';
 import { SortableTabList } from './SortableTabList';
 import { AddToGroupSheet, ClosedGroupsSheet, GroupedTabList, TimelineSheet, useHasGroups } from './TabGroupsUI';
-import { groupTabsBySite, takeTabOutOfGroup, useClosedGroups, useTabGroups } from '@/browser/tabs/tab-groups.service';
+import { groupTabWith, groupTabsBySite, takeTabOutOfGroup, useClosedGroups, useTabGroups } from '@/browser/tabs/tab-groups.service';
 import { TabActionsSheet, type TabSheetAction } from './TabActionsSheet';
 import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
 import { TabVolumeSheet } from '@/browser/tab-sound/components/TabVolumeSheet';
@@ -261,6 +261,9 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
     [optionsTabId, tabs],
   );
 
+  // B3: the options tab's mute state, so Mute / Unmute follows it (the list below is memoized).
+  const optionsMuted = useSyncExternalStore(tabAudio.subscribe, () => (optionsTabId ? tabAudio.get(optionsTabId).muted : false));
+
   const optionsActions = useMemo((): TabSheetAction[] => {
     if (!optionsTab) return [];
     const id = optionsTab.id;
@@ -294,7 +297,7 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
       list.push({ id: 'close_others', label: t('browserTabs.closeOthers'), icon: 'close-box-multiple-outline', onPress: () => requestClose('others', id) });
     }
     // B3 #8 / #220: this tab's sound.
-    const muted = tabAudio.get(id).muted;
+    const muted = optionsMuted;
     list.push({
       id: muted ? 'unmute' : 'mute',
       label: muted ? t('browserTabSound.unmute') : t('browserTabSound.mute'),
@@ -309,7 +312,7 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
     }
     list.push({ id: 'close', label: t('browserTabs.closeTab'), icon: 'close', destructive: true, onPress: () => handleCloseTab(id) });
     return list;
-  }, [dragEnabled, groupsState, handleCloseTab, handleMoveBy, onLimitReached, optionsTab, requestClose, t, tabs]);
+  }, [dragEnabled, groupsState, handleCloseTab, handleMoveBy, onLimitReached, optionsMuted, optionsTab, requestClose, t, tabs]);
 
   const menuActions = useMemo((): ActionSheetItem[] => {
     const list: ActionSheetItem[] = [];
@@ -451,6 +454,8 @@ export const BrowserTabSwitcher = memo(function BrowserTabSwitcher({
                   onOptions={setOptionsTabId}
                   onMove={handleMove}
                   onMoveBy={handleMoveBy}
+                  // B2 #6: hold a dragged tab over another and let go to group the two.
+                  onDropOnto={groupTabWith}
                 />
               )}
               {incognitoTabs.length > 0 ? (

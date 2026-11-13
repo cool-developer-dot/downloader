@@ -67,6 +67,24 @@ export function newGroupWith(tabId: string, name = ''): string {
   return id;
 }
 
+/**
+ * B2 #6 — a tab dropped onto another in the tab list: the two make a new group (or the tab joins the target's group).
+ * Tabs of different kinds (incognito and normal) are never grouped together; createGroup keeps the target only then.
+ */
+export function groupTabWith(tabId: string, targetId: string): void {
+  if (tabId === targetId) return;
+  const state = getGroupsState();
+  const targetGroup = state.membership[targetId];
+  if (targetGroup) {
+    moveTabToGroup(tabId, targetGroup);
+  } else {
+    const incognito = isIncognitoTabId(targetId);
+    if (isIncognitoTabId(tabId) !== incognito) return;
+    commit(createGroup(state, { id: Crypto.randomUUID(), name: '', color: nextColor(state), tabIds: [targetId, tabId], incognito }, isIncognitoTabId));
+  }
+  notify(translate('browserTabGroups.droppedIntoGroup'));
+}
+
 export function moveTabToGroup(tabId: string, groupId: string): void {
   commit(addToGroup(getGroupsState(), tabId, groupId, isIncognitoTabId));
 }

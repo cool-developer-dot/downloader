@@ -132,6 +132,8 @@ export const GroupedTabList = memo(function GroupedTabList({
               onClose={onClose}
               onOptions={onOptions}
               onMoveBy={noop}
+              // No B1 drag gesture around the cards here: the long-press to the tab's options is the card's own.
+              longPressOptions
             />
           </View>
         );

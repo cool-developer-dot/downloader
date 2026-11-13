@@ -32,7 +32,9 @@ export const browserUrduUr: CatalogStrings<typeof browserUrduEn> = {
   asr: 'عصر',
   maghrib: 'مغرب',
   isha: 'عشاء',
-  nextPrayer: '\u2068{prayer}\u2069 میں \u2068{time}\u2069',
+  // No bidi isolates: Urdu name, Urdu digits and the colon stay in order on their own, and Android measured the
+  // isolated string too narrow (the time wrapped onto a hidden second line).
+  nextPrayer: '{prayer} میں {time}',
   prayerCardA11y: '\u2068{place}\u2069 کے نماز کے اوقات',
   calendarCardA11y: 'آج: \u2068{gregorian}\u2069، \u2068{hijri}\u2069۔ مہینہ کھولتا ہے۔',
   hijriDate: '\u2068{day}\u2069 \u2068{month}\u2069 \u2068{year}\u2069 ہجری',

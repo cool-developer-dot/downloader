@@ -33,6 +33,7 @@ export const browserTabGroupsUr: CatalogStrings<typeof browserTabGroupsEn> = {
   restore: 'بحال کریں',
   restoredSome: '\u2068{total}\u2069 میں سے \u2068{restored}\u2069 ٹیبز بحال ہوئے: ٹیبز کی حد پوری ہو گئی۔',
   chooseGroup: 'کس گروپ میں شامل کریں؟',
+  droppedIntoGroup: 'ٹیب ایک گروپ میں شامل ہو گئے',
   openerSetting: 'صفحے سے کھلے ٹیبز اس کے گروپ میں جائیں',
   openerSettingHint: 'نئے ٹیب میں کھلے لنکس اسی صفحے کے گروپ میں جاتے ہیں جہاں سے وہ آئے',
   section: 'ٹیب گروپس',

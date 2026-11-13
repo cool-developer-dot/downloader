@@ -32,6 +32,11 @@ export type TabCardProps = {
   onClose: (tabId: string) => void;
   onOptions: (tabId: string) => void;
   onMoveBy: (tabId: string, delta: -1 | 1) => void;
+  /**
+   * Long-press opens the tab's options on the card itself. Only where no gesture wraps the card: B1's sortable list
+   * lifts or opens options through its own gesture; B2's grouped list has none, so it sets this.
+   */
+  longPressOptions?: boolean;
 };
 
 /** The tab's latest preview (B1 #14), re-read whenever a new one is saved. */
@@ -100,6 +105,7 @@ export const TabCard = memo(function TabCard({
   onClose,
   onOptions,
   onMoveBy,
+  longPressOptions = false,
 }: TabCardProps) {
   const theme = useTheme();
   const { t, rtl } = useTranslation();
@@ -170,6 +176,8 @@ export const TabCard = memo(function TabCard({
         accessibilityActions={actions}
         onAccessibilityAction={handleAction}
         onPress={() => onSelect(tab.id)}
+        onLongPress={longPressOptions ? () => onOptions(tab.id) : undefined}
+        delayLongPress={380}
         style={{
           flex: 1,
           height: '100%',

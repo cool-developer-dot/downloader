@@ -41,7 +41,7 @@ export const browserTabsEn = {
   movedTo: 'Moved to position {position} of {count}',
   closeTab: 'Close tab',
   closeTabA11y: 'Close {title}',
-  cardHint: 'Double-tap to open. Touch and hold to move it or for more options.',
+  cardHint: 'Double-tap to open. Touch and hold to move it, drop it on another tab to group them, or for more options.',
   cardHintNoDrag: 'Double-tap to open. Touch and hold for more options.',
   previewA11y: 'Preview of {title}',
   noPreview: 'No preview yet',

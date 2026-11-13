@@ -2240,8 +2240,11 @@ only. Hamza's unfinished B8 start is parked on `hamza/b8-wip`.
 - **Integration (2026-11-13, branch `integration/browser`).** `hamza/browser` + `faran/browser`. Final test fixed
   incognito (the `webProfile` prop is now declared in react-native-webview's codegen spec by the patch script), React
   Compiler cached reads of external stores (tab groups, capture, devtools, data saver, tab sound, incognito state —
-  `'use no memo'` or a real snapshot), and the reader's header under the status bar. Coverage and what wasn't
-  re-checked: `docs/work-log/faran-browser.md`, "Integration".
+  `'use no memo'` or a real snapshot), and the reader's header under the status bar. Second pass: a link from another
+  app is no longer lost on a cold start (queued until the tab's WebView exists), grouped tabs open their options on
+  long-press, B2 drop-a-tab-onto-another built, Mute / Unmute label, Urdu prayer countdown. Hamza's open questions
+  decided (viewer kept, new defaults kept, detectability accepted). Coverage and what wasn't checked:
+  `docs/work-log/faran-browser.md`, "Integration".
 
 ## 5. How to resume
 

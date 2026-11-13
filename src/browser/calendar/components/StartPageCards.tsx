@@ -227,7 +227,7 @@ const PrayerCard = memo(function PrayerCard() {
         <Text variant="label" style={{ flex: 1, textAlign: rtl.textAlign }}>
           {placeName}
         </Text>
-        <Text variant="label" color="primary">
+        <Text variant="label" color="primary" numberOfLines={1} style={{ flexShrink: 0 }}>
           {t('browserUrdu.nextPrayer', { prayer: t(PRAYER_KEYS[next.name]), time: digits(formatCountdown(next.minutesLeft)) })}
         </Text>
       </View>
