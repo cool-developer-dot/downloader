@@ -199,6 +199,16 @@ const FORMAT_FROM_CONTAINER: Record<string, string> = {
 };
 
 /** Reject targets that must never become Download Video. */
+/**
+ * A proven split pair: one row that carries both the video file and the audio file, which the engine downloads and
+ * merges. Its video half may be named like a segment, so the checks that refuse a lone segment must know it is not one.
+ */
+export function isSplitOffer(
+  analysis: { variants?: { audioSourceUrl?: string | null }[] } | null | undefined,
+): boolean {
+  return Boolean(analysis?.variants?.some((variant) => variant.audioSourceUrl?.trim()));
+}
+
 export function isRejectedDownloadTarget(url: string | null | undefined): boolean {
   if (!url || typeof url !== 'string') {
     return true;
@@ -573,7 +583,11 @@ export function isBrowserDownloadCtaEligible(
   }
 
   const mediaUrl = actionState.mediaUrl ?? actionState.analysis.finalUrl ?? null;
-  if (isRejectedDownloadTarget(mediaUrl)) {
+  // A split pair's video file is a whole file the engine proved; only its own row may offer it, never on its own.
+  if (!isSplitOffer(actionState.analysis) && isRejectedDownloadTarget(mediaUrl)) {
+    return false;
+  }
+  if (isSplitOffer(actionState.analysis) && !isSafeMediaUrl(mediaUrl ?? '')) {
     return false;
   }
 

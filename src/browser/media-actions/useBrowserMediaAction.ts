@@ -24,6 +24,7 @@ import {
   isSplitPlayerFile,
 } from '@/media-detection/engine/mse-playback-context';
 import { useMediaDiscovery } from '@/media-detection/hooks/useMediaDiscovery';
+import type { DetectedMedia } from '@/media-detection/types';
 import { useMediaDetectionStore } from '@/media-detection/stores';
 import { isSafeMediaUrl, isSameDocumentUrl } from '@/media-detection/utils';
 import {
@@ -70,6 +71,7 @@ import {
   resolveLivePresentationOwnership,
   resolveOfferDuplicateNotice,
   type BrowserDownloadPresentation,
+  isSplitOffer,
 } from './browser-download-presentation';
 import { useDownloadsStore } from '@/store/downloads';
 import { selectLiveRecording, useSettingsStore } from '@/store/settings';
@@ -207,6 +209,8 @@ export function useBrowserMediaAction(
   const rerunRequestedRef = useRef(false);
   const rerunBudgetRef = useRef<VerifyRerunBudget>({ key: '', count: 0 });
   const [verifyRevision, setVerifyRevision] = useState(0);
+  /** The split pair last handed to verification when the page had no candidate of its own (see the effect below). */
+  const splitOnlyAttemptRef = useRef<string | null>(null);
 
   /**
    * Looks at the page again after a verification that the page overtook. Bounded per media/owner/page, so a page
@@ -1307,6 +1311,74 @@ export function useBrowserMediaAction(
     }
   }, [discovery.ownershipKey, discovery.candidates.length, isHome, ownerRevision]);
 
+  /**
+   * A split-track player can be the page's only evidence: neither of its two files is a candidate of its own (a lone
+   * `.m4s` is a segment, and a `blob:` URL is never downloadable), so discovery holds nothing and the verification
+   * below — which needs a media — never runs. The player itself stands in for it here; the split path proves the pair
+   * from the files' own bytes and offers the two as one merged download, exactly as it does for a page that also has
+   * a candidate.
+   */
+  useEffect(() => {
+    // Only when the page has produced nothing at all: a page that has a candidate (an hls.js player's own playlist,
+    // for one) is the engine's to classify, and its media may still be moments away.
+    if (isHome || discovery.media || discovery.candidates.length > 0) {
+      return;
+    }
+    const pageUrl = lastNavigation;
+    const tabId =
+      browserMediaActionService.getActiveTabId() ??
+      useBrowserStore.getState().activeTabId ??
+      '__default__';
+    if (!pageUrl) {
+      return;
+    }
+    const playback = getMsePlaybackState(tabId);
+    const resolution = classifyMsePlayback({
+      state: playback,
+      // Nothing whole to offer is why this effect exists; a manifest among the page's candidates still speaks for
+      // itself (hls.js splits its buffers while demuxing one stream), so the engine classifies that page, not this.
+      hasWholeSourceCandidate: false,
+      hasManifestCandidate: discovery.candidates.some(isManifestCandidate),
+    });
+    // Only the pair the page itself named: a guess from the files seen on the network needs candidates we do not have.
+    if (
+      resolution.kind !== 'SPLIT_TRACKS' ||
+      resolution.source !== 'buffers' ||
+      !resolution.videoUrl ||
+      !resolution.audioUrl ||
+      !isMsePlayerOnScreen(
+        playback,
+        socialPageContextStore.get(tabId),
+        generalPageMediaContextStore.get(tabId),
+      )
+    ) {
+      return;
+    }
+    const status = browserMediaActionService.getState().status;
+    if (status === 'preparing' || status === 'verified' || browserMediaActionService.isSelectionLocked()) {
+      return;
+    }
+    // One attempt per pair and owner: a refused pair must not be probed again on every render.
+    const attempt = `${tabId}|${discovery.ownershipKey}|${resolution.videoUrl}|${resolution.audioUrl}`;
+    if (splitOnlyAttemptRef.current === attempt) {
+      return;
+    }
+    splitOnlyAttemptRef.current = attempt;
+    const media = splitPlayerMedia({ pageUrl, blobUrl: playback?.blobUrl ?? null, tabId, durationMs: resolution.durationMs });
+    void verifyCandidate(media, discovery.ownershipKey).then((outcome) => {
+      recordVerificationOutcome({ tabId, pageUrl, media, outcome });
+    });
+  }, [
+    discovery.candidates,
+    discovery.media,
+    discovery.ownershipKey,
+    isHome,
+    lastNavigation,
+    ownerRevision,
+    verifyCandidate,
+    verifyRevision,
+  ]);
+
   useEffect(() => {
     if (isHome || !discovery.media) {
       return;
@@ -2142,8 +2214,58 @@ function isManifestCandidate(media: { streamType?: string | null; container?: st
  * nothing about a progressive video that is playing now.
  */
 /** The standing offer already downloads a split player's two files together. */
-function isSplitOffer(analysis: { variants?: { audioSourceUrl?: string | null }[] } | null | undefined): boolean {
-  return Boolean(analysis?.variants?.some((variant) => variant.audioSourceUrl));
+/**
+ * The split-track player as a media: the `blob:` URL it plays, never one of its two files, so nothing downstream can
+ * mistake one half for the whole video. Only the split path acts on it, and it offers the proven pair.
+ */
+function splitPlayerMedia(input: {
+  pageUrl: string;
+  blobUrl: string | null;
+  tabId: string;
+  durationMs: number | null;
+}): DetectedMedia {
+  const url = input.blobUrl ?? `blob:${input.pageUrl}`;
+  return {
+    id: `split-player:${input.tabId}:${hashSafeId(url)}`,
+    url,
+    sourceUrl: url,
+    finalUrl: url,
+    pageUrl: input.pageUrl,
+    title: null,
+    thumbnailUrl: null,
+    duration: input.durationMs != null ? input.durationMs / 1000 : null,
+    width: null,
+    height: null,
+    resolution: null,
+    aspectRatio: null,
+    fps: null,
+    estimatedFileSize: null,
+    codec: null,
+    audioCodec: null,
+    bitrate: null,
+    mimeType: null,
+    extension: null,
+    container: 'unknown',
+    category: 'video',
+    // The pair is two plain files the engine merges, not a stream it has to follow.
+    streamType: 'DIRECT',
+    isLive: false,
+    isDrm: false,
+    playlistType: null,
+    streamProtocol: null,
+    websiteSource: null,
+    detectionSource: 'dom_video',
+    sourceDetector: 'dom_video',
+    detectedAt: Date.now(),
+    confidence: 0.5,
+    downloadable: false,
+    requiresCookies: false,
+    requiredHeaders: null,
+    redirectCount: 0,
+    platformHint: null,
+    hasSeparateAudio: true,
+    videoOnly: false,
+  };
 }
 
 function isMsePlayerOnScreen(

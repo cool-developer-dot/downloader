@@ -396,13 +396,31 @@ ranged XHR, appended as copies): both files are now named and the page sends the
 `mseTracks:"split"` with `mseFiles:{video,audio}`; before the change `__vidoraxFiles` stayed `null`. 5 tests in
 `observers/split-track-files.test.ts`.
 
-**Not finished: Bilibili desktop still does not offer a download.** With the files named and delivered, the app did
+**Then finished: a split player is offered and downloads as one file.** With the two files named, three more things
+stood between that evidence and a download, each found on the fixture and fixed:
+
+- **Nothing ever verified it.** Verification needs a `discovery.media`, and a split player has none — neither of its
+  files is a candidate (a lone `.m4s` is a segment, a `blob:` URL is never downloadable). A new effect in
+  `useBrowserMediaAction` hands the player itself to the existing split path, as the `blob:` URL it plays so no half
+  can be mistaken for the video. It runs only when the page produced **nothing at all**: a page with a candidate (an
+  hls.js playlist) is the engine's to classify — without that guard the hls.js demo regressed to "can't be
+  downloaded", caught on the device and fixed.
+- **The offer was filtered out of the quality rows.** `isStandaloneDownloadableQuality` refuses a segment-looking
+  source; a proven pair now passes it (it carries `audioSourceUrl`, and both halves must still be safe URLs).
+- **The card was hidden.** The same refusal applied to the offer's media URL in the presentation. `isSplitOffer` moved
+  there and the pair is let through, still refusing an unsafe URL. 5 tests in `verified-quality-options.test.ts`.
+
+Device, release build: the fixture offers "Video available", downloads, and the saved file is **one MP4 with both
+tracks** — `h264 320x706 + aac, 20.03 s, 685,047 bytes` (the two files plus container). No regression: Bilibili
+mobile, the hls.js demo, a plain MP4 and a Reddit post all still offer.
+
+**Bilibili's own desktop page is still unconfirmed.** With the files named and delivered, the app did
 not turn that evidence into an offer on the fixture (it ends at the give-up message), so the remaining work is in the
-app-side split-pair resolution (`useBrowserMediaAction` / `classifyMsePlayback`), not in the page. Bilibili's own
-desktop page could not be loaded on the AVD at all to confirm end to end: it answers Android WebView with the mobile
-site whatever UA Desktop site sets, because WebView still sends `Sec-CH-UA-Mobile: ?1` (worth a look of its own —
-Desktop site does not convince sites that read Client Hints). **The mobile site keeps working and is what users get:**
-re-checked on the final build — "Video available", downloaded.
+app-side split-pair resolution (`useBrowserMediaAction` / `classifyMsePlayback`), not in the page. The page could not be loaded on the
+AVD at all: it answers Android WebView with the mobile site whatever UA Desktop site sets, because WebView still sends
+`Sec-CH-UA-Mobile: ?1` (worth a look of its own — Desktop site does not convince sites that read Client Hints). What
+is proven is the shape its player uses, on a fixture built from the measurements above. **The mobile site keeps
+working and is what users get:** re-checked on the final build — "Video available", downloaded.
 
 **Fixed: the silent dead end.** Detection has a 10 s window and a 30 s cap (`useBrowserMediaAction.ts`). When the cap
 passed with no offer and no verdict, the notice became `null` and the bar simply vanished — the user was left waiting

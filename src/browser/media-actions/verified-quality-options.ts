@@ -8,6 +8,8 @@ import {
   type DownloadQualityOption,
 } from '@/downloads/quality';
 
+import { isSafeMediaUrl } from '@/media-detection/utils';
+
 import { isRejectedDownloadTarget } from './browser-download-presentation';
 import { stableResourcePath } from '@/media-detection/social-source/resource-identity';
 
@@ -43,11 +45,20 @@ export function isStandaloneDownloadableQuality(
   if (!sourceUrl) {
     return false;
   }
-  if (isRejectedDownloadTarget(sourceUrl)) {
-    return false;
-  }
-  if (isLikelyMediaSegment(sourceUrl)) {
-    return false;
+  // A proven split pair is two whole files the engine downloads and merges. Its video half can be named like a
+  // segment (Bilibili's `…-1-100022.m4s`), but it is never offered on its own: the audio file is part of the same row.
+  const audioSourceUrl = option.audioSourceUrl?.trim() ?? '';
+  if (audioSourceUrl) {
+    if (!isSafeMediaUrl(sourceUrl) || !isSafeMediaUrl(audioSourceUrl)) {
+      return false;
+    }
+  } else {
+    if (isRejectedDownloadTarget(sourceUrl)) {
+      return false;
+    }
+    if (isLikelyMediaSegment(sourceUrl)) {
+      return false;
+    }
   }
   if (String(option.container).toLowerCase() === 'dash') {
     return false;
