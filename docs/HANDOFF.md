@@ -2238,6 +2238,15 @@ only. Hamza's unfinished B8 start is parked on `hamza/b8-wip`.
   `clearSiteData`, `clearAllSiteData`, `getCookieCount`, `isCleartextAllowed`. Known WebView limits (cookies kept while
   blocked, Cache Storage on WebView without `DELETE_BROWSING_DATA`) are in the work log. No new permission or library.
 
+### 4.36 Light theme — the CEO's design (branch `hamza/light-theme`, 2026-11-17)
+
+The Browser and Downloads modules rebuilt to `VidoraX-6-Themes-65-Screens.pdf` (light theme, screens 1–17, 33–47):
+design tokens measured from the PDF vectors (`docs/design/light-theme-kit.md`, `src/design/*`), light as the
+default theme, Inter only, a five-tab bar (Browser · Downloads · Player · Files · Settings), Browser and Downloads
+as nested stacks inside their tabs (`src/app/(app)/(tabs)/browser/*`, `(tabs)/downloads/*`), every design screen
+as a route. Work log: `docs/work-log/hamza-browser.md` → "Light theme". Player, Files and the other five themes are
+not done.
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

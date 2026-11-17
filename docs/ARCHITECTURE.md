@@ -936,6 +936,14 @@ Each package is described in `docs/work-log/faran-browser.md`.
   (`WebStorageCompat.deleteBrowsingData(ForSite)` where WebView has it), cookie count. The site sheet
   (`components/SiteInfo/`) opens from the lock. `getPageCertificate` and `clearAllSiteData` are there for B19 / B11.
 
+### 8.3 Light theme and the design kit (`hamza/light-theme`)
+
+The CEO's light design (`docs/design/light-theme-kit.md`) is the look of the Browser and Downloads modules:
+`src/design/*` holds the primitives (dimensions in `tokens.ts`, colours from `theme.colors`), `DsTabBar` draws the
+five tabs, and the two modules are nested stacks inside their tabs so every one of their screens keeps the bar. A
+screen is a route file under `src/app/(app)/(tabs)/<module>/` rendering a kit-built component wired to the existing
+services; strings live in one catalog per screen group (`src/localization/catalogs/light*.ts`).
+
 ## 9. Data ownership
 
 There is no backend: everything below lives only on the user's device.
