@@ -22,6 +22,37 @@ import { browserPrivacyUr } from './catalogs/browserPrivacy.ur';
 import { browserAddressUr } from './catalogs/browserAddress.ur';
 import { browserSettingsUr } from './catalogs/browserSettings.ur';
 import { browserTabsUr } from './catalogs/browserTabs.ur';
+import { lightHomeUr } from './catalogs/lightHome.ur';
+import { lightSearchUr } from './catalogs/lightSearch.ur';
+import { lightUtilitiesUr } from './catalogs/lightUtilities.ur';
+import { lightTabsUr } from './catalogs/lightTabs.ur';
+import { lightPageToolsUr } from './catalogs/lightPageTools.ur';
+import { lightDisplayUr } from './catalogs/lightDisplay.ur';
+import { lightFocusUr } from './catalogs/lightFocus.ur';
+import { lightBookmarksUr } from './catalogs/lightBookmarks.ur';
+import { lightHistoryUr } from './catalogs/lightHistory.ur';
+import { lightPrivacyUr } from './catalogs/lightPrivacy.ur';
+import { lightIncognitoUr } from './catalogs/lightIncognito.ur';
+import { lightPasswordsUr } from './catalogs/lightPasswords.ur';
+import { lightDeveloperUr } from './catalogs/lightDeveloper.ur';
+import { lightBrowserSettingsUr } from './catalogs/lightBrowserSettings.ur';
+import { lightDownloadsUr } from './catalogs/lightDownloads.ur';
+import { lightAddDownloadUr } from './catalogs/lightAddDownload.ur';
+import { lightVideoSheetUr } from './catalogs/lightVideoSheet.ur';
+import { lightPlaylistUr } from './catalogs/lightPlaylist.ur';
+import { lightDetailsUr } from './catalogs/lightDetails.ur';
+import { lightQueuesUr } from './catalogs/lightQueues.ur';
+import { lightTorrentUr } from './catalogs/lightTorrent.ur';
+import { lightStatisticsUr } from './catalogs/lightStatistics.ur';
+import { lightDownloadSettingsUr } from './catalogs/lightDownloadSettings.ur';
+import { lightAlertsUr } from './catalogs/lightAlerts.ur';
+import { lightLiveConvertUr } from './catalogs/lightLiveConvert.ur';
+import { lightOrganizeUr } from './catalogs/lightOrganize.ur';
+import { lightLinkGrabberUr } from './catalogs/lightLinkGrabber.ur';
+import { lightNetworkUr } from './catalogs/lightNetwork.ur';
+import { lightFileActionsUr } from './catalogs/lightFileActions.ur';
+import { lightFailedUr } from './catalogs/lightFailed.ur';
+import { lightNotificationsUr } from './catalogs/lightNotifications.ur';
 import { detectionUr } from './catalogs/detection.ur';
 import { shellUr } from './catalogs/shell.ur';
 import { videoPlayerUr } from './catalogs/videoPlayer.ur';
@@ -55,6 +86,7 @@ export const ur: CatalogStrings<typeof en> = {
     reset: 'ری سیٹ',
     dismiss: 'بند کریں',
     comingSoon: 'جلد آ رہا ہے',
+    notAvailableYet: 'ابھی دستیاب نہیں',
     on: 'آن',
     off: 'آف',
     default: 'ڈیفالٹ',
@@ -2822,6 +2854,37 @@ export const ur: CatalogStrings<typeof en> = {
   detection: detectionUr,
   videoPlayer: videoPlayerUr,
   browserTabs: browserTabsUr,
+  lightHome: lightHomeUr,
+  lightSearch: lightSearchUr,
+  lightUtilities: lightUtilitiesUr,
+  lightTabs: lightTabsUr,
+  lightPageTools: lightPageToolsUr,
+  lightDisplay: lightDisplayUr,
+  lightFocus: lightFocusUr,
+  lightBookmarks: lightBookmarksUr,
+  lightHistory: lightHistoryUr,
+  lightPrivacy: lightPrivacyUr,
+  lightIncognito: lightIncognitoUr,
+  lightPasswords: lightPasswordsUr,
+  lightDeveloper: lightDeveloperUr,
+  lightBrowserSettings: lightBrowserSettingsUr,
+  lightDownloads: lightDownloadsUr,
+  lightAddDownload: lightAddDownloadUr,
+  lightVideoSheet: lightVideoSheetUr,
+  lightPlaylist: lightPlaylistUr,
+  lightDetails: lightDetailsUr,
+  lightQueues: lightQueuesUr,
+  lightTorrent: lightTorrentUr,
+  lightStatistics: lightStatisticsUr,
+  lightDownloadSettings: lightDownloadSettingsUr,
+  lightAlerts: lightAlertsUr,
+  lightLiveConvert: lightLiveConvertUr,
+  lightOrganize: lightOrganizeUr,
+  lightLinkGrabber: lightLinkGrabberUr,
+  lightNetwork: lightNetworkUr,
+  lightFileActions: lightFileActionsUr,
+  lightFailed: lightFailedUr,
+  lightNotifications: lightNotificationsUr,
   filesTab: {
     title: 'فائلیں',
     subtitle: 'اندرونی اسٹوریج',

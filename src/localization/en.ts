@@ -22,6 +22,37 @@ import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
 import { browserSettingsEn } from './catalogs/browserSettings.en';
 import { browserTabsEn } from './catalogs/browserTabs.en';
+import { lightHomeEn } from './catalogs/lightHome.en';
+import { lightSearchEn } from './catalogs/lightSearch.en';
+import { lightUtilitiesEn } from './catalogs/lightUtilities.en';
+import { lightTabsEn } from './catalogs/lightTabs.en';
+import { lightPageToolsEn } from './catalogs/lightPageTools.en';
+import { lightDisplayEn } from './catalogs/lightDisplay.en';
+import { lightFocusEn } from './catalogs/lightFocus.en';
+import { lightBookmarksEn } from './catalogs/lightBookmarks.en';
+import { lightHistoryEn } from './catalogs/lightHistory.en';
+import { lightPrivacyEn } from './catalogs/lightPrivacy.en';
+import { lightIncognitoEn } from './catalogs/lightIncognito.en';
+import { lightPasswordsEn } from './catalogs/lightPasswords.en';
+import { lightDeveloperEn } from './catalogs/lightDeveloper.en';
+import { lightBrowserSettingsEn } from './catalogs/lightBrowserSettings.en';
+import { lightDownloadsEn } from './catalogs/lightDownloads.en';
+import { lightAddDownloadEn } from './catalogs/lightAddDownload.en';
+import { lightVideoSheetEn } from './catalogs/lightVideoSheet.en';
+import { lightPlaylistEn } from './catalogs/lightPlaylist.en';
+import { lightDetailsEn } from './catalogs/lightDetails.en';
+import { lightQueuesEn } from './catalogs/lightQueues.en';
+import { lightTorrentEn } from './catalogs/lightTorrent.en';
+import { lightStatisticsEn } from './catalogs/lightStatistics.en';
+import { lightDownloadSettingsEn } from './catalogs/lightDownloadSettings.en';
+import { lightAlertsEn } from './catalogs/lightAlerts.en';
+import { lightLiveConvertEn } from './catalogs/lightLiveConvert.en';
+import { lightOrganizeEn } from './catalogs/lightOrganize.en';
+import { lightLinkGrabberEn } from './catalogs/lightLinkGrabber.en';
+import { lightNetworkEn } from './catalogs/lightNetwork.en';
+import { lightFileActionsEn } from './catalogs/lightFileActions.en';
+import { lightFailedEn } from './catalogs/lightFailed.en';
+import { lightNotificationsEn } from './catalogs/lightNotifications.en';
 import { detectionEn } from './catalogs/detection.en';
 import { shellEn } from './catalogs/shell.en';
 import { videoPlayerEn } from './catalogs/videoPlayer.en';
@@ -53,6 +84,7 @@ export const en = {
     reset: 'Reset',
     dismiss: 'Dismiss',
     comingSoon: 'Coming Soon',
+    notAvailableYet: 'Not available yet',
     on: 'On',
     off: 'Off',
     default: 'Default',
@@ -2818,6 +2850,37 @@ export const en = {
   detection: detectionEn,
   videoPlayer: videoPlayerEn,
   browserTabs: browserTabsEn,
+  lightHome: lightHomeEn,
+  lightSearch: lightSearchEn,
+  lightUtilities: lightUtilitiesEn,
+  lightTabs: lightTabsEn,
+  lightPageTools: lightPageToolsEn,
+  lightDisplay: lightDisplayEn,
+  lightFocus: lightFocusEn,
+  lightBookmarks: lightBookmarksEn,
+  lightHistory: lightHistoryEn,
+  lightPrivacy: lightPrivacyEn,
+  lightIncognito: lightIncognitoEn,
+  lightPasswords: lightPasswordsEn,
+  lightDeveloper: lightDeveloperEn,
+  lightBrowserSettings: lightBrowserSettingsEn,
+  lightDownloads: lightDownloadsEn,
+  lightAddDownload: lightAddDownloadEn,
+  lightVideoSheet: lightVideoSheetEn,
+  lightPlaylist: lightPlaylistEn,
+  lightDetails: lightDetailsEn,
+  lightQueues: lightQueuesEn,
+  lightTorrent: lightTorrentEn,
+  lightStatistics: lightStatisticsEn,
+  lightDownloadSettings: lightDownloadSettingsEn,
+  lightAlerts: lightAlertsEn,
+  lightLiveConvert: lightLiveConvertEn,
+  lightOrganize: lightOrganizeEn,
+  lightLinkGrabber: lightLinkGrabberEn,
+  lightNetwork: lightNetworkEn,
+  lightFileActions: lightFileActionsEn,
+  lightFailed: lightFailedEn,
+  lightNotifications: lightNotificationsEn,
   filesTab: {
     title: 'Files',
     subtitle: 'Internal storage',
