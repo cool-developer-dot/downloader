@@ -25,8 +25,9 @@ export type DsScreenProps = PropsWithChildren<{
 }>;
 
 /**
- * A design screen: the #FAF9FB page, 16 dp side gutters, content that scrolls under a fixed footer. The bottom
- * tab bar is the navigator's, so nothing here pads for it.
+ * A design screen: the theme's page, 16 dp side gutters, content that scrolls under a fixed footer. The bottom
+ * tab bar is the navigator's, so nothing here pads for it. On the Red theme the safe-area strip above the header
+ * takes the band's colour so the band reaches the top of the screen.
  */
 export const DsScreen = memo(function DsScreen({
   children,
@@ -44,6 +45,8 @@ export const DsScreen = memo(function DsScreen({
   const theme = useTheme();
   const { t } = useTranslation();
   const background = theme.colors.background;
+  /** The Red theme's header band continues up behind the status bar. */
+  const topBackground = theme.colors.headerStyle === 'band' ? theme.colors.headerBackground : background;
 
   const content = scroll ? (
     <ScrollView
@@ -72,7 +75,7 @@ export const DsScreen = memo(function DsScreen({
   );
 
   return (
-    <SafeAreaView edges={edges} style={[{ flex: 1, backgroundColor: background }, style]} testID={testID}>
+    <SafeAreaView edges={edges} style={[{ flex: 1, backgroundColor: topBackground }, style]} testID={testID}>
       {fixedHeader}
       {content}
       {footer ? (

@@ -1,7 +1,7 @@
-# VidoraX · Light theme — design kit and module rules
+# VidoraX · design kit, the six themes and module rules
 
-Source of truth: the CEO's handoff `VidoraX-6-Themes-65-Screens.pdf` (pages 1–9 are the light theme, 65 screens,
-8 per page). The Browser and Downloads modules are built from it now; Player and Files come later. Every screen is
+Source of truth: the CEO's handoff `VidoraX-6-Themes-65-Screens.pdf` (54 pages: six themes × 65 screens, 8 per
+page; the geometry below was measured on the light pages and holds for all six). The Browser and Downloads modules are built from it now; Player and Files come later. Every screen is
 rebuilt **exactly** as drawn: same rows, same order, same words, same controls (toggle vs chevron vs value), same
 chips, same buttons, same header button. Nothing is added that the design does not show, and nothing the design
 shows is left out — a row whose feature does not exist yet still appears and says "Not available yet" when tapped.
@@ -28,6 +28,41 @@ shows is left out — a row whose feature does not exist yet still appears and s
 
 All of these are code: `src/design/tokens.ts` (dimensions) and `src/theme/colors.ts` → `colors.light` (colours).
 Text is Inter only: semibold for titles, row titles, buttons, chips, labels; regular for secondary lines.
+
+## The six themes
+
+Pages 1–9 of the PDF are Light, 10–18 Dark, 19–27 Red, 28–36 Cream, 37–45 Midnight, 46–54 Blush. Every theme
+draws the same 65 screens with the same geometry; only the colours differ, and the Red theme also paints the header
+and the bottom bar. `src/theme/colors.ts` holds one measured palette per theme (`designPalettes`) and builds every
+token set with `designTheme`; `src/theme/colors.test.ts` pins the measured values so a theme cannot drift from its
+frames. The values below were read from the PDF's vectors (fills and text colours), not from screenshots.
+
+| Token | Light | Dark | Red | Cream | Midnight | Blush |
+| --- | --- | --- | --- | --- | --- | --- |
+| Page | `#FAF9FB` | `#121214` | `#FDF1EF` | `#FBF6EC` | `#0D1424` | `#FFF5F7` |
+| Card · field · chip · tile · header button | `#FFFFFF` | `#1D1D20` | `#FFF9F8` | `#FFFDF8` | `#151D31` | `#FFFFFF` |
+| Card edge | `#EEEDF1` | `#0A0A0B` | `#F0D3CF` | `#F1E8D8` | `#060A12` | `#F8DEE4` |
+| Row divider · progress track | `#EDEDF0` | `#2C2C31` | `#F2D8D4` | `#EEE3D0` | `#232D47` | `#F8DDE3` |
+| Accent (buttons, toggles on, section labels, icons, active tab) | `#D92D20` | `#E5382B` | `#D92D20` | `#C8321F` | `#FF4A3D` | `#E0313F` |
+| Icon tile · selected chip | `#FDECEA` | `#3B1D1B` | `#FBE0DC` | `#F8E3D6` | `#3A1F2B` | `#FFE1E7` |
+| Title text | `#16161A` | `#F4F4F6` | `#2A1210` | `#2B2118` | `#EAF0FF` | `#3A1A22` |
+| Secondary text | `#6B6B76` | `#9C9CA6` | `#8A5E59` | `#8A7B6A` | `#8F9BB8` | `#94626D` |
+| Toggle off | `#D6D5DB` | `#46464D` | `#D6D5DB` | `#D6D5DB` | `#3A4565` | `#D6D5DB` |
+| Success (blocked count) | `#12B76A` | `#34D399` | `#12B76A` | `#12B76A` | `#3DDC97` | `#12B76A` |
+| Status-bar text | dark | light | light | dark | light | dark |
+
+**Red theme chrome.** The header is a full-width band in the accent, 85 dp from the top of the safe area to its
+square bottom edge, darkening a little towards the bottom (`#D92D20` → `#C42419`); the title is white, the subtitle
+white at 70 %, the header button a 36 dp white square at 15 % with a white icon; the first card sits 12 dp below the
+band, and the Video sheet carries the same band. The bottom bar is the accent too: white labels (inactive at 70 %)
+and a 52 × 26 white pill at 20 % behind the active icon. `theme.colors.headerStyle === 'band'` drives all of it
+(`DsHeader`, `DsIconButton tone="header"`, `DsScreen` paints the status-bar strip, `DsTabBar` draws the pill).
+
+**Night themes.** Dark and Midnight are the dark themes (`isDarkThemeMode`): Android night mode, the dark navigation
+and Paper bases and force-dark web pages follow them; Light, Red, Cream and Blush paint on the light scheme.
+
+**Choosing.** Settings → Appearance shows six swatches in the PDF's order; Light is the default; a stored `logo`
+preference from older builds opens as Red; the intro, splash and onboarding take the chosen theme's page and accent.
 
 ## The kit — `src/design`
 

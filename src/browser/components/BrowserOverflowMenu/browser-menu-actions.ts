@@ -56,6 +56,7 @@ import { MAX_WATCHES } from '@/browser/page-alerts/page-alerts-core';
 import { announceMenuNotice } from '@/browser/highlights/menu-notice';
 import { captureFullPage, captureScreenshot, printPage } from '@/browser/capture/capture.service';
 import { saveOffline } from '@/browser/capture/offline-pages.service';
+import { isDarkThemeMode } from '@/theme/theme-preference';
 
 export type UseBrowserMenuActionsOptions = {
   onClose: () => void;
@@ -159,7 +160,7 @@ export function useBrowserMenuActions({
     const tabId = useBrowserStore.getState().activeTabId;
     const outcome = await moveTabToWindow(tabId, {
       rtl: rtl.isRtl,
-      dark: theme.mode === 'dark',
+      dark: isDarkThemeMode(theme.mode),
       colors: {
         background: theme.colors.background,
         surface: theme.colors.surface,

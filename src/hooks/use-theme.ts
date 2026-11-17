@@ -11,7 +11,7 @@ import { normalizeThemePreference, resolveThemeMode } from '@/theme/theme-prefer
 export const ThemeModeOverrideContext = createContext<keyof typeof themes | null>(null);
 
 /**
- * Authoritative theme object for the active preference (light | logo | dark).
+ * Authoritative theme object for the active preference (light | dark | red | cream | midnight | blush).
  */
 export function useTheme(): Theme {
   const override = useContext(ThemeModeOverrideContext);

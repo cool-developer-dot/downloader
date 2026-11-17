@@ -1,7 +1,8 @@
 /**
  * Design kit dimensions — measured from the CEO's handoff "VidoraX · Light theme UI · 65 screens" (the PDF's vector
  * data, scaled so each 239.2 pt phone frame is a 360 dp screen). Colours come from the active theme
- * (`theme.colors`), so these numbers hold for every theme; only the light one is built today.
+ * (`theme.colors`): the same numbers hold for all six themes (Light, Dark, Red, Cream, Midnight, Blush). The Red
+ * theme adds a full-width 85 dp accent header band and a 52 × 26 white pill behind the active tab's icon.
  *
  * Reference measurements (dp): screen padding 16.9; header title 21.4 at y 23, subtitle 12.4 at y 52; round header
  * button 35 × 35 r 10.7; search field 56 r 15.2; card r 15.2 with 13 inner padding; list row = 34 × 34 r 10.2 icon
@@ -49,6 +50,11 @@ export const ds = {
   size: {
     headerButton: 36,
     headerButtonIcon: 18,
+    /** The Red theme's header band: from the top of the safe area to the band's square bottom edge. */
+    headerBand: 85,
+    /** The Red theme's pill behind the active tab icon. */
+    tabPillWidth: 52,
+    tabPillHeight: 26,
     iconTile: 34,
     rowIcon: 17,
     rowMinHeight: 58,

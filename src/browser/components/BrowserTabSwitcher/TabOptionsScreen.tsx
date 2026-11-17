@@ -24,6 +24,7 @@ import { CloseTabsDialog, type CloseTabsDialogRequest } from './CloseTabsDialog'
 import { AddToGroupSheet } from './TabGroupsUI';
 import { tabDisplaySite, tabDisplayTitle } from './tab-display';
 import { useTabsScreenPresence } from './useTabsScreenPresence';
+import { isDarkThemeMode } from '@/theme/theme-preference';
 
 export type TabOptionsScreenProps = {
   tabId: string;
@@ -110,7 +111,7 @@ export const TabOptionsScreen = memo(function TabOptionsScreen({ tabId }: TabOpt
     leavingRef.current = true;
     const outcome = await moveTabToWindow(tabId, {
       rtl: rtl.isRtl,
-      dark: theme.mode === 'dark',
+      dark: isDarkThemeMode(theme.mode),
       colors: {
         background: theme.colors.background,
         surface: theme.colors.surface,

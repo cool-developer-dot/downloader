@@ -10,10 +10,11 @@ import { useTourTargetRef, type TourTargetId } from '@/tour/tour-targets';
 import { tabRouteNames } from '../constants/route-names';
 
 /**
- * The design's bottom bar: Browser · Downloads · Player · Files · Settings. 61 dp tall over the bottom inset, white
- * with a 1 dp #EDEDF0 line on top, 20 dp Lucide stroke icons over 11 dp semibold labels; the active tab in the
- * accent, the rest in the secondary grey. The route order and the hidden legacy `index` route are decided here, not
- * by React Navigation's default bar.
+ * The design's bottom bar: Browser · Downloads · Player · Files · Settings. 61 dp tall over the bottom inset, the
+ * theme's card colour with a 1 dp divider on top, 20 dp Lucide stroke icons over 11 dp semibold labels; the active
+ * tab in the accent, the rest in the secondary grey. The Red theme paints the bar in the accent with white labels and
+ * a 52 × 26 translucent white pill behind the active icon. The route order and the hidden legacy `index` route are
+ * decided here, not by React Navigation's default bar.
  */
 type TabSpec = { route: string; icon: DsIconName; label: 'browser' | 'downloads' | 'library' | 'files' | 'settings'; tour?: TourTargetId };
 
@@ -58,6 +59,19 @@ const TabButton = memo(function TabButton({ spec, focused, onPress, onLongPress,
         accessibilityLabel={t(keys.a11y)}
         android_ripple={{ color: theme.colors.bottomNavPressed, borderless: false }}
         style={{ flex: 1, alignItems: 'center', paddingTop: 11, paddingBottom: 8, gap: 5 }}>
+        {focused ? (
+          <View
+            pointerEvents="none"
+            style={{
+              position: 'absolute',
+              top: 8,
+              width: ds.size.tabPillWidth,
+              height: ds.size.tabPillHeight,
+              borderRadius: ds.size.tabPillHeight / 2,
+              backgroundColor: theme.colors.bottomNavActivePill,
+            }}
+          />
+        ) : null}
         <DsIcon name={spec.icon} size={ds.size.tabIcon} color={color} strokeWidth={ds.stroke.tabBar} />
         <DsText variant="tabLabel" color={color} numberOfLines={1} align="center">
           {t(keys.label)}

@@ -44,6 +44,7 @@ export const DsFab = memo(function DsFab({ label, icon = 'plus', onPress, onLong
           alignItems: 'center',
           gap: 8,
           ...ds.shadow.fab,
+          shadowColor: theme.colors.primary,
         })}>
         <DsIcon name={icon} size={20} color="textOnPrimary" strokeWidth={2.2} />
         <DsText variant="button" color="textOnPrimary" style={{ fontSize: ds.text.fab, lineHeight: 22 }}>

@@ -2866,3 +2866,56 @@ No native, patch, manifest, permission or download-rule change. No device here: 
 - [ ] Downloads: cards during a download and after; "+ Add link" → Add download → Video sheet → download
 - [ ] Deep links: `vidorax://downloads`, `vidorax://downloads/<id>`, the notification tap, the home widget
 - [ ] Urdu (RTL) and font scale 1.3 on the new screens; TalkBack on toggles and rows
+
+## The other five themes — Dark, Red, Cream, Midnight, Blush (branch `hamza/light-theme`, 2026-11-17)
+
+Pages 10–54 of `VidoraX-6-Themes-65-Screens.pdf` repeat the 65 screens in five more themes. Their frames have the
+same geometry as the light ones (the structure audit was re-run against the dark and red pages: identical rows,
+chips, buttons), so nothing in the screens changed; the work is the colour system and the Red theme's chrome.
+
+### How the palettes were read
+
+Each theme page was compared shape-for-shape and span-for-span with the light page at the same position: every
+light fill or text colour maps to exactly one colour in the other theme (for example the `#FDECEA` icon tile is
+`#3B1D1B` in Dark, `#FBE0DC` in Red, `#F8E3D6` in Cream, `#3A1F2B` in Midnight, `#FFE1E7` in Blush). The Red
+header band is not a vector rectangle (it is a shading), so its extent was read from rendered pixels: 85 dp tall,
+square bottom edge, `#D92D20` at the top to `#C42419` at the edge, on every screen including the Video sheet. The
+full table is in `docs/design/light-theme-kit.md` → "The six themes".
+
+### What changed
+
+- `src/theme/colors.ts`: one `DesignPalette` per theme (`designPalettes`) and a builder (`designTheme`) that
+  produces the full token set; `colors.light … colors.blush`. New tokens: `headerStyle` (`flat` | `band`),
+  `headerButtonBackground` / `headerButtonPressed` / `headerButtonBorder`, `bottomNavActivePill`, `accentMuted`.
+  The old `logo` palette is gone; `colors.dark` is now the design's dark theme, not the private-app grey.
+- `src/theme/theme-preference.ts`: `ThemePreference` = light | dark | red | cream | midnight | blush (the PDF's
+  order); `normalizeThemePreference` maps a stored `logo` to `red` and `system` to `light`; `isDarkThemeMode`
+  (Dark, Midnight) decides night mode, the dark navigation / Paper bases, force-dark web pages and the reader's
+  dark palette (five `theme.mode === 'dark'` checks replaced).
+- Intro / splash / onboarding derive from the chosen theme's page, text and accent (`intro-palette.ts`,
+  `onboarding-surfaces.ts`); no more hard-wired light / logo / dark tables.
+- Kit: `DsHeader` draws the band when `headerStyle === 'band'` (white title, 70 % white subtitle, eight stacked
+  strips stand in for the gradient without a gradient library); `DsIconButton tone="header"` is the 15 % white
+  square with a white icon; `DsScreen` paints the status-bar strip in the band colour; `DsTabBar` draws the 52 × 26
+  white pill behind the active icon; `DsFab`'s shadow takes the theme's accent. `tokens.ts`: `headerBand`,
+  `tabPillWidth`, `tabPillHeight`.
+- Settings → Appearance: six swatch tiles (page, header band, card with accent tile) replace the three-segment
+  control; strings `settings.themeLight … themeBlush` (+ A11y) in en and ur; the help answer about themes updated.
+  `settings-validation.ts` / `api/types.ts` accept `RED` / `CREAM` / `MIDNIGHT` / `BLUSH` (`LOGO` still reads as red).
+- Tests: `src/theme/colors.test.ts` pins every theme's measured page, card, divider, tile, toggle-off, accent, text
+  and success colours, the Red band tokens and the night themes; `theme-preference.test.ts` covers the six
+  preferences and the legacy mappings.
+
+### Gate
+
+`npm run typecheck` clean; unit tests all passing (see the run in HANDOFF §4.37); `npm run lint` 0 errors;
+`git diff --check` clean. No native, patch, manifest, permission or download-rule change. No device here.
+
+### Device checklist for Faran (themes)
+
+- [ ] Settings → Appearance: the six swatches; each pick recolours every screen at once (tab bar included)
+- [ ] Red: the band reaches the top of the screen on every Browser and Downloads screen and on the Video sheet;
+      white title / button; red bottom bar with the white pill on the active tab; the in-page browser chrome on red
+- [ ] Dark and Midnight: status bar light; force-dark pages and the reader's dark palette follow them
+- [ ] Cold start in each theme: splash and onboarding colours match (no flash of the light page)
+- [ ] An upgrade from a build that stored `logo` opens in Red
