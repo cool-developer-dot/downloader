@@ -1,14 +1,9 @@
 import { memo } from 'react';
-import { RefreshControl, ScrollView, type ViewStyle } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Icon } from '@/components/base/Icon';
-import { Text } from '@/components/base/Text';
-import { Button } from '@/components/buttons/Button';
-import { EmptyState } from '@/components/common/EmptyState';
+import { ds, DsButton, DsIcon, DsText, type DsIconName } from '@/design';
 import { useTheme } from '@/hooks/use-theme';
-import { useTranslation } from '@/localization';
-import { useDownloadsTokens } from '../theme/downloads-tokens';
+import { useTranslation, type TranslationKey } from '@/localization';
 
 export type DownloadEmptyStateProps = {
   variant?: 'default' | 'search' | 'filter' | 'completed';
@@ -19,7 +14,16 @@ export type DownloadEmptyStateProps = {
 };
 
 const DESCRIPTION_MAX_WIDTH = 300;
-const CTA_MIN_WIDTH = 168;
+
+const VARIANTS: Record<
+  NonNullable<DownloadEmptyStateProps['variant']>,
+  { icon: DsIconName; title: TranslationKey; description: TranslationKey }
+> = {
+  default: { icon: 'download', title: 'downloads.emptyTitle', description: 'downloads.emptyDescription' },
+  search: { icon: 'search', title: 'downloads.emptySearchTitle', description: 'downloads.emptySearchDescription' },
+  filter: { icon: 'sliders-horizontal', title: 'downloads.emptyFilterTitle', description: 'downloads.emptyFilterDescription' },
+  completed: { icon: 'circle-check', title: 'downloads.emptyCompletedTitle', description: 'downloads.emptyCompletedDescription' },
+};
 
 export const DownloadEmptyState = memo(function DownloadEmptyState({
   variant = 'default',
@@ -28,91 +32,14 @@ export const DownloadEmptyState = memo(function DownloadEmptyState({
   onRefresh,
   testID = 'downloads-empty-state',
 }: DownloadEmptyStateProps) {
-  const downloadsTokens = useDownloadsTokens();
   const theme = useTheme();
   const { t } = useTranslation();
-
-  let content = (
-    <Box
-      testID={testID}
-      center
-      px={24}
-      style={
-        {
-          maxWidth: 360,
-          width: '100%',
-          alignSelf: 'center',
-        } as ViewStyle
-      }>
-      <Icon name="download-outline" size={downloadsTokens.emptyIconSize} color="default" />
-
-      <Box center gap={10} mt={20} style={{ maxWidth: DESCRIPTION_MAX_WIDTH, width: '100%' }}>
-        <Text
-          variant="title"
-          color="textPrimary"
-          align="center"
-          accessibilityRole="header">
-          {t('downloads.emptyTitle')}
-        </Text>
-        <Text
-          variant="body"
-          color="textSecondary"
-          align="center"
-          style={{ maxWidth: DESCRIPTION_MAX_WIDTH }}>
-          {t('downloads.emptyDescription')}
-        </Text>
-      </Box>
-
-      {onActionPress ? (
-        <Box mt={28} style={{ minWidth: CTA_MIN_WIDTH, alignSelf: 'center' }}>
-          <Button
-            title={t('downloads.emptyAction')}
-            onPress={onActionPress}
-            variant="primary"
-            size="medium"
-            fullWidth
-            accessibilityLabel={t('downloads.emptyAction')}
-            accessibilityHint={t('downloads.emptyActionHint')}
-            testID="downloads-empty-paste-link-button"
-          />
-        </Box>
-      ) : null}
-    </Box>
-  );
-
-  if (variant === 'search') {
-    content = (
-      <EmptyState
-        icon="magnify"
-        title={t('downloads.emptySearchTitle')}
-        description={t('downloads.emptySearchDescription')}
-        testID={testID}
-      />
-    );
-  } else if (variant === 'filter') {
-    content = (
-      <EmptyState
-        icon="filter-outline"
-        title={t('downloads.emptyFilterTitle')}
-        description={t('downloads.emptyFilterDescription')}
-        testID={testID}
-      />
-    );
-  } else if (variant === 'completed') {
-    content = (
-      <EmptyState
-        icon="check-circle-outline"
-        title={t('downloads.emptyCompletedTitle')}
-        description={t('downloads.emptyCompletedDescription')}
-        testID={testID}
-      />
-    );
-  }
+  const copy = VARIANTS[variant];
 
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: ds.space.screenX }}
       keyboardShouldPersistTaps="handled"
       refreshControl={
         onRefresh ? (
@@ -125,9 +52,36 @@ export const DownloadEmptyState = memo(function DownloadEmptyState({
           />
         ) : undefined
       }>
-      <Box flex={1} center px={16} py={32}>
-        {content}
-      </Box>
+      <View testID={testID} style={{ alignItems: 'center', paddingVertical: 32, gap: 10 }}>
+        <View
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 16,
+            backgroundColor: theme.colors.accentSoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <DsIcon name={copy.icon} size={26} color="primary" strokeWidth={1.8} />
+        </View>
+        <DsText variant="cardTitle" align="center" accessibilityRole="header" style={{ marginTop: 6 }}>
+          {t(copy.title)}
+        </DsText>
+        <DsText variant="body" align="center" style={{ maxWidth: DESCRIPTION_MAX_WIDTH }}>
+          {t(copy.description)}
+        </DsText>
+        {variant === 'default' && onActionPress ? (
+          <DsButton
+            label={t('downloads.emptyAction')}
+            variant="primary"
+            icon="globe"
+            onPress={onActionPress}
+            accessibilityHint={t('downloads.emptyActionHint')}
+            style={{ marginTop: 14, minWidth: 168 }}
+            testID="downloads-empty-paste-link-button"
+          />
+        ) : null}
+      </View>
     </ScrollView>
   );
 });

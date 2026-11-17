@@ -1,3 +1,21 @@
-/** Light theme (CEO design) — `lightTorrent` screen strings. Keys are added by the screen that uses them. */
+/** Light theme (CEO design) — `lightTorrent` screen strings (design 14 "Torrent"). */
 export const lightTorrentEn = {
+  title: 'Torrent',
+  noTorrent: 'No torrent',
+  none: '—',
+  downA11y: 'Download speed',
+  upA11y: 'Upload speed',
+  ratio: 'Ratio {ratio}',
+  progressA11y: 'Torrent progress',
+  files: 'Files',
+  peers: 'Peers',
+  trackers: 'Trackers',
+  info: 'Info',
+  seedsLeechers: 'Seeds / Leechers',
+  seedsValue: '— / —',
+  dhtPortIpFilter: 'DHT · Port · IP filter',
+  protocolEncryption: 'Protocol encryption',
+  bindToVpn: 'Bind to VPN',
+  sequentialDownload: 'Sequential download',
+  uploadLimit: 'Upload limit & disable upload',
 } as const;

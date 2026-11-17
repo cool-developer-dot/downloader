@@ -3,6 +3,7 @@ import { memo, useMemo, useState } from 'react';
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import { Chip } from '@/components/common/Chip';
+import { DsChip } from '@/design';
 import { allTags, SIZE_BUCKETS, type SizeBucket } from '@/library/item-organize';
 import { useItemTagsStore, useOrganizeFiltersStore } from '@/library/item-organize-store';
 import { useTranslation } from '@/localization';
@@ -40,7 +41,6 @@ const TagFilterSheet = memo(function TagFilterSheet({ visible, selected, onSelec
         id: `tag-${tag}`,
         label: `${tag} · ${count}${selected?.toLocaleLowerCase() === tag.toLocaleLowerCase() ? ' ✓' : ''}`,
         selected: selected?.toLocaleLowerCase() === tag.toLocaleLowerCase(),
-        icon: 'tag-outline',
         onPress: () => onSelect(tag),
       })),
     ],
@@ -57,7 +57,10 @@ function useHasTags(selected: string | null): boolean {
   return any || selected !== null;
 }
 
-/** Downloads → filters: Size (#396) and Tag (#387). Nothing chosen shows every download, as before. */
+/**
+ * Downloads → filters: Size (#396) and Tag (#387) as design chips after the status chips. Nothing chosen shows every
+ * download, as before.
+ */
 export const DownloadsOrganizeFilterChips = memo(function DownloadsOrganizeFilterChips({ testID }: { testID: string }) {
   const { t } = useTranslation();
   const size = useOrganizeFiltersStore((s) => s.downloadsSize);
@@ -81,18 +84,16 @@ export const DownloadsOrganizeFilterChips = memo(function DownloadsOrganizeFilte
 
   return (
     <>
-      <Chip
+      <DsChip
         label={size === 'all' ? t('organize.size') : t(SIZE_KEYS[size])}
         selected={size !== 'all'}
-        icon="harddisk"
         onPress={() => setSheet('size')}
         testID={`${testID}-size-chip`}
       />
       {showTags ? (
-        <Chip
+        <DsChip
           label={tag ?? t('organize.tag')}
           selected={tag !== null}
-          icon="tag-outline"
           onPress={() => setSheet('tag')}
           testID={`${testID}-tag-chip`}
         />
@@ -119,7 +120,7 @@ export const DownloadsOrganizeFilterChips = memo(function DownloadsOrganizeFilte
   );
 });
 
-/** Player → filters: Tag (#387). Nothing chosen shows every video, as before. */
+/** Player → filters: Tag (#387). Nothing chosen shows every video, as before. (The player keeps the old chrome.) */
 export const PlayerTagFilterChip = memo(function PlayerTagFilterChip({ testID }: { testID: string }) {
   const { t } = useTranslation();
   const tag = useOrganizeFiltersStore((s) => s.playerTag);

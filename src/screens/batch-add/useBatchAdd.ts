@@ -14,6 +14,25 @@ const MAX_FILE_BYTES = 512 * 1024;
 
 export type BatchRow = { url: string; status: 'pending' | 'running' | 'done'; result: BatchLinkResult | null };
 
+export type BatchStartOptions = {
+  /** A subset of `links` to run (the Playlist screen's selection); the whole list by default. */
+  links?: readonly string[];
+  /** Playlist "Cooldown between files": the wait before each link after the first. 0 by default. */
+  cooldownMs?: number;
+};
+
+function wait(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    }
+    signal.addEventListener('abort', done);
+  });
+}
+
 /**
  * Batch Add (#292) and Import Links from File (#293). Links run one at a time; leaving the screen stops the run
  * (a link already handed to the engine stays queued there).
@@ -32,20 +51,25 @@ export function useBatchAdd() {
 
   const links = useMemo(() => extractLinks(text), [text]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (options?: BatchStartOptions) => {
     if (runningRef.current) {
       return;
     }
-    const queue = links;
+    const wanted = options?.links;
+    const queue = wanted ? links.filter((url) => wanted.includes(url)) : links;
     if (queue.length === 0) {
       return;
     }
+    const cooldownMs = Math.max(0, options?.cooldownMs ?? 0);
     runningRef.current = true;
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
     setRows(queue.map((url) => ({ url, status: 'pending', result: null })));
     for (let index = 0; index < queue.length; index += 1) {
+      if (index > 0 && cooldownMs > 0) {
+        await wait(cooldownMs, controller.signal);
+      }
       if (controller.signal.aborted) {
         break;
       }

@@ -1,20 +1,14 @@
 import { memo } from 'react';
-import { ActivityIndicator, StyleSheet } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Icon } from '@/components/base/Icon';
-import { Text } from '@/components/base/Text';
-import { Skeleton } from '@/components/common/Skeleton';
+import { DsCard, DsIcon, DsText, ds } from '@/design';
+import type { AnalyzePhase } from '@/downloads/analyze/analyze-state-machine';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
-import { primaryAlphas } from '@/theme';
-
-import {
-  resolvePlatformDisplay,
-  shouldShowAnalyzeSpinner,
-} from './platform-display';
 import type { PlatformPageKind } from '@/media-detection/platform/types';
-import type { AnalyzePhase } from '@/downloads/analyze/analyze-state-machine';
+
+import { PREVIEW_HERO_HEIGHT } from './DownloadPreview';
+import { resolvePlatformDisplay, shouldShowAnalyzeSpinner } from './platform-display';
 
 export type AnalysisLoadingStateProps = {
   phase: AnalyzePhase;
@@ -22,66 +16,61 @@ export type AnalysisLoadingStateProps = {
   message?: string;
 };
 
+/** The sheet while a link is checked: the hero's place as a quiet track block, then the step's label with a spinner. */
 export const AnalysisLoadingState = memo(function AnalysisLoadingState({
   phase,
   platform = null,
   message,
 }: AnalysisLoadingStateProps) {
   const theme = useTheme();
-  const primary = primaryAlphas(theme.colors.primary);
-  const { t } = useTranslation();
+  const { t, rtl } = useTranslation();
   const label = message?.trim() || t('downloads.analyzing');
   const platformDisplay = resolvePlatformDisplay(platform);
   const showSpinner = shouldShowAnalyzeSpinner(phase);
 
   return (
-    <Box
-      gap={16}
+    <View
+      style={{ gap: ds.space.stack }}
       accessibilityRole="progressbar"
       accessibilityLabel={label}
       accessibilityLiveRegion="polite">
-      <Box
-        row
-        gap={14}
-        p={14}
-        borderRadius="md"
+      <View
         style={{
-          backgroundColor: theme.colors.surface,
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: theme.colors.border,
+          height: PREVIEW_HERO_HEIGHT,
+          borderRadius: ds.radius.card,
+          backgroundColor: theme.colors.track,
           alignItems: 'center',
+          justifyContent: 'center',
         }}>
-        <Box
-          center
-          style={{
-            width: 64,
-            height: 64,
-            borderRadius: theme.radius.sm,
-            backgroundColor: primary.medium,
-          }}>
-          {showSpinner ? (
-            <ActivityIndicator color={theme.colors.primary} size="small" />
-          ) : (
-            <Icon name={platformDisplay.icon} size={28} color="primary" />
-          )}
-        </Box>
-        <Box flex={1} gap={8}>
-          <Skeleton width="78%" height={16} />
-          <Skeleton width="48%" height={12} />
-          <Skeleton width="36%" height={12} />
-        </Box>
-      </Box>
-
-      <Box row gap={10} style={{ alignItems: 'center' }}>
         {showSpinner ? (
-          <ActivityIndicator color={theme.colors.primary} size="small" />
-        ) : null}
-        <Text variant="label" color="textSecondary" style={{ flex: 1 }}>
-          {label}
-        </Text>
-      </Box>
-
-      <Skeleton width="100%" height={64} borderRadius={theme.radius.md} />
-    </Box>
+          <ActivityIndicator color={theme.colors.primary} size="large" />
+        ) : (
+          <DsIcon name={platformDisplay.icon} size={30} color="textSecondary" strokeWidth={1.8} />
+        )}
+      </View>
+      <DsCard>
+        <View style={{ flexDirection: rtl.rowDirection, alignItems: 'center', gap: ds.space.rowGap }}>
+          <View
+            style={{
+              width: ds.size.iconTile,
+              height: ds.size.iconTile,
+              borderRadius: ds.radius.iconTile,
+              backgroundColor: theme.colors.accentSoft,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+            {showSpinner ? (
+              <ActivityIndicator color={theme.colors.primary} size="small" />
+            ) : (
+              <DsIcon name={platformDisplay.icon} size={ds.size.rowIcon} color="primary" strokeWidth={ds.stroke.row} />
+            )}
+          </View>
+          <View style={{ flex: 1, gap: 1 }}>
+            <DsText variant="rowTitle">{label}</DsText>
+            <DsText variant="rowSub">{platformDisplay.label}</DsText>
+          </View>
+        </View>
+      </DsCard>
+    </View>
   );
 });

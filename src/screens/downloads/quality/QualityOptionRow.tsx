@@ -1,20 +1,15 @@
 import { memo } from 'react';
-import { StyleSheet } from 'react-native';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { IconButton } from '@/components/buttons/IconButton';
-import { Icon } from '@/components/base/Icon';
-import { Pressable } from '@/components/base/Pressable';
-import { Text } from '@/components/base/Text';
+import { DsIcon, DsRow, ds } from '@/design';
 import {
   buildQualityAccessibilityLabel,
-  buildQualityMetaLine,
-  buildQualitySecondaryLine,
+  formatQualityFileSize,
+  formatStreamPresentation,
   type DownloadQualityOption,
 } from '@/downloads/quality';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
-import { primaryAlphas, withAlpha } from '@/theme';
 
 export type QualityOptionRowProps = {
   option: DownloadQualityOption;
@@ -24,113 +19,90 @@ export type QualityOptionRowProps = {
   interactionDisabled?: boolean;
   /** Plays this quality online (F17); absent when it cannot be played (split audio + video, refused). */
   onPlay?: (id: string) => void;
+  /** The design's "Best" mark on the first (highest) quality. */
+  best?: boolean;
   testID?: string;
 };
 
+/** "1080p · MP4" for a video, "MP3 · 192 kbps" for audio; the label alone when the rest is unknown. */
+export function qualityRowTitle(option: DownloadQualityOption, kbps: (value: number) => string): string {
+  if (option.isAudioOnly) {
+    const bitrate = option.audioBitrate ?? option.averageBitrate ?? option.bitrate;
+    const rate = typeof bitrate === 'number' && Number.isFinite(bitrate) && bitrate > 0 ? kbps(Math.round(bitrate / 1000)) : null;
+    return rate ? `${option.label} · ${rate}` : option.label;
+  }
+  const format = formatStreamPresentation(option);
+  return format && format !== option.label ? `${option.label} · ${format}` : option.label;
+}
+
+/** "Best · 120 MB", "54 MB", or the size alone; the unsupported badge for a quality that can't be downloaded. */
+export function qualityRowSubtitle(
+  option: DownloadQualityOption,
+  input: { best: boolean; bestLabel: string; unsupportedLabel: string },
+): string | undefined {
+  if (!option.downloadable) {
+    return input.unsupportedLabel;
+  }
+  const size = formatQualityFileSize(option.estimatedFileSize ?? option.fileSize)?.replace(/^≈\s*/, '') ?? null;
+  const parts = [input.best ? input.bestLabel : null, size].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+}
+
+/**
+ * The design's quality row (design 33): a film (or music) tile, "1080p · MP4" over "Best · 120 MB", a chevron.
+ * Tap selects it (the sheet then downloads it); long press plays it online when that is possible (F17). The selected
+ * row's tile is drawn in the accent.
+ */
 export const QualityOptionRow = memo(function QualityOptionRow({
   option,
   selected,
   onSelect,
   interactionDisabled = false,
   onPlay,
+  best = false,
   testID,
 }: QualityOptionRowProps) {
   const theme = useTheme();
   const { t } = useTranslation();
-  const primary = primaryAlphas(theme.colors.primary);
-  const meta = buildQualityMetaLine(option);
-  const secondary = buildQualitySecondaryLine(option);
   const unsupported = !option.downloadable;
   const disabled = unsupported || interactionDisabled;
-
-  const borderColor = selected
-    ? theme.colors.primary
-    : theme.colors.border;
-  const backgroundColor = selected ? primary.strong : theme.colors.surface;
+  const title = qualityRowTitle(option, (value) => t('lightVideoSheet.kbps', { value }));
+  const subtitle = qualityRowSubtitle(option, {
+    best,
+    bestLabel: t('lightVideoSheet.best'),
+    unsupportedLabel: t('downloads.unsupportedBadge'),
+  });
+  const canPlay = Boolean(onPlay) && !unsupported;
 
   return (
-    <Pressable
+    <DsRow
       testID={testID}
-      onPress={() => onSelect(option.id)}
-      disabled={disabled}
-      accessibilityRole="radio"
-      accessibilityState={{ selected, disabled }}
-      accessibilityLabel={buildQualityAccessibilityLabel(option, selected)}
-      style={{
-        minHeight: 56,
-        borderRadius: theme.radius.md,
-        borderWidth: selected ? 2 : StyleSheet.hairlineWidth,
-        borderColor,
-        backgroundColor,
-        paddingHorizontal: theme.spacing[16],
-        paddingVertical: 14,
-        opacity: disabled ? 0.78 : 1,
-      }}>
-      <Box row style={{ alignItems: 'center', justifyContent: 'space-between' }} gap={12}>
-        <Box flex={1} gap={4}>
-          <Box row style={{ alignItems: 'center', flexWrap: 'wrap' }} gap={8}>
-            <Text variant="subtitle" style={{ flexShrink: 1 }}>
-              {option.label}
-            </Text>
-            {unsupported ? (
-              <Box
-                px={8}
-                py={2}
-                borderRadius="full"
-                style={{ backgroundColor: withAlpha(theme.colors.warning, 0.16) }}>
-                <Text variant="caption" color="warning">
-                  {t('downloads.unsupportedBadge')}
-                </Text>
-              </Box>
-            ) : null}
-          </Box>
-
-          {meta ? (
-            <Text variant="bodySmall" color="textSecondary" style={{ flexShrink: 1 }}>
-              {meta}
-            </Text>
-          ) : null}
-
-          {secondary ? (
-            <Text variant="caption" color="textSecondary" style={{ flexShrink: 1 }}>
-              {secondary}
-            </Text>
-          ) : null}
-        </Box>
-
-        {onPlay && !unsupported ? (
-          <IconButton
-            icon="play-circle-outline"
-            variant="ghost"
-            size="small"
-            color="primary"
-            disabled={interactionDisabled}
-            onPress={() => onPlay(option.id)}
-            accessibilityLabel={t('downloads.playOptionA11y', { label: option.label })}
-            accessibilityHint={t('downloads.playHint')}
-            testID={testID ? `${testID}-play` : undefined}
-          />
-        ) : null}
-
-        <Box
-          center
+      leading={
+        <View
           style={{
-            width: 24,
-            height: 24,
-            borderRadius: 12,
-            borderWidth: 2,
-            borderColor: selected
-              ? theme.colors.primary
-              : disabled
-                ? theme.colors.textDisabled
-                : theme.colors.border,
-            backgroundColor: selected ? theme.colors.primary : 'transparent',
-          }}
-          accessibilityElementsHidden
-          importantForAccessibility="no">
-          {selected ? <Icon name="check" size={14} color="inverse" /> : null}
-        </Box>
-      </Box>
-    </Pressable>
+            width: ds.size.iconTile,
+            height: ds.size.iconTile,
+            borderRadius: ds.radius.iconTile,
+            backgroundColor: selected ? theme.colors.primary : theme.colors.accentSoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <DsIcon
+            name={option.isAudioOnly ? 'music' : 'film'}
+            size={ds.size.rowIcon}
+            color={selected ? 'textOnPrimary' : 'primary'}
+            strokeWidth={ds.stroke.row}
+          />
+        </View>
+      }
+      title={title}
+      subtitle={subtitle}
+      onPress={() => onSelect(option.id)}
+      onLongPress={canPlay ? () => onPlay?.(option.id) : undefined}
+      disabled={disabled}
+      trailing="chevron"
+      accessibilityLabel={buildQualityAccessibilityLabel(option, selected)}
+      accessibilityHint={canPlay ? `${t('lightVideoSheet.rowHint')}. ${t('lightVideoSheet.playRowHint')}` : t('lightVideoSheet.rowHint')}
+    />
   );
 });

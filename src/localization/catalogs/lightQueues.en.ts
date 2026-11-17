@@ -1,3 +1,25 @@
-/** Light theme (CEO design) — `lightQueues` screen strings. Keys are added by the screen that uses them. */
+/** Light theme (CEO design) — `lightQueues` screen strings (design 13 "Queues & schedule"). */
 export const lightQueuesEn = {
+  title: 'Queues & schedule',
+  mainQueue: 'Main queue',
+  maxAtOnce: 'Max {count} at once',
+  nightQueue: 'Night queue',
+  startsAt: 'Starts {time}',
+  scheduledDownload: 'Scheduled download',
+  startStopTime: 'Start / stop time',
+  weeklySchedule: 'Weekly schedule',
+  smartRules: 'Smart rules',
+  wifiOnly: 'Wi-Fi only',
+  disableOnRoaming: 'Disable on roaming',
+  pauseOnLowBattery: 'Pause on low battery',
+  onlyWhileCharging: 'Only while charging',
+  exitWhenDone: 'Exit when done',
+  postDownloadAction: 'Post-download action',
+  hoursTitle: 'Download hours',
+  hoursEnabled: 'Download only during these hours',
+  hoursDays: 'Days',
+  hoursEarlier: 'Earlier',
+  hoursLater: 'Later',
+  hoursAllDay: 'All day',
+  hoursSummary: '{start} – {end}',
 } as const;

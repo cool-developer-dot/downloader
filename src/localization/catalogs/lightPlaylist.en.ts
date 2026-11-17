@@ -1,3 +1,20 @@
-/** Light theme (CEO design) — `lightPlaylist` screen strings. Keys are added by the screen that uses them. */
+/** Light theme (CEO design) — `lightPlaylist` screen strings (design 40 "Playlist download"). */
 export const lightPlaylistEn = {
+  title: 'Playlist',
+  videos: '{count} videos',
+  settingsA11y: 'Download settings',
+  all: 'All',
+  selected: 'Selected {count}',
+  selectHint: 'Adds this video to the download',
+  unselectHint: 'Leaves this video out of the download',
+  qualityForAll: 'Quality for all',
+  qualityBest: 'Best available',
+  qualityBestHint: 'Every video is added at the default quality',
+  dataEstimate: 'Data estimate',
+  cooldown: 'Cooldown between files',
+  cooldownValue: '{seconds} s',
+  cooldownHint: 'Waits this long before the next link is checked',
+  download: 'Download {count}',
+  downloadHint: 'Checks and adds the selected videos one by one',
+  empty: 'No links yet. Add some from Add download → Playlist.',
 } as const;
