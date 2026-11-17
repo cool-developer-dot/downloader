@@ -113,8 +113,11 @@ const blank = (): UserScript => ({
   allowIncognito: false,
 });
 
-/** #199: the list, a plain editor, and import of a `.user.js` file (its header read as text; nothing downloaded). */
-const UserScriptsSheet = memo(function UserScriptsSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+/**
+ * #199: the list, a plain editor, and import of a `.user.js` file (its header read as text; nothing downloaded).
+ * Also opened by the design's Developer tools screen (User scripts row).
+ */
+export const UserScriptsSheet = memo(function UserScriptsSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { t, rtl } = useTranslation();
   const scripts = useUserScripts();
   const [editing, setEditing] = useState<UserScript | null>(null);

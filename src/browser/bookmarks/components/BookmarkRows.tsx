@@ -1,148 +1,183 @@
 import { Image } from 'expo-image';
-import { memo, useState } from 'react';
-import { PixelRatio, View, type AccessibilityActionEvent } from 'react-native';
+import { memo, useState, type ReactNode } from 'react';
+import { PixelRatio, View } from 'react-native';
 
-import { Icon } from '@/components/base/Icon';
 import { Pressable } from '@/components/base/Pressable';
-import { Text } from '@/components/base/Text';
+import { DsIcon, DsText, ds, type DsIconName } from '@/design';
 import { useTheme } from '@/hooks/use-theme';
-import { useTranslation } from '@/localization';
+import { useRtl, useTranslation } from '@/localization';
 import { buildFaviconUrl } from '@/screens/bookmarks/utils/bookmark-format';
 import type { BookmarkFolder, OrganizedBookmark } from '@/storage/repositories';
 
-/** Row height that still fits three lines at the phone's font scale (no text cut at 1.3). */
+/**
+ * Design 4 — the rows of the Bookmarks card, in the kit's list-row look (34 dp tile · title / subtitle · chevron).
+ * They sit in `SortableRows`, which places rows absolutely, so every row is one fixed height (the design's 58 dp,
+ * scaled with the phone's font size) and its text stays on one line — which is why this is not `DsRow` itself.
+ */
 export function bookmarkRowHeight(): number {
-  return Math.ceil(76 * Math.max(1, Math.min(2, PixelRatio.getFontScale())));
+  return Math.ceil(ds.size.rowMinHeight * Math.max(1, Math.min(2, PixelRatio.getFontScale())));
 }
 
-type MoveProps = {
-  canMoveUp: boolean;
-  canMoveDown: boolean;
-  onMoveBy: (delta: -1 | 1) => void;
-  onOptions: () => void;
-};
-
-function a11yActions(t: (k: 'browserBookmarks.moveUp' | 'browserBookmarks.moveDown' | 'browserBookmarks.moreA11y') => string, p: MoveProps) {
-  const list: { name: string; label: string }[] = [{ name: 'longpress', label: t('browserBookmarks.moreA11y') }];
-  if (p.canMoveUp) list.push({ name: 'moveUp', label: t('browserBookmarks.moveUp') });
-  if (p.canMoveDown) list.push({ name: 'moveDown', label: t('browserBookmarks.moveDown') });
-  return list;
-}
-
-function onA11yAction(event: AccessibilityActionEvent, p: MoveProps) {
-  if (event.nativeEvent.actionName === 'moveUp') p.onMoveBy(-1);
-  else if (event.nativeEvent.actionName === 'moveDown') p.onMoveBy(1);
-  else if (event.nativeEvent.actionName === 'longpress') p.onOptions();
-}
-
-const MoreButton = memo(function MoreButton({ onPress, testID }: { onPress: () => void; testID?: string }) {
-  const { t } = useTranslation();
+/** The 34 dp soft-red tile with a red stroke icon (the kit's row tile). */
+export const IconTile = memo(function IconTile({ icon }: { icon: DsIconName }) {
+  const theme = useTheme();
   return (
-    <Pressable
-      testID={testID}
-      accessibilityRole="button"
-      accessibilityLabel={t('browserBookmarks.moreA11y')}
-      onPress={onPress}
-      style={{ width: 48, height: 48, alignItems: 'center', justifyContent: 'center' }}>
-      <Icon name="dots-vertical" size={20} color="secondary" />
-    </Pressable>
+    <View
+      style={{
+        width: ds.size.iconTile,
+        height: ds.size.iconTile,
+        borderRadius: ds.radius.iconTile,
+        backgroundColor: theme.colors.accentSoft,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}>
+      <DsIcon name={icon} size={ds.size.rowIcon} color="primary" strokeWidth={ds.stroke.row} />
+    </View>
   );
 });
 
+/** The 34 dp tile with the site's icon, or the globe when it has none. */
+export const FaviconTile = memo(function FaviconTile({ hostname }: { hostname: string }) {
+  const theme = useTheme();
+  const [failed, setFailed] = useState(false);
+  const favicon = buildFaviconUrl(hostname);
+  if (!favicon || failed) return <IconTile icon="globe" />;
+  return (
+    <View
+      style={{
+        width: ds.size.iconTile,
+        height: ds.size.iconTile,
+        borderRadius: ds.radius.iconTile,
+        backgroundColor: theme.colors.accentSoft,
+        alignItems: 'center',
+        justifyContent: 'center',
+        overflow: 'hidden',
+      }}>
+      <Image source={{ uri: favicon }} style={{ width: 18, height: 18 }} contentFit="contain" onError={() => setFailed(true)} />
+    </View>
+  );
+});
+
+export type ListRowProps = {
+  leading: ReactNode;
+  title: string;
+  subtitle?: string;
+  /** The row's total height; the 1 dp line above it (every row but a card's first) is drawn inside it. */
+  height: number;
+  divided?: boolean;
+  /** Replaces the chevron (a toggle, say). */
+  trailing?: ReactNode;
+  onPress: () => void;
+  onLongPress?: () => void;
+  accessibilityLabel?: string;
+  accessibilityHint?: string;
+  testID?: string;
+};
+
+/** One fixed-height list row with the kit's tokens: tile · one-line title / subtitle · chevron. */
+export const ListRow = memo(function ListRow({
+  leading,
+  title,
+  subtitle,
+  height,
+  divided = false,
+  trailing,
+  onPress,
+  onLongPress,
+  accessibilityLabel,
+  accessibilityHint,
+  testID,
+}: ListRowProps) {
+  const theme = useTheme();
+  const rtl = useRtl();
+  return (
+    <View style={{ height }}>
+      {divided ? <View style={{ height: 1, backgroundColor: theme.colors.divider }} /> : null}
+      <Pressable
+        testID={testID}
+        onPress={onPress}
+        onLongPress={onLongPress}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel ?? (subtitle ? `${title}, ${subtitle}` : title)}
+        accessibilityHint={accessibilityHint}
+        style={({ pressed }) => ({
+          flex: 1,
+          flexDirection: rtl.rowDirection,
+          alignItems: 'center',
+          gap: ds.space.rowGap,
+          paddingHorizontal: ds.space.cardPad,
+          backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent',
+        })}>
+        {leading}
+        <View style={{ flex: 1, gap: 1 }}>
+          <DsText variant="rowTitle" numberOfLines={1}>
+            {title}
+          </DsText>
+          {subtitle ? (
+            <DsText variant="rowSub" numberOfLines={1}>
+              {subtitle}
+            </DsText>
+          ) : null}
+        </View>
+        {trailing ?? (
+          <DsIcon name={rtl.isRtl ? 'chevron-left' : 'chevron-right'} size={ds.size.rowChevron} color="textSecondary" strokeWidth={1.8} />
+        )}
+      </Pressable>
+    </View>
+  );
+});
+
+type RowProps = { onOpen: () => void; onOptions: () => void; divided?: boolean; height: number };
+
 export const FolderRow = memo(function FolderRow({
   folder,
+  itemCount,
   onOpen,
-  ...move
-}: { folder: BookmarkFolder; onOpen: () => void } & MoveProps) {
-  const theme = useTheme();
-  const { t, rtl } = useTranslation();
+  onOptions,
+  divided,
+  height,
+}: { folder: BookmarkFolder; itemCount: number | null } & RowProps) {
+  const { t, tp } = useTranslation();
   return (
-    <View style={{ flex: 1, flexDirection: rtl.rowDirection, alignItems: 'center', paddingHorizontal: 12, gap: 8 }}>
-      <Pressable
-        testID={`bookmark-folder-${folder.id}`}
-        accessibilityRole="button"
-        accessibilityLabel={t('browserBookmarks.folderA11y', { name: folder.name })}
-        accessibilityHint={t('browserBookmarks.folderHint')}
-        accessibilityActions={a11yActions(t, move)}
-        onAccessibilityAction={(e) => onA11yAction(e, move)}
-        onPress={onOpen}
-        style={{ flex: 1, minHeight: 48, flexDirection: rtl.rowDirection, alignItems: 'center', gap: 12 }}>
-        <View
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            backgroundColor: theme.colors.surface,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-          <Icon name={folder.id === 'bookmarks-bar' ? 'bookmark-box-multiple-outline' : 'folder-outline'} size={20} color="primary" />
-        </View>
-        <Text variant="body" numberOfLines={2} style={{ flex: 1 }}>
-          {folder.name}
-        </Text>
-      </Pressable>
-      <MoreButton onPress={move.onOptions} testID={`bookmark-folder-more-${folder.id}`} />
-    </View>
+    <ListRow
+      leading={<IconTile icon={folder.id === 'bookmarks-bar' ? 'star' : 'folder'} />}
+      title={folder.name}
+      subtitle={itemCount == null ? undefined : tp('plurals.itemsOther', itemCount, { count: itemCount })}
+      height={height}
+      divided={divided}
+      onPress={onOpen}
+      onLongPress={onOptions}
+      accessibilityLabel={t('browserBookmarks.folderA11y', { name: folder.name })}
+      accessibilityHint={t('lightBookmarks.folderOptionsHint')}
+      testID={`bookmark-folder-${folder.id}`}
+    />
   );
 });
 
 export const BookmarkRow = memo(function BookmarkRow({
   bookmark,
   onOpen,
-  ...move
-}: { bookmark: OrganizedBookmark; onOpen: () => void } & MoveProps) {
-  const theme = useTheme();
-  const { t, rtl } = useTranslation();
-  const [faviconFailed, setFaviconFailed] = useState(false);
-  const favicon = buildFaviconUrl(bookmark.hostname);
+  onOptions,
+  divided,
+  height,
+}: { bookmark: OrganizedBookmark } & RowProps) {
+  const { t } = useTranslation();
   const second = [bookmark.hostname || bookmark.url, bookmark.note ? bookmark.note.replace(/\s+/g, ' ') : null]
     .filter(Boolean)
     .join(' · ');
+  const tags = bookmark.tags.length ? bookmark.tags.map((tag) => `#${tag}`).join('  ') : '';
   return (
-    <View style={{ flex: 1, flexDirection: rtl.rowDirection, alignItems: 'center', paddingHorizontal: 12, gap: 8 }}>
-      <Pressable
-        testID={`bookmark-row-${bookmark.id}`}
-        accessibilityRole="button"
-        accessibilityLabel={[bookmark.title, second, bookmark.tags.length ? bookmark.tags.join(', ') : null]
-          .filter(Boolean)
-          .join('. ')}
-        accessibilityHint={t('browserBookmarks.bookmarkHint')}
-        accessibilityActions={a11yActions(t, move)}
-        onAccessibilityAction={(e) => onA11yAction(e, move)}
-        onPress={onOpen}
-        style={{ flex: 1, minHeight: 48, flexDirection: rtl.rowDirection, alignItems: 'center', gap: 12 }}>
-        <View
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 10,
-            backgroundColor: theme.colors.surface,
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-          }}>
-          {favicon && !faviconFailed ? (
-            <Image source={{ uri: favicon }} style={{ width: 20, height: 20 }} onError={() => setFaviconFailed(true)} />
-          ) : (
-            <Icon name="web" size={20} color="secondary" />
-          )}
-        </View>
-        <View style={{ flex: 1, minWidth: 0 }}>
-          <Text variant="body" numberOfLines={1}>
-            {bookmark.title}
-          </Text>
-          <Text variant="caption" color="textSecondary" numberOfLines={1}>
-            {second}
-          </Text>
-          {bookmark.tags.length ? (
-            <Text variant="caption" color="primary" numberOfLines={1}>
-              {bookmark.tags.map((tag) => `#${tag}`).join('  ')}
-            </Text>
-          ) : null}
-        </View>
-      </Pressable>
-      <MoreButton onPress={move.onOptions} testID={`bookmark-more-${bookmark.id}`} />
-    </View>
+    <ListRow
+      leading={<FaviconTile hostname={bookmark.hostname} />}
+      title={bookmark.title}
+      subtitle={tags ? `${second} · ${tags}` : second}
+      height={height}
+      divided={divided}
+      onPress={onOpen}
+      onLongPress={onOptions}
+      accessibilityLabel={[bookmark.title, second, bookmark.tags.length ? bookmark.tags.join(', ') : null].filter(Boolean).join('. ')}
+      accessibilityHint={t('lightBookmarks.bookmarkOptionsHint')}
+      testID={`bookmark-row-${bookmark.id}`}
+    />
   );
 });

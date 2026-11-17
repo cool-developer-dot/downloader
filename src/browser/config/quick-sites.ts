@@ -1,3 +1,4 @@
+import type { DsIconName } from '@/design/DsIcon';
 import type { ColorTokenKey } from '@/theme/colors';
 
 export type QuickSiteCategory = 'video' | 'social';
@@ -8,8 +9,10 @@ export type QuickSite = {
   url: string;
   hostname: string;
   category: QuickSiteCategory;
-  /** Generic MaterialCommunityIcons glyph shown on the tile. Never a third-party brand logo. */
+  /** Generic MaterialCommunityIcons glyph shown on the tile (legacy Home grid). Never a third-party brand logo. */
   icon: string;
+  /** The light design's Lucide glyph for the start page tile (design 1: camera, music, users, film, play, file-text). */
+  dsIcon: DsIconName;
   /** Subtle tile accent from the VidoraX palette. */
   accent: ColorTokenKey;
 };
@@ -28,6 +31,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     hostname: 'instagram.com',
     category: 'social',
     icon: 'account-group-outline',
+    dsIcon: 'camera',
     accent: 'primary',
   },
   {
@@ -37,6 +41,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     hostname: 'tiktok.com',
     category: 'video',
     icon: 'video-outline',
+    dsIcon: 'music',
     accent: 'textPrimary',
   },
   {
@@ -46,6 +51,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     hostname: 'facebook.com',
     category: 'social',
     icon: 'forum-outline',
+    dsIcon: 'users',
     accent: 'info',
   },
   {
@@ -55,6 +61,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     hostname: 'vimeo.com',
     category: 'video',
     icon: 'filmstrip',
+    dsIcon: 'film',
     accent: 'info',
   },
   {
@@ -64,6 +71,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     hostname: 'dailymotion.com',
     category: 'video',
     icon: 'play-circle-outline',
+    dsIcon: 'play',
     accent: 'primary',
   },
   {
@@ -73,6 +81,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     hostname: 'reddit.com',
     category: 'social',
     icon: 'message-outline',
+    dsIcon: 'file-text',
     accent: 'warning',
   },
   {
@@ -82,6 +91,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     hostname: 'pinterest.com',
     category: 'social',
     icon: 'image-multiple-outline',
+    dsIcon: 'images',
     accent: 'error',
   },
   {
@@ -91,6 +101,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     hostname: 'web.telegram.org',
     category: 'social',
     icon: 'compass-outline',
+    dsIcon: 'radio',
     accent: 'info',
   },
   {
@@ -100,6 +111,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     hostname: 'x.com',
     category: 'social',
     icon: 'web',
+    dsIcon: 'globe',
     accent: 'textPrimary',
   },
   {
@@ -109,6 +121,7 @@ export const QUICK_SITES: readonly QuickSite[] = [
     hostname: 'twitch.tv',
     category: 'video',
     icon: 'movie-open-outline',
+    dsIcon: 'tv',
     accent: 'primary',
   },
   {
@@ -118,12 +131,13 @@ export const QUICK_SITES: readonly QuickSite[] = [
     hostname: 'web.snapchat.com',
     category: 'social',
     icon: 'account-group-outline',
+    dsIcon: 'camera',
     accent: 'warning',
   },
 ] as const;
 
 /**
- * Visible Browser start-page Quick Access — exactly 9 promoted shortcuts (3×3).
+ * Visible Browser start-page Quick Access — exactly the design's six tiles (design 1 "Browser · Home": 3 × 2).
  */
 export const START_PAGE_QUICK_SITE_IDS = [
   'instagram',
@@ -132,9 +146,6 @@ export const START_PAGE_QUICK_SITE_IDS = [
   'vimeo',
   'dailymotion',
   'reddit',
-  'pinterest',
-  'telegram',
-  'x',
 ] as const;
 
 const quickSiteById = new Map(QUICK_SITES.map((site) => [site.id, site]));
@@ -152,7 +163,7 @@ export const START_PAGE_QUICK_SITES: readonly QuickSite[] = START_PAGE_QUICK_SIT
 /** Quick Access always uses three columns on phones and tablets. */
 export const QUICK_ACCESS_COLUMNS = 3 as const;
 
-/** Start-page grid is a fixed 3×3 (9 tiles). */
+/** Start-page grid is a fixed 3 × 2 (6 tiles). */
 export const START_PAGE_QUICK_ACCESS_COUNT = START_PAGE_QUICK_SITE_IDS.length;
 
 /** @deprecated Use QUICK_ACCESS_COLUMNS — kept for bookmark grid compatibility. */

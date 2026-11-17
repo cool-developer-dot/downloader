@@ -2,9 +2,9 @@ import { Image } from 'expo-image';
 import { memo, useCallback, useState } from 'react';
 
 import { Box } from '@/components/base/Box';
-import { Icon, type IconName } from '@/components/base/Icon';
 import { Pressable } from '@/components/base/Pressable';
 import { Text } from '@/components/base/Text';
+import { DsIcon, ds, type DsIconName } from '@/design';
 import type { OmniboxSuggestion, SuggestionKind } from '@/browser/suggestions';
 import { BROWSER_TOUCH_TARGET } from '@/browser/constants';
 import { useTranslation } from '@/localization';
@@ -13,7 +13,6 @@ import { EngineBadge } from '@/browser/components/EngineBadge';
 import { getSearchEngine, SEARCH_ENGINES, type SearchEngineId } from '@/browser/search/search-engines';
 import type { TranslateFn } from '@/localization';
 import { useTheme } from '@/hooks/use-theme';
-import { primaryAlphas } from '@/theme';
 
 import { HighlightedText } from './HighlightedText';
 
@@ -24,7 +23,7 @@ export type SuggestionItemProps = {
 };
 
 function kindMeta(kind: SuggestionKind, t: TranslateFn): {
-  icon: IconName;
+  icon: DsIconName;
   badge: string;
   badgeColor: 'primary' | 'textSecondary' | 'success';
 } {
@@ -34,21 +33,21 @@ function kindMeta(kind: SuggestionKind, t: TranslateFn): {
     case 'history':
       return { icon: 'history', badge: t('browserAddress.suggestionKinds.history'), badgeColor: 'textSecondary' };
     case 'frequent':
-      return { icon: 'chart-line', badge: t('browserAddress.suggestionKinds.frequent'), badgeColor: 'success' };
+      return { icon: 'zap', badge: t('browserAddress.suggestionKinds.frequent'), badgeColor: 'success' };
     case 'domain':
-      return { icon: 'web', badge: t('browserAddress.suggestionKinds.site'), badgeColor: 'textSecondary' };
+      return { icon: 'globe', badge: t('browserAddress.suggestionKinds.site'), badgeColor: 'textSecondary' };
     case 'recent_search':
-      return { icon: 'magnify', badge: t('browserAddress.suggestionKinds.recent'), badgeColor: 'textSecondary' };
+      return { icon: 'search', badge: t('browserAddress.suggestionKinds.recent'), badgeColor: 'textSecondary' };
     case 'search':
-      return { icon: 'magnify', badge: t('browserAddress.suggestionKinds.search'), badgeColor: 'primary' };
+      return { icon: 'search', badge: t('browserAddress.suggestionKinds.search'), badgeColor: 'primary' };
     case 'calculator':
-      return { icon: 'calculator-variant-outline', badge: t('browserAddress.calculator'), badgeColor: 'primary' };
+      return { icon: 'cpu', badge: t('browserAddress.calculator'), badgeColor: 'primary' };
     case 'exact_url':
       return { icon: 'arrow-right', badge: t('browserAddress.suggestionKinds.go'), badgeColor: 'primary' };
     case 'remote_suggest':
-      return { icon: 'cloud-outline', badge: t('browserAddress.suggestionKinds.suggest'), badgeColor: 'textSecondary' };
+      return { icon: 'cloud', badge: t('browserAddress.suggestionKinds.suggest'), badgeColor: 'textSecondary' };
     default:
-      return { icon: 'web', badge: t('browserAddress.suggestionKinds.link'), badgeColor: 'textSecondary' };
+      return { icon: 'globe', badge: t('browserAddress.suggestionKinds.link'), badgeColor: 'textSecondary' };
   }
 }
 
@@ -65,6 +64,7 @@ function engineOfSearchRow(item: OmniboxSuggestion): SearchEngineId | null {
   return host ? null : getSearchEngine().id;
 }
 
+/** A suggestion row in the light design: the 34 dp soft-red tile with a red Lucide stroke, title and secondary line. */
 export const SuggestionItem = memo(function SuggestionItem({
   item,
   onPress,
@@ -72,7 +72,6 @@ export const SuggestionItem = memo(function SuggestionItem({
 }: SuggestionItemProps) {
   const { t } = useTranslation();
   const theme = useTheme();
-  const primary = primaryAlphas(theme.colors.primary);
   const [faviconFailed, setFaviconFailed] = useState(false);
   const [pressed, setPressed] = useState(false);
   const isGo = item.kind === 'exact_url';
@@ -103,21 +102,21 @@ export const SuggestionItem = memo(function SuggestionItem({
           : `${item.title}. ${item.subtitle}. ${meta.badge}`
       }
       accessibilityHint={isCalculator ? undefined : t('browser.openSuggestionHint')}
-      style={({ pressed }) => ({
+      style={({ pressed: isPressed }) => ({
         minHeight: BROWSER_TOUCH_TARGET + 8,
-        paddingHorizontal: 16,
+        paddingHorizontal: ds.space.cardPad,
         paddingVertical: 10,
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 12,
-        backgroundColor: pressed ? primary.pressed : 'transparent',
+        gap: ds.space.rowGap,
+        backgroundColor: isPressed ? theme.colors.surfacePressed : 'transparent',
       })}>
       <Box
         style={{
-          width: 36,
-          height: 36,
-          borderRadius: 10,
-          backgroundColor: primary.subtle,
+          width: ds.size.iconTile,
+          height: ds.size.iconTile,
+          borderRadius: ds.radius.iconTile,
+          backgroundColor: theme.colors.accentSoft,
           alignItems: 'center',
           justifyContent: 'center',
           overflow: 'hidden',
@@ -132,7 +131,7 @@ export const SuggestionItem = memo(function SuggestionItem({
             onError={() => setFaviconFailed(true)}
           />
         ) : (
-          <Icon name={meta.icon} size="sm" color="secondary" />
+          <DsIcon name={meta.icon} size={ds.size.rowIcon} color="primary" strokeWidth={ds.stroke.row} />
         )}
       </Box>
 
@@ -147,7 +146,7 @@ export const SuggestionItem = memo(function SuggestionItem({
       </Box>
 
       {isGo ? (
-        // The typed address itself: a clear, rounded "Go →" action in the theme's primary colour.
+        // The typed address itself: a clear, rounded "Go →" action in the accent colour.
         <Box
           testID={testID ? `${testID}-go` : undefined}
           row
@@ -164,13 +163,13 @@ export const SuggestionItem = memo(function SuggestionItem({
           <Text variant="button" color="textOnPrimary" numberOfLines={1}>
             {t('browser.goAction')}
           </Text>
-          <Icon name="arrow-right" size="xs" color="onPrimary" />
+          <DsIcon name="arrow-right" size={14} color="textOnPrimary" strokeWidth={2.2} />
         </Box>
       ) : (
       <Box gap={4} style={{ alignItems: 'flex-end', maxWidth: 72 }}>
         <Box row gap={4} style={{ alignItems: 'center' }}>
           {item.bookmarked || item.kind === 'bookmark' ? (
-            <Icon name="bookmark" size="xs" color="primary" />
+            <DsIcon name="bookmark" size={12} color="primary" strokeWidth={2} />
           ) : null}
           <Text variant="caption" color={meta.badgeColor} numberOfLines={1}>
             {meta.badge}

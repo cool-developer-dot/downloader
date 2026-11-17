@@ -1,3 +1,24 @@
-/** Light theme (CEO design) — `lightPrivacy` screen strings. Keys are added by the screen that uses them. */
+/** Light theme (CEO design) — `lightPrivacy` screen strings (design 5, Privacy & security). */
 export const lightPrivacyEn = {
+  title: 'Privacy & security',
+  protectionOn: 'Protection is ON',
+  protectionOff: 'Protection is OFF',
+  openSettingsA11y: 'Open browser settings',
+  blocked: 'trackers & ads blocked',
+  blockedA11y: '{count} trackers and ads blocked on this page',
+  adBlocker: 'Ad / tracker / pop-up blocker',
+  adBlockerHint: 'Opens the blocking lists',
+  phishing: 'Phishing & safe browsing',
+  cookies: 'Cookie control',
+  cookieAllowAll: 'Allow all',
+  cookieBlockThirdParty: 'Block third-party',
+  cookieBlockAll: 'Block all',
+  fingerprint: 'Anti-fingerprinting',
+  proxy: 'Proxy / DNS / JS off',
+  proxyNote: 'Proxy and DNS settings are not available yet. JavaScript, cookies and site data are below.',
+  perSite: 'Per site',
+  sitePermissions: 'Site permissions',
+  sitePermissionsHint: 'Location · Camera · Mic · Notifications',
+  certificate: 'Certificate & site data',
+  doNotTrack: 'Do Not Track',
 } as const;

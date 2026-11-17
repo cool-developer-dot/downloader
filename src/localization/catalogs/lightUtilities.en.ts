@@ -1,3 +1,25 @@
-/** Light theme (CEO design) — `lightUtilities` screen strings. Keys are added by the screen that uses them. */
+/** Light theme (CEO design) — `lightUtilities` screen strings (design 38 "Utilities"). */
 export const lightUtilitiesEn = {
+  title: 'Utilities',
+  subtitle: 'Daily tools',
+  settingsA11y: 'Browser settings',
+  calculator: 'Calculator',
+  calculatorHint: 'Type a sum in the address bar, for example 12*(3+4)',
+  converter: 'Converter',
+  dualCalendar: 'Dual calendar',
+  dualCalendarHint: 'Gregorian + Hijri',
+  prayerTimes: 'Prayer times',
+  scanQr: 'Scan QR',
+  createQr: 'Create QR',
+  saveToNotes: 'Save to notes',
+  installWebApp: 'Install web app',
+  pageAlert: 'Page alert',
+  needsPage: 'Open a web page first.',
+  shownOnStartPage: 'Shown on the start page',
+  fajr: 'Fajr',
+  zuhr: 'Zuhr',
+  asr: 'Asr',
+  prayerCardA11y: 'Prayer times for {place}: Fajr {fajr}, Zuhr {zuhr}, Asr {asr}',
+  copyTextFromImage: 'Copy text from image',
+  voiceCommands: 'Voice commands',
 } as const;

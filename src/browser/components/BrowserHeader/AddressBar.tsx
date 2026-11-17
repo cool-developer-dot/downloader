@@ -14,8 +14,8 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { Box } from '@/components/base/Box';
-import { Icon } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
+import { DsIcon, ds } from '@/design';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { useTourTargetRef } from '@/tour/tour-targets';
@@ -47,8 +47,9 @@ export type AddressBarProps = {
 };
 
 /**
- * Premium omnibox — intelligent search + navigation entry point.
- * Compact bar while browsing; focused editing lives in SuggestionOverlay.
+ * The omnibox in the light design: a white 16 dp-radius field with the hairline card edge (red while editing),
+ * intelligent search + navigation entry point. Compact bar while browsing; focused editing lives in
+ * SuggestionOverlay.
  */
 export const AddressBar = memo(function AddressBar({
   leadingSlot,
@@ -101,23 +102,9 @@ export const AddressBar = memo(function AddressBar({
     });
   }, [focusProgress, isFocused]);
 
-  const containerStyle = useAnimatedStyle(() => {
-    const borderColor = interpolateColor(
-      focusProgress.value,
-      [0, 1],
-      [theme.colors.border, theme.colors.primary],
-    );
-
-    return {
-      borderColor,
-      shadowColor: theme.colors.primary,
-      shadowOpacity: focusProgress.value * 0.22,
-      shadowRadius: 8 * focusProgress.value,
-      shadowOffset: { width: 0, height: 0 },
-      elevation: focusProgress.value > 0.5 ? 3 : 0,
-      transform: [{ scale: 1 + focusProgress.value * 0.01 }],
-    };
-  });
+  const containerStyle = useAnimatedStyle(() => ({
+    borderColor: interpolateColor(focusProgress.value, [0, 1], [theme.colors.cardBorder, theme.colors.primary]),
+  }));
 
   const handleSubmit = useCallback(
     (_event: NativeSyntheticEvent<TextInputSubmitEditingEventData>) => {
@@ -137,9 +124,9 @@ export const AddressBar = memo(function AddressBar({
           {
             minHeight: BROWSER_TOUCH_TARGET,
             height: BROWSER_ADDRESS_BAR_HEIGHT,
-            borderRadius: theme.radius.full,
-            backgroundColor: theme.colors.surface,
-            borderWidth: 1.5,
+            borderRadius: ds.radius.field,
+            backgroundColor: theme.colors.card,
+            borderWidth: 1,
             paddingHorizontal: 12,
             flexDirection: 'row',
             alignItems: 'center',
@@ -156,7 +143,7 @@ export const AddressBar = memo(function AddressBar({
         <SecurityIndicator visible={showSecurity} />
         {highlight?.idnWarning ? (
           <Box accessible accessibilityLabel={t('browserAddress.idnWarning')}>
-            <Icon name="alert-outline" size={18} color="warning" />
+            <DsIcon name="alert-triangle" size={18} color="warning" strokeWidth={1.9} />
           </Box>
         ) : null}
         <Box flex={1} style={{ minWidth: 0, justifyContent: 'center' }}>
@@ -176,7 +163,9 @@ export const AddressBar = memo(function AddressBar({
           enablesReturnKeyAutomatically
           selectTextOnFocus
           placeholder={t('browser.addressPlaceholder')}
-          placeholderTextColor={theme.colors.textDisabled}
+          placeholderTextColor={theme.colors.textSecondary}
+          selectionColor={theme.colors.primary}
+          underlineColorAndroid="transparent"
           accessibilityLabel={
             highlight?.idnWarning
               ? `${t('browser.addressBar')}. ${t('browserAddress.idnWarningShort')}`
@@ -212,7 +201,7 @@ export const AddressBar = memo(function AddressBar({
                 includeFontPadding: false,
                 fontSize: theme.typography.bodySmall.fontSize,
                 fontFamily: theme.typography.body.fontFamily,
-                color: theme.colors.textDisabled,
+                color: theme.colors.textSecondary,
                 writingDirection: 'ltr',
                 textAlign: 'left',
               },

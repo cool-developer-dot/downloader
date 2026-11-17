@@ -243,7 +243,9 @@ export async function deleteUserScript(id: string): Promise<void> {
 
 // ---- the panel ----
 
-export function openDevtoolsPanel(tabId: string): void {
+/** Opens the panel for `tabId`; `section` (console, network, inspect, source, storage, security, scripts, device) picks the tab it opens on. */
+export function openDevtoolsPanel(tabId: string, section?: string): void {
+  if (section) panelSection = section;
   panelTabId = tabId;
   emit();
 }

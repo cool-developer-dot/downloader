@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable as RNPressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SiteDataEntry } from '@modules/vidorax-web';
@@ -108,8 +108,6 @@ const ListSheet = memo(function ListSheet({
  */
 export const PrivacySettingsSection = memo(function PrivacySettingsSection() {
   const { t, rtl } = useTranslation();
-  const theme = useTheme();
-  const sizeLabel = useSizeLabel();
   const update = useSettingsStore((s) => s.updateSetting);
   const cookiePolicy = normalizeCookiePolicy(useSettingsStore((s) => s.cookiePolicy));
   const doNotTrack = useSettingsStore((s) => s.doNotTrack === true);
@@ -121,8 +119,6 @@ export const PrivacySettingsSection = memo(function PrivacySettingsSection() {
   const exceptionsRaw = useSettingsStore((s) => s.javaScriptExceptions);
   const exceptions = useMemo(() => parseJavaScriptExceptions(exceptionsRaw), [exceptionsRaw]);
   const [sheet, setSheet] = useState<'cookies' | 'exceptions' | 'data' | null>(null);
-  const [siteData, setSiteData] = useState<SiteDataEntry[] | null>(null);
-  const [confirm, setConfirm] = useState<{ origin: string | null } | null>(null);
 
   const cookieOptions = useMemo(
     (): ChoiceOption<CookiePolicy>[] =>
@@ -133,25 +129,6 @@ export const PrivacySettingsSection = memo(function PrivacySettingsSection() {
       })),
     [t],
   );
-
-  const openSiteData = async () => {
-    setSheet('data');
-    setSiteData(null);
-    setSiteData(await listSiteData());
-  };
-
-  const runClear = async () => {
-    const target = confirm;
-    setConfirm(null);
-    if (!target) return;
-    if (target.origin) {
-      await clearSiteDataForOrigin(target.origin);
-    } else {
-      await clearAllSiteData();
-    }
-    announceProfileMessage(t('browserPrivacy.cleared'));
-    setSiteData(await listSiteDataAfterClear());
-  };
 
   const toggle = (
     key: 'doNotTrack' | 'httpsOnly' | 'insecurePageWarning' | 'javaScript',
@@ -240,7 +217,7 @@ export const PrivacySettingsSection = memo(function PrivacySettingsSection() {
         description={t('browserPrivacy.siteDataHint')}
         icon="database-outline"
         showDivider={false}
-        onPress={() => void openSiteData()}
+        onPress={() => setSheet('data')}
         testID="browser-settings-site-data"
       />
 
@@ -285,79 +262,125 @@ export const PrivacySettingsSection = memo(function PrivacySettingsSection() {
         ))}
       </ListSheet>
 
-      <ListSheet
-        visible={sheet === 'data'}
-        title={t('browserPrivacy.siteData')}
-        onClose={() => setSheet(null)}
-        testID="browser-settings-site-data-sheet">
-        <Text variant="caption" color="textSecondary" style={{ textAlign: rtl.textAlign }}>
-          {t('browserPrivacy.siteDataCookiesNote')}
-        </Text>
-        {siteData == null ? (
-          <Box row rtlRow center gap={8} style={{ minHeight: 48 }}>
-            <ActivityIndicator size="small" color={theme.colors.primary} />
-            <Text variant="caption" color="textSecondary">
-              {t('browserPrivacy.siteDataLoading')}
-            </Text>
-          </Box>
-        ) : siteData.length === 0 ? (
-          <Text variant="body" color="textSecondary" style={{ textAlign: rtl.textAlign }}>
-            {t('browserPrivacy.siteDataEmpty')}
-          </Text>
-        ) : (
-          siteData.map((entry, index) => (
-            <View key={entry.origin}>
-              {index > 0 ? <Divider /> : null}
-              <Box row rtlRow center gap={12} style={{ minHeight: 56 }}>
-                <Box flex={1} style={{ minWidth: 0 }}>
-                  <Text variant="body" numberOfLines={1} style={{ textAlign: rtl.textAlign }}>
-                    {entry.origin.replace(/^https?:\/\//, '')}
-                  </Text>
-                  <Text variant="caption" color="textSecondary" style={{ textAlign: rtl.textAlign }}>
-                    {sizeLabel(entry.usage)}
-                  </Text>
-                </Box>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={t('browserPrivacy.clearSiteA11y', { site: entry.origin.replace(/^https?:\/\//, '') })}
-                  onPress={() => setConfirm({ origin: entry.origin })}
-                  style={styles.textButton}>
-                  <Text variant="button" color="error">
-                    {t('browserPrivacy.clearSite')}
-                  </Text>
-                </Pressable>
-              </Box>
-            </View>
-          ))
-        )}
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={t('browserPrivacy.clearAll')}
-          onPress={() => setConfirm({ origin: null })}
-          testID="browser-settings-clear-all-site-data"
-          style={[styles.wide, { borderColor: theme.colors.error, borderRadius: theme.radius.lg }]}>
-          <Icon name="delete-outline" size={20} color="error" />
-          <Text variant="button" color="error">
-            {t('browserPrivacy.clearAll')}
-          </Text>
-        </Pressable>
-        <ConfirmModal
-          visible={confirm != null}
-          variant="delete"
-          title={
-            confirm?.origin
-              ? t('browserPrivacy.clearSiteTitle', { site: confirm.origin.replace(/^https?:\/\//, '') })
-              : t('browserPrivacy.clearAllTitle')
-          }
-          message={confirm?.origin ? t('browserPrivacy.clearSiteMessage') : t('browserPrivacy.clearAllMessage')}
-          confirmLabel={confirm?.origin ? t('browserPrivacy.clearSite') : t('browserPrivacy.clearAll')}
-          cancelLabel={t('common.cancel')}
-          onConfirm={() => void runClear()}
-          onCancel={() => setConfirm(null)}
-          testID="browser-settings-site-data-confirm"
-        />
-      </ListSheet>
+      <SiteDataSheet visible={sheet === 'data'} onClose={() => setSheet(null)} />
     </SettingsSection>
+  );
+});
+
+/**
+ * #130: the sites that keep data in this profile, with Clear per site and Clear all. Loads when opened. Also opened by
+ * the design's Privacy & security screen (Certificate & site data).
+ */
+export const SiteDataSheet = memo(function SiteDataSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { t, rtl } = useTranslation();
+  const theme = useTheme();
+  const sizeLabel = useSizeLabel();
+  const [siteData, setSiteData] = useState<SiteDataEntry[] | null>(null);
+  const [confirm, setConfirm] = useState<{ origin: string | null } | null>(null);
+
+  useEffect(() => {
+    if (!visible) return undefined;
+    let cancelled = false;
+    listSiteData().then((entries) => {
+      if (!cancelled) setSiteData(entries);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [visible]);
+
+  // The next opening reads the list again (closing clears what was shown).
+  const close = () => {
+    setSiteData(null);
+    onClose();
+  };
+
+  const runClear = async () => {
+    const target = confirm;
+    setConfirm(null);
+    if (!target) return;
+    if (target.origin) {
+      await clearSiteDataForOrigin(target.origin);
+    } else {
+      await clearAllSiteData();
+    }
+    announceProfileMessage(t('browserPrivacy.cleared'));
+    setSiteData(await listSiteDataAfterClear());
+  };
+
+  return (
+    <ListSheet
+      visible={visible}
+      title={t('browserPrivacy.siteData')}
+      onClose={close}
+      testID="browser-settings-site-data-sheet">
+      <Text variant="caption" color="textSecondary" style={{ textAlign: rtl.textAlign }}>
+        {t('browserPrivacy.siteDataCookiesNote')}
+      </Text>
+      {siteData == null ? (
+        <Box row rtlRow center gap={8} style={{ minHeight: 48 }}>
+          <ActivityIndicator size="small" color={theme.colors.primary} />
+          <Text variant="caption" color="textSecondary">
+            {t('browserPrivacy.siteDataLoading')}
+          </Text>
+        </Box>
+      ) : siteData.length === 0 ? (
+        <Text variant="body" color="textSecondary" style={{ textAlign: rtl.textAlign }}>
+          {t('browserPrivacy.siteDataEmpty')}
+        </Text>
+      ) : (
+        siteData.map((entry, index) => (
+          <View key={entry.origin}>
+            {index > 0 ? <Divider /> : null}
+            <Box row rtlRow center gap={12} style={{ minHeight: 56 }}>
+              <Box flex={1} style={{ minWidth: 0 }}>
+                <Text variant="body" numberOfLines={1} style={{ textAlign: rtl.textAlign }}>
+                  {entry.origin.replace(/^https?:\/\//, '')}
+                </Text>
+                <Text variant="caption" color="textSecondary" style={{ textAlign: rtl.textAlign }}>
+                  {sizeLabel(entry.usage)}
+                </Text>
+              </Box>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={t('browserPrivacy.clearSiteA11y', { site: entry.origin.replace(/^https?:\/\//, '') })}
+                onPress={() => setConfirm({ origin: entry.origin })}
+                style={styles.textButton}>
+                <Text variant="button" color="error">
+                  {t('browserPrivacy.clearSite')}
+                </Text>
+              </Pressable>
+            </Box>
+          </View>
+        ))
+      )}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={t('browserPrivacy.clearAll')}
+        onPress={() => setConfirm({ origin: null })}
+        testID="browser-settings-clear-all-site-data"
+        style={[styles.wide, { borderColor: theme.colors.error, borderRadius: theme.radius.lg }]}>
+        <Icon name="delete-outline" size={20} color="error" />
+        <Text variant="button" color="error">
+          {t('browserPrivacy.clearAll')}
+        </Text>
+      </Pressable>
+      <ConfirmModal
+        visible={confirm != null}
+        variant="delete"
+        title={
+          confirm?.origin
+            ? t('browserPrivacy.clearSiteTitle', { site: confirm.origin.replace(/^https?:\/\//, '') })
+            : t('browserPrivacy.clearAllTitle')
+        }
+        message={confirm?.origin ? t('browserPrivacy.clearSiteMessage') : t('browserPrivacy.clearAllMessage')}
+        confirmLabel={confirm?.origin ? t('browserPrivacy.clearSite') : t('browserPrivacy.clearAll')}
+        cancelLabel={t('common.cancel')}
+        onConfirm={() => void runClear()}
+        onCancel={() => setConfirm(null)}
+        testID="browser-settings-site-data-confirm"
+      />
+    </ListSheet>
   );
 });
 

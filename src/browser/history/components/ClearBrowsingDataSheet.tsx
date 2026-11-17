@@ -36,11 +36,14 @@ export const ClearBrowsingDataSheet = memo(function ClearBrowsingDataSheet({
   visible,
   onClose,
   onCleared,
+  initialRange = 'hour',
   testID = 'clear-browsing-data',
 }: {
   visible: boolean;
   onClose: () => void;
   onCleared?: () => void;
+  /** The range selected when the sheet opens (design 36: the CLEAR chip that was tapped). */
+  initialRange?: BrowsingDataRange;
   testID?: string;
 }) {
   const theme = useTheme();
@@ -52,8 +55,8 @@ export const ClearBrowsingDataSheet = memo(function ClearBrowsingDataSheet({
   useTourBlocker(visible);
 
   useEffect(() => {
-    if (visible) setRange('hour');
-  }, [visible]);
+    if (visible) setRange(initialRange);
+  }, [initialRange, visible]);
 
   const handleClear = useCallback(async () => {
     if (busy) return;
