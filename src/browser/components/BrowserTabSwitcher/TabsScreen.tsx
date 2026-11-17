@@ -234,7 +234,6 @@ export const TabsScreen = memo(function TabsScreen() {
       <DsHeader
         title={t('browser.tabSwitcherTitle')}
         subtitle={subtitle}
-        onBack={navigation.back}
         action={{
           icon: 'plus',
           accessibilityLabel: t('browser.newTabA11y'),

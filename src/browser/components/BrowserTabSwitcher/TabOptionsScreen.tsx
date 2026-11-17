@@ -242,7 +242,6 @@ export const TabOptionsScreen = memo(function TabOptionsScreen({ tabId }: TabOpt
       <DsHeader
         title={t('browserTabs.menuA11y')}
         subtitle={tabDisplaySite(tab, t)}
-        onBack={navigation.back}
         action={{ icon: 'settings', accessibilityLabel: t('browserSettings.title'), onPress: openSettings, testID: 'browser-tab-options-settings' }}
       />
       <DsRowGroup testID="browser-tab-options-rows">

@@ -54,8 +54,6 @@ export const PlaylistScreen = memo(function PlaylistScreen() {
   const selected = useMemo(() => items.filter((url) => !excluded.has(url)), [excluded, items]);
   const shown = filter === 'all' ? items : selected;
   const rowsByUrl = useMemo(() => new Map(batch.rows.map((row) => [row.url, row])), [batch.rows]);
-
-  const goBack = useCallback(() => navigation.back(), []);
   const openSettings = useCallback(() => navigation.push(routePaths.downloadSettings), []);
 
   const toggle = useCallback((url: string) => {
@@ -105,7 +103,6 @@ export const PlaylistScreen = memo(function PlaylistScreen() {
       <DsHeader
         title={t('lightPlaylist.title')}
         subtitle={t('lightPlaylist.videos', { count: items.length })}
-        onBack={goBack}
         action={{ icon: 'settings', accessibilityLabel: t('lightPlaylist.settingsA11y'), onPress: openSettings, testID: 'playlist-settings' }}
         testID="playlist-header"
       />

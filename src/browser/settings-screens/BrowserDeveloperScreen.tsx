@@ -58,7 +58,6 @@ export const BrowserDeveloperScreen = memo(function BrowserDeveloperScreen() {
       <DsHeader
         title={t('lightDeveloper.title')}
         subtitle={t('lightDeveloper.subtitle')}
-        onBack={back}
         action={{
           icon: 'settings',
           accessibilityLabel: t('lightPrivacy.openSettingsA11y'),

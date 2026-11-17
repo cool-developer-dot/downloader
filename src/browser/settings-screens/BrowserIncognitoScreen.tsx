@@ -51,7 +51,6 @@ export const BrowserIncognitoScreen = memo(function BrowserIncognitoScreen() {
       <DsHeader
         title={t('lightIncognito.title')}
         subtitle={t('lightIncognito.subtitle')}
-        onBack={back}
         action={{
           icon: 'ellipsis-vertical',
           accessibilityLabel: t('browserIncognito.newTabA11y'),

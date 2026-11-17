@@ -93,7 +93,6 @@ export const BrowserPrivacyScreen = memo(function BrowserPrivacyScreen() {
       <DsHeader
         title={t('lightPrivacy.title')}
         subtitle={protection ? t('lightPrivacy.protectionOn') : t('lightPrivacy.protectionOff')}
-        onBack={back}
         action={{
           icon: 'settings',
           accessibilityLabel: t('lightPrivacy.openSettingsA11y'),

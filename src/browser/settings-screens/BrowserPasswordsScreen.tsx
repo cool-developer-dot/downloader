@@ -22,7 +22,6 @@ export const BrowserPasswordsScreen = memo(function BrowserPasswordsScreen() {
       <DsHeader
         title={t('lightPasswords.title')}
         subtitle={t('lightPasswords.subtitle')}
-        onBack={back}
         action={{
           icon: 'settings',
           accessibilityLabel: t('lightPrivacy.openSettingsA11y'),

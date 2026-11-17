@@ -135,20 +135,7 @@ export const AddDownloadScreen = memo(function AddDownloadScreen() {
   const folderLabel = saveLocationLabel({ enabled: saveEnabled, folderName: saveFolder }, t('lightAddDownload.saveLocationDefault'));
 
   return (
-    <DsScreen
-      testID="add-download-screen"
-      footer={
-        mode === 'batch' ? null : (
-          <DsButton
-            label={t('lightAddDownload.download')}
-            icon="download"
-            fullWidth
-            onPress={submit}
-            accessibilityHint={t('lightAddDownload.downloadHint')}
-            testID="add-download-submit"
-          />
-        )
-      }>
+    <DsScreen testID="add-download-screen">
       <DsHeader
         title={t('lightAddDownload.title')}
         subtitle={t('lightAddDownload.subtitle')}

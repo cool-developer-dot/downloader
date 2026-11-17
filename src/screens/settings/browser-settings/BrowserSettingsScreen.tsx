@@ -126,7 +126,6 @@ export const BrowserSettingsScreen = memo(function BrowserSettingsScreen() {
     <DsScreen testID="browser-settings-screen">
       <DsHeader
         title={t('browserSettings.title')}
-        onBack={back}
         action={{
           icon: 'settings',
           accessibilityLabel: t('lightBrowserSettings.openAppSettingsA11y'),
