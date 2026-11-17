@@ -21,7 +21,7 @@ export type DsRowProps = {
   /** Right-hand plain text (the design's "110%", "8", "Off"). */
   value?: string;
   /** A switch at the right; the row itself then toggles it when tapped (unless `onPress` is set). */
-  toggle?: { value: boolean; onValueChange: (next: boolean) => void; accessibilityLabel?: string };
+  toggle?: { value: boolean; onValueChange: (next: boolean) => void; accessibilityLabel?: string; accessibilityHint?: string };
   /** `chevron` (default when `onPress` is set and there is no toggle / value / custom trailing), `none`, or an element. */
   trailing?: 'chevron' | 'none' | ReactNode;
   onPress?: () => void;
@@ -102,6 +102,7 @@ export const DsRow = memo(function DsRow({
           value={toggle.value}
           onValueChange={toggle.onValueChange}
           accessibilityLabel={toggle.accessibilityLabel ?? title}
+          accessibilityHint={toggle.accessibilityHint}
           disabled={disabled}
         />
       ) : null}

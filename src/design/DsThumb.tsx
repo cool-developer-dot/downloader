@@ -1,5 +1,5 @@
 import { Image } from 'expo-image';
-import { memo } from 'react';
+import { memo, useState } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { DsIcon, type DsIconName } from './DsIcon';
@@ -18,7 +18,7 @@ export type DsThumbProps = {
   testID?: string;
 };
 
-/** The 54 × 45 thumbnail of the recent / download rows: the picture, or a two-tone block with a white glyph. */
+/** A picture that fails to load falls back to the coloured block. The 54 × 45 thumbnail of the recent / download rows: the picture, or a two-tone block with a white glyph. */
 export const DsThumb = memo(function DsThumb({
   uri,
   kind = 'video',
@@ -29,14 +29,15 @@ export const DsThumb = memo(function DsThumb({
   style,
   testID,
 }: DsThumbProps) {
+  const [failed, setFailed] = useState(false);
   const palette = dsThumbColors[kind];
   const glyph: DsIconName = icon ?? (kind === 'video' ? 'play' : 'download');
   return (
     <View
       testID={testID}
       style={[{ width, height, borderRadius: radius, overflow: 'hidden', backgroundColor: palette.base, alignItems: 'center', justifyContent: 'center' }, style]}>
-      {uri ? (
-        <Image source={{ uri }} style={{ width, height }} contentFit="cover" transition={120} />
+      {uri && !failed ? (
+        <Image source={{ uri }} style={{ width, height }} contentFit="cover" transition={120} onError={() => setFailed(true)} />
       ) : (
         <>
           {/* A lighter top-left corner stands in for the design's gradient without a gradient library. */}
