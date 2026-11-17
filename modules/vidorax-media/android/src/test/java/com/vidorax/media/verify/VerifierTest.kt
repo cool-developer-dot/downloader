@@ -66,13 +66,14 @@ class VerifierTest {
     assertInvalid(Verifier.verify(File(tmp.root, "does-not-exist.mp4")))
   }
 
-  @Test fun anAssembledTransportStreamIsValidOnlyWhenOneIsExpected() {
+  @Test fun aTransportStreamIsValidUnlessAnotherContainerWasExpected() {
     val bytes = listOf("/media/hls-ts/seg0.ts", "/media/hls-ts/seg1.ts").flatMap {
       checkNotNull(javaClass.getResourceAsStream(it)).use { s -> s.readBytes() }.toList()
     }.toByteArray()
     val file = tmp.newFile("stream.ts").apply { writeBytes(bytes) }
     assertValid(Verifier.verify(file, VerifyExpectation(container = Container.TS, expectedBytes = bytes.size.toLong())))
-    assertInvalid(Verifier.verify(file))
+    // A `.ts` file downloaded on its own is a finished video too.
+    assertValid(Verifier.verify(file))
     assertInvalid(Verifier.verify(file, VerifyExpectation(container = Container.MP4)))
   }
 

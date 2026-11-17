@@ -112,6 +112,9 @@ export function resolveVideoResource(input: {
     const proven = ['html', 'json'].includes(sig.kind) || ['init_segment', 'media_fragment', 'drm_protected', 'invalid_box_size'].includes(sig.reason ?? '');
     return result(proven ? 'PROVEN_UNSUPPORTED' : 'TRANSIENT_UNRESOLVED', sig.reason ?? 'BYTES_PENDING');
   }
+  // MKV, MPEG-TS and FLV files: containers the browser does not play, classified by the engine from the same bytes
+  // (audio only, encrypted, endless live streams refused there). Whether a TS is a lone HLS segment is the caller's call.
+  if (sigKind === 'mkv' || sigKind === 'ts' || sigKind === 'flv') return result('VERIFIED', 'ENGINE_FILE_CONTAINER', null);
   const format = sigKind === 'mp4'
     ? (hint === 'm4v' || hint === 'mov' ? hint : 'mp4')
     : videoFormatFromExtension(sigKind);

@@ -2246,6 +2246,34 @@ only. Hamza's unfinished B8 start is parked on `hamza/b8-wip`.
   decided (viewer kept, new defaults kept, detectability accepted). Coverage and what wasn't checked:
   `docs/work-log/faran-browser.md`, "Integration".
 
+### 4.36 MKV, FLV and `.ts` links (branch `claude/downloader-finalized-formats-4a36f8`, 2026-11-17)
+
+On top of `integration/browser` (`794fd31`). The engine used to refuse these three as links although the processor
+already handled them; now they download (ARCHITECTURE §1).
+
+- **Engine.** `MediaSniffer`: Matroska DocType → `MKV` (kept byte for byte; encrypted → protected); FLV v1 → `FLV`
+  (H.264/AAC remuxed to MP4, Sorenson/VP6 kept as `.flv` for "Open with"); MPEG-TS always classified (the
+  `allowTransportStream` flag is gone), scrambled packets → protected (`plan/TransportStream`, also checked over the
+  finished file's first 4 MB by the Verifier). Sound only — from the FLV header flags, the TS program map or the
+  Matroska track list — is "Audio only". `Probe`: a `.ts` with no length, or an `.flv` with no length whose
+  `onMetaData` states no duration, is a live channel (`LIVE_UNSUPPORTED`).
+- **Browser.** VidoraWeb `NetworkMediaClassifier.classifyDownload` claims `video/mp2t` and `.ts` downloads for
+  detection (players fetch segments, they never download them). JS: `isUserRequestedTransportStream` exempts a `.ts`
+  the user opened (WebView download, or a pasted/shared link — `directCandidateMedia` now marks the direct link
+  `userRequested`) from every segment rule on the way: correlation, `verifyGeneralSourceCandidate`,
+  `classifyFalsePositive`/`verifyMediaCandidate`, the social byte check; a verified `ts` offer passes the CTA's and
+  quality sheet's `.ts` URL checks (`isTransportStreamFileOffer`) and the pre-download gate (`transportStreamFile`).
+  `sniffMediaSignature` knows FLV and tells MKV from WebM; `resolveVideoResource` hands MKV/TS/FLV bytes to the
+  engine's verdict (`ENGINE_FILE_CONTAINER`); `MediaAnalysisContainer` has `mkv`/`flv`/`ts`; a `.ts` page is named by
+  its file (`directMediaFileTitle`). Network-observed `.ts` requests are still segments.
+- **Device (2026-11-17, VidoraX_Browser_F, upload-key release + trace build), live sites:** Apple
+  `bipbop_4x3/gear1/fileSequence0.ts` (H.264/AAC) → offer, download, MP4 279 KB; learningcontainer
+  `sample-mkv-file.mkv` → kept `.mkv` 4.7 MB, plays; filesamples `sample_640x360.flv` (Sorenson, no length, metadata
+  13.3 s) → kept `.flv`, "Unsupported format / Open with"; filesamples `sample_640x360.ts` (no length) → refused as
+  live. H.264/AAC FLV → MP4 covered by `FlvMatroskaProcessingTest` only (no public one found). Test videos deleted.
+- **Not supported:** `.m2ts` (192-byte packets), a `.ts` served without a length (indistinguishable from IPTV live);
+  that refusal shows the generic "This video can't be downloaded".
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

@@ -30,6 +30,11 @@ describe('which quality rows may be offered on their own', () => {
     assert.equal(isStandaloneDownloadableQuality(option({ sourceUrl: SEGMENT })), false);
   });
 
+  it('a verified MPEG-TS row is a .ts file the user opened, whatever its name; a .ts URL in another row is not', () => {
+    assert.equal(isStandaloneDownloadableQuality(option({ sourceUrl: 'https://tv.test/rec/12.ts', container: 'ts' })), true);
+    assert.equal(isStandaloneDownloadableQuality(option({ sourceUrl: 'https://tv.test/rec/12.ts', container: 'mp4' })), false);
+  });
+
   it('a proven split pair is, although its video file is named like a segment', () => {
     assert.equal(
       isStandaloneDownloadableQuality(option({ sourceUrl: SEGMENT, audioSourceUrl: AUDIO })),

@@ -5,6 +5,7 @@ import com.vidorax.media.model.ProbeFailure
 import com.vidorax.media.model.ProbeRequest
 import com.vidorax.media.model.ProbeResult
 import com.vidorax.media.model.RequestContext
+import com.vidorax.media.model.SourceKind
 import com.vidorax.media.net.HttpClient
 import com.vidorax.media.net.UrlPolicy
 import kotlinx.coroutines.runBlocking
@@ -177,6 +178,68 @@ class ProbeTest {
     val result = probe.probe(request(server.url("/voice.webm").toString()))
     assertUnsupported(ProbeFailure.UNSUPPORTED_FORMAT, result)
     assertEquals("Audio only: the file has no video track", (result as ProbeResult.Failure).message)
+  }
+
+  @Test fun mkvFlvAndTransportStreamFilesAreProgressiveVideos() = runBlocking {
+    val cases = listOf(
+      Triple("/media/formats/av.mkv", "video/x-matroska", Container.MKV),
+      Triple("/media/formats/av.flv", "video/x-flv", Container.FLV),
+      Triple("/media/formats/sorenson.flv", "application/octet-stream", Container.FLV),
+      Triple("/media/process/av.ts", "video/mp2t", Container.TS),
+    )
+    for ((path, type, container) in cases) {
+      server.enqueue(fileResponse(fixture(path), type))
+      val result = probe.probe(request(server.url("/v/${path.substringAfterLast('/')}").toString()))
+      assertTrue("$path: got $result", result is ProbeResult.Success)
+      assertEquals(path, container, (result as ProbeResult.Success).container)
+      assertEquals(path, SourceKind.PROGRESSIVE, result.kind)
+    }
+  }
+
+  @Test fun soundOnlyMkvFlvAndTransportStreamFilesAreNotVideos() = runBlocking {
+    for ((path, type) in listOf(
+      "/media/formats/audio-only.mka" to "audio/x-matroska",
+      "/media/formats/audio-only.flv" to "video/x-flv",
+      "/media/process/audio.ts" to "video/mp2t",
+    )) {
+      server.enqueue(fileResponse(fixture(path), type))
+      val result = probe.probe(request(server.url("/a/${path.substringAfterLast('/')}").toString()))
+      assertUnsupported(ProbeFailure.UNSUPPORTED_FORMAT, result)
+      assertEquals(path, "Audio only: the file has no video track", (result as ProbeResult.Failure).message)
+    }
+  }
+
+  @Test fun aTransportStreamOrFlvWithNoLengthIsALiveChannelNotAFile() = runBlocking {
+    // Chunked, no Content-Length or Content-Range: how an IPTV `.ts` or an HTTP-FLV channel is served.
+    server.enqueue(chunked(fixture("/media/process/av.ts"), "video/mp2t"))
+    assertUnsupported(ProbeFailure.LIVE_UNSUPPORTED, probe.probe(request(server.url("/live/channel.ts").toString())))
+    // An FLV whose metadata says 0 seconds (or nothing) is live as well.
+    server.enqueue(chunked(withFlvDuration(fixture("/media/formats/av.flv"), 0.0), "video/x-flv"))
+    assertUnsupported(ProbeFailure.LIVE_UNSUPPORTED, probe.probe(request(server.url("/live/channel.flv").toString())))
+  }
+
+  @Test fun anFlvWithNoLengthIsStillAFileWhenItsMetadataStatesOne() = runBlocking {
+    val bytes = fixture("/media/formats/av.flv")
+    assertEquals(1.2, MediaSniffer.flvMetadataDurationSeconds(bytes)!!, 0.001)
+    server.enqueue(chunked(bytes, "video/x-flv"))
+    val result = probe.probe(request(server.url("/files/clip.flv").toString()))
+    assertTrue("got $result", result is ProbeResult.Success)
+    assertEquals(Container.FLV, (result as ProbeResult.Success).container)
+  }
+
+  private fun chunked(bytes: ByteArray, type: String) =
+    MockResponse().setResponseCode(200).setHeader("Content-Type", type).setChunkedBody(Buffer().write(bytes), 4096)
+
+  /** [flv] with its `onMetaData` duration replaced. */
+  private fun withFlvDuration(flv: ByteArray, seconds: Double): ByteArray {
+    val key = byteArrayOf(0x00, 0x08) + "duration".toByteArray() + byteArrayOf(0x00)
+    val at = (0..flv.size - key.size).first { i -> key.indices.all { flv[i + it] == key[it] } } + key.size
+    return flv.copyOf().also { java.nio.ByteBuffer.wrap(it, at, 8).putDouble(seconds) }
+  }
+
+  @Test fun aScrambledTransportStreamIsProtected() = runBlocking {
+    server.enqueue(fileResponse(TransportStreamTest.scramble(fixture("/media/process/av.ts")), "video/mp2t"))
+    assertUnsupported(ProbeFailure.DRM_PROTECTED, probe.probe(request(server.url("/tv/channel.ts").toString())))
   }
 
   @Test fun mp3AacAndM4aFilesAreAudioNotVideo() = runBlocking {

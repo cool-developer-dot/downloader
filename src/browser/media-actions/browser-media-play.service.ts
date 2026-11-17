@@ -71,6 +71,7 @@ export async function prepareOfferStream(input: PrepareStreamInput): Promise<Pre
                 requestContext: gateInput.requestContext,
                 verifiedAtMs: gateInput.verifiedAtMs,
                 transport: 'PROGRESSIVE',
+                transportStreamFile: String(input.option.container).toLowerCase() === 'ts',
               })
           : async (gateInput) => ({
               ok: true,

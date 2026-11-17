@@ -5,6 +5,7 @@ import com.vidorax.media.model.ProbeFailure
 import com.vidorax.media.plan.MediaSniffer
 import com.vidorax.media.plan.MpegProgramStream
 import com.vidorax.media.plan.SniffResult
+import com.vidorax.media.plan.TransportStream
 import java.io.File
 import java.io.RandomAccessFile
 
@@ -33,9 +34,9 @@ internal sealed interface VerifyResult {
  * fragment-only, or not a supported container. Structural classification is shared with the probe via
  * [MediaSniffer] so "what we accept to download" and "what we accept as finished" can never drift apart.
  *
- * MPEG-TS is accepted only when the caller expects it: that is the file an HLS download assembles from TS
- * segments. An MPEG program stream is checked for scrambled (CSS) packets over its first megabytes. An ISO-BMFF file's `moov` is found wherever it sits and checked for encrypted tracks, because the
- * header read alone cannot see a `moov` stored after the media data.
+ * MPEG transport and program streams are checked for scrambled packets (conditional access, DVD CSS) over their first
+ * megabytes. An ISO-BMFF file's `moov` is found wherever it sits and checked for encrypted tracks, because the header
+ * read alone cannot see a `moov` stored after the media data.
  */
 internal object Verifier {
   private const val HEADER_BYTES = 64 * 1024
@@ -58,13 +59,7 @@ internal object Verifier {
     }
 
     val header = readHeader(file)
-    val verdict = MediaSniffer.sniff(
-      header,
-      contentType = null,
-      url = file.name,
-      totalSize = length,
-      allowTransportStream = expectation.container == Container.TS,
-    )
+    val verdict = MediaSniffer.sniff(header, contentType = null, url = file.name, totalSize = length)
     return when (verdict) {
       is SniffResult.Supported -> {
         val expected = expectation.container
@@ -76,6 +71,9 @@ internal object Verifier {
           // F4: the probe saw only the first bytes; a DVD title can turn scrambled after unprotected opening packs.
           verdict.container == Container.MPEG_PS && MpegProgramStream.isScrambled(file) ->
             VerifyResult.Invalid("scrambled (CSS) MPEG program stream", ProbeFailure.DRM_PROTECTED)
+          // Likewise a transport stream (a broadcast recording) can turn scrambled after a clear start.
+          verdict.container == Container.TS && TransportStream.isScrambled(file) ->
+            VerifyResult.Invalid("scrambled (encrypted) MPEG-TS", ProbeFailure.DRM_PROTECTED)
           else -> VerifyResult.Valid
         }
       }

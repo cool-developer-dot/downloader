@@ -13,7 +13,14 @@ Goals
   - **Progressive:** MP4, M4V, MOV, WebM, AVI, WMV, standalone downloadable fMP4; F4V (ISO-BMFF, saved as `.mp4`),
     3G2 (saved as `.3g2`, `video/3gpp2`) and DivX/XviD (`.divx` is AVI and takes the AVI path); MPEG program streams
     (F4: `.mpg`, `.mpeg`, a DVD's `.vob`; MPEG-1 and MPEG-2 packaging) — converted to MP4 where the device decodes
-    MPEG-1/2 video, else kept as `.mpg`. CSS-scrambled DVD titles are refused as protected.
+    MPEG-1/2 video, else kept as `.mpg`. CSS-scrambled DVD titles are refused as protected. Matroska (`.mkv`, kept as
+    downloaded), FLV (`.flv`: H.264/AAC remuxed to MP4; Sorenson/VP6 FLV kept as `.flv` for "Open with") and MPEG-TS
+    files (`.ts` links: remuxed to MP4, kept as `.ts` when this device cannot decode a track) — each refused when its
+    own track list shows sound only, and encrypted Matroska or scrambled (conditional-access) TS as protected. A `.ts`
+    response with no length is a live channel (IPTV) and is refused as live; so is an `.flv` with no length unless its
+    `onMetaData` states a duration (HTTP-FLV live states 0). A `.ts` reaches the
+    engine only as a file the user opened (a pasted or shared link, a WebView download): one a player fetches is an
+    HLS segment and stays one. `.m2ts` (192-byte Blu-ray packets) is not supported.
   - **Streaming:** unencrypted VOD HLS (master and media playlists; MPEG-TS, fMP4/CMAF and packed-audio segments;
     byte ranges; a variant whose sound is a separate `EXT-X-MEDIA TYPE=AUDIO` rendition — both downloaded and
     merged). Unencrypted static single-period DASH: single-file (BaseURL/SegmentBase) or segmented
@@ -133,7 +140,7 @@ All Media3 artifacts pinned to **exactly** the version expo-video uses (`1.9.0`,
 | `process/MpegAudioTranscoder` | F4: MP2 track → `MpegAudioDecoder` → platform AAC-LC encoder (80 kb/s per channel) → single-track MP4 via `Mp4Muxer`, starting at zero like the Transformer path. A frame that does not decode becomes silence of its length (sync kept); mostly undecodable or no decodable frame → `TRANSCODE_FAILED`. |
 | `process/Mpeg1SystemStream` | F4: Media3's `PsExtractor` reads MPEG-2 packaging only. An MPEG-1 system stream is re-packaged first (`rewrapped-mpeg2.vob` in the work folder): 12-byte pack headers → 14-byte MPEG-2 ones (same SCR and mux rate), each packet's MPEG-1 header (stuffing, STD buffer, PTS/DTS) → an MPEG-2 PES header with the same PTS/DTS; payload byte for byte. When the copy would only be kept, the original download is kept. |
 | `plan/MpegProgramStream` | F4: pack-header detection (MPEG-1 `0010`, MPEG-2 `01`), `isScrambled` (any audio/video/private-1 PES with `PES_scrambling_control ≠ 00` — CSS — refused as `DRM_PROTECTED` at the probe and, over the first 4 MB, by the Verifier) and `hasVideoStream` (a video PES id: Android's metadata reader misses MPEG-1 system-stream video, so the engine's audio-only gate trusts the packets, as it trusts a DivX AVI's header). |
-| `verify/Verifier` | Post-download validation on the bytes on disk: expected length, container magic (MPEG-TS only when an HLS download produced it), no DRM brands and no encrypted tracks in the `moov` wherever it sits, no scrambled MPEG program stream packets (protected → `DRM_PROTECTED`, not "corrupt"). HLS output must also decode as a video (MediaExtractor) before COMPLETED. |
+| `verify/Verifier` | Post-download validation on the bytes on disk: expected length, container magic, no DRM brands and no encrypted tracks in the `moov` wherever it sits, no scrambled MPEG program or transport stream packets in the first 4 MB (protected → `DRM_PROTECTED`, not "corrupt"). HLS output must also decode as a video (MediaExtractor) before COMPLETED. |
 | `library/LibraryStore` | Library rows, queries (search, site, favorites, sort, paging), rename (title only), per-item favorites, delete (file + thumbnail; gallery copy is left alone). Missing-file repair: an item whose file is gone or empty (deleted or moved outside VidoraX) is removed with its thumbnail and announced `deleted` — at module start, on `reconcileLibrary` (Player tab focus, app foreground, pull-to-refresh, the player finding the file missing) and when an action finds the file gone. The recorded MIME type follows the container proven from the bytes (a MOV is `video/quicktime`, even when the platform says `video/mp4`). |
 | `library/MediaInfo` | `MediaMetadataRetriever` for duration, width, height, rotation, codecs. |
 | `library/Thumbnails` | Frame at 10% of duration (min 1 s), scaled to 480 px wide, WebP in `filesDir/thumbs/<id>.webp`. |
@@ -427,7 +434,8 @@ with a document-start detector, was never mounted and was removed on 2026-09-24.
   user asked the browser for exactly this resource. It enters as a `userRequested` observation of the owning tab; the
   general page context adopts it as the page's current media (`adoptUserRequestedMedia`: a new generation, until the
   page's player moves to another element or source), and correlation gives it STRONG ownership. It is verified and
-  classified like any other source. This is how a pasted DASH/MOV/attachment/extensionless link gets its offer.
+  classified like any other source. This is how a pasted DASH/MOV/attachment/extensionless link gets its offer. A `.ts`
+  download (`video/mp2t` or the name) is claimed too: players fetch HLS segments, they never download them.
 - **Blob / MSE players** (`engine/mse-playback-context.ts`, `session-media/`): a `blob:` player is offered only when a
   real HTTP(S) source for it can be proven. The page reports each MediaSource's SourceBuffer layout (`mseTracks`, from
   the MIME types given to `addSourceBuffer`; a MediaSource created before the observer was injected is matched to its

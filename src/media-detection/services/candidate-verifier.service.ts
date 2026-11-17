@@ -25,6 +25,8 @@ export type VerifyCandidateOptions = {
   userAgent?: string | null;
   requestContext?: MediaRequestContext | null;
   signal?: AbortSignal;
+  /** A `.ts` file the user opened: its name never makes it an HLS segment. */
+  transportStreamFile?: boolean;
 };
 
 /**
@@ -34,7 +36,7 @@ export async function verifyMediaCandidate(
   url: string,
   options?: VerifyCandidateOptions,
 ): Promise<CandidateVerification> {
-  if (!isSafeMediaUrl(url) || isFalsePositive({ url })) {
+  if (!isSafeMediaUrl(url) || isFalsePositive({ url, transportStreamFile: options?.transportStreamFile })) {
     return reject(url, 'unsafe_or_false_positive');
   }
 

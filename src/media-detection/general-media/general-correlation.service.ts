@@ -9,7 +9,7 @@
  */
 
 import type { DetectedMedia, DetectionSource } from '../types';
-import { isLikelyMediaSegment } from '../services/false-positive.filter';
+import { isLikelyMediaSegment, isUserRequestedTransportStream } from '../services/false-positive.filter';
 import {
   isLikelySocialProfileAsset,
   isLikelySocialThumbnail,
@@ -129,6 +129,9 @@ export function isThumbnailResource(media: DetectedMedia): boolean {
 }
 
 export function isSegmentResource(media: DetectedMedia): boolean {
+  if (isUserRequestedTransportStream(media)) {
+    return false;
+  }
   return isLikelyMediaSegment(media.url, media.extension);
 }
 

@@ -54,6 +54,15 @@ describe('directMediaFileTitle', () => {
     assert.equal(directMediaFileTitle('https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd'), 'bbb_30fps');
   });
 
+  test('MKV, FLV and .ts files opened as the page are named by their file too', () => {
+    assert.equal(directMediaFileTitle('https://archive.example.org/films/Sintel.2010.1080p.mkv'), 'Sintel.2010.1080p');
+    assert.equal(directMediaFileTitle('https://cdn.example.com/old/flash_clip.flv'), 'flash_clip');
+    assert.equal(
+      directMediaFileTitle('https://devstreaming-cdn.apple.com/videos/streaming/examples/bipbop_4x3/gear1/fileSequence0.ts'),
+      'fileSequence0',
+    );
+  });
+
   test('a generic manifest name takes its folder name', () => {
     assert.equal(directMediaFileTitle('https://example.com/shows/episode-7/master.m3u8'), 'episode-7');
     assert.equal(directMediaFileTitle('https://demo.example.com/k8s/live/stable/live.isml/.m3u8'), 'live');

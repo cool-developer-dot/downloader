@@ -189,6 +189,15 @@ internal class Probe(
     if (verdict is SniffResult.Supported && MediaSniffer.isAudioOnly(prefix)) {
       return FileProbe.Classified(failure(ProbeFailure.UNSUPPORTED_FORMAT, null, "Audio only: the file has no video track"))
     }
+    // MPEG-TS and FLV are also how live channels are sent (IPTV `.ts`, HTTP-FLV): a response with no length is a stream
+    // that never ends — unless an FLV's own metadata states a length. Live recording covers HLS only.
+    if (verdict is SniffResult.Supported && first.totalSize == null && (
+        verdict.container == Container.TS ||
+          (verdict.container == Container.FLV && (MediaSniffer.flvMetadataDurationSeconds(prefix) ?: 0.0) <= 0.0)
+        )
+    ) {
+      return FileProbe.Classified(failure(ProbeFailure.LIVE_UNSUPPORTED, null, "Live stream: the server gives no length"))
+    }
     if (verdict is SniffResult.Supported && (verdict.container == Container.MP4 || verdict.container == Container.MOV)) {
       trailingMoovVerdict(first.finalUrl, context, prefix, first.totalSize, first.status)?.let { refusal ->
         return FileProbe.Classified(failure(refusal.reason, null, refusal.detail))
