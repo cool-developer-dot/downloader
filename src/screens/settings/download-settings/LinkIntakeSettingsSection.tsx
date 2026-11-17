@@ -8,7 +8,7 @@ import { selectClipboardMonitor, useSettingsStore } from '@/store/settings';
 import { SettingsRow, SettingsSection, SettingsStaggerItem } from '../components';
 
 /** The route of the Batch Add screen (`src/app/(app)/batch-add.tsx`). */
-export const BATCH_ADD_ROUTE = '/batch-add';
+export const BATCH_ADD_ROUTE = '/downloads/batch-add';
 
 /** Download Settings → Adding links: Clipboard Monitor (#291, off by default) and Batch Add (#292). */
 export const LinkIntakeSettingsSection = memo(function LinkIntakeSettingsSection({

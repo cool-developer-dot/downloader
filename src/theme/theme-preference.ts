@@ -4,11 +4,11 @@
 
 import type { ThemeMode } from './colors';
 
-/** User-selectable persisted preference. Default: logo (brand). */
+/** User-selectable persisted preference. Default: light (the CEO's light design). */
 export type ThemePreference = 'light' | 'logo' | 'dark';
 
 /** First-run / missing / malformed preference default. */
-export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'logo';
+export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'light';
 
 export const THEME_PREFERENCES: readonly ThemePreference[] = [
   'light',

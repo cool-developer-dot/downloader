@@ -2,7 +2,7 @@
  * VidoraX design tokens.
  *
  * Content modes:
- * - light — WHITE + BLACK + GRAY (DEFAULT). No sage/green brand identity.
+ * - light — the CEO's light design (DEFAULT since 2026-11): #FAF9FB pages, white cards, #D92D20 accent.
  * - logo — white/neutral content + canonical brand-red chrome
  * - dark — BLACK + CHARCOAL + WHITE + GRAY private app (no olive/sage brand)
  *
@@ -32,6 +32,25 @@ const palette = {
   oliveBorder: '#3A4A35',
   oliveBorderSubtle: '#2E3D28',
   oliveInput: '#252F21',
+
+  /**
+   * Light theme (CEO design handoff, "VidoraX · Light theme UI", 65 screens): measured from the PDF vectors.
+   * Page #FAF9FB · cards #FFFFFF with a #EEEDF1 edge · dividers/tracks #EDEDF0 · accent #D92D20 on #FDECEA tiles ·
+   * text #16161A / #6B6B76 · switch off #D6D5DB · success #12B76A.
+   */
+  designBg: '#FAF9FB',
+  designCard: '#FFFFFF',
+  designCardBorder: '#EEEDF1',
+  designDivider: '#EDEDF0',
+  designAccent: '#D92D20',
+  designAccentPressed: '#B8261B',
+  designAccentSoft: '#FDECEA',
+  designAccentMuted: '#F3938C',
+  designText: '#16161A',
+  designTextSecondary: '#6B6B76',
+  designTextDisabled: '#A9A9B2',
+  designSwitchOff: '#D6D5DB',
+  designSuccess: '#12B76A',
 
   /** Canonical VidoraX brand red — from logo asset sampling. */
   brandRed: '#DC3C2C',
@@ -145,24 +164,47 @@ const lightContent = {
 export const colors = {
   light: {
     ...semanticShared,
-    ...lightContent,
-    // Generic Light primary = dark neutral. Success green is separate.
-    primary: palette.ink,
-    primaryLight: palette.inkMuted,
-    primaryDark: palette.inkStrong,
-    accent: palette.ink,
+    success: palette.designSuccess,
+    error: palette.designAccent,
+    background: palette.designBg,
+    backgroundSecondary: palette.designCard,
+    surface: palette.designCard,
+    surfaceElevated: palette.designCard,
+    surfacePressed: '#F3F2F5',
+    surfaceSelected: palette.designAccentSoft,
+    card: palette.designCard,
+    border: palette.designCardBorder,
+    divider: palette.designDivider,
+    overlay: withAlpha(palette.designText, 0.45),
+    textPrimary: palette.designText,
+    textSecondary: palette.designTextSecondary,
+    textMuted: palette.designTextSecondary,
+    textDisabled: palette.designTextDisabled,
+    sheetBackground: palette.designCard,
+    dialogBackground: palette.designCard,
+    menuBackground: palette.designCard,
+    inputBackground: palette.designCard,
+    // The design's one accent: red on soft red tiles, red toggles and primary buttons.
+    primary: palette.designAccent,
+    primaryLight: palette.designAccentSoft,
+    primaryDark: palette.designAccentPressed,
+    accent: palette.designAccent,
+    accentSoft: palette.designAccentSoft,
+    track: palette.designDivider,
+    switchOff: palette.designSwitchOff,
+    cardBorder: palette.designCardBorder,
     textOnPrimary: palette.white,
-    headerBackground: palette.neutralWhite,
-    headerText: palette.textPrimaryLight,
-    headerIcon: palette.ink,
-    headerBorder: palette.neutralDivider,
-    headerSubtitle: palette.textSecondaryLight,
-    bottomNavBackground: palette.neutralWhite,
-    bottomNavActive: palette.ink,
-    bottomNavInactive: palette.textSecondaryLight,
-    bottomNavBorder: palette.neutralDivider,
-    bottomNavPressed: withAlpha(palette.ink, 0.08),
-    link: palette.ink,
+    headerBackground: palette.designBg,
+    headerText: palette.designText,
+    headerIcon: palette.designText,
+    headerBorder: palette.designBg,
+    headerSubtitle: palette.designTextSecondary,
+    bottomNavBackground: palette.designCard,
+    bottomNavActive: palette.designAccent,
+    bottomNavInactive: palette.designTextSecondary,
+    bottomNavBorder: palette.designDivider,
+    bottomNavPressed: withAlpha(palette.designAccent, 0.08),
+    link: palette.designAccent,
     statusBarStyle: 'dark' as const,
   },
   logo: {
@@ -172,6 +214,10 @@ export const colors = {
     primaryLight: palette.brandRedMuted,
     primaryDark: palette.brandRedPressed,
     accent: palette.brandRed,
+    accentSoft: palette.brandRedSoft,
+    track: palette.neutralDivider,
+    switchOff: palette.neutralInputBorder,
+    cardBorder: palette.neutralBorder,
     textOnPrimary: palette.onBrandRed,
     headerBackground: palette.brandRed,
     headerText: palette.onBrandRed,
@@ -212,6 +258,10 @@ export const colors = {
     primaryLight: palette.darkPrimaryMuted,
     primaryDark: palette.darkPrimaryStrong,
     accent: palette.darkPrimary,
+    accentSoft: palette.darkPrimaryMuted,
+    track: palette.darkPressed,
+    switchOff: palette.darkInputBorder,
+    cardBorder: palette.darkBorder,
     textOnPrimary: palette.darkOnPrimary,
     headerBackground: palette.darkChrome,
     headerText: palette.darkTextPrimary,

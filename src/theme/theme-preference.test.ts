@@ -11,10 +11,10 @@ import {
 } from './theme-preference';
 
 describe('theme preference', () => {
-  test('first run, missing or malformed → Logo', () => {
-    assert.equal(DEFAULT_THEME_PREFERENCE, 'logo');
+  test('first run, missing or malformed → Light', () => {
+    assert.equal(DEFAULT_THEME_PREFERENCE, 'light');
     for (const raw of [undefined, null, '', 'purple', 42, {}]) {
-      assert.equal(normalizeThemePreference(raw), 'logo', String(raw));
+      assert.equal(normalizeThemePreference(raw), 'light', String(raw));
     }
   });
 
