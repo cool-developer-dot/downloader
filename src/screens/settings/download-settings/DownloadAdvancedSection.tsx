@@ -11,8 +11,9 @@ import { selectLiveRecording, selectLiveRecordingMaxMinutes, useSettingsStore } 
 import { SettingsRow, SettingsSection } from '../components';
 
 /**
- * Settings → Download Settings → "Advanced" (F6): "Live recording (beta)", off by default — a live HLS stream then
- * offers Record instead of being refused — and the longest a recording may run. The engine enforces both
+ * Settings → Download Settings → "Advanced" (F6): "Live recording", on by default since 1.2.0 (the client approved it;
+ * it was a beta, off by default, before) — a live HLS stream offers Record instead of being refused — and the longest
+ * a recording may run. The engine enforces both
  * (ensure-bridge pushes the values), so a recording stops at the limit with the app closed too.
  */
 export const DownloadAdvancedSection = memo(function DownloadAdvancedSection({ disabled }: { disabled: boolean }) {

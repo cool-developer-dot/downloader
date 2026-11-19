@@ -47,8 +47,13 @@ export interface SettingsState {
   pauseOnLowBattery: boolean;
   /** F3: download only while charging (default off). */
   onlyWhileCharging: boolean;
-  /** F6: "Live recording (beta)" — a live stream offers Record instead of Download (default off). */
+  /** F6: "Live recording" — a live stream offers Record instead of Download (default on since 1.2.0). */
   liveRecording: boolean;
+  /**
+   * Internal: true once 1.2.0's "live recording on" default has been applied. An install from before 1.2.0 (where the
+   * switch was a beta, off by default) is switched on once when this is missing; a later choice is kept.
+   */
+  liveRecordingApproved: boolean;
   /** F6: a recording stops by itself after this many minutes (15–720, default 120). */
   liveRecordingMaxMinutes: number;
   /** Tapping a running/paused download row pauses/resumes it instead of opening details (default off). */

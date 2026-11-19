@@ -10,6 +10,8 @@ import { bindLanguageReader } from '@/localization/translate';
 import { createStore } from '@/store/shared/create-store';
 import { normalizeAfterDownloadAction } from '@/downloads/v2/after-download';
 import { createPersistStorage } from '@/store/shared/persist-storage';
+
+import { liveRecordingMigration } from './migrations';
 import { normalizeDefaultTab } from '@/navigation/helpers/default-tab';
 import { normalizeTabSortOrder } from '@/browser/tabs/tab-list-ops';
 import { normalizeAddressBarPosition } from '@/browser/address-bar/address-bar-settings';
@@ -177,6 +179,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         pauseOnLowBattery: state.pauseOnLowBattery,
         onlyWhileCharging: state.onlyWhileCharging,
         liveRecording: state.liveRecording,
+        liveRecordingApproved: state.liveRecordingApproved,
         liveRecordingMaxMinutes: state.liveRecordingMaxMinutes,
         tapToToggle: state.tapToToggle,
         tabSortOrder: state.tabSortOrder,
@@ -282,6 +285,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
               ? current.afterDownloadAction
               : normalizeAfterDownloadAction(raw.afterDownloadAction),
           wifiOnly: typeof raw.wifiOnly === 'boolean' ? raw.wifiOnly : current.wifiOnly,
+          ...liveRecordingMigration(raw),
           filenameTemplate:
             typeof raw.filenameTemplate === 'string'
               ? normalizeFilenameTemplate(raw.filenameTemplate)

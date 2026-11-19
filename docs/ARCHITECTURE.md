@@ -29,7 +29,7 @@ Goals
   - **Split audio/video:** a video-only file and an audio-only file of one video (a MediaSource player fed from two
     SourceBuffers — Instagram/Facebook-style), resolved, checked to be one video's, downloaded and merged.
   - **Extensionless URLs** when probe/verification confirms one of the above formats.
-  - **Live HLS recording** (F6, Settings → Downloads → Advanced → "Live recording (beta)", off by default): an
+  - **Live HLS recording** (F6, Settings → Downloads → Advanced → "Live recording", on by default since 1.2.0): an
     unencrypted live HLS stream is offered as **Record** and recorded from now until Stop, its end, the maximum length
     or low storage, then finalized to MP4 like any download (§3.8).
 - Progressive files are streamed directly to disk and kept byte for byte when they already play (MP4/M4V/MOV,
@@ -67,7 +67,7 @@ Non-goals (refused, with a clear message to the user)
 - Unresolved `blob:` / MSE-only sources: a player whose files cannot be tied to it exactly (e.g. several candidate
   files from a feed that prefetches the next item) is not guessed.
 - Merging tracks whose lengths or starts disagree (they are not one video's): `TRACK_MISMATCH`.
-- Live streams while "Live recording (beta)" is off; live DASH always (F6 records live HLS only, §3.8).
+- Live streams while "Live recording" is off; live DASH always (F6 records live HLS only, §3.8).
 - Bypassing logins or paywalls. Content is only reachable when the user can already play it in the browser.
 
 ## 2. System overview
@@ -323,7 +323,7 @@ user-initiated job / foreground service when allowed, else a plain continuation 
 
 ### 3.8 Live recording (F6)
 
-Behind Settings → Downloads → Advanced → **"Live recording (beta)"** (`DownloadSettings.liveRecording`, default off)
+Behind Settings → Downloads → Advanced → **"Live recording"** (`DownloadSettings.liveRecording`, on by default since 1.2.0 — a beta, off by default, before)
 and **"Maximum length"** (`liveRecordingMaxMinutes`, 30 min / 1 / 2 / 4 / 8 h offered, 15–720 accepted, default 2 h);
 both live in the engine's SharedPreferences (pushed by `ensure-bridge`), so a recording obeys them with the app closed.
 
