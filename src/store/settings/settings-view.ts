@@ -28,6 +28,27 @@ export function settingsViewMigration(persisted: Readonly<Record<string, unknown
   return Object.keys(persisted).length > 0 ? 'advanced' : DEFAULT_SETTINGS_VIEW;
 }
 
+/**
+ * The view to save once at startup, or null when one is saved already. Zustand saves settings only when one changes,
+ * so an install from before 1.2.0 whose settings were never touched has none saved at all; its finished intro still
+ * marks it as an existing install (Advanced). Saving the choice keeps a new install that finishes the intro in Simple
+ * on its next start.
+ */
+export function settingsViewToSave(storedSettings: string | null | undefined, onboardingComplete: boolean): SettingsView | null {
+  let saved: Record<string, unknown> = {};
+  try {
+    const parsed: unknown = storedSettings ? JSON.parse(storedSettings) : null;
+    const state = parsed && typeof parsed === 'object' ? (parsed as { state?: unknown }).state ?? parsed : null;
+    if (state && typeof state === 'object') saved = state as Record<string, unknown>;
+  } catch {
+    saved = {};
+  }
+  if (isSettingsView(saved.settingsView)) {
+    return null;
+  }
+  return onboardingComplete || Object.keys(saved).length > 0 ? 'advanced' : DEFAULT_SETTINGS_VIEW;
+}
+
 /** Whether a row (or section) shows: rows not marked advanced always do. */
 export function isSettingVisible(advanced: boolean | undefined, view: SettingsView): boolean {
   return advanced !== true || view === 'advanced';

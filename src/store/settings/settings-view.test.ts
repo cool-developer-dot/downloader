@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { DEFAULT_SETTINGS_VIEW, isSettingVisible, settingsViewMigration } from './settings-view';
+import { DEFAULT_SETTINGS_VIEW, isSettingVisible, settingsViewMigration, settingsViewToSave } from './settings-view';
 import { initialSettingsState } from './state';
 import { backupKeys, STRING_CHOICES } from './backup';
 
@@ -33,4 +33,14 @@ describe('P8 #516/#517 Simple / Advanced settings view', () => {
     assert.ok(backupKeys(initialSettingsState as unknown as Record<string, unknown>).includes('settingsView'));
     assert.deepEqual(STRING_CHOICES.settingsView, ['simple', 'advanced']);
   });
+});
+
+test('the view is saved once at startup; an untouched pre-1.2.0 install (nothing saved, intro done) is Advanced', () => {
+  // Zustand saves settings only when one changes: a 1.1.0 user who never changed one has nothing stored.
+  assert.equal(settingsViewToSave(null, true), 'advanced');
+  assert.equal(settingsViewToSave(null, false), 'simple');
+  assert.equal(settingsViewToSave(JSON.stringify({ state: { wifiOnly: true }, version: 0 }), false), 'advanced');
+  assert.equal(settingsViewToSave(JSON.stringify({ state: { settingsView: 'simple' }, version: 0 }), true), null);
+  assert.equal(settingsViewToSave(JSON.stringify({ state: { settingsView: 'advanced' } }), false), null);
+  assert.equal(settingsViewToSave('not json', false), 'simple');
 });

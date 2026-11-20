@@ -2476,7 +2476,14 @@ ARCHITECTURE §3.9; API in `docs/REMOTE_API.md`; intents in `docs/AUTOMATION.md`
   test now type-checks under `tsconfig.test.json`.
 - **Fix found by the merged run:** parallel progress could step back by one write when two parts reported out of order
   (`RangedDownload.report`, `00bf104`).
-- **Tests after the merges:** JS 2 002/2 002, both type checks clean; native vidorax-media 1 134, vidorax-web 171.
+- **Fix found on the device (upgrade test):** an install from 1.1.0 whose settings were never changed has no saved
+  settings (zustand 5 writes only on a change, not after hydration), so P8 took it for a new install and showed
+  Simple. `settingsViewToSave` now decides once at startup (`app-initializer`, after the settings rehydrate): a saved
+  view is kept; otherwise saved settings or a finished intro mean Advanced, else Simple, and the choice is saved.
+  Device: production 1.1.0 (vc4) fresh → intro skipped → 1.2.0 installed over it → Advanced; 1.2.0 fresh → intro →
+  restart → still Simple. Batch Add, Watched links, Remote control, Extract archive and Download rules open on the
+  merged build without a crash.
+- **Tests after the merges:** JS 2 003/2 003, both type checks clean; native vidorax-media 1 134, vidorax-web 171.
 - **Version:** 1.2.0 / versionCode 5 in `android/app/build.gradle` and `app.json`; Play release notes and the zip
   intent-filter row in `docs/play-console/PLAY_SUBMISSION.md`. Play upload stays the owner's step.
 
