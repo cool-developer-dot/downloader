@@ -249,6 +249,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureClipboardLinkMonitor } = await import('@/browser/services/clipboard-link-monitor');
       // Download Settings → Copied links: only when on (default off), only on returning to the foreground.
       ensureClipboardLinkMonitor();
+      const { ensureRemoteControl } = await import('@/remote/remote-control');
+      // P6: links from the Web UI, the extension, the CLI and other apps go through Batch Add (server off by default).
+      ensureRemoteControl();
       if (typeof ensureLibraryCompletionBridge === 'function') {
         ensureLibraryCompletionBridge();
       }

@@ -71,6 +71,12 @@ export const privacyDocument: LegalDocument = {
       ],
     },
     {
+      // P6: the phone's own LAN-only web page (Remote control) and the Automation API for other apps.
+      id: 'remote-control',
+      headingKey: 'remoteControl.privacyHeading',
+      bodyKeys: ['remoteControl.privacyP1', 'remoteControl.privacyP2', 'remoteControl.privacyP3'],
+    },
+    {
       id: 'retention',
       headingKey: 'privacy.sections.retention.heading',
       bodyKeys: [

@@ -24,6 +24,7 @@ import { browserCaptureUr } from './catalogs/browserCapture.ur';
 import { browserTabGroupsUr } from './catalogs/browserTabGroups.ur';
 import { downloadSourcesUr } from './catalogs/downloadSources.ur';
 import { browserProfilesUr } from './catalogs/browserProfiles.ur';
+import { remoteControlUr } from './catalogs/remoteControl.ur';
 import { browserPrivacyUr } from './catalogs/browserPrivacy.ur';
 import { browserAddressUr } from './catalogs/browserAddress.ur';
 import { browserSettingsUr } from './catalogs/browserSettings.ur';
@@ -2840,6 +2841,7 @@ export const ur: CatalogStrings<typeof en> = {
   browserAddress: browserAddressUr,
   browserNav: browserNavUr,
   browserProfiles: browserProfilesUr,
+  remoteControl: remoteControlUr,
   browserPrivacy: browserPrivacyUr,
   // B8 (Hamza)
   browserSelection: browserSelectionUr,

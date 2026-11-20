@@ -3,6 +3,8 @@ import { memo, useCallback } from 'react';
 import { Box } from '@/components/base/Box';
 import { Button } from '@/components/buttons/Button';
 import { useTranslation } from '@/localization';
+import { isRemoteControlAvailable, sendToComputer } from '@/remote/remote-control';
+import { useDownloadsStore } from '@/store/downloads';
 
 import { useDownloadLinkActions, useDownloadLinkTarget } from '../hooks/useDownloadLinkActions';
 
@@ -22,6 +24,7 @@ export const DownloadDetailsLinkActions = memo(function DownloadDetailsLinkActio
   const { t } = useTranslation();
   const target = useDownloadLinkTarget(id);
   const { redownload, copyLink } = useDownloadLinkActions();
+  const title = useDownloadsStore((state) => state.itemsById[id]?.title);
 
   const handleRedownload = useCallback(() => {
     if (target) {
@@ -34,6 +37,12 @@ export const DownloadDetailsLinkActions = memo(function DownloadDetailsLinkActio
       void copyLink(target);
     }
   }, [copyLink, target]);
+
+  const handleSend = useCallback(() => {
+    if (target) {
+      void sendToComputer({ url: target.copyUrl, title: title || target.copyUrl, downloadId: id });
+    }
+  }, [id, target, title]);
 
   if (!target) {
     return null;
@@ -65,6 +74,19 @@ export const DownloadDetailsLinkActions = memo(function DownloadDetailsLinkActio
           testID="download-details-copy-link"
         />
       </Box>
+      {isRemoteControlAvailable() ? (
+        <Box flex={1} style={{ minWidth: 120 }}>
+          <Button
+            title={t('remoteControl.sendToComputer')}
+            variant="outline"
+            onPress={handleSend}
+            disabled={disabled}
+            fullWidth
+            accessibilityHint={t('remoteControl.sendToComputerHint')}
+            testID="download-details-send-to-computer"
+          />
+        </Box>
+      ) : null}
     </Box>
   );
 });

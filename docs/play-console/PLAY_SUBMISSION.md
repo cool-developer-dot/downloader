@@ -133,6 +133,13 @@ the downloads the user starts. Google's Data safety guidance treats this as the 
 the developer. Downloads, library, watch progress, history, bookmarks, App Lock PIN (one-way hash) and settings stay
 on the device.
 
+P6 Remote control (1.2.0) does not change the answer: the web server runs on the phone, only after the user turns it
+on, and answers only devices on the user's own network that the user paired with a PIN shown on the phone. The queue,
+links and files it serves go from the phone to the user's own computer; nothing reaches the developer or a third
+party ("data transferred to a device the user controls is not collection"). The Automation API only acts on, and
+announces titles to, apps on the same phone, and only once the user allows it.
+Privacy policy: the "Remote control and other apps" section (`src/legal/privacy-content.ts`).
+
 ## Permission declarations
 
 ### A. Photo and video permissions (`READ_MEDIA_VIDEO`, `READ_MEDIA_VISUAL_USER_SELECTED`)
@@ -267,6 +274,8 @@ Checked against every permission in the final merged manifest:
 | `http`/`https` VIEW intent filters (can be default browser) | No |
 
 | `content`/`file` VIEW intent filters for `video/*` and `audio/*` ("Open with VidoraX", F16) | No |
+| P6 Remote control: a LAN-only web server inside the app (NanoHTTPD), started by the user, using the existing `INTERNET` / `ACCESS_NETWORK_STATE`; no new permission and no new foreground-service type (it runs only while the app is open or the existing `dataSync` download runner is up) | No |
+| P6 exported broadcast receiver `AutomationReceiver` (`com.vidorax.action.ADD_DOWNLOAD` / `PAUSE_ALL` / `RESUME_ALL`), ignored unless the user turns on "Allow other apps to control downloads" (off by default) | No |
 
 Not present (the ones that *would* need forms): `QUERY_ALL_PACKAGES`, `MANAGE_EXTERNAL_STORAGE`,
 `REQUEST_INSTALL_PACKAGES`, `ACCESS_*LOCATION`, `SCHEDULE_EXACT_ALARM`/`USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT`,

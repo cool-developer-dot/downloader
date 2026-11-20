@@ -45,6 +45,8 @@ dependencies {
   // #304 FTP/FTPS downloads (Apache-2.0). Its FTPClient keeps java.time fields, so FTP runs on Android 8+ only
   // (net/FtpSession.kt refuses it below API 26 instead of crashing).
   implementation "commons-net:commons-net:3.13.0"
+  // P6 Remote control: the phone's LAN-only web server (BSD-3-Clause). No other dependencies.
+  implementation "org.nanohttpd:nanohttpd:2.3.1"
 
   testImplementation "junit:junit:4.13.2"
   testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
