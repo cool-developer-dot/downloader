@@ -248,6 +248,9 @@ internal class RangedDownload(
   private var running = 0
   private var peak = 0
   private val bytesDone = AtomicLong(parts.sumOf { it.written.get() })
+  /** The last count handed to [onProgress]: parts finish writes on their own threads, and a report never goes back. */
+  private val progressLock = Any()
+  private var reportedBytes = -1L
   /** How long a request takes to answer (headers), averaged: what a new split costs before it brings a byte. */
   private val requestLatencyMs = AtomicLong(0)
   @Volatile private var lastCheckpoint = 0L
@@ -503,6 +506,15 @@ internal class RangedDownload(
     }
   }
 
+  /** Hands [done] to [onProgress] unless a part on another thread already reported more. */
+  private fun report(done: Long) {
+    synchronized(progressLock) {
+      if (done <= reportedBytes) return
+      reportedBytes = done
+      onProgress(done, total)
+    }
+  }
+
   private fun recordLatency(ms: Long) {
     requestLatencyMs.updateAndGet { average -> if (average == 0L) ms else (average * 3 + ms) / 4 }
   }
@@ -524,7 +536,7 @@ internal class RangedDownload(
       writer.write(position, bytes, offset, length)
       part.written.addAndGet(length.toLong())
       route.bytes.addAndGet(length.toLong())
-      onProgress(bytesDone.addAndGet(length.toLong()), total)
+      report(bytesDone.addAndGet(length.toLong()))
     }
     try {
       while (true) {
