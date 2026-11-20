@@ -118,6 +118,15 @@ describe('Batch Add text', () => {
     assert.equal(capped.links.length, 500);
     assert.equal(capped.truncated, true);
   });
+
+  test('#347: a `link | mirror` line is one link with its mirrors, beside patterns', async () => {
+    const { batchLinksFromText } = await import('./batch-text');
+    const out = batchLinksFromText(
+      'https://x.test/a.mp4 | https://m1.test/a.mp4 | https://m2.test/a.mp4\nhttps://x.test/p[1-2].mp4\nhttps://x.test/b.mp4 | https://x.test/b.mp4',
+    );
+    assert.deepEqual(out.links, ['https://x.test/a.mp4', 'https://x.test/p1.mp4', 'https://x.test/p2.mp4', 'https://x.test/b.mp4']);
+    assert.deepEqual(out.mirrors, { 'https://x.test/a.mp4': ['https://m1.test/a.mp4', 'https://m2.test/a.mp4'] });
+  });
 });
 
 test('#363: an RSS or Atom feed opened as a playlist gives its video enclosures, not its audio items', () => {

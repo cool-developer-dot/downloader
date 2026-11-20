@@ -2274,7 +2274,9 @@ already handled them; now they download (ARCHITECTURE §1).
 - **Not supported:** `.m2ts` (192-byte packets), a `.ts` served without a length (indistinguishable from IPTV live);
   that refusal shows the generic "This video can't be downloaded".
 
-### 4.37 Client "add all" — downloader features P1, P3, P4, P5, P7 (same branch, 2026-11-19/20)
+### 4.37 Downloader 1.2.0 packages (client "add all", plan `kind-spinning-dijkstra`)
+
+#### P1, P3, P4, P5, P7 — engine tuning, watched links, bulk adding, site grabber, cloud (2026-11-19/20)
 
 The client approved every optional downloader feature plus live recording and the widget (plan: P1–P8). P2 (FTP,
 mirrors, multi-network), P6 (Web UI, remote, CLI, automation, extension) and P8 (malware warning, source check, zip,
@@ -2330,8 +2332,59 @@ Simple/Advanced) run in their own sessions/worktrees and merge here afterwards. 
   offered in "Open playlist". Comments: Reddit returns 403/an interstitial to unsigned clients from this network and
   big video sites publish no JSON-LD comments, so only unit tests cover the parsers. Emulator pitfalls this time:
   host load froze System UI; a campus network refused public DNS (the emulator had none until it was restarted).
-- **Not done here yet:** P2/P6/P8 merges (branches `claude/kind-pasteur-9d2dc3`, `claude/focused-goodall-8b843b`,
-  `claude/exciting-shaw-90cf77`), version 1.2.0 (vc5), the client APK and status sheet.
+
+#### P2 Sources — FTP, mirrors, Wi-Fi + mobile data (branch `claude/kind-pasteur-9d2dc3`, 2026-11-20)
+
+On top of `claude/downloader-finalized-formats-4a36f8` (`56d5ab7`). ARCHITECTURE §1 (Sources), §3.1, §3.2, §3.4.
+
+- **#304 FTP/FTPS.** `SourceKind.FTP` (`'ftp'`); Commons Net 3.13.0. `net/FtpSession` (link parsing, TLS, the
+  private-network rule, reply → HTTP status), `plan/FtpProbe` (SIZE + first 64 KiB through `MediaSniffer`; trailing
+  `moov` read with REST), `transfer/FtpTransfer` (one connection, REST resume against `ftp <size> <mdtm>`). Routed by
+  `Probe.probeBlocking` (an ftp link with no kind is FTP) and `RealTransfers` (by scheme); the engine runs it through
+  `runProgressive` (verify/process/finalize unchanged), FTP identity in `DownloadIdentity`, play-while-downloading
+  allowed. Sign-in: the link's `user:pass@` is moved by `EnqueueRequestRecord` into `DownloadCredentials` (memory,
+  pinned to the ftp origin; `ftpLoginFor`), the row keeps the link without it; `Redact.url` strips it. JS:
+  `downloads/v2/sources.ts` + `ftp-download.ts`, `browser/services/ftp-link.service.ts`; the address bar, pasted and
+  shared links (`openPastedLink`), the clipboard offer and Batch Add send FTP links to the engine (`ftp:` stays a
+  blocked WebView scheme). Android 8+ only (Commons Net's `java.time` fields) — refused below with
+  `UNSUPPORTED_FORMAT` ("FTP downloads need Android 8 or later").
+- **#347 Mirrors.** `download_mirrors` (schema **v7**, new table only — renumber if another package also takes v7),
+  `setDownloadMirrors`/`getDownloadMirrors` (a running download restarts its transfer from disk), `EnqueueRequest.
+  mirrors`. `transfer/MirrorCheck` (same total + SHA-256 of the first 64 KiB, at every start), `PartRoute`s in
+  `RangedDownload` (a mirror that fails or answers other bytes is dropped, its part handed back). UI: Download
+  details → "Mirrors" (`DownloadMirrorsSection`, file downloads only), Batch Add lines `link | mirror | mirror`.
+- **#446 Wi-Fi + mobile data.** `DownloadSettings.multiNetwork` (bridge/prefs/JS `multiNetwork`, off by default,
+  forced off with Wi-Fi only), `net/MultiNetwork` (`requestNetwork(TRANSPORT_CELLULAR)`, `HttpClient.boundTo`),
+  engine `SecondNetwork` lease per transfer; parts on both networks via the same routes. `CHANGE_NETWORK_STATE`
+  (normal) in the media module manifest and PLAY_SUBMISSION §C. Data limit (H6): mobile bytes are download progress,
+  counted like every byte.
+- **Tests.** Kotlin: `FtpSourceTest` (in-process Apache FtpServer; its throwaway TLS certificate is made by the JDK's keytool at run time — `*.p12` stays git-ignored),
+  `SourcesTransferTest` (mirrors accepted/rejected/failed/wrong bytes, two clients, lost network),
+  `DownloadEngineSourcesTest`, DB upgrade v6→v7. JS: `downloads/v2/sources.test.ts`; link-intake/clipboard tests
+  updated (FTP file links are links now).
+- **Device check (2026-11-20, new AVD `VidoraX_Test2`, upload-key release build, API 35):**
+  - FTP (`pyftpdlib` on the Mac via `adb reverse`, host `fx.127.0.0.1.nip.io` — the guard does no DNS): a shared
+    `ftp://…/clip.mp4` → toast "Downloading clip" → 18.3 MB, gallery copy md5-identical; the app tried AUTH TLS
+    first and reconnected plain when the server had none. `ftp://tester:pa%20ss%3Aword@…/sub/My%20Clip%20%C3%BC.mp4`
+    (sign-in, space/colon in the password, non-ASCII path) → paused at 44 %, resumed: the server sent only the
+    remaining 18,219,157 of 35,586,197 bytes (REST), file md5-identical. Audio-only `song.m4a` → "This file is not
+    a video". Explicit-TLS server with a self-signed certificate → handshake refused by the phone, plain FTP used,
+    file md5-identical. (Through `adb reverse` the host side keeps accepting a cut probe read for a few seconds, so
+    the server log shows ~3 MB "sent" for a 64 KiB probe — an adb artefact.)
+  - Mirrors: Batch Add line `dn801201.us.archive.org/…/big_buck_bunny_720p_surround.mp4 | dn710604.ca.archive.org/…
+    .mp4 | …surround.ogv` → "+2 mirrors"; Details shows both under "Mirrors". Engine log: `mirrors accepted=1
+    rejected=1 bytes={main=42804304, mirror1=19074305} dropped=[]` (the `.ogv`, another length, rejected; parts split
+    across both servers, sum = the 61,878,609-byte file); md5 = archive.org's published `aa031fc2…`. A mirror that
+    dies or answers other bytes mid-download is covered by `SourcesTransferTest` (no public server to break).
+  - Multi-network (setting on, Wi-Fi default and mobile data both validated): Batch Add
+    `dn600306.us.archive.org/…/ElephantsDream/ed_1024_512kb.mp4` (47,065,346 bytes, 3 connections) → while it ran
+    the app held `REQUEST … Transports: CELLULAR … Uid: <app>`, registered 12:41:43 and released 30 ms after the
+    transfer ended; engine log `bytes={main=31376898, main+mobile=15688448} dropped=[]` (sum = the file); kernel
+    counters agree: the mobile interface (`eth0` on the emulator) received ~16.4 MB, `wlan0` ~33 MB. The lost-mobile-
+    network drop is covered by `SourcesTransferTest`. (A Wikimedia `…480p.vp9.webm` link in Batch Add ended "Needs
+    review" in the direct analyzer, before the engine — not a P2 path; the AVD's Wi-Fi also dropped twice under the
+    Mac's load, and the Mac lost internet for a while.)
+  - Test files deleted afterwards (app data cleared, `Movies/VidoraX` removed on the AVD).
 
 ## 5. How to resume
 

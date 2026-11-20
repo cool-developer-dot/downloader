@@ -32,7 +32,9 @@ describe('extractLinks', () => {
   });
 
   test('ignores other schemes and caps the count', () => {
-    assert.deepEqual(extractLinks('ftp://a.com javascript:alert(1) file:///x'), []);
+    assert.deepEqual(extractLinks('javascript:alert(1) file:///x mailto:a@b.c'), []);
+    // #304: an FTP file link is a link the engine downloads directly.
+    assert.deepEqual(extractLinks('ftp://a.com/x.mp4 javascript:alert(1)'), ['ftp://a.com/x.mp4']);
     const many = Array.from({ length: 80 }, (_, i) => `https://a.com/${i}`).join('\n');
     assert.equal(extractLinks(many).length, MAX_BATCH_LINKS);
   });
@@ -47,7 +49,10 @@ describe('classifyIntakeLink', () => {
     assert.equal(classifyIntakeLink('http://localhost/x'), 'private');
     assert.equal(classifyIntakeLink('http://[::1]/x'), 'private');
     assert.equal(classifyIntakeLink('not a url'), 'invalid');
-    assert.equal(classifyIntakeLink('ftp://a.com/x'), 'invalid');
+    // #304: an FTP file on a public host is accepted; one with no file, or on a private host, is not.
+    assert.equal(classifyIntakeLink('ftp://a.com/x'), 'ok');
+    assert.equal(classifyIntakeLink('ftp://a.com'), 'invalid');
+    assert.equal(classifyIntakeLink('ftp://192.168.0.5/x'), 'private');
   });
 });
 

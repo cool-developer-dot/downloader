@@ -19,7 +19,13 @@ const MAX_PLAYLIST_BYTES = 2 * 1024 * 1024;
 const PLAYLIST_TIMEOUT_MS = 10_000;
 const MAX_PLAYLISTS_PER_LOAD = 5;
 
-export type BatchRow = { url: string; status: 'pending' | 'running' | 'done'; result: BatchLinkResult | null };
+export type BatchRow = {
+  url: string;
+  /** #347: mirrors given on the link's line (`link | mirror`); none = today's row. */
+  mirrors: string[];
+  status: 'pending' | 'running' | 'done';
+  result: BatchLinkResult | null;
+};
 
 export type PlaylistNotice = { kind: 'loaded'; count: number } | { kind: 'stream' | 'none' | 'failed' } | null;
 
@@ -82,7 +88,7 @@ export function useBatchAdd() {
     if (runningRef.current) {
       return;
     }
-    const queue = links;
+    const queue = links.map((url) => ({ url, mirrors: parsed.mirrors[url] ?? [] }));
     if (queue.length === 0) {
       return;
     }
@@ -90,7 +96,7 @@ export function useBatchAdd() {
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
-    setRows(queue.map((url) => ({ url, status: 'pending', result: null })));
+    setRows(queue.map(({ url, mirrors }) => ({ url, mirrors, status: 'pending', result: null })));
     for (let index = 0; index < queue.length; index += 1) {
       if (controller.signal.aborted) {
         break;
@@ -98,9 +104,13 @@ export function useBatchAdd() {
       setRows((current) => current.map((row, i) => (i === index ? { ...row, status: 'running' } : row)));
       let result: BatchLinkResult;
       try {
-        result = await addLinkFromBatch(queue[index]!, controller.signal, { rules, title: titles[queue[index]!] ?? null });
+        result = await addLinkFromBatch(queue[index]!.url, controller.signal, {
+          rules,
+          title: titles[queue[index]!.url] ?? null,
+          mirrors: queue[index]!.mirrors,
+        });
       } catch {
-        result = { url: queue[index]!, outcome: 'needs-review', detail: 'ERROR', title: null, downloadId: null };
+        result = { url: queue[index]!.url, outcome: 'needs-review', detail: 'ERROR', title: null, downloadId: null };
       }
       // Stop while this link was being checked: it was never decided, so it waits like the links after it.
       if (controller.signal.aborted && result.outcome === 'needs-review') {
@@ -111,7 +121,7 @@ export function useBatchAdd() {
     }
     runningRef.current = false;
     setRunning(false);
-  }, [links, rules, titles]);
+  }, [links, parsed.mirrors, rules, titles]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 

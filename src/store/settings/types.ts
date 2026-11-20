@@ -35,6 +35,11 @@ export interface SettingsState {
   saveToGallery: boolean;
   /** Connections one large file (or one stream's segments) may use at once, 1–4 (default 3). */
   connectionsPerFile: number;
+  /**
+   * #446 "Experimental: use Wi-Fi and mobile data together" (default off): on Wi-Fi, a multi-connection download also
+   * puts some parts on mobile data. Never sent on while `wifiOnly` is on.
+   */
+  multiNetwork: boolean;
   /** The player keeps playing (with a media notification) when VidoraX goes to the background (default off). */
   backgroundPlayback: boolean;
   /** Speed limit for all downloads together, bytes per second; 0 = off (default). */

@@ -9,6 +9,7 @@ import { downloadWindowForEngine, sameDownloadWindow, type DownloadHours } from 
 import type { V2EnginePort } from './engine-port';
 import { speedLimitForEngine } from './speed-limit';
 import { networkSettingsFields, sameNetworkFields, type NetworkOptionsInput } from './network-options';
+import { multiNetworkForEngine } from './sources';
 
 export type V2SettingsInput = {
   wifiOnly: boolean;
@@ -43,6 +44,8 @@ export type V2SettingsInput = {
   lowMemoryMode?: LowMemoryMode;
   cooldownSeconds?: number;
   exitWhenDone?: boolean;
+  /** #446 "Experimental: use Wi-Fi and mobile data together" (default false; never with Wi-Fi only). */
+  multiNetwork?: boolean;
   /** Finished/failed notification alerts; each is sent only when given (see `DownloadSettings`). */
   notificationSound?: boolean;
   notificationVibrate?: boolean;
@@ -155,6 +158,7 @@ export function v2DownloadSettings(input: V2SettingsInput): DownloadSettings {
     lowMemoryMode: normalizeLowMemoryMode(input.lowMemoryMode),
     cooldownSeconds: normalizeCooldownSeconds(input.cooldownSeconds),
     exitWhenDone: input.exitWhenDone === true,
+    multiNetwork: multiNetworkForEngine(input.multiNetwork, input.wifiOnly === true),
     ...notificationAlertFields(input),
   };
 }
@@ -182,6 +186,7 @@ export function sameV2Settings(a: DownloadSettings, b: DownloadSettings): boolea
     (a.lowMemoryMode ?? 'auto') === (b.lowMemoryMode ?? 'auto') &&
     (a.cooldownSeconds ?? 0) === (b.cooldownSeconds ?? 0) &&
     (a.exitWhenDone ?? false) === (b.exitWhenDone ?? false) &&
+    (a.multiNetwork ?? false) === (b.multiNetwork ?? false) &&
     a.notificationSound === b.notificationSound &&
     a.notificationVibrate === b.notificationVibrate &&
     a.notificationSilent === b.notificationSilent

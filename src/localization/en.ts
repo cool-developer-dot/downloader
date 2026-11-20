@@ -22,6 +22,7 @@ import { browserAnnotateEn } from './catalogs/browserAnnotate.en';
 import { browserUrduEn } from './catalogs/browserUrdu.en';
 import { browserCaptureEn } from './catalogs/browserCapture.en';
 import { browserTabGroupsEn } from './catalogs/browserTabGroups.en';
+import { downloadSourcesEn } from './catalogs/downloadSources.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
 import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
@@ -2865,4 +2866,6 @@ export const en = {
   browserUrdu: browserUrduEn,
   browserCapture: browserCaptureEn,
   browserTabGroups: browserTabGroupsEn,
+  // P2 Sources: FTP, mirrors, Wi-Fi + mobile data
+  downloadSources: downloadSourcesEn,
 } as const;

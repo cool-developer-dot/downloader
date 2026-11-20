@@ -128,6 +128,7 @@ export function ensureV2DownloadBridge(): void {
       lowMemoryMode: settings.lowMemoryMode,
       cooldownSeconds: settings.cooldownSeconds,
       exitWhenDone: settings.exitWhenDone,
+      multiNetwork: settings.multiNetwork,
       notificationSound: settings.notificationSound,
       notificationVibrate: settings.notificationVibrate,
       notificationSilent: settings.notificationSilent,

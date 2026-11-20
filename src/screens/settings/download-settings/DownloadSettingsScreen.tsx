@@ -42,6 +42,7 @@ import {
 } from './constants';
 import { DownloadAdvancedSection } from './DownloadAdvancedSection';
 import { DownloadPerformanceSection } from './DownloadPerformanceSection';
+import { MultiNetworkSettingRow } from './MultiNetworkSettingRow';
 import { DownloadConditionsSection } from './DownloadConditionsSection';
 import { DownloadListSettingsSection } from './DownloadListSettingsSection';
 import { useDownloadSettingsScreen } from './useDownloadSettingsScreen';
@@ -297,6 +298,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
                 testID="download-settings-connections-per-file-control"
               />
             </Box>
+            <MultiNetworkSettingRow disabled={!hydrated} />
             <Box gap={12} py={8}>
               <SettingsRow
                 title={t('settings.speedLimit')}

@@ -87,6 +87,7 @@ export const initialSettingsState: SettingsState = {
   dataLimitMonthlyMb: 0,
   saveToGallery: true,
   connectionsPerFile: DEFAULT_CONNECTIONS_PER_FILE,
+  multiNetwork: false,
   backgroundPlayback: false,
   downloadSpeedLimit: DEFAULT_SPEED_LIMIT,
   downloadHours: { ...DEFAULT_DOWNLOAD_HOURS, days: [...DEFAULT_DOWNLOAD_HOURS.days] },

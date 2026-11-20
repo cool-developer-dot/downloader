@@ -22,6 +22,7 @@ import { browserAnnotateUr } from './catalogs/browserAnnotate.ur';
 import { browserUrduUr } from './catalogs/browserUrdu.ur';
 import { browserCaptureUr } from './catalogs/browserCapture.ur';
 import { browserTabGroupsUr } from './catalogs/browserTabGroups.ur';
+import { downloadSourcesUr } from './catalogs/downloadSources.ur';
 import { browserProfilesUr } from './catalogs/browserProfiles.ur';
 import { browserPrivacyUr } from './catalogs/browserPrivacy.ur';
 import { browserAddressUr } from './catalogs/browserAddress.ur';
@@ -2869,4 +2870,6 @@ export const ur: CatalogStrings<typeof en> = {
   browserUrdu: browserUrduUr,
   browserCapture: browserCaptureUr,
   browserTabGroups: browserTabGroupsUr,
+  // P2 Sources: FTP, mirrors, Wi-Fi + mobile data
+  downloadSources: downloadSourcesUr,
 };

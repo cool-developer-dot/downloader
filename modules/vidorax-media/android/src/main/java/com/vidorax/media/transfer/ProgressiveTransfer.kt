@@ -37,6 +37,26 @@ internal data class TransferSpec(
   val connections: Int = 1,
   /** Paces every network read of this file (F2 speed limits; [BandwidthLimiter.throttleFor]). */
   val throttle: Throttle = Throttle.NONE,
+  /**
+   * #347: other links to this file. Checked before any part uses them ([MirrorCheck]); the accepted ones share the
+   * parts with [url] (also with "Connections per file" at 1: one connection per server then).
+   */
+  val mirrors: List<String> = emptyList(),
+  /**
+   * #446: a client on mobile data beside the default (Wi-Fi) network, for a multi-connection download: some parts
+   * go over it. Null = one network (today).
+   */
+  val secondNetwork: HttpClient? = null,
+  /** What the parts' routes did in a multi-connection run (diagnostics: counts and byte totals, never a URL). */
+  val onRoutes: (RouteReport) -> Unit = {},
+)
+
+/** #347/#446: how a multi-connection run used its routes. */
+internal data class RouteReport(
+  val mirrorsAccepted: Int,
+  val mirrorsRejected: Int,
+  val bytesByRoute: Map<String, Long>,
+  val dropped: List<String>,
 )
 
 internal sealed interface TransferOutcome {
@@ -85,7 +105,7 @@ internal class ProgressiveTransfer(
       if (parts.describes(spec.partFile)) return runParts(spec, parts.total, parts.validator, parts.parts, null, onProgress)
       keepSinglePrefix(spec.partFile, parts)
     }
-    return single(spec, onProgress, allowParallel = spec.connections > 1)
+    return single(spec, onProgress, allowParallel = spec.connections > 1 || spec.mirrors.isNotEmpty())
   }
 
   /**
@@ -218,7 +238,14 @@ internal class ProgressiveTransfer(
     first: HttpResponse?,
     onProgress: (Long, Long?) -> Unit,
   ): TransferOutcome.Completed {
+    val routes = try {
+      extraRoutes(spec, total, validator)
+    } catch (e: Throwable) {
+      first?.close()
+      throw e
+    }
     val writer = writerFor(spec.partFile)
+    var ranged: RangedDownload? = null
     val outcome = try {
       RangedDownload(
         http = http,
@@ -231,7 +258,8 @@ internal class ProgressiveTransfer(
         writer = writer,
         onProgress = onProgress,
         retryDelay = retryDelay,
-      ).run(first)
+        extraRoutes = routes.routes,
+      ).also { ranged = it }.run(first)
     } catch (e: RangesRefusedException) {
       writer.close()
       val prefix = PartsCheckpoint.read(spec.partFile)?.contiguousPrefix ?: 0L
@@ -242,11 +270,43 @@ internal class ProgressiveTransfer(
       return onOneConnection(spec, keep = 0L, onProgress)
     } finally {
       writer.close()
+      ranged?.let { run ->
+        if (routes.routes.isNotEmpty() || routes.rejected > 0) {
+          runCatching { spec.onRoutes(RouteReport(routes.accepted, routes.rejected, run.bytesByRoute(), run.droppedRoutes())) }
+        }
+      }
     }
     // Marked complete before the parts checkpoint goes, so no crash in between can make the file look partial.
     TrackDone.mark(spec.partFile)
     PartsCheckpoint.delete(spec.partFile)
     return outcome
+  }
+
+  private class Routes(val routes: List<PartRoute>, val accepted: Int, val rejected: Int)
+
+  /**
+   * The routes beside the main link: each accepted mirror (#347), then — with a second network (#446) — the main link
+   * and each mirror over it. A mirror that fails the check is simply not used.
+   */
+  private suspend fun extraRoutes(spec: TransferSpec, total: Long, validator: String): Routes {
+    val mirrors = if (spec.mirrors.isEmpty()) {
+      MirrorCheck.Outcome(emptyList(), 0)
+    } else {
+      kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        MirrorCheck.check(http, spec.url, spec.context, total, spec.mirrors)
+      }
+    }
+    val routes = ArrayList<PartRoute>()
+    mirrors.accepted.forEachIndexed { index, mirror ->
+      routes += PartRoute(mirror.url, mirror.validator, http.separateConnections, droppable = true, label = "mirror${index + 1}")
+    }
+    spec.secondNetwork?.separateConnections?.let { mobile ->
+      routes += PartRoute(spec.url, validator, mobile, droppable = true, label = "${RangedDownload.MAIN}$MOBILE")
+      mirrors.accepted.forEachIndexed { index, mirror ->
+        routes += PartRoute(mirror.url, mirror.validator, mobile, droppable = true, label = "mirror${index + 1}$MOBILE")
+      }
+    }
+    return Routes(routes, mirrors.accepted.size, mirrors.rejected)
   }
 
   private suspend fun onOneConnection(spec: TransferSpec, keep: Long, onProgress: (Long, Long?) -> Unit): TransferOutcome.Completed {
@@ -342,13 +402,15 @@ internal class ProgressiveTransfer(
 
   private fun noResume(url: String) = MediaNetworkException("server would not resume ${Redact.url(url)}")
 
-  private companion object {
+  internal companion object {
+    /** Label suffix of a route over the second (mobile) network. */
+    const val MOBILE = "+mobile"
 
     /** Answers to a fresh `bytes=0-` that mean "not with a Range" rather than "not at all". */
-    val OPEN_RANGE_REFUSALS = setOf(403, 416)
+    private val OPEN_RANGE_REFUSALS = setOf(403, 416)
 
     /** Daemon threads: aborting a socket read must not keep the process alive or block a caller. */
-    val CLOSERS: ExecutorService = Executors.newCachedThreadPool { runnable ->
+    private val CLOSERS: ExecutorService = Executors.newCachedThreadPool { runnable ->
       Thread(runnable, "vidorax-transfer-close").apply { isDaemon = true }
     }
   }

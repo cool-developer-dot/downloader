@@ -86,6 +86,18 @@ object DownloadEngineProvider {
       lowRamDevice = runCatching {
         context.getSystemService(android.app.ActivityManager::class.java)?.isLowRamDevice == true
       }.getOrDefault(false),
+      // #446: mobile data beside Wi-Fi, requested only while a multi-connection download with the setting on runs.
+      secondNetwork = com.vidorax.media.net.AndroidMobileData(context, http),
+      // #347/#446: one line per multi-connection run that used mirrors or two networks (counts only, no URL).
+      onRoutes = { id, report ->
+        runCatching {
+          android.util.Log.i(
+            "VidoraSources",
+            "download ${id.take(8)}: mirrors accepted=${report.mirrorsAccepted} rejected=${report.mirrorsRejected} " +
+              "bytes=${report.bytesByRoute} dropped=${report.dropped}",
+          )
+        }
+      },
     )
     // #299: credentials of a download are dropped when it completes, is cancelled or fails (memory only).
     com.vidorax.media.net.DownloadCredentials.install(context, engine.stateChanges, services.scope)
@@ -132,6 +144,7 @@ object DownloadEngineProvider {
       lowMemoryMode = LowMemoryMode.fromWire(stored.getString(KEY_LOW_MEMORY, null)),
       cooldownSeconds = stored.getInt(KEY_COOLDOWN, 0).coerceIn(0, DownloadSettings.MAX_COOLDOWN_SECONDS),
       exitWhenDone = stored.getBoolean(KEY_EXIT_WHEN_DONE, false),
+      multiNetwork = stored.getBoolean(KEY_MULTI_NETWORK, false) && !stored.getBoolean(KEY_WIFI_ONLY, defaults.wifiOnly),
     )
   }
 
@@ -171,6 +184,7 @@ object DownloadEngineProvider {
         .putString(KEY_LOW_MEMORY, settings.lowMemoryMode.wire)
         .putInt(KEY_COOLDOWN, settings.cooldownSeconds)
         .putBoolean(KEY_EXIT_WHEN_DONE, settings.exitWhenDone)
+        .putBoolean(KEY_MULTI_NETWORK, settings.multiNetwork)
         .apply()
     }
   }
@@ -195,4 +209,5 @@ object DownloadEngineProvider {
   private const val KEY_LOW_MEMORY = "lowMemoryMode"
   private const val KEY_COOLDOWN = "cooldownSeconds"
   private const val KEY_EXIT_WHEN_DONE = "exitWhenDone"
+  private const val KEY_MULTI_NETWORK = "multiNetwork"
 }

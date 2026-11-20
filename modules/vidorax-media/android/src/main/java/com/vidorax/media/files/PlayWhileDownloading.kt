@@ -67,7 +67,8 @@ internal object PlayWhileDownloading {
   fun refusal(facts: Facts): Refusal? = when {
     facts.state == DownloadState.PROCESSING -> Refusal.PROCESSING
     facts.state !in PLAYABLE_STATES -> Refusal.NOT_DOWNLOADING
-    facts.kind != SourceKind.PROGRESSIVE || facts.segmentedOrSplit -> Refusal.STREAM
+    // #304: an FTP download is one file growing from byte 0, like a progressive one.
+    (facts.kind != SourceKind.PROGRESSIVE && facts.kind != SourceKind.FTP) || facts.segmentedOrSplit -> Refusal.STREAM
     facts.sdk < MIN_SDK -> Refusal.UNSUPPORTED_DEVICE
     facts.totalBytes == null || facts.totalBytes <= 0 -> Refusal.UNKNOWN_SIZE
     else -> when (val layout = facts.layout) {

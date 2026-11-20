@@ -136,6 +136,11 @@ data class EnqueueRequest(
    * copy of "Replace"): no identity check, and its finished file is kept even when the same bytes are saved.
    */
   val allowDuplicate: Boolean = false,
+  /**
+   * #347: other links to the same file (http(s), progressive downloads only), persisted with the download. A mirror
+   * is used only after it proved to be the same file (engine/MirrorCheck); parts are then spread across them.
+   */
+  val mirrors: List<String> = emptyList(),
 )
 
 /**
@@ -245,6 +250,12 @@ data class DownloadSettings(
   val cooldownSeconds: Int = 0,
   /** #358 "Exit when done": close VidoraX when every download has finished while it is in the background. */
   val exitWhenDone: Boolean = false,
+  /**
+   * #446 "Experimental: use Wi-Fi and mobile data together" (off by default): a multi-connection download on Wi-Fi
+   * also puts some of its parts on mobile data (net/MultiNetwork). Never while "Wi-Fi only" is on — the bridge stores
+   * it off then — and never for a download that keeps to Wi-Fi itself (#480).
+   */
+  val multiNetwork: Boolean = false,
 ) {
   /**
    * The settings the engine runs with: in low memory mode one download at a time on one connection, a small read

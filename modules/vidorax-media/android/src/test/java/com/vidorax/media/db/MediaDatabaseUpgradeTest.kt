@@ -115,4 +115,53 @@ class MediaDatabaseUpgradeTest {
       database.close()
     }
   }
+
+  @Test fun upgradingFromV6KeepsEveryRowAndAddsTheMirrorsTable() {
+    file.parentFile?.mkdirs()
+    SQLiteDatabase.openOrCreateDatabase(file, null).use { db ->
+      Schema.CREATE.filterNot { it.contains("download_mirrors") }.forEach(db::execSQL)
+      db.execSQL(
+        "INSERT INTO downloads (id, state, kind, url, request_json, title, site, bytes_done, total_bytes, " +
+          "created_at, updated_at) VALUES ('m', 'paused', 'progressive', 'https://cdn.example/m.mp4', '{}', " +
+          "'Paused file', 'web', 10, 100, 1, 2)",
+      )
+      db.execSQL("INSERT INTO download_schedule (download_id, start_at) VALUES ('m', 1800000000000)")
+      db.version = 6
+    }
+    val database = MediaDatabase(context)
+    try {
+      val db = database.writableDatabase
+      assertEquals(Schema.VERSION, db.version)
+      db.rawQuery("SELECT state, bytes_done FROM downloads WHERE id = 'm'", null).use {
+        assertTrue(it.moveToFirst())
+        assertEquals("paused", it.getString(0))
+        assertEquals(10L, it.getLong(1))
+      }
+      db.rawQuery("SELECT start_at FROM download_schedule WHERE download_id = 'm'", null).use { assertTrue(it.moveToFirst()) }
+      db.execSQL("INSERT INTO download_mirrors (download_id, position, url) VALUES ('m', 0, 'https://mirror.example/m.mp4')")
+      // Running the v7 migration again (a crash before the version bump) changes nothing.
+      Schema.MIGRATIONS.getValue(7).forEach(db::execSQL)
+      db.rawQuery("SELECT url FROM download_mirrors WHERE download_id = 'm'", null).use {
+        assertTrue(it.moveToFirst())
+        assertEquals("https://mirror.example/m.mp4", it.getString(0))
+      }
+    } finally {
+      database.close()
+    }
+  }
+
+  @Test fun aDownloadsMirrorsAreStoredInOrderAndGoWithIt() = kotlinx.coroutines.runBlocking {
+    val database = MediaDatabase(context)
+    try {
+      val store = com.vidorax.media.engine.SqliteDownloadStore(database)
+      store.saveMirrors("d", listOf("https://b.example/v.mp4", "https://a.example/v.mp4"))
+      assertEquals(listOf("https://b.example/v.mp4", "https://a.example/v.mp4"), store.listMirrors("d"))
+      store.saveMirrors("d", listOf("https://a.example/v.mp4"))
+      assertEquals(listOf("https://a.example/v.mp4"), store.listMirrors("d"))
+      store.delete("d")
+      assertTrue(store.listMirrors("d").isEmpty())
+    } finally {
+      database.close()
+    }
+  }
 }

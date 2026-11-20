@@ -52,6 +52,7 @@ describe('v2 download settings', () => {
       lowMemoryMode: 'auto',
       cooldownSeconds: 0,
       exitWhenDone: false,
+      multiNetwork: false,
     });
   });
 
