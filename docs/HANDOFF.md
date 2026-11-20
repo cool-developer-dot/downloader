@@ -2305,7 +2305,29 @@ On top of `claude/downloader-finalized-formats-4a36f8` (`56d5ab7`). ARCHITECTURE
   `SourcesTransferTest` (mirrors accepted/rejected/failed/wrong bytes, two clients, lost network),
   `DownloadEngineSourcesTest`, DB upgrade v6→v7. JS: `downloads/v2/sources.test.ts`; link-intake/clipboard tests
   updated (FTP file links are links now).
-- **Device check:** DEVICE_RESULTS
+- **Device check (2026-11-20, new AVD `VidoraX_Test2`, upload-key release build, API 35):**
+  - FTP (`pyftpdlib` on the Mac via `adb reverse`, host `fx.127.0.0.1.nip.io` — the guard does no DNS): a shared
+    `ftp://…/clip.mp4` → toast "Downloading clip" → 18.3 MB, gallery copy md5-identical; the app tried AUTH TLS
+    first and reconnected plain when the server had none. `ftp://tester:pa%20ss%3Aword@…/sub/My%20Clip%20%C3%BC.mp4`
+    (sign-in, space/colon in the password, non-ASCII path) → paused at 44 %, resumed: the server sent only the
+    remaining 18,219,157 of 35,586,197 bytes (REST), file md5-identical. Audio-only `song.m4a` → "This file is not
+    a video". Explicit-TLS server with a self-signed certificate → handshake refused by the phone, plain FTP used,
+    file md5-identical. (Through `adb reverse` the host side keeps accepting a cut probe read for a few seconds, so
+    the server log shows ~3 MB "sent" for a 64 KiB probe — an adb artefact.)
+  - Mirrors: Batch Add line `dn801201.us.archive.org/…/big_buck_bunny_720p_surround.mp4 | dn710604.ca.archive.org/…
+    .mp4 | …surround.ogv` → "+2 mirrors"; Details shows both under "Mirrors". Engine log: `mirrors accepted=1
+    rejected=1 bytes={main=42804304, mirror1=19074305} dropped=[]` (the `.ogv`, another length, rejected; parts split
+    across both servers, sum = the 61,878,609-byte file); md5 = archive.org's published `aa031fc2…`. A mirror that
+    dies or answers other bytes mid-download is covered by `SourcesTransferTest` (no public server to break).
+  - Multi-network (setting on, Wi-Fi default and mobile data both validated): Batch Add
+    `dn600306.us.archive.org/…/ElephantsDream/ed_1024_512kb.mp4` (47,065,346 bytes, 3 connections) → while it ran
+    the app held `REQUEST … Transports: CELLULAR … Uid: <app>`, registered 12:41:43 and released 30 ms after the
+    transfer ended; engine log `bytes={main=31376898, main+mobile=15688448} dropped=[]` (sum = the file); kernel
+    counters agree: the mobile interface (`eth0` on the emulator) received ~16.4 MB, `wlan0` ~33 MB. The lost-mobile-
+    network drop is covered by `SourcesTransferTest`. (A Wikimedia `…480p.vp9.webm` link in Batch Add ended "Needs
+    review" in the direct analyzer, before the engine — not a P2 path; the AVD's Wi-Fi also dropped twice under the
+    Mac's load, and the Mac lost internet for a while.)
+  - Test files deleted afterwards (app data cleared, `Movies/VidoraX` removed on the AVD).
 
 ## 5. How to resume
 
