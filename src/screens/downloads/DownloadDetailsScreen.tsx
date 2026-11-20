@@ -35,6 +35,9 @@ import { DownloadTagsAndNote } from '@/screens/downloads/components/DownloadTags
 import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 import { DownloadSaveLocationAction } from '@/screens/downloads/components/DownloadSaveLocationAction';
+import { DownloadWatchAction } from '@/screens/downloads/components/DownloadWatchAction';
+import { DownloadCommentsSection } from '@/screens/downloads/components/DownloadCommentsSection';
+import { DownloadCloudSaveAction } from '@/screens/downloads/components/DownloadCloudSaveAction';
 import { renameMediaFileOnDevice } from '@/downloads/engine';
 import { DownloadEditActions } from '@/screens/downloads/components/DownloadEditActions';
 import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads/v2';
@@ -574,6 +577,13 @@ const DetailsBody = memo(function DetailsBody({
         <DownloadTagsAndNote id={item.id} />
       </Box>
       <DownloadSaveLocationAction id={item.id} />
+      {item.status === 'COMPLETED' ? (
+        <>
+          <DownloadCloudSaveAction id={item.id} />
+          <DownloadWatchAction sourceUrl={item.sourceUrl} />
+          <DownloadCommentsSection id={item.id} sourceUrl={item.sourceUrl} />
+        </>
+      ) : null}
 
       <DownloadSaveThumbnailAction id={item.id} />
 

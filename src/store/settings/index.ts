@@ -11,6 +11,15 @@ import { createStore } from '@/store/shared/create-store';
 import { normalizeAfterDownloadAction } from '@/downloads/v2/after-download';
 import { createPersistStorage } from '@/store/shared/persist-storage';
 
+import {
+  normalizeBufferKb,
+  normalizeCooldownSeconds,
+  normalizeLowMemoryMode,
+  normalizeWriteCacheKb,
+} from '@/downloads/v2/settings';
+
+import { normalizeLinkRules } from '@/downloads/bulk/link-rules';
+
 import { liveRecordingMigration } from './migrations';
 import { normalizeDefaultTab } from '@/navigation/helpers/default-tab';
 import { normalizeTabSortOrder } from '@/browser/tabs/tab-list-ops';
@@ -180,6 +189,12 @@ export const useSettingsStore = createStore<SettingsStore>()(
         onlyWhileCharging: state.onlyWhileCharging,
         liveRecording: state.liveRecording,
         liveRecordingApproved: state.liveRecordingApproved,
+        bufferKb: state.bufferKb,
+        writeCacheKb: state.writeCacheKb,
+        lowMemoryMode: state.lowMemoryMode,
+        cooldownSeconds: state.cooldownSeconds,
+        exitWhenDone: state.exitWhenDone,
+        linkRules: state.linkRules,
         liveRecordingMaxMinutes: state.liveRecordingMaxMinutes,
         tapToToggle: state.tapToToggle,
         tabSortOrder: state.tabSortOrder,
@@ -286,6 +301,12 @@ export const useSettingsStore = createStore<SettingsStore>()(
               : normalizeAfterDownloadAction(raw.afterDownloadAction),
           wifiOnly: typeof raw.wifiOnly === 'boolean' ? raw.wifiOnly : current.wifiOnly,
           ...liveRecordingMigration(raw),
+          bufferKb: normalizeBufferKb(raw.bufferKb ?? current.bufferKb),
+          writeCacheKb: normalizeWriteCacheKb(raw.writeCacheKb ?? current.writeCacheKb),
+          lowMemoryMode: normalizeLowMemoryMode(raw.lowMemoryMode ?? current.lowMemoryMode),
+          cooldownSeconds: normalizeCooldownSeconds(raw.cooldownSeconds ?? current.cooldownSeconds),
+          exitWhenDone: typeof raw.exitWhenDone === 'boolean' ? raw.exitWhenDone : current.exitWhenDone,
+          linkRules: raw.linkRules === undefined ? current.linkRules : normalizeLinkRules(raw.linkRules),
           filenameTemplate:
             typeof raw.filenameTemplate === 'string'
               ? normalizeFilenameTemplate(raw.filenameTemplate)

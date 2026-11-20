@@ -54,6 +54,18 @@ export interface SettingsState {
    * switch was a beta, off by default) is switched on once when this is missing; a later choice is kept.
    */
   liveRecordingApproved: boolean;
+  /** #350 "Buffer size" (KiB, default 64). */
+  bufferKb: number;
+  /** #344 "Disk write cache" (KiB, 0 = off, the default). */
+  writeCacheKb: number;
+  /** #348 "Low memory mode": 'auto' (default), 'on' or 'off'. */
+  lowMemoryMode: 'auto' | 'on' | 'off';
+  /** #506 "Cooldown between files" (seconds, 0 = none, the default). */
+  cooldownSeconds: number;
+  /** #358 "Exit when done" (default off). */
+  exitWhenDone: boolean;
+  /** #505 Include/Exclude rules for bulk adding (Batch Add, patterns, playlists, feeds, the site grabber). */
+  linkRules: import('@/downloads/bulk/link-rules').LinkRules;
   /** F6: a recording stops by itself after this many minutes (15–720, default 120). */
   liveRecordingMaxMinutes: number;
   /** Tapping a running/paused download row pauses/resumes it instead of opening details (default off). */

@@ -147,15 +147,25 @@ internal class DownloadEngine(
   /** H20 Repair (#412): asks the server about a failed download's partial files; none = never changes anything. */
   private val partialChecks: PartialChecks = PartialChecks.NONE,
   private val idFactory: () -> String = { UUID.randomUUID().toString() },
+  /** #348: whether "Automatic" low memory mode applies ([android.app.ActivityManager.isLowRamDevice]). */
+  private val lowRamDevice: Boolean = false,
 ) : DownloadEngineApi {
   private val progressFlow = sharedFlow<DownloadProgress>()
   private val stateFlow = sharedFlow<DownloadRecord>()
   override val progress = progressFlow
   override val stateChanges = stateFlow
 
-  @Volatile private var settings: DownloadSettings = initialSettings
+  /** What the engine runs with: the saved settings as low memory mode adjusts them ([DownloadSettings.effective]). */
+  @Volatile private var settings: DownloadSettings = initialSettings.effective(lowRamDevice)
 
-  private val slots = Slots(initialSettings.maxConcurrent)
+  init {
+    com.vidorax.media.transfer.TransferTuning.apply(settings)
+  }
+
+  private val slots = Slots(settings.maxConcurrent)
+
+  /** #506: when each site's last download ended, for the cooldown before its next one. */
+  private val cooldown = Cooldown(now)
 
   /** Speed limits (F2): the global limit from the settings, per-download limits and Priority from `download_bandwidth`. */
   private val bandwidth = BandwidthLimiter().apply { setGlobalLimit(initialSettings.speedLimitBytesPerSecond) }
@@ -722,9 +732,12 @@ internal class DownloadEngine(
   }
 
   override suspend fun setDownloadSettings(settings: DownloadSettings) {
-    this.settings = settings
-    slots.setLimit(settings.maxConcurrent)
-    bandwidth.setGlobalLimit(settings.speedLimitBytesPerSecond)
+    val effective = settings.effective(lowRamDevice)
+    this.settings = effective
+    slots.setLimit(effective.maxConcurrent)
+    bandwidth.setGlobalLimit(effective.speedLimitBytesPerSecond)
+    com.vidorax.media.transfer.TransferTuning.apply(effective)
+    // The saved copy keeps what the user chose; low memory mode only changes what runs.
     runCatching { onSettingsChanged(settings) }
     // F3: a changed rule applies at once to waiting and running downloads.
     policyVersion.update { it + 1 }
@@ -823,9 +836,13 @@ internal class DownloadEngine(
     if (!awaitAllowed(id, gen)) return
     // Beyond the configured limit the download simply stays QUEUED until a slot frees.
     slots.acquire(id)
+    val site = Cooldown.siteOf(start.url)
     try {
+      // #506: a site's next download waits out the cooldown after its previous one (still QUEUED meanwhile).
+      cooldown.await(site, settings.cooldownSeconds)
       runTransfer(id, gen, start)
     } finally {
+      cooldown.ended(site)
       slots.release()
     }
   }

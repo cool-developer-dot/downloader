@@ -1,10 +1,11 @@
+import NetInfo from '@react-native-community/netinfo';
 import * as ReactNative from 'react-native';
 
 import { translate } from '@/localization';
 import { formatFileSize } from '@/media-detection/utils/format';
 
 import { getV2Engine } from './engine-port';
-import { pendingCopyIds } from './save-location';
+import { copySettled, pendingCopyIds } from './save-location';
 import { createSaveLocationCopier, type CopierItem, type SaveLocationCopier } from './save-location-copier';
 import {
   getSaveLocationSettings,
@@ -78,6 +79,7 @@ async function catchUp(copier: SaveLocationCopier): Promise<void> {
       useExternalCopiesStore.getState().records,
       getSaveLocationSettings(),
       new Set(active ? [active] : []),
+      Date.now(),
     );
     for (const id of ids) {
       copier.enqueue(id);
@@ -128,11 +130,23 @@ export function ensureSaveLocationCopies(): void {
   if (!engine || !port) {
     return;
   }
+  // Unknown until NetInfo answers: assumed not Wi-Fi, so a Wi-Fi-only copy waits for the first answer.
+  let onWifi = false;
+  void NetInfo.fetch()
+    .then((state) => {
+      onWifi = state.type === 'wifi' || state.type === 'ethernet';
+    })
+    .catch(() => undefined);
   const copier = createSaveLocationCopier({
     getSettings: getSaveLocationSettings,
     getItem: libraryItem,
     copy: (id, treeUri, subfolders) => port.copyToFolder(id, treeUri, subfolders),
-    hasRecord: (id) => Boolean(useExternalCopiesStore.getState().records[id]),
+    hasRecord: (id) => copySettled(useExternalCopiesStore.getState().records[id], Date.now()),
+    canCopyNow: () => !getSaveLocationSettings().wifiOnly || onWifi,
+    failedAttempts: (id) => {
+      const record = useExternalCopiesStore.getState().records[id];
+      return record?.status === 'failed' ? (record.attempts ?? 1) : 0;
+    },
     record: (id, record) => useExternalCopiesStore.getState().setRecord(id, record),
     onAccessLost: handleSaveLocationAccessLost,
     onStarted: (item, folder) => {
@@ -171,6 +185,15 @@ export function ensureSaveLocationCopies(): void {
         void catchUp(copier);
       }
     }),
+    // #513: copies waiting for Wi-Fi go as soon as it is back.
+    {
+      remove: NetInfo.addEventListener((state) => {
+        const wifi = state.type === 'wifi' || state.type === 'ethernet';
+        const back = wifi && !onWifi;
+        onWifi = wifi;
+        if (back && getSaveLocationSettings().wifiOnly) void catchUp(copier);
+      }),
+    },
   ];
   const attached: Attached = { subscriptions, copier, timer: null };
   replaceAttached(attached);

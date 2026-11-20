@@ -43,6 +43,11 @@
       android:name="com.vidorax.media.runner.DownloadBootJobService"
       android:exported="false"
       android:permission="android.permission.BIND_JOB_SERVICE" />
+    <!-- #362/#504/#363: the hourly check of watched links and feeds (JobScheduler, persisted). -->
+    <service
+      android:name="com.vidorax.media.watch.WatchJobService"
+      android:exported="false"
+      android:permission="android.permission.BIND_JOB_SERVICE" />
 
     <!-- Pause / Resume / Retry / Cancel from the notification; internal only. -->
     <receiver

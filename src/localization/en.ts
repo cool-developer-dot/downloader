@@ -3,6 +3,11 @@ import { browserSelectionEn } from './catalogs/browserSelection.en';
 import { browserHistoryEn } from './catalogs/browserHistory.en';
 import { browserStartupEn } from './catalogs/browserStartup.en';
 import { browserFindEn } from './catalogs/browserFind.en';
+import { downloadTuningEn } from './catalogs/downloadTuning.en';
+import { bulkAddEn } from './catalogs/bulkAdd.en';
+import { watchedLinksEn } from './catalogs/watchedLinks.en';
+import { siteGrabberEn } from './catalogs/siteGrabber.en';
+import { cloudEn } from './catalogs/cloud.en';
 import { browserTabSoundEn } from './catalogs/browserTabSound.en';
 import { browserSitePermissionsEn } from './catalogs/browserSitePermissions.en';
 import { browserBookmarksEn } from './catalogs/browserBookmarks.en';
@@ -1047,6 +1052,8 @@ export const en = {
     byTypeHint: 'Videos and audio go into Videos and Audio folders',
     bySite: 'Folder per site',
     bySiteHint: 'One folder for each site, such as Instagram',
+    wifiOnly: 'Only on Wi-Fi',
+    wifiOnlyHint: 'Copies wait for Wi-Fi. Pick a folder of OneDrive, Dropbox or Nextcloud to upload new videos automatically.',
     keepNote: 'Copies are separate files: deleting a video in VidoraX never deletes its copy.',
     accessLost: 'VidoraX can no longer save to the chosen folder, so “Also save a copy” was turned off. Choose the folder again in Download Settings.',
     accessLostTitle: 'Folder not available',
@@ -2044,6 +2051,9 @@ export const en = {
     exportTitle: 'VidoraX download queue',
     exportSaved: 'Queue saved',
     exportShared: 'Queue shared',
+    send: 'Send to another phone',
+    sendHint: 'Share the queue with Quick Share, Bluetooth or a chat. On the other phone, open it with Import queue.',
+    sendShared: 'Queue ready to send',
     import: 'Import queue',
     importHint: 'Restore a saved queue. Each video’s page opens in the browser so you can download it again.',
     restoredTitle: 'Restored pages ({count})',
@@ -2495,6 +2505,7 @@ export const en = {
         p1: 'VidoraX does not require a VidoraX account, and it does not perform normal cloud sync of downloads, folders, favorites, history, bookmarks, playback, or settings. Those records stay on this device. VidoraX does not require its own API server for normal use.',
         p2: 'When you browse a website, analyze a media link, or download a file, VidoraX sends ordinary network requests to that third-party source. Source URLs and related media metadata may be sent to the sites you choose to open. Playback progress is stored locally and is not uploaded to a VidoraX account.',
         p3: 'Downloaded media files themselves remain on your device unless you choose to share or move them through your own device tools. If you contact support by email, the content of that message is sent only because you chose to send it.',
+        p4: 'Some features read public web pages for you: watched links and feeds are checked about once an hour, Save a site reads up to 50 pages of the site you choose, and Save comments reads the comments a video page shares. These requests go only to the addresses you chose, without your cookies or sign-ins, and what they find stays on this device. Save a copy, folder import and Save location use the folders and cloud apps you pick: VidoraX writes files only there, and any upload is done by that app under its own policy.',
       },
       thirdParties: {
         heading: '5. Third-party and service-provider processing',
@@ -2829,6 +2840,11 @@ export const en = {
   browserStartup: browserStartupEn,
   // B7 (Hamza)
   browserFind: browserFindEn,
+  downloadTuning: downloadTuningEn,
+  bulkAdd: bulkAddEn,
+  watchedLinks: watchedLinksEn,
+  siteGrabber: siteGrabberEn,
+  cloud: cloudEn,
   // B3 (Hamza)
   browserTabSound: browserTabSoundEn,
   // B13 (Hamza)

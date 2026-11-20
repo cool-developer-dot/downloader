@@ -34,6 +34,15 @@ export const QueueBackupSection = memo(function QueueBackupSection() {
         onPress={backup.exportCount > 0 && !backup.busy ? backup.exportQueue : undefined}
         testID="queue-backup-export"
       />
+      {backup.canSendQueue ? (
+        <SettingsRow
+          title={t('queueBackup.send')}
+          description={backup.exportCount > 0 ? t('queueBackup.sendHint') : t('queueBackup.exportNothing')}
+          icon="cellphone-arrow-down"
+          onPress={backup.exportCount > 0 && !backup.busy ? backup.sendQueue : undefined}
+          testID="queue-backup-send"
+        />
+      ) : null}
       <SettingsRow
         title={t('queueBackup.import')}
         description={t('queueBackup.importHint')}

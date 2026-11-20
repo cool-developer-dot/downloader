@@ -56,6 +56,7 @@ internal object BackgroundDownloads {
     val runnerHost = AndroidRunnerHost(appContext, notifier)
     val downloadRunner = DownloadRunner(runnerHost, notifier)
     downloadRunner.isHeld = engine::isQueueHeld
+    downloadRunner.onAllFinished = { ExitWhenDone.maybeExit(appContext) }
     notifications = notifier
     host = runnerHost
     runner = downloadRunner

@@ -2274,6 +2274,65 @@ already handled them; now they download (ARCHITECTURE §1).
 - **Not supported:** `.m2ts` (192-byte packets), a `.ts` served without a length (indistinguishable from IPTV live);
   that refusal shows the generic "This video can't be downloaded".
 
+### 4.37 Client "add all" — downloader features P1, P3, P4, P5, P7 (same branch, 2026-11-19/20)
+
+The client approved every optional downloader feature plus live recording and the widget (plan: P1–P8). P2 (FTP,
+mirrors, multi-network), P6 (Web UI, remote, CLI, automation, extension) and P8 (malware warning, source check, zip,
+Simple/Advanced) run in their own sessions/worktrees and merge here afterwards. Everything stays on the phone.
+
+- **Approvals (`56d5ab7`).** Live recording on by default; existing installs switched on once
+  (`liveRecordingMigration`, flag `liveRecordingApproved`, excluded from backups). The widget needed nothing.
+- **P1 engine tuning.** `DownloadSettings` gains `bufferKb` (32–512, 64), `writeCacheKb` (0/1/4/8 MB, off),
+  `lowMemoryMode` (auto/on/off: on a low-RAM phone 1 download, 1 connection, 32 KB buffer, no cache),
+  `cooldownSeconds` (per site, between starts — `engine/Cooldown`), `exitWhenDone` (`runner/ExitWhenDone`: closes the
+  app's tasks when the queue empties and VidoraX is in the background). `transfer/TransferTuning` + `WriteCache`
+  batch writes; progress is now counted when bytes reach the disk (Progressive, Ranged, HLS). Settings →
+  "Performance" (`DownloadPerformanceSection`).
+- **P3 watched links / P4 RSS (#362, #504, #363).** Native `watch/`: `WatchStore` (prefs `vidorax_watches`, ≤ 100),
+  `LinkChecker` (file: `bytes=0-0` validator + length; page: its video links, signed queries ignored; feed: item ids),
+  `FeedParser` (RSS/Media RSS/Atom video enclosures, audio skipped), `WatchRunner` (first check only records; a
+  change notifies; auto-download re-queues a changed file or a feed's new videos, ≤ 10 a run, through
+  `enqueueUnique` and the #505 rules mirrored in `BulkRules`), `Watches` + `WatchJobService` (JobScheduler id 0x5650,
+  hourly, persisted, any network; cancelled when no link is watched). Bridge `watchList/Add/Update/Remove/Check`,
+  `setBulkRules` (pushed from `ensure-bridge`). JS: `src/downloads/watch/`, screen `/watched-links` (also the
+  notification's `vidorax://watched-links`), Download details "Watch for updates" (weekly, the source page).
+- **P4 bulk adding (#485, #505, #368/#369).** `src/downloads/bulk/`: URL patterns (`[001-100]`, `[a-c]`, `[1-9:2]`,
+  `{a,b}`, ≤ 500), link rules (types, words, regex, size — the size once the probe knows it, `SIZE_RULE`), playlists
+  M3U/PLS/XSPF and now RSS/Atom feeds ("Open playlist" in Batch Add), a checkbox choice list. Rules screen
+  `/download-rules`.
+- **P5 site grabber (#486).** `src/browser/site-grabber/`: robots.txt (VidoraX group, else `*`; longest rule wins),
+  same-site page links (no files, account/cart pages, nofollow), video links, breadth first, depth 2, ≤ 50 pages,
+  1 request/s, no cookies (`fetchPage`). Each page is archived by VidoraWeb `archiveOfflineHtml` (`HtmlArchiver`:
+  the fetched HTML in an off-screen WebView of the active profile, JavaScript off, no navigation, then
+  `saveWebArchive`) into Saved pages. Screen `/site-grabber` (browser menu "Save site offline", Download settings);
+  found videos are added through `addLinkFromBatch` with the rules.
+- **P5 comments (#380).** `src/downloads/comments/`: schema.org JSON-LD `Comment` trees and Reddit's public `.json`;
+  ≤ 500, saved as `<documents>/comments/<id>.json`, shown in Download details, deleted with the download.
+- **P7 cloud via the user's apps.** #512 "Save a copy to…" (native `SaveCopyAs`: `ACTION_CREATE_DOCUMENT`, request
+  0x564A, then an offer to remove the video from the phone); #507 "Import videos from a folder" (native
+  `FolderImport`: a picked tree, ≤ 500 videos, 3 levels, through `IncomingImport`, duplicates skipped; Google Drive
+  can't share trees — said in the app); #513 auto upload = Save Location into a cloud app's folder + new "Only on
+  Wi-Fi" + retries (failed copies retried after 15 and 30 min, 3 tries in all); #510 "Send to another phone" in
+  Queue backup (native `shareQueueFile`, a `.json` through the share sheet; imported there with Import queue).
+- **Tests.** JS: all 1 923 pass, both type checks clean (also fixed a pre-existing test-config type error in
+  `split-track-files.test.ts`). Native: new `WatchTest`, `WriteCacheTest`, `CooldownTest`, tuning record and cache
+  transfer tests — see the run noted below.
+- **Device (2026-11-20, VidoraX_Browser_F, upload-key release build, live sites):** Watched links — TWiT video feed
+  (`feeds.twit.tv/twit_video_hd.xml`) recognised as a feed, 20 latest videos listed, one downloaded (97 MB MP4,
+  1080p); the hourly job is scheduled (JobScheduler 22096, periodic 1 h, persisted); a malformed and an unreachable
+  link give their messages. Download details — "Save a copy to…" wrote `Download/2.mp4` (101 761 823 bytes, the
+  feed's length) and offered removal; "Watch for updates" added a weekly File watch. Save a site — test-videos.co.uk:
+  14 pages read and saved, 195 videos found, Stop works; a saved page opens offline with its styles and pictures.
+  Import from a folder — Movies: 16 videos, 8 imported, 8 skipped as already saved. Batch Add — `[1-2]` pattern →
+  2 links with the choice list, added. Fixed on the way: Watched links reloaded in a loop (port object per render),
+  double-encoded feed titles (`&amp;#039;`), feed/playlist titles now name the download, Save a site starts with
+  nothing chosen above 20 videos (Select all/none), "Save comments" hidden for a direct-file source, `.xml` feeds
+  offered in "Open playlist". Comments: Reddit returns 403/an interstitial to unsigned clients from this network and
+  big video sites publish no JSON-LD comments, so only unit tests cover the parsers. Emulator pitfalls this time:
+  host load froze System UI; a campus network refused public DNS (the emulator had none until it was restarted).
+- **Not done here yet:** P2/P6/P8 merges (branches `claude/kind-pasteur-9d2dc3`, `claude/focused-goodall-8b843b`,
+  `claude/exciting-shaw-90cf77`), version 1.2.0 (vc5), the client APK and status sheet.
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

@@ -5,6 +5,7 @@
  * (`enqueueBrowserMediaDownload` → handoff → the engine's atomic duplicate check). Nothing is published to a tab.
  */
 
+import { sizeAllowed, type LinkRules } from '@/downloads/bulk/link-rules';
 import type { PageFetchRequest } from '@modules/vidorax-media/src/VidoraMedia.types';
 
 import { buildBrowserUserAgent } from '@/browser/constants/user-agent';
@@ -41,7 +42,14 @@ export type BatchLinkResult = {
   downloadId: string | null;
 };
 
-export async function addLinkFromBatch(url: string, signal: AbortSignal): Promise<BatchLinkResult> {
+/** What a bulk source adds to a run: #505 rules (the size rule is checked here, once the source's size is known). */
+export type BatchLinkOptions = {
+  rules?: LinkRules | null;
+  /** The name the source gave the video (a feed item's or a playlist entry's title); it beats a bare file name. */
+  title?: string | null;
+};
+
+export async function addLinkFromBatch(url: string, signal: AbortSignal, options: BatchLinkOptions = {}): Promise<BatchLinkResult> {
   const verdict = classifyIntakeLink(url);
   if (verdict !== 'ok') {
     return { url, outcome: 'refused', detail: verdict.toUpperCase(), title: null, downloadId: null };
@@ -103,9 +111,16 @@ export async function addLinkFromBatch(url: string, signal: AbortSignal): Promis
     };
   }
 
+  // #505: a size rule refuses a video whose size the check found outside it (an unknown size passes).
+  const sizeBytes = Number(result.offer.analysis.fileSize ?? NaN);
+  if (options.rules && !sizeAllowed(Number.isFinite(sizeBytes) ? sizeBytes : null, options.rules)) {
+    return { url, outcome: 'refused', detail: 'SIZE_RULE', title, downloadId: null };
+  }
+
   const pageUrl = result.finalUrl ?? url;
+  const sourceTitle = options.title?.trim().slice(0, 300) || null;
   const enqueue = await enqueueBrowserMediaDownload({
-    analysis: result.offer.analysis,
+    analysis: sourceTitle ? { ...result.offer.analysis, title: sourceTitle } : result.offer.analysis,
     requestContext: result.offer.requestContext,
     fingerprint: result.offer.variantIdentity,
     pageUrl,

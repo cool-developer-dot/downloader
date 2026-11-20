@@ -34,6 +34,7 @@ function settingsOf(state: SaveLocationSettings): SaveLocationSettings {
     bySite: state.bySite,
     enabledAt: state.enabledAt,
     accessLost: state.accessLost,
+    wifiOnly: state.wifiOnly,
   };
 }
 

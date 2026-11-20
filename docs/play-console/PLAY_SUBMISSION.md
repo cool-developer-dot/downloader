@@ -235,6 +235,20 @@ The edit the user started would stop part-way when they leave the app, the parti
   VidoraX again and show the new trimmed video in the Player tab. Upload it (unlisted YouTube or Drive link) and paste
   the link.
 
+### 1.2.0 additions (HANDOFF §4.37) — Data safety answer unchanged
+
+- **Background requests the user set up.** Watched links and feeds (an hourly JobScheduler job, only while at least
+  one link is watched), "Save a site" and "Save comments" read the public pages the user chose, **without cookies**,
+  and keep the results on the device. Like browsing, these go only to the third-party sites the user picked; nothing
+  goes to a VidoraX server (there is none). Data safety stays **No data collected, no data shared**. The "traffic
+  without browsing" check above holds for a fresh install (nothing is watched by default).
+- **Cloud apps.** "Save a copy to…", folder import, Save Location into a cloud app's folder and "Send to another
+  phone" use Android's own file and share screens; the user's cloud app does any upload under its own policy.
+- **Permissions.** No new permission from these packages (the watch job reuses `RECEIVE_BOOT_COMPLETED`, notifications
+  reuse `POST_NOTIFICATIONS`). P2 (multi-network) adds `CHANGE_NETWORK_STATE`, a normal permission with no form; P6
+  (local web UI) adds no permission beyond `INTERNET`. No new foreground-service type.
+- **Privacy policy.** `privacy.sections.backend.p4` describes the above (updated date 2026-11-20).
+
 ### C. Other declarations: none required
 
 Checked against every permission in the final merged manifest:

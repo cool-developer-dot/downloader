@@ -512,6 +512,14 @@ class VidoraWebModule : Module() {
       OfflinePages.save(webView, target) { size -> promise.resolve(size.toDouble()) }
     }.runOnQueue(Queues.MAIN)
 
+    // #486 Site grabber: a page VidoraX fetched, saved as the same kind of web archive; resolves its size (0 = not saved).
+    AsyncFunction("archiveOfflineHtml") { profile: String, id: String, url: String, html: String, promise: Promise ->
+      val target = OfflinePages.archiveFile(context.filesDir, profile, id) ?: return@AsyncFunction promise.resolve(0)
+      val web = url.startsWith("https://") || url.startsWith("http://")
+      if (!web || html.isEmpty() || html.length > com.vidorax.web.offline.HtmlArchiver.MAX_HTML_CHARS) return@AsyncFunction promise.resolve(0)
+      com.vidorax.web.offline.HtmlArchiver.archive(context, html, url, target, 20_000L) { size -> promise.resolve(size.toDouble()) }
+    }.runOnQueue(Queues.MAIN)
+
     // B17 #178: a saved page, read-only (OfflinePageActivity); resolves when the viewer closes.
     AsyncFunction("openOfflinePage") { profile: String, id: String, title: String, promise: Promise ->
       val file = OfflinePages.archiveFile(context.filesDir, profile, id)

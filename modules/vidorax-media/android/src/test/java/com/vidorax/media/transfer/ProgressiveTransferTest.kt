@@ -49,6 +49,25 @@ class ProgressiveTransferTest {
     assertEquals(body.size.toLong(), outcome.totalBytes)
   }
 
+  @Test fun withTheWriteCacheAndASmallBufferTheFileAndItsProgressAreExact() = runBlocking {
+    TransferTuning.apply(com.vidorax.media.model.DownloadSettings.DEFAULT.copy(bufferKb = 16, writeCacheKb = 1024))
+    try {
+      val body = ByteArray(3 * 1024 * 1024 + 123) { (it * 7).toByte() }
+      server.enqueue(MockResponse().setResponseCode(200).setBody(Buffer().write(body)))
+      val part = tmp.newFile("cached.part")
+      val progress = mutableListOf<Long>()
+
+      val outcome = transfer.transfer(spec(part)) { bytes, _ -> progress += bytes }
+
+      assertArrayEquals(body, part.readBytes())
+      assertEquals(body.size.toLong(), outcome.bytesWritten)
+      assertEquals("progress ends at the whole file", body.size.toLong(), progress.last())
+      assertEquals("progress only ever grows", progress, progress.sorted())
+    } finally {
+      TransferTuning.apply(com.vidorax.media.model.DownloadSettings.DEFAULT)
+    }
+  }
+
   @Test fun validRangeResumeAppendsWithoutRefetch() = runBlocking {
     val full = ByteArray(2000) { (it % 251).toByte() }
     val already = 800

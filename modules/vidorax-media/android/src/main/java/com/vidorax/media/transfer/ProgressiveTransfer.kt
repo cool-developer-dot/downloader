@@ -284,16 +284,24 @@ internal class ProgressiveTransfer(
       // Bytes from 0 belong to this response now: its validator is what a later resume must match.
       if (writeAt == 0L) ResumeValidator.write(spec.partFile, validator)
       var written = writeAt
-      val buffer = ByteArray(BUFFER_BYTES)
+      var received = writeAt
+      val buffer = ByteArray(TransferTuning.bufferBytes)
+      // #344: received bytes may be gathered before each disk write. Progress counts what reached the file, so a
+      // pause never shows more than a resume starts from (the `.part`'s length on disk).
+      val cache = WriteCache(TransferTuning.cacheCapacity(buffer.size)) { _, bytes, offset, length ->
+        diskWrite { file.write(bytes, offset, length) }
+        written += length
+        onProgress(written, totalBytes)
+      }
       while (true) {
         currentCoroutineContext().ensureActive() // pause/cancel: throws, `.part` kept by the finally below
         val read = input.read(buffer)
         if (read < 0) break
         spec.throttle.take(read)
-        diskWrite { file.write(buffer, 0, read) }
-        written += read
-        onProgress(written, totalBytes)
+        cache.write(received, buffer, 0, read)
+        received += read
       }
+      cache.flush()
       diskWrite { file.fd.sync() }
       // A short read against a known length is a truncated transfer, not a finished file — keep the `.part`.
       if (totalBytes != null && written < totalBytes) {
@@ -335,7 +343,6 @@ internal class ProgressiveTransfer(
   private fun noResume(url: String) = MediaNetworkException("server would not resume ${Redact.url(url)}")
 
   private companion object {
-    const val BUFFER_BYTES = 64 * 1024
 
     /** Answers to a fresh `bytes=0-` that mean "not with a Range" rather than "not at all". */
     val OPEN_RANGE_REFUSALS = setOf(403, 416)

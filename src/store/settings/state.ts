@@ -1,3 +1,4 @@
+import { EMPTY_LINK_RULES } from '@/downloads/bulk/link-rules';
 import { DEFAULT_DOWNLOAD_SETTINGS } from '@/downloads/settings/types';
 import { DEFAULT_DOWNLOAD_HOURS } from '@/downloads/v2/conditions';
 import { DEFAULT_CONNECTIONS_PER_FILE, DEFAULT_LIVE_RECORDING_MAX_MINUTES } from '@/downloads/v2/settings';
@@ -94,6 +95,12 @@ export const initialSettingsState: SettingsState = {
   onlyWhileCharging: false,
   liveRecording: true,
   liveRecordingApproved: true,
+  bufferKb: 64,
+  writeCacheKb: 0,
+  lowMemoryMode: 'auto',
+  cooldownSeconds: 0,
+  exitWhenDone: false,
+  linkRules: { ...EMPTY_LINK_RULES },
   liveRecordingMaxMinutes: DEFAULT_LIVE_RECORDING_MAX_MINUTES,
   tapToToggle: false,
   tabSortOrder: DEFAULT_TAB_SORT_ORDER,

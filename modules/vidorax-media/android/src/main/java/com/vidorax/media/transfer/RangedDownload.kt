@@ -196,9 +196,15 @@ internal class RangedDownload(
     @Volatile var streamingSince = 0L
     @Volatile var writtenAtStart = 0L
 
+    /** #344: bytes this part received that its write cache still holds (written once the cache passes them on). */
+    @Volatile var ahead = 0
+
     fun position(): Long = start + written.get()
 
     fun remaining(): Long = end - position() + 1
+
+    /** What no connection has received yet: [remaining] less what the write cache holds. */
+    fun unclaimed(): Long = remaining() - ahead
   }
 
   /** Every part on its own TCP connection, also from an HTTP/2 server (see [HttpClient.separateConnections]). */
@@ -307,8 +313,8 @@ internal class RangedDownload(
       it.active = true
       return Claim.Got(it)
     }
-    val largest = parts.filter { it.active }.maxByOrNull { it.remaining() } ?: return none()
-    val remaining = largest.remaining()
+    val largest = parts.filter { it.active }.maxByOrNull { it.unclaimed() } ?: return none()
+    val remaining = largest.unclaimed()
     if (remaining < 2 * MIN_SPLIT_BYTES) return none()
     when (splitPaysOff(largest, remaining)) {
       null -> return Claim.Wait
@@ -317,7 +323,7 @@ internal class RangedDownload(
     }
     // The running connection reads at most one buffer past where it is now, so a cut a whole part's minimum away
     // can never land behind bytes it already wrote.
-    val cut = largest.position() + remaining / 2
+    val cut = largest.position() + largest.ahead + remaining / 2
     val tail = Part(cut, largest.end, 0).apply { active = true }
     largest.end = cut - 1
     parts += tail
@@ -440,27 +446,37 @@ internal class RangedDownload(
     }
     part.writtenAtStart = part.written.get()
     part.streamingSince = now()
+    val buffer = ByteArray(TransferTuning.bufferBytes)
+    // #344: a part's received bytes may be gathered before each write. The part's count only grows when they reach the
+    // writer, so a checkpoint never claims bytes that are still in memory.
+    val cache = WriteCache(TransferTuning.cacheCapacity(buffer.size)) { position, bytes, offset, length ->
+      writer.write(position, bytes, offset, length)
+      part.written.addAndGet(length.toLong())
+      onProgress(bytesDone.addAndGet(length.toLong()), total)
+    }
     try {
-      val buffer = ByteArray(BUFFER_BYTES)
       while (true) {
         currentCoroutineContext().ensureActive()
-        val position = part.position()
+        val position = part.position() + cache.pending
         val left = part.end - position + 1
         if (left <= 0) break
         val read = input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
         if (read < 0) break
         spec.throttle.take(read)
-        writer.write(position, buffer, 0, read)
-        part.written.addAndGet(read.toLong())
-        onProgress(bytesDone.addAndGet(read.toLong()), total)
+        cache.write(position, buffer, 0, read)
+        part.ahead = cache.pending
         checkpoint(force = false)
       }
+      cache.flush()
+      part.ahead = 0
     } catch (io: IOException) {
       // A body closed by a pause is not a network failure.
       currentCoroutineContext().ensureActive()
       if (io is StorageWriteException || io is MediaNetworkException) throw io
       throw MediaNetworkException("part of ${Redact.url(url)} interrupted", io)
     } finally {
+      // Bytes still gathered when a part stops are fetched again (its count never included them).
+      part.ahead = 0
       onCancel.dispose()
       response.close()
     }
@@ -506,7 +522,6 @@ internal class RangedDownload(
     private const val MIN_LATENCY_MS = 200L
     private const val MIN_RATE_SAMPLE_MS = 300L
     private const val SPLIT_RECHECK_MS = 250L
-    private const val BUFFER_BYTES = 64 * 1024
     private const val MAX_PART_ATTEMPTS = 3
     private const val PART_RETRY_DELAY_MS = 300L
 

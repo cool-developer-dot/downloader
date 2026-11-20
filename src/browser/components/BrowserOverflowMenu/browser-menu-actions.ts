@@ -55,7 +55,8 @@ import { watchPage } from '@/browser/page-alerts/page-alerts.service';
 import { MAX_WATCHES } from '@/browser/page-alerts/page-alerts-core';
 import { announceMenuNotice } from '@/browser/highlights/menu-notice';
 import { captureFullPage, captureScreenshot, printPage } from '@/browser/capture/capture.service';
-import { saveOffline } from '@/browser/capture/offline-pages.service';
+import { canSaveFetchedPages, saveOffline } from '@/browser/capture/offline-pages.service';
+import { siteGrabberPath } from '@/screens/site-grabber/route';
 
 export type UseBrowserMenuActionsOptions = {
   onClose: () => void;
@@ -535,6 +536,11 @@ export function useBrowserMenuActions({
           onClose();
           void saveOffline();
           break;
+        case 'save_site':
+          // #486: the Save a site screen, starting on this page.
+          onClose();
+          navigation.push(siteGrabberPath(activeTab?.url ?? null));
+          break;
         case 'saved_pages':
           onClose();
           navigation.push(routePaths.savedPages);
@@ -848,6 +854,9 @@ export function useBrowserMenuActions({
             { id: 'full_page' as const, icon: 'image-size-select-actual', label: t('browserCapture.fullPage'), accessibilityLabel: t('browserCapture.fullPageA11y'), kind: 'action' as const, enabled: hasValidPage },
             { id: 'print_page' as const, icon: 'printer-outline', label: t('browserCapture.print'), accessibilityLabel: t('browserCapture.printA11y'), kind: 'action' as const, enabled: hasValidPage },
             { id: 'save_offline' as const, icon: 'content-save-outline', label: t('browserCapture.saveOffline'), accessibilityLabel: t('browserCapture.saveOfflineA11y'), kind: 'action' as const, enabled: hasValidPage },
+            ...(canSaveFetchedPages()
+              ? [{ id: 'save_site' as const, icon: 'web-sync', label: t('siteGrabber.menu'), accessibilityLabel: t('siteGrabber.menuA11y'), kind: 'action' as const, enabled: hasValidPage }]
+              : []),
           ]),
       {
         id: 'saved_pages',

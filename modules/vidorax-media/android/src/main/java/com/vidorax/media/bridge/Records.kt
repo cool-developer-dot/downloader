@@ -11,6 +11,7 @@ import com.vidorax.media.model.EnqueueRequest
 import com.vidorax.media.model.LegacyMetadata
 import com.vidorax.media.model.LibraryQuery
 import com.vidorax.media.model.LibrarySort
+import com.vidorax.media.model.LowMemoryMode
 import com.vidorax.media.model.ProbeRequest
 import com.vidorax.media.model.RequestContext
 import com.vidorax.media.model.SiteId
@@ -225,6 +226,16 @@ data class DownloadSettingsRecord(
   @Field val notificationSilent: Boolean? = null,
   /** "Automatically resume interrupted downloads"; missing from an older JavaScript bundle = on (the default). */
   @Field val autoResume: Boolean? = null,
+  /** #350 Buffer size (KiB); missing = 64. */
+  @Field val bufferKb: Int? = null,
+  /** #344 Disk write cache (KiB); missing or 0 = off. */
+  @Field val writeCacheKb: Int? = null,
+  /** #348 Low memory mode: "auto" (missing), "on" or "off". */
+  @Field val lowMemoryMode: String? = null,
+  /** #506 Cooldown between files (seconds); missing or 0 = none. */
+  @Field val cooldownSeconds: Int? = null,
+  /** #358 Exit when done; missing = off. */
+  @Field val exitWhenDone: Boolean? = null,
 ) : Record {
   fun toModel(): DownloadSettings {
     if (maxConcurrent !in DownloadSettings.MIN_CONCURRENT..DownloadSettings.MAX_CONCURRENT) {
@@ -237,6 +248,17 @@ data class DownloadSettingsRecord(
     }
     val speedLimit = speedLimitBytesPerSecond
     if (speedLimit != null && (speedLimit.isNaN() || speedLimit < 0)) invalid("speedLimitBytesPerSecond must be 0 or more")
+    val buffer = bufferKb ?: DownloadSettings.DEFAULT_BUFFER_KB
+    if (buffer !in DownloadSettings.MIN_BUFFER_KB..DownloadSettings.MAX_BUFFER_KB) {
+      invalid("bufferKb must be ${DownloadSettings.MIN_BUFFER_KB}-${DownloadSettings.MAX_BUFFER_KB}")
+    }
+    val writeCache = writeCacheKb ?: 0
+    if (writeCache !in 0..DownloadSettings.MAX_WRITE_CACHE_KB) invalid("writeCacheKb must be 0-${DownloadSettings.MAX_WRITE_CACHE_KB}")
+    if (lowMemoryMode != null && LowMemoryMode.entries.none { it.wire == lowMemoryMode }) {
+      invalid("lowMemoryMode must be auto, on or off")
+    }
+    val cooldown = cooldownSeconds ?: 0
+    if (cooldown !in 0..DownloadSettings.MAX_COOLDOWN_SECONDS) invalid("cooldownSeconds must be 0-${DownloadSettings.MAX_COOLDOWN_SECONDS}")
     val liveMinutes = liveRecordingMaxMinutes ?: DownloadSettings.DEFAULT_LIVE_MAX_MINUTES
     if (liveMinutes !in DownloadSettings.MIN_LIVE_MAX_MINUTES..DownloadSettings.MAX_LIVE_MAX_MINUTES) {
       invalid("liveRecordingMaxMinutes must be ${DownloadSettings.MIN_LIVE_MAX_MINUTES}-${DownloadSettings.MAX_LIVE_MAX_MINUTES}")
@@ -256,6 +278,11 @@ data class DownloadSettingsRecord(
       liveRecording = liveRecording,
       liveRecordingMaxMinutes = liveMinutes,
       autoResume = autoResume ?: true,
+      bufferKb = buffer,
+      writeCacheKb = writeCache,
+      lowMemoryMode = LowMemoryMode.fromWire(lowMemoryMode),
+      cooldownSeconds = cooldown,
+      exitWhenDone = exitWhenDone ?: false,
     )
   }
 }

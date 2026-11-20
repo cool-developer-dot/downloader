@@ -100,6 +100,8 @@ class VidoraMediaModule : Module() {
         // Files removed or moved outside VidoraX since the last run: their rows must not look playable.
         runCatching { media.library.removeMissingFiles() }
       }
+      // #362: a force-stop drops scheduled jobs; watched links get their hourly check back at the next start.
+      media.scope.launch { runCatching { com.vidorax.media.watch.Watches.schedule(context) } }
       // This scope ends with the JavaScript runtime, so a reload never leaves a second set of forwarders behind.
       val events = appContext.backgroundCoroutineScope
       events.launch { media.library.changes.collect { sendEvent(ON_LIBRARY_CHANGE, it.toJs()) } }
@@ -174,6 +176,26 @@ class VidoraMediaModule : Module() {
     }
 
     // The app's "Download notifications" setting for the native runner (kept, so it holds before JavaScript runs)
+
+    // #362 Link Polling, #504 Update Detection, #363 RSS: watched links and feeds (JSON in, JSON out).
+    AsyncFunction("watchList") { -> com.vidorax.media.watch.Watches.listJson(context) }
+
+    AsyncFunction("watchAdd") Coroutine { url: String, kind: String?, intervalHours: Int, autoDownload: Boolean ->
+      withContext(Dispatchers.IO) { com.vidorax.media.watch.Watches.add(context, url, kind, intervalHours, autoDownload) }
+    }
+
+    AsyncFunction("watchUpdate") { id: String, intervalHours: Int?, autoDownload: Boolean? ->
+      com.vidorax.media.watch.Watches.update(context, id, intervalHours, autoDownload)
+    }
+
+    AsyncFunction("watchRemove") { id: String -> com.vidorax.media.watch.Watches.remove(context, id) }
+
+    AsyncFunction("watchCheck") Coroutine { id: String ->
+      withContext(Dispatchers.IO) { com.vidorax.media.watch.Watches.checkNow(context, id) }
+    }
+
+    // #505: the download rules for background feed downloads (the app sends them whenever they change).
+    AsyncFunction("setBulkRules") { json: String -> com.vidorax.media.watch.BulkRules.save(context, json) }
 
     AsyncFunction("setDownloadNotificationsEnabled") { enabled: Boolean ->
       com.vidorax.media.runner.DownloadNotificationsToggle.setEnabled(context, enabled)
@@ -391,6 +413,13 @@ class VidoraMediaModule : Module() {
       withContext(Dispatchers.Main) { SubtitleExport.share(context, appContext.currentActivity, file, mime) }
     }
 
+    // #510 Cross-device sync: the download queue as a .json file through the share sheet (Quick Share, Bluetooth…);
+    // the other phone imports it in Download history → Queue backup.
+    AsyncFunction("shareQueueFile") Coroutine { fileName: String, text: String ->
+      val (file, mime) = withContext(Dispatchers.IO) { SubtitleExport.write(services.paths, fileName, text, SubtitleExport.QUEUE_TYPES) }
+      withContext(Dispatchers.Main) { SubtitleExport.share(context, appContext.currentActivity, file, mime) }
+    }
+
     // Library
 
     AsyncFunction("listLibrary") Coroutine { query: LibraryQueryRecord ->
@@ -527,7 +556,35 @@ class VidoraMediaModule : Module() {
 
     OnActivityResult { _, payload ->
       com.vidorax.media.library.ActivityGalleryDeleteConsent.onActivityResult(payload.requestCode, payload.resultCode)
+      com.vidorax.media.library.SaveCopyAs.onActivityResult(payload.requestCode, payload.resultCode, payload.data)
     }
+
+    // #512 Save to cloud: Android's save screen (cloud apps included), then the finished file is written there.
+    AsyncFunction("saveCopyAs") Coroutine { id: String ->
+      com.vidorax.media.library.SaveCopyAs(context, services.library) { appContext.currentActivity }.save(id)
+    }
+
+    Function("getSaveCopyProgress") { id: String ->
+      com.vidorax.media.library.SaveCopyAs.progress(id)?.let { (done, total) ->
+        mapOf("bytesDone" to done.toDouble(), "totalBytes" to total.toDouble())
+      }
+    }
+
+    // #507 Cloud folder: the videos of a picked folder copied into the library (already saved ones skipped).
+    AsyncFunction("importFromFolder") Coroutine { treeUri: String ->
+      val summary = com.vidorax.media.library.FolderImport(context) { media -> services.incomingImport.import(media) }.run(treeUri)
+      mapOf(
+        "found" to summary.found,
+        "imported" to summary.imported,
+        "duplicates" to summary.duplicates,
+        "failed" to summary.failed,
+        "stopped" to summary.stopped,
+      )
+    }
+
+    Function("getFolderImportProgress") { -> com.vidorax.media.library.FolderImport.progress() }
+
+    Function("cancelFolderImport") { com.vidorax.media.library.FolderImport.cancel() }
 
     AsyncFunction("getStorageStats") Coroutine { ->
       services.storageUsage.read().toJs()

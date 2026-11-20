@@ -50,6 +50,7 @@ export const privacyDocument: LegalDocument = {
         'privacy.sections.backend.p1',
         'privacy.sections.backend.p2',
         'privacy.sections.backend.p3',
+        'privacy.sections.backend.p4',
       ],
     },
     {

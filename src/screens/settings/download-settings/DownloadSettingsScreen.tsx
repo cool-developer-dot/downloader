@@ -41,10 +41,12 @@ import {
   CONNECTION_SEGMENT_OPTIONS,
 } from './constants';
 import { DownloadAdvancedSection } from './DownloadAdvancedSection';
+import { DownloadPerformanceSection } from './DownloadPerformanceSection';
 import { DownloadConditionsSection } from './DownloadConditionsSection';
 import { DownloadListSettingsSection } from './DownloadListSettingsSection';
 import { useDownloadSettingsScreen } from './useDownloadSettingsScreen';
 import { SaveLocationSettingsSection } from './SaveLocationSettingsSection';
+import { CloudSettingsSection } from './CloudSettingsSection';
 
 export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
   const settingsTokens = useSettingsTokens();
@@ -247,6 +249,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
           </SettingsSection>
         </SettingsStaggerItem>
         <SaveLocationSettingsSection index={0} disabled={preferenceDisabled} />
+        <CloudSettingsSection index={0} disabled={preferenceDisabled} />
 
         <DownloadListSettingsSection index={1} disabled={preferenceDisabled} />
 
@@ -371,6 +374,10 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
 
         <SettingsStaggerItem index={4}>
           <DownloadAdvancedSection disabled={preferenceDisabled} />
+        </SettingsStaggerItem>
+
+        <SettingsStaggerItem index={5}>
+          <DownloadPerformanceSection disabled={preferenceDisabled} />
         </SettingsStaggerItem>
       </View>
     </SafeAreaScreen>

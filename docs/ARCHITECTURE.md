@@ -39,6 +39,14 @@ Goals
   WebM when both tracks are VP8/VP9 + Opus/Vorbis.
 - Downloads keep running with the app in the background, the screen off, and across process death.
   Pause, resume, retry and cancel always do what they say.
+- **Downloader extras (1.2.0, HANDOFF §4.37).** Engine tuning — buffer size, a write cache, low memory mode (automatic
+  on low-RAM phones), a per-site cooldown, "Close VidoraX when downloads finish". Bulk adding — URL patterns,
+  include/exclude rules, M3U/PLS/XSPF playlists and RSS/Atom feeds. Watched links (a file, a page or a feed checked
+  by an hourly JobScheduler job; a change notifies and can download). A site grabber (same-site pages, robots.txt,
+  depth 2, ≤ 50 pages, 1 request/s, saved to Saved pages, videos listed for choosing). Saved comments (JSON-LD,
+  Reddit). The user's own cloud apps: "Save a copy to…", folder import, Save Location into a cloud folder with Wi-Fi
+  only and retries, and the queue sent to another phone as a file. No server, no account, no cookies on pages
+  VidoraX reads by itself.
 - One library with a single source of truth: thumbnail, title, site, duration, resolution, size. Search, sort,
   filter by site, favorites, multi-select, rename, delete, share, open with, save to gallery. *(2026-10-03: filter by
   site and multi-select are not built yet — Phase 21 in `docs/ROADMAP.md`.)*

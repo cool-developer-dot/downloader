@@ -37,6 +37,12 @@ export type V2SettingsInput = {
   language?: string;
   /** "Automatically resume interrupted downloads" (default true). */
   autoResume?: boolean;
+  /** P1 engine tuning (#350, #344, #348, #506, #358); see `DownloadSettings`. */
+  bufferKb?: number;
+  writeCacheKb?: number;
+  lowMemoryMode?: LowMemoryMode;
+  cooldownSeconds?: number;
+  exitWhenDone?: boolean;
   /** Finished/failed notification alerts; each is sent only when given (see `DownloadSettings`). */
   notificationSound?: boolean;
   notificationVibrate?: boolean;
@@ -77,6 +83,41 @@ export function normalizeLiveRecordingMaxMinutes(value: unknown): number {
   return Math.min(MAX_LIVE_RECORDING_MAX_MINUTES, Math.max(MIN_LIVE_RECORDING_MAX_MINUTES, Math.round(parsed)));
 }
 
+export type LowMemoryMode = 'auto' | 'on' | 'off';
+
+/** #350 "Buffer size" choices (KiB). */
+export const BUFFER_KB_CHOICES = [32, 64, 128, 256, 512] as const;
+export const DEFAULT_BUFFER_KB = 64;
+/** #344 "Disk write cache" choices (KiB; 0 = off). */
+export const WRITE_CACHE_KB_CHOICES = [0, 1024, 4096, 8192] as const;
+/** #506 "Cooldown between files" choices (seconds; 0 = none). */
+export const COOLDOWN_SECONDS_CHOICES = [0, 5, 15, 30, 60] as const;
+
+/** A stored value → the closest offered choice, or [fallback] when unreadable. */
+function closestChoice(value: unknown, choices: readonly number[], fallback: number): number {
+  const parsed = typeof value === 'string' ? Number(value.trim()) : value;
+  if (typeof parsed !== 'number' || !Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return choices.reduce((best, choice) => (Math.abs(choice - parsed) < Math.abs(best - parsed) ? choice : best), choices[0]!);
+}
+
+export function normalizeBufferKb(value: unknown): number {
+  return closestChoice(value, BUFFER_KB_CHOICES, DEFAULT_BUFFER_KB);
+}
+
+export function normalizeWriteCacheKb(value: unknown): number {
+  return closestChoice(value, WRITE_CACHE_KB_CHOICES, 0);
+}
+
+export function normalizeCooldownSeconds(value: unknown): number {
+  return closestChoice(value, COOLDOWN_SECONDS_CHOICES, 0);
+}
+
+export function normalizeLowMemoryMode(value: unknown): LowMemoryMode {
+  return value === 'on' || value === 'off' ? value : 'auto';
+}
+
 /** A stored or typed value → a connection count the engine accepts (anything else is the default). */
 export function normalizeConnectionsPerFile(value: unknown): number {
   const parsed = typeof value === 'string' ? Number(value.trim()) : value;
@@ -109,6 +150,11 @@ export function v2DownloadSettings(input: V2SettingsInput): DownloadSettings {
     liveRecordingMaxMinutes: normalizeLiveRecordingMaxMinutes(input.liveRecordingMaxMinutes),
     language: input.language === 'ur' ? 'ur' : 'en',
     autoResume: input.autoResume !== false,
+    bufferKb: normalizeBufferKb(input.bufferKb),
+    writeCacheKb: normalizeWriteCacheKb(input.writeCacheKb),
+    lowMemoryMode: normalizeLowMemoryMode(input.lowMemoryMode),
+    cooldownSeconds: normalizeCooldownSeconds(input.cooldownSeconds),
+    exitWhenDone: input.exitWhenDone === true,
     ...notificationAlertFields(input),
   };
 }
@@ -131,6 +177,11 @@ export function sameV2Settings(a: DownloadSettings, b: DownloadSettings): boolea
       (b.liveRecordingMaxMinutes ?? DEFAULT_LIVE_RECORDING_MAX_MINUTES) &&
     (a.language ?? 'en') === (b.language ?? 'en') &&
     (a.autoResume ?? true) === (b.autoResume ?? true) &&
+    (a.bufferKb ?? DEFAULT_BUFFER_KB) === (b.bufferKb ?? DEFAULT_BUFFER_KB) &&
+    (a.writeCacheKb ?? 0) === (b.writeCacheKb ?? 0) &&
+    (a.lowMemoryMode ?? 'auto') === (b.lowMemoryMode ?? 'auto') &&
+    (a.cooldownSeconds ?? 0) === (b.cooldownSeconds ?? 0) &&
+    (a.exitWhenDone ?? false) === (b.exitWhenDone ?? false) &&
     a.notificationSound === b.notificationSound &&
     a.notificationVibrate === b.notificationVibrate &&
     a.notificationSilent === b.notificationSilent

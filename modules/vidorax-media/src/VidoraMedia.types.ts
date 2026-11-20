@@ -709,6 +709,19 @@ export interface DownloadSettings {
    * place). Persisted by the engine. Missing = true.
    */
   autoResume?: boolean;
+  /** #350 "Buffer size": KiB read from the network per read (16..1024). Missing = 64. */
+  bufferKb?: number;
+  /** #344 "Disk write cache": KiB gathered in memory before each disk write (0..16384, 0 = off). Missing = off. */
+  writeCacheKb?: number;
+  /**
+   * #348 "Low memory mode": 'auto' (the device decides), 'on' or 'off'. While on: one download at a time on one
+   * connection, a 32 KiB buffer and no write cache. Missing = 'auto'.
+   */
+  lowMemoryMode?: 'auto' | 'on' | 'off';
+  /** #506 "Cooldown between files": seconds a site's next download waits after its previous one (0..600). Missing = 0. */
+  cooldownSeconds?: number;
+  /** #358 "Exit when done": VidoraX closes when every download finished while it is in the background. Missing = off. */
+  exitWhenDone?: boolean;
 }
 
 /**
@@ -811,6 +824,9 @@ export interface VaultItem {
    */
   unreadable?: boolean;
 }
+
+/** #507: what a folder import did. */
+export type FolderImportSummary = { found: number; imported: number; duplicates: number; failed: number; stopped: boolean };
 
 export interface VidoraMediaModuleApi {
   // Probing
@@ -1076,4 +1092,28 @@ export interface VidoraMediaModuleApi {
    * player view's own auto-enter does it. Optional: builds before this function simply have no PiP there.
    */
   setPictureInPictureAutoEnter?(armed: boolean, aspectWidth: number, aspectHeight: number): void;
+  /**
+   * #362 Link Polling, #504 Update Detection, #363 RSS: watched links and feeds (native watch/Watches.kt). JSON in
+   * and out (see src/downloads/watch/watch-core.ts). Missing on older native builds.
+   */
+  watchList?(): Promise<string>;
+  /** The link as JSON, or `full` / `unreachable`. */
+  watchAdd?(url: string, kind: 'file' | 'page' | 'feed' | null, intervalHours: number, autoDownload: boolean): Promise<string>;
+  watchUpdate?(id: string, intervalHours: number | null, autoDownload: boolean | null): Promise<string | null>;
+  watchRemove?(id: string): Promise<boolean>;
+  watchCheck?(id: string): Promise<string | null>;
+  /** #505: the download rules for background feed downloads, as JSON (the shape of `LinkRules`). */
+  setBulkRules?(json: string): Promise<void>;
+  /**
+   * #512 Save to cloud: Android's save screen (cloud apps appear there), then the finished file is written to the
+   * place picked. Rejects ERR_NOT_FOUND / ERR_STORAGE. Missing on older native builds.
+   */
+  saveCopyAs?(id: string): Promise<{ status: 'saved'; name: string; bytes: number } | { status: 'cancelled' }>;
+  getSaveCopyProgress?(id: string): { bytesDone: number; totalBytes: number } | null;
+  /** #507 Cloud folder: the videos of a picked folder (tree URI) copied into the library; saved ones skipped. */
+  importFromFolder?(treeUri: string): Promise<FolderImportSummary>;
+  getFolderImportProgress?(): { found: number; done: number; imported: number; duplicates: number; failed: number } | null;
+  cancelFolderImport?(): void;
+  /** #510: the download queue as a .json file through the share sheet (Quick Share, Bluetooth…). */
+  shareQueueFile?(fileName: string, text: string): Promise<void>;
 }

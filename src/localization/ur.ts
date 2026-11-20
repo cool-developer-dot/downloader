@@ -3,6 +3,11 @@ import { browserSelectionUr } from './catalogs/browserSelection.ur';
 import { browserHistoryUr } from './catalogs/browserHistory.ur';
 import { browserStartupUr } from './catalogs/browserStartup.ur';
 import { browserFindUr } from './catalogs/browserFind.ur';
+import { downloadTuningUr } from './catalogs/downloadTuning.ur';
+import { bulkAddUr } from './catalogs/bulkAdd.ur';
+import { watchedLinksUr } from './catalogs/watchedLinks.ur';
+import { siteGrabberUr } from './catalogs/siteGrabber.ur';
+import { cloudUr } from './catalogs/cloud.ur';
 import { browserTabSoundUr } from './catalogs/browserTabSound.ur';
 import { browserSitePermissionsUr } from './catalogs/browserSitePermissions.ur';
 import { browserBookmarksUr } from './catalogs/browserBookmarks.ur';
@@ -1051,6 +1056,8 @@ export const ur: CatalogStrings<typeof en> = {
     byTypeHint: 'ویڈیوز اور آڈیو، Videos اور Audio فولڈرز میں جاتے ہیں',
     bySite: 'ہر سائٹ کا الگ فولڈر',
     bySiteHint: 'ہر سائٹ کے لیے ایک فولڈر، جیسے Instagram',
+    wifiOnly: 'صرف Wi-Fi پر',
+    wifiOnlyHint: 'کاپیاں Wi-Fi کا انتظار کرتی ہیں۔ نئی ویڈیوز خود اپ لوڈ کرنے کے لیے OneDrive، Dropbox یا Nextcloud کا کوئی فولڈر چنیں۔',
     keepNote: 'کاپیاں الگ فائلیں ہیں: VidoraX میں ویڈیو حذف کرنے سے اس کی کاپی کبھی حذف نہیں ہوتی۔',
     accessLost: 'VidoraX اب منتخب فولڈر میں محفوظ نہیں کر سکتا، اس لیے «ایک کاپی یہاں بھی محفوظ کریں» بند کر دیا گیا۔ ڈاؤن لوڈ سیٹنگز میں فولڈر دوبارہ منتخب کریں۔',
     accessLostTitle: 'فولڈر دستیاب نہیں',
@@ -2049,6 +2056,9 @@ export const ur: CatalogStrings<typeof en> = {
     exportTitle: 'VidoraX ڈاؤن لوڈ قطار',
     exportSaved: 'قطار محفوظ ہو گئی',
     exportShared: 'قطار شیئر ہو گئی',
+    send: 'دوسرے فون پر بھیجیں',
+    sendHint: 'قطار Quick Share، بلوٹوتھ یا کسی چیٹ سے بھیجیں۔ دوسرے فون پر اسے "قطار امپورٹ کریں" سے کھولیں۔',
+    sendShared: 'قطار بھیجنے کے لیے تیار',
     import: 'قطار امپورٹ کریں',
     importHint: 'محفوظ کی گئی قطار بحال کریں۔ ہر ویڈیو کا صفحہ براؤزر میں کھلتا ہے تاکہ آپ اسے دوبارہ ڈاؤن لوڈ کر سکیں۔',
     restoredTitle: 'بحال شدہ صفحات ({count})',
@@ -2500,6 +2510,7 @@ export const ur: CatalogStrings<typeof en> = {
         p1: 'VidoraX کو VidoraX اکاؤنٹ کی ضرورت نہیں، اور یہ عام طور پر ڈاؤن لوڈز، فولڈرز، فیوریٹس، ہسٹری، بُک مارکس، پلے بیک، یا سیٹنگز کا کلاؤڈ سنک نہیں کرتا۔ وہ ریکارڈز اس ڈیوائس پر رہتے ہیں۔ عام استعمال کے لیے VidoraX کو اپنے API سرور کی ضرورت نہیں۔',
         p2: 'جب آپ کوئی ویب سائٹ براؤز کرتے ہیں، میڈیا لنک کا تجزیہ کرتے ہیں، یا فائل ڈاؤن لوڈ کرتے ہیں تو VidoraX اس تیسری پارٹی ماخذ کو عام نیٹ ورک درخواستیں بھیجتا ہے۔ پلے بیک پیش رفت مقامی طور پر محفوظ ہوتی ہے اور VidoraX اکاؤنٹ پر اپلوڈ نہیں ہوتی۔',
         p3: 'ڈاؤن لوڈ شدہ میڈیا فائلیں خود آپ کی ڈیوائس پر رہتی ہیں جب تک آپ انہیں اپنے ڈیوائس ٹولز سے شیئر یا منتقل نہ کریں۔ اگر آپ ای میل سے سپورٹ سے رابطہ کریں تو اس پیغام کا مواد صرف اس لیے بھیجا جاتا ہے کہ آپ نے بھیجنے کا انتخاب کیا۔',
+        p4: 'کچھ فیچرز آپ کے لیے عوامی ویب صفحات پڑھتے ہیں: نظر میں رکھے لنک اور فیڈز تقریباً ہر گھنٹے چیک ہوتے ہیں، "سائٹ محفوظ کریں" آپ کی چنی سائٹ کے زیادہ سے زیادہ 50 صفحات پڑھتا ہے، اور "تبصرے محفوظ کریں" ویڈیو کے صفحے کے دیے گئے تبصرے پڑھتا ہے۔ یہ درخواستیں صرف آپ کے چنے ہوئے پتوں پر جاتی ہیں، آپ کی کوکیز یا سائن اِن کے بغیر، اور جو ملتا ہے وہ اسی ڈیوائس پر رہتا ہے۔ کاپی محفوظ کرنا، فولڈر سے امپورٹ اور محفوظ کرنے کی جگہ آپ کے چنے فولڈرز اور کلاؤڈ ایپس استعمال کرتے ہیں: VidoraX فائلیں صرف وہیں لکھتا ہے، اور کوئی بھی اپ لوڈ وہ ایپ اپنی پالیسی کے تحت کرتی ہے۔',
       },
       thirdParties: {
         heading: '۵۔ تیسری پارٹی اور سروس فراہم کنندگان',
@@ -2833,6 +2844,11 @@ export const ur: CatalogStrings<typeof en> = {
   browserStartup: browserStartupUr,
   // B7 (Hamza)
   browserFind: browserFindUr,
+  downloadTuning: downloadTuningUr,
+  bulkAdd: bulkAddUr,
+  watchedLinks: watchedLinksUr,
+  siteGrabber: siteGrabberUr,
+  cloud: cloudUr,
   // B3 (Hamza)
   browserTabSound: browserTabSoundUr,
   // B13 (Hamza)

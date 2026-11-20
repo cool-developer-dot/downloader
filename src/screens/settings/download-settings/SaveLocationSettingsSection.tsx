@@ -40,6 +40,7 @@ export const SaveLocationSettingsSection = memo(function SaveLocationSettingsSec
   const folderName = useSaveLocationStore((s) => s.folderName);
   const byType = useSaveLocationStore((s) => s.byType);
   const bySite = useSaveLocationStore((s) => s.bySite);
+  const wifiOnly = useSaveLocationStore((s) => s.wifiOnly);
   const accessLost = useSaveLocationStore((s) => s.accessLost);
   const busyRef = useRef(false);
   const [busy, setBusy] = useState(false);
@@ -233,8 +234,24 @@ export const SaveLocationSettingsSection = memo(function SaveLocationSettingsSec
                   testID="download-settings-save-location-by-site"
                 />
               }
-              showDivider={false}
               accessibilityHint={t('saveLocation.bySiteHint')}
+            />
+            <SettingsRow
+              title={t('saveLocation.wifiOnly')}
+              description={t('saveLocation.wifiOnlyHint')}
+              icon="wifi"
+              trailing={
+                <Switch
+                  value={wifiOnly}
+                  onValueChange={(value) => useSaveLocationStore.getState().dispatch({ type: 'set-wifi-only', value })}
+                  disabled={controlsDisabled}
+                  accessibilityLabel={t('saveLocation.wifiOnly')}
+                  accessibilityHint={t('saveLocation.wifiOnlyHint')}
+                  testID="download-settings-save-location-wifi-only"
+                />
+              }
+              showDivider={false}
+              accessibilityHint={t('saveLocation.wifiOnlyHint')}
             />
           </>
         ) : null}

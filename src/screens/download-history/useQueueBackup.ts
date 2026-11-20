@@ -16,6 +16,8 @@ import { useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import { useDownloadsStore } from '@/store/downloads';
 import { exportFileName, exportTextFile, importTextFile } from '@/utils/text-file-export';
+import { getVidoraMedia, isVidoraMediaAvailable } from '@modules/vidorax-media';
+import { withExpectedSystemScreen } from '@/security/app-lock/expected-system-screen';
 
 function announce(message: string): void {
   if (Platform.OS === 'android') {
@@ -78,6 +80,22 @@ export function useQueueBackup() {
     });
   }, [exportable.items, run, t]);
 
+  /** #510: the queue to another phone as a file (Quick Share, Bluetooth, a chat); it is imported there with Import queue. */
+  const canSendQueue = isVidoraMediaAvailable() && typeof getVidoraMedia().shareQueueFile === 'function';
+  const sendQueue = useCallback(() => {
+    void run('export', async () => {
+      const now = new Date();
+      try {
+        await withExpectedSystemScreen(() =>
+          getVidoraMedia().shareQueueFile!(exportFileName('download-queue', 'json', now), queueToJson(exportable.items, now)),
+        );
+        announce(t('queueBackup.sendShared'));
+      } catch {
+        announce(t('downloadHistory.exportFailed'));
+      }
+    });
+  }, [exportable.items, run, t]);
+
   const importQueue = useCallback(() => {
     void run('import', async () => {
       const picked = await importTextFile(['application/json', 'text/plain', 'application/octet-stream']);
@@ -133,6 +151,8 @@ export function useQueueBackup() {
     busy,
     summary,
     exportQueue,
+    canSendQueue,
+    sendQueue,
     importQueue,
     openEntry,
     removeEntry,

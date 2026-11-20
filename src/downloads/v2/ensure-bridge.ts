@@ -17,6 +17,7 @@ import { projectV2LibraryItem } from './projection';
 import { createLibraryReconciler } from './library-reconcile';
 import { pushV2DownloadSettings } from './settings';
 import { getNetworkOptionsInput, subscribeNetworkOptions } from './network-options-store';
+import { pushLinkRulesToNative } from '@/downloads/watch/watch-port';
 
 let attached = false;
 let detach: (() => void) | null = null;
@@ -105,6 +106,8 @@ export function ensureV2DownloadBridge(): void {
   // resume before the app's JavaScript is running at all.
   const pushSettings = () => {
     const settings = useSettingsStore.getState();
+    // #505: background feed downloads (watched links) apply the same rules as Batch Add.
+    pushLinkRulesToNative(settings.linkRules);
     void pushV2DownloadSettings(engine, {
       wifiOnly: settings.wifiOnly,
       network: getNetworkOptionsInput(),
@@ -120,6 +123,11 @@ export function ensureV2DownloadBridge(): void {
       liveRecordingMaxMinutes: settings.liveRecordingMaxMinutes,
       language: settings.language,
       autoResume: settings.autoResume,
+      bufferKb: settings.bufferKb,
+      writeCacheKb: settings.writeCacheKb,
+      lowMemoryMode: settings.lowMemoryMode,
+      cooldownSeconds: settings.cooldownSeconds,
+      exitWhenDone: settings.exitWhenDone,
       notificationSound: settings.notificationSound,
       notificationVibrate: settings.notificationVibrate,
       notificationSilent: settings.notificationSilent,
