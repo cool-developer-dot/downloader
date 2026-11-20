@@ -2294,7 +2294,26 @@ ARCHITECTURE §3.9; API in `docs/REMOTE_API.md`; intents in `docs/AUTOMATION.md`
   store publishing is the owner's step — `extensions/vidorax-bridge/README.md`, `package.sh`).
 - **Tests:** Kotlin `remote/*Test` (56: auth/lockout, routing/security, real-socket server, stop policy, inbox,
   automation); Node `src/remote/*.test.ts`, `modules/vidorax-media/remote-web.test.ts`.
-- DEVICE_CHECK_PLACEHOLDER
+- **Device (2026-11-20, new AVD `VidoraX_Browser_H`, upload-key release build):** server listens only on the Wi-Fi
+  address and 127.0.0.1 (netstat); over `adb forward` wrong `Host` → 421, foreign `Origin` → 403, no token → 401, form
+  post → 415. Web UI from the host: paired with the phone's PIN, added `Big_Buck_Bunny_360_10s_1MB.mp4` (checked by
+  Batch Add, downloaded), re-adding it answered "already downloaded" (gallery copy); a 5 MB sibling paused and resumed
+  from the Web UI. "Send to computer" on the finished download → "Sent from phone" list → the computer downloaded the
+  991,017-byte MP4 through its ticket (Range 206); after the video was deleted in the app the ticket answered 404.
+  `vidorax-cli` (run with dash): unpaired error, wrong PIN, pair (config mode 600), add, list, pause, resume, unknown
+  id, live progress. Automation: with the switch off all three intents logged "ignored"; on, ADD_DOWNLOAD added the
+  link, PAUSE_ALL/RESUME_ALL paused/resumed it, and `DOWNLOAD_COMPLETE` was sent once (`dumpsys activity
+  broadcast-stats`). Stops: Home with nothing downloading → stopped after ~68 s ("background"); the emulator's Wi-Fi
+  dropped twice under host load → stopped within 6 s ("wifi_lost"), the screen said why; pairings and the port
+  survived a restart. Extension: loaded unpacked in Firefox 159 (temporary add-on), its popup paired through the real
+  form — "VidoraX Bridge (Firefox)" listed on the phone; extension-origin preflight/add got CORS + Private-Network
+  headers, a web page's preflight 403. Not automated: the context-menu click, Chrome/Edge loading (Chrome 157 ignores
+  `--load-extension`), and the 30-minute idle stop (unit-tested). Not cleanly device-checked: "keeps running in the background while a
+  download runs" (unit-tested; the one device run survived 85 s in the background with a download going but ended in
+  a Wi-Fi drop, and the Mac's internet then went away). Found on device and fixed: queue rows rebuilt every poll
+  swallowed clicks; `type="url"` rejected bare links; a 30 MB file's link check took ~65–100 s on the loaded AVD, so
+  the per-link cap is now 3 minutes and a check that ignores its abort can no longer stall the queue. Test videos and
+  the app's data on the AVD were deleted afterwards.
 - **P7 hook:** pairing and transport are reusable — `RemoteAuth` tokens + `/api/v1` routes; a queue push to another
   VidoraX can be a new authenticated route on `RemoteRouter` plus a client that pairs with the other phone's PIN.
 
