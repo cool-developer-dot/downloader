@@ -608,8 +608,10 @@ Everything here runs on the device: no list is downloaded and nothing is looked 
   - H17 (`dangerous-download.ts` + `vidorax-web` `RiskyDownloads`): more program types (`com pif ps1 hta wsf cpl lnk`),
     a double extension or a video-looking name sent with a program MIME type routes to the warning before detection
     (`RiskyDownloads.isDisguised`) with the stronger "This file is disguised" text. A video by MIME type is still
-    never checked by name (HLS segments carry odd names); its bytes are, by the probe. The lists are kept equal in
-    JS, `RiskyDownloads` and `ContentSniff` by `dangerous-download.native-parity.test.ts`.
+    never checked by name (HLS segments carry odd names); its bytes are, by the probe and by the browser verifier
+    (`resolveVideoResource` → `content-kind.ts`, reason `DISGUISED_PROGRAM`). A video-typed download detection does
+    not take (a private-network page, no tab owner) still goes to DownloadManager unchecked. The lists are kept equal
+    in JS, `RiskyDownloads` and `ContentSniff` by `dangerous-download.native-parity.test.ts`.
 - **Source check (#514).** `src/downloads/safety/source-check.ts` + `SourceCheckBadge` in the quality sheet:
   Secure / Check source / Not secure from the page or pasted link, the media URL and the final URL. Not secure: plain
   HTTP, or HTTPS → HTTP. Check source: a numeric IP host (also number/hex forms), an international (punycode) host,

@@ -40,7 +40,7 @@ import {
   pictureInPictureSupported,
   subscribeActivityStopped,
 } from '@/player/picture-in-picture';
-import { externalTokenOf } from '@/player/external-media';
+import { externalMediaId, externalTokenOf, knownIncomingMedia } from '@/player/external-media';
 import { isStreamMediaId } from '@/player/remote-stream';
 import { useSeekPreview } from '@/player/use-seek-preview';
 import {
@@ -217,7 +217,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     if (incomingToken) {
       // P8 #461: a file whose bytes do not match its name is warned about before another app opens it.
       const { confirmIncomingFileAction } = await import('@/downloads/safety/file-safety-dialog');
-      if (!(await confirmIncomingFileAction(incomingToken, 'open', null))) {
+      if (!(await confirmIncomingFileAction(incomingToken, 'open', knownIncomingMedia(externalMediaId(incomingToken))?.displayName ?? null))) {
         setExternalOpenBusy(false);
         return;
       }

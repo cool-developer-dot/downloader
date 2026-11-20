@@ -2288,6 +2288,28 @@ ARCHITECTURE §6.1.
 - **Simple/Advanced #516/#517:** `settingsView` (Simple new, Advanced existing), `advanced` flag for rows/sections
   that other packages can set.
 - **Strings:** `fileSafety`, `sourceCheck`, `archiveImport`, `settingsView` catalogs (English + Urdu).
+- **Tests:** JS 1939/1939, `tsc` clean, vidorax-media 1018 and vidorax-web 171 unit tests green (new: ContentSniffTest,
+  ZipArchiveTest, SrtToVttTest, ProbeTest disguised/redirects, IncomingMediaIntentsTest archives, RiskyDownloadsTest).
+- **Device (2026-11-20, new AVD `Pixel_8`, upload-key release build):**
+  - Fresh install starts in Simple ("Download Settings · Simple" on the main Settings row); Simple hides Connections per
+    file, Download hours, Advanced network, File naming and the Advanced section; Advanced shows them; both checked in
+    English and Urdu.
+  - A zip of two videos + `.srt` + `setup.exe` opened from Files → "Open with" VidoraX: listing, programs warning,
+    "Extract anyway" → 2 videos in the library with thumbnails, 1 subtitle saved; opening it again → "0 added, 2
+    already there". A zip-slip archive → refused with the harmful-archive message (all in Urdu).
+  - An APK renamed `holiday.mp4` opened from Files: the Player says unreadable, Save to VidoraX → "Not saved: this file
+    is not a video and may be harmful" (`ERR_UNSAFE_FILE`), Open with → "This file isn't what its name says … really an
+    Android app (APK)" with Open anyway / Cancel.
+  - Local host page (test-only release build with cleartext allowed, `http://10.0.2.2:8097`): an APK named
+    `holiday-app.mp4` sent as an APK type → "This file is disguised" before anything is downloaded.
+  - **Not device-checked:** the Source check badge on live http/https links and a disguised file on a public page —
+    the Mac had no internet during the run (host `curl`/ping/DNS all failed), and local pages are private-network
+    hosts that detection ignores by design. Covered by `source-check.test.ts`, `probe-observations.test.ts` (the
+    verifier's disguised refusal) and ProbeTest.
+- **Known limits:** an APK sent as `video/mp4` from a page detection does not take (a private-network page, or no tab
+  owner) still goes to Android's own downloader without the warning, as H17 trusts a video MIME type; opening that file
+  with VidoraX is then caught by the content check. Simple view hides rows but keeps their values (a download-hours
+  schedule set in Advanced still applies).
 
 ## 5. How to resume
 
