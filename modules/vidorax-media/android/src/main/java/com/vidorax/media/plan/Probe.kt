@@ -14,6 +14,7 @@ import com.vidorax.media.net.HttpClient
 import com.vidorax.media.net.MediaNetworkException
 import com.vidorax.media.net.MediaRefusedException
 import com.vidorax.media.net.MediaRequest
+import com.vidorax.media.safety.ContentSniff
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -128,6 +129,7 @@ internal class Probe(
     val totalSize: Long?,
     val resumable: Boolean,
     val prefix: ByteArray,
+    val redirects: Int,
   )
 
   /** The first [PROBE_BYTES] of [url] with what the response said about the whole file, or why there are none. */
@@ -169,6 +171,7 @@ internal class Probe(
         totalSize = range?.total ?: if (it.status == 200) it.contentLength else null,
         resumable = it.supportsRanges,
         prefix = prefix,
+        redirects = it.redirects,
       )
     }
   }
@@ -215,8 +218,12 @@ internal class Probe(
           variants = emptyList(),
           audioTracks = emptyList(),
           durationMs = null,
+          redirects = first.redirects,
         )
-        is SniffResult.Unsupported -> failure(verdict.reason, null, verdict.detail)
+        // P8 #461: a "video" whose bytes are a program or an archive is not media at all, and says what it is.
+        is SniffResult.Unsupported -> ContentSniff.kindOf(prefix)
+          ?.let { kind -> failure(ProbeFailure.NOT_MEDIA, null, "Not a video: ${kind.wire}").copy(disguisedAs = kind.wire) }
+          ?: failure(verdict.reason, null, verdict.detail)
       },
     )
   }

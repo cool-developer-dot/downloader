@@ -215,6 +215,12 @@ const PlayerSessionView = memo(function PlayerSessionView({
     setExternalOpenBusy(true);
     setExternalOpenError(null);
     if (incomingToken) {
+      // P8 #461: a file whose bytes do not match its name is warned about before another app opens it.
+      const { confirmIncomingFileAction } = await import('@/downloads/safety/file-safety-dialog');
+      if (!(await confirmIncomingFileAction(incomingToken, 'open', null))) {
+        setExternalOpenBusy(false);
+        return;
+      }
       const code = await openIncomingWithOtherApp(incomingToken);
       if (code) {
         setExternalOpenError(t(code === 'ERR_NO_APP' ? 'files.noCompatibleApp' : 'errors.openFailed'));
@@ -850,6 +856,7 @@ const SAVE_OUTCOME_MESSAGE: Record<SaveIncomingOutcome['kind'], TranslationKey> 
   duplicate: 'player.alreadyInLibrary',
   no_space: 'player.saveNoSpace',
   unavailable: 'player.saveUnavailable',
+  unsafe: 'fileSafety.saveRefused',
   failed: 'player.saveFailed',
 };
 

@@ -29,6 +29,7 @@ const MAX_STRING_CHARS = 500;
 /** String settings that are a fixed choice: any other value in a file is ignored, never applied. */
 export const STRING_CHOICES: Readonly<Record<string, readonly string[]>> = {
   ...BROWSER_SETTING_CHOICES,
+  settingsView: ['simple', 'advanced'],
 };
 
 type Primitive = string | number | boolean;

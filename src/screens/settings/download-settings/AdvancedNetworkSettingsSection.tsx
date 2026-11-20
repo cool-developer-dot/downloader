@@ -207,6 +207,7 @@ export const AdvancedNetworkSettingsSection = memo(function AdvancedNetworkSetti
     <SettingsStaggerItem index={index}>
       <SettingsSection
         testID="download-settings-advanced-network"
+        advanced
         title={t('networkOptions.section')}
         description={t('networkOptions.sectionDescription')}
         icon="lan">

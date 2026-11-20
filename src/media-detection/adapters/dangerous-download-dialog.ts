@@ -4,10 +4,19 @@ import * as ReactNative from 'react-native';
 
 import { translate } from '@/localization/translate';
 
-import { createSystemDownloadGate, displayFileName, type DownloadDangerInput } from './dangerous-download';
+import {
+  createSystemDownloadGate,
+  displayFileName,
+  type DownloadDangerInput,
+  type DownloadDangerReason,
+} from './dangerous-download';
 
-/** "Download anyway" / "Cancel", naming the file. Dismissing the dialog is Cancel. */
-function confirmDangerousFile(fileName: string): Promise<boolean> {
+/**
+ * "Download anyway" / "Cancel", naming the file. Dismissing the dialog is Cancel. A disguised name (P8 #461: a double
+ * extension, or a video-looking name sent as a program) gets the Malware Warning's stronger title and text.
+ */
+function confirmDangerousFile(fileName: string, reason: DownloadDangerReason | null): Promise<boolean> {
+  const disguised = reason === 'double-extension' || reason === 'disguised';
   return new Promise((resolve) => {
     let settled = false;
     const settle = (value: boolean) => {
@@ -16,9 +25,15 @@ function confirmDangerousFile(fileName: string): Promise<boolean> {
         resolve(value);
       }
     };
+    const name = displayFileName(fileName) || translate('dangerousFile.unnamed');
     ReactNative.Alert.alert(
-      translate('dangerousFile.title'),
-      translate('dangerousFile.message', { fileName: displayFileName(fileName) || translate('dangerousFile.unnamed') }),
+      translate(disguised ? 'fileSafety.disguisedDownloadTitle' : 'dangerousFile.title'),
+      disguised
+        ? translate(
+            reason === 'double-extension' ? 'fileSafety.doubleExtensionMessage' : 'fileSafety.disguisedDownloadMessage',
+            { fileName: name },
+          )
+        : translate('dangerousFile.message', { fileName: name }),
       [
         { text: translate('common.cancel'), style: 'cancel', onPress: () => settle(false) },
         { text: translate('dangerousFile.downloadAnyway'), style: 'destructive', onPress: () => settle(true) },

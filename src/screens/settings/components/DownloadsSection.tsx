@@ -2,6 +2,7 @@ import { memo, useCallback } from 'react';
 
 import { push, routePaths } from '@/navigation';
 import { useTranslation } from '@/localization';
+import { selectSettingsView, useSettingsStore } from '@/store/settings';
 import { DownloadHistoryLinkRow } from '@/screens/download-history/DownloadHistoryLinkRow';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSection } from './SettingsSection';
@@ -18,6 +19,7 @@ export const DownloadsSection = memo(function DownloadsSection({
   testID = 'settings-downloads',
 }: DownloadsSectionProps) {
   const { t } = useTranslation();
+  const view = useSettingsStore(selectSettingsView);
   const openDownloadSettings = useCallback(() => {
     push(routePaths.downloadSettings);
   }, []);
@@ -32,6 +34,7 @@ export const DownloadsSection = memo(function DownloadsSection({
         title={t('settings.downloadSettings')}
         description={t('settings.downloadSettingsHint')}
         icon="download-outline"
+        value={t(view === 'simple' ? 'settingsView.simple' : 'settingsView.advanced')}
         onPress={openDownloadSettings}
         showDivider={false}
         accessibilityHint={t('settings.downloadSettingsHint')}

@@ -27,6 +27,10 @@ import { shellUr } from './catalogs/shell.ur';
 import { videoPlayerUr } from './catalogs/videoPlayer.ur';
 import type { CatalogStrings } from './types';
 import type { en } from './en';
+import { fileSafetyUr } from './catalogs/fileSafety.ur';
+import { sourceCheckUr } from './catalogs/sourceCheck.ur';
+import { archiveImportUr } from './catalogs/archiveImport.ur';
+import { settingsViewUr } from './catalogs/settingsView.ur';
 
 export const ur: CatalogStrings<typeof en> = {
   common: {
@@ -2853,4 +2857,9 @@ export const ur: CatalogStrings<typeof en> = {
   browserUrdu: browserUrduUr,
   browserCapture: browserCaptureUr,
   browserTabGroups: browserTabGroupsUr,
+  // P8 (safety + modes)
+  fileSafety: fileSafetyUr,
+  sourceCheck: sourceCheckUr,
+  archiveImport: archiveImportUr,
+  settingsView: settingsViewUr,
 };

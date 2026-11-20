@@ -141,6 +141,7 @@ internal fun ProbeResult.toJs(): Map<String, Any?> = when (this) {
     "audioTracks" to audioTracks.map { it.toJs() },
     "durationMs" to durationMs,
     "mergesAudio" to mergesAudio,
+    "redirects" to redirects,
   )
   is ProbeResult.Failure -> mapOf(
     "ok" to false,
@@ -148,6 +149,7 @@ internal fun ProbeResult.toJs(): Map<String, Any?> = when (this) {
     "httpStatus" to httpStatus,
     "message" to message,
     "authChallenge" to authChallenge?.let { mapOf("scheme" to "basic", "origin" to it.origin, "realm" to it.realm) },
+    "disguisedAs" to disguisedAs,
   )
 }
 

@@ -223,6 +223,8 @@ export interface SettingsState {
   pdfOpenChoice: 'ask' | 'viewer' | 'download' | 'external';
   /** B2 #258: tabs opened from a page join that page's group (default off). */
   groupTabsFromOpener: boolean;
+  /** P8 #516/#517: Settings view 'simple' (new installs) or 'advanced' (installs from before 1.2.0). */
+  settingsView: import('./settings-view').SettingsView;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

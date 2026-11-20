@@ -11,7 +11,19 @@ import java.util.Locale
  * equal — and, as there, a video (by MIME type) is never risky.
  */
 internal object RiskyDownloads {
-  val EXTENSIONS: Set<String> = setOf("apk", "apks", "xapk", "exe", "msi", "bat", "cmd", "scr", "jar", "vbs", "sh", "dex")
+  val EXTENSIONS: Set<String> = setOf(
+    "apk", "apks", "xapk", "exe", "msi", "bat", "cmd", "scr", "jar", "vbs", "sh", "dex",
+    "com", "pif", "ps1", "hta", "wsf", "cpl", "lnk",
+  )
+
+  /** P8 #461: names a person reads as a video, picture, document or subtitle (`HARMLESS_EXTENSIONS` in JavaScript). */
+  val HARMLESS_EXTENSIONS: Set<String> = setOf(
+    "mp4", "m4v", "mkv", "webm", "mov", "avi", "wmv", "flv", "f4v", "ts", "3gp", "3g2", "mpg", "mpeg", "vob", "divx",
+    "mp3", "m4a", "aac", "wav", "ogg", "opus",
+    "jpg", "jpeg", "png", "gif", "webp", "heic", "bmp",
+    "pdf", "txt", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+    "srt", "vtt", "ass", "ssa", "sub",
+  )
 
   val MIME_TYPES: Set<String> = setOf(
     "application/vnd.android.package-archive",
@@ -53,6 +65,28 @@ internal object RiskyDownloads {
     val names = listOf(fileNameFromContentDisposition(contentDisposition), fileNameFromUrl(url))
     if (names.any { extensionOf(it) in EXTENSIONS }) return true
     return type in MIME_TYPES
+  }
+
+  /**
+   * P8 #461 Malware Warning: a name that pretends to be harmless — `clip.mp4.exe` (a double extension), or `clip.mp4`
+   * sent as an app or program. Routed to the warning before detection sees it. A video by MIME type is never disguised
+   * (streams name their segments oddly); its bytes are checked by the engine's probe instead.
+   */
+  fun isDisguised(url: String, mimeType: String?, contentDisposition: String?): Boolean {
+    val type = mimeType?.substringBefore(';')?.trim()?.lowercase(Locale.ROOT).orEmpty()
+    if (type.startsWith("video/") || type in STREAMING_MANIFEST_TYPES) return false
+    val names = listOfNotNull(fileNameFromContentDisposition(contentDisposition), fileNameFromUrl(url))
+    if (names.any(::hasDoubleExtension)) return true
+    return type in MIME_TYPES && names.any { extensionOf(it) in HARMLESS_EXTENSIONS }
+  }
+
+  /** `clip.MP4.exe`: a harmless extension right before a program's. */
+  fun hasDoubleExtension(name: String): Boolean {
+    val base = name.trim().split('/', '\\').last()
+    val last = extensionOf(base) ?: return false
+    if (last !in EXTENSIONS) return false
+    val inner = extensionOf(base.substring(0, base.length - last.length - 1)) ?: return false
+    return inner in HARMLESS_EXTENSIONS
   }
 
   /** `filename*=` (decoded) first, then `filename=`; null when the header names no file. */
@@ -100,6 +134,8 @@ internal sealed interface WebDownloadRoute {
     const val RISKY_HINT = "risky"
 
     fun of(url: String, mimeType: String?, contentDisposition: String?): WebDownloadRoute {
+      // P8 #461: a disguised program is warned about before detection could take its name for a video.
+      if (RiskyDownloads.isDisguised(url, mimeType, contentDisposition)) return Warn
       NetworkMediaClassifier.classifyDownload(url, mimeType, contentDisposition)?.let { return Detect(it) }
       return if (RiskyDownloads.isRisky(url, mimeType, contentDisposition)) Warn else System
     }

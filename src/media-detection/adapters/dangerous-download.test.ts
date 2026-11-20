@@ -8,6 +8,7 @@ import {
   fileExtension,
   fileNameFromContentDisposition,
   fileNameFromUrl,
+  hasDoubleExtension,
 } from './dangerous-download';
 
 const BASE = { contentDisposition: null, mimeType: 'application/octet-stream', hint: 'unknown' };
@@ -16,7 +17,9 @@ describe('assessDownloadDanger', () => {
   test('every listed extension is dangerous, from the URL', () => {
     assert.deepEqual([...DANGEROUS_EXTENSIONS].sort(), [
       'apk', 'apks', 'bat', 'cmd', 'dex', 'exe', 'jar', 'msi', 'scr', 'sh', 'vbs', 'xapk',
-    ]);
+      // P8 #461: Windows program and shortcut types.
+      'com', 'cpl', 'hta', 'lnk', 'pif', 'ps1', 'wsf',
+    ].sort());
     for (const ext of DANGEROUS_EXTENSIONS) {
       const verdict = assessDownloadDanger({ ...BASE, url: `https://files.example.com/dl/tool.${ext}` });
       assert.equal(verdict.dangerous, true, ext);
@@ -125,5 +128,51 @@ describe('allowSystemDownload', () => {
       throw new Error('no activity');
     });
     assert.equal(allowed, false);
+  });
+});
+
+describe('P8 #461 Malware Warning: disguised names', () => {
+  const NONE = { contentDisposition: null, mimeType: null } as const;
+
+  test('a double extension is its own reason', () => {
+    for (const name of ['clip.mp4.exe', 'Movie.MKV.apk', 'photo.jpg.scr', 'notes.pdf.lnk']) {
+      const verdict = assessDownloadDanger({ ...NONE, url: `https://example.com/${name}` });
+      assert.deepEqual([verdict.dangerous, verdict.reason], [true, 'double-extension'], name);
+    }
+    assert.equal(hasDoubleExtension('setup.exe'), false);
+    assert.equal(hasDoubleExtension('archive.tar.sh'), false);
+    assert.equal(hasDoubleExtension('clip.mp4'), false);
+  });
+
+  test('a video-looking name sent as an app or program is disguised', () => {
+    const verdict = assessDownloadDanger({
+      url: 'https://example.com/get?id=9',
+      contentDisposition: 'attachment; filename="holiday.mp4"',
+      mimeType: 'application/vnd.android.package-archive',
+    });
+    assert.deepEqual([verdict.dangerous, verdict.reason, verdict.fileName], [true, 'disguised', 'holiday.mp4']);
+  });
+
+  test('honest program names keep the H17 reasons', () => {
+    assert.equal(assessDownloadDanger({ ...NONE, url: 'https://example.com/setup.exe' }).reason, 'extension');
+    assert.equal(assessDownloadDanger({ ...NONE, url: 'https://example.com/run.ps1' }).reason, 'extension');
+    assert.equal(
+      assessDownloadDanger({ url: 'https://example.com/f/1', contentDisposition: null, mimeType: 'application/x-msdownload' }).reason,
+      'mime',
+    );
+  });
+
+  test('a video by its MIME type or hint is still never checked (its bytes are, by the probe)', () => {
+    assert.equal(assessDownloadDanger({ url: 'https://example.com/clip.mp4.exe', contentDisposition: null, mimeType: 'video/mp4' }).dangerous, false);
+    assert.equal(assessDownloadDanger({ ...NONE, url: 'https://example.com/seg.ts.js', hint: 'progressive' }).dangerous, false);
+  });
+
+  test('the dialog gets the reason', async () => {
+    const reasons: (string | null)[] = [];
+    await allowSystemDownload({ ...NONE, url: 'https://example.com/a.mp4.exe' }, async (_name, reason) => {
+      reasons.push(reason);
+      return false;
+    });
+    assert.deepEqual(reasons, ['double-extension']);
   });
 });

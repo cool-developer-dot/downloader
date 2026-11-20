@@ -194,6 +194,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureLibraryCompletionBridge } = await import(
         '@/library/ensure-completion-bridge'
       );
+      // P8 #461: a program behind a "video" link gets one notice (see probe-observations.ts).
+      const { ensureDisguisedSourceNotices } = await import('@/downloads/safety/file-safety-dialog');
+      ensureDisguisedSourceNotices();
       const { ensureV2DownloadBridge } = await import('@/downloads/v2/ensure-bridge');
       // Mirrors the v2 DownloadEngine (its records and library items) into the downloads store.
       ensureV2DownloadBridge();

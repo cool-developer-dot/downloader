@@ -94,6 +94,7 @@ export const FilenameSettingsSection = memo(function FilenameSettingsSection({
     <SettingsStaggerItem index={index}>
       <SettingsSection
         testID="download-settings-file-naming"
+        advanced
         title={t('downloadNaming.section')}
         description={t('downloadNaming.sectionDescription')}
         icon="file-document-edit-outline">

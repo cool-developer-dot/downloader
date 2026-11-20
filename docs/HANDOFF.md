@@ -2274,6 +2274,21 @@ already handled them; now they download (ARCHITECTURE §1).
 - **Not supported:** `.m2ts` (192-byte packets), a `.ts` served without a length (indistinguishable from IPTV live);
   that refusal shows the generic "This video can't be downloaded".
 
+### 4.37 Downloader "add all" for 1.2.0 — P8 Safety and modes (branch `claude/exciting-shaw-90cf77`, 2026-11-20)
+
+On top of `claude/downloader-finalized-formats-4a36f8` (`56d5ab7`). Package P8 of the approved plan; the design is in
+ARCHITECTURE §6.1.
+
+- **Malware Warning #461:** `safety/ContentSniff` (first bytes vs name), probe `disguisedAs`, `ERR_UNSAFE_FILE` on
+  Save to VidoraX, warning before Open with / Share / Extract and in Download Details, H17 double extensions and
+  disguised MIME types in JS and `RiskyDownloads`.
+- **Source check #514:** quality-sheet badge from local signals only; `ProbeResult.redirects` is new in the bridge.
+- **Extract archive #407:** zip `VIEW`/`SEND` filters, `/archive-import` screen, `ZipArchive` guards (slip, >1000
+  entries, >4 GB, ratio >100, encrypted, APK), videos + `.srt`/`.vtt` into the library, RAR/7z "not supported".
+- **Simple/Advanced #516/#517:** `settingsView` (Simple new, Advanced existing), `advanced` flag for rows/sections
+  that other packages can set.
+- **Strings:** `fileSafety`, `sourceCheck`, `archiveImport`, `settingsView` catalogs (English + Urdu).
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

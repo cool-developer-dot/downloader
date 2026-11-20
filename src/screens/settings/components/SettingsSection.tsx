@@ -6,6 +6,7 @@ import { Icon, type IconName } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
 
 import { useSettingsTokens } from '../theme/settings-tokens';
+import { useSettingVisible } from './AdvancedSetting';
 
 export type SettingsSectionProps = PropsWithChildren<{
   title: string;
@@ -13,6 +14,8 @@ export type SettingsSectionProps = PropsWithChildren<{
   icon: IconName;
   trailing?: ReactNode;
   testID?: string;
+  /** P8 #516/#517: the whole section shows only in the Advanced settings view. */
+  advanced?: boolean;
 }>;
 
 /**
@@ -26,8 +29,13 @@ export const SettingsSection = memo(function SettingsSection({
   trailing,
   children,
   testID,
+  advanced,
 }: SettingsSectionProps) {
+  const visible = useSettingVisible(advanced);
   const settingsTokens = useSettingsTokens();
+  if (!visible) {
+    return null;
+  }
   return (
     <View
       testID={testID}

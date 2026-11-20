@@ -20,6 +20,7 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { ErrorState } from '@/components/common/ErrorState';
 import { TextField } from '@/components/inputs/TextField';
 import { isAnalyzeBusy } from '@/downloads/analyze/analyze-state-machine';
+import { SourceCheckBadge } from '@/downloads/safety/SourceCheckBadge';
 import { isPlayableOffer, playsChosenQuality } from '@/player/remote-stream';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
@@ -421,6 +422,10 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
                       testID="quality-selection-error"
                     />
                   ) : null}
+                  {/* P8 #514: a link that could not be read still says how safe it looks (e.g. plain HTTP). */}
+                  {phase === 'failed' && url.trim() ? (
+                    <SourceCheckBadge urls={[url]} testID="quality-source-check-failed" />
+                  ) : null}
                 </Box>
               ) : null}
 
@@ -447,6 +452,7 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
               {phase === 'empty' && selection ? (
                 <Box gap={16}>
                   <MediaResultCard selection={selection} selectedOption={selectedOption} />
+                  <SourceCheckBadge urls={[url, selection.sourceUrl, selection.finalUrl]} testID="quality-source-check-empty" />
                   {selection.options.length > 0 ? (
                     <Box gap={8}>
                       <Text variant="label" color="textSecondary">
@@ -476,6 +482,11 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
               {phase === 'ready' && selection ? (
                 <Box gap={16}>
                   <MediaResultCard selection={selection} selectedOption={selectedOption} />
+                  {/* P8 #514 Source check: the page or pasted link, the media URL and where it redirected to. */}
+                  <SourceCheckBadge
+                    urls={[url, selection.sourceUrl, selectedOption?.sourceUrl, selection.finalUrl]}
+                    testID="quality-source-check"
+                  />
                   <DownloadOptionsPanel selection={selection} selectedOption={selectedOption} />
 
                   {selection.options.length > 1 ? (

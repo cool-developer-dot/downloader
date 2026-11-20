@@ -44,6 +44,8 @@ sealed interface ProbeResult {
     val durationMs: Long?,
     /** The download will merge a separate audio track into the video (split files, HLS/DASH separate audio). */
     val mergesAudio: Boolean = false,
+    /** P8 #514: redirect hops the first request followed (progressive files; 0 when not counted). */
+    val redirects: Int = 0,
   ) : ProbeResult
 
   data class Failure(
@@ -52,6 +54,8 @@ sealed interface ProbeResult {
     val message: String?,
     /** #299: the server answered 401 and asks for HTTP Basic authentication. */
     val authChallenge: AuthChallenge? = null,
+    /** P8 #461: NOT_MEDIA whose first bytes are this program or archive (`ContentKind.wire`), e.g. an APK named `.mp4`. */
+    val disguisedAs: String? = null,
   ) : ProbeResult
 }
 

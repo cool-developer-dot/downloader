@@ -12,6 +12,7 @@ import { normalizeAfterDownloadAction } from '@/downloads/v2/after-download';
 import { createPersistStorage } from '@/store/shared/persist-storage';
 
 import { liveRecordingMigration } from './migrations';
+import { settingsViewMigration } from './settings-view';
 import { normalizeDefaultTab } from '@/navigation/helpers/default-tab';
 import { normalizeTabSortOrder } from '@/browser/tabs/tab-list-ops';
 import { normalizeAddressBarPosition } from '@/browser/address-bar/address-bar-settings';
@@ -265,6 +266,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         prayerAsr: state.prayerAsr,
         pdfOpenChoice: state.pdfOpenChoice,
         groupTabsFromOpener: state.groupTabsFromOpener,
+        settingsView: state.settingsView,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -286,6 +288,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
               : normalizeAfterDownloadAction(raw.afterDownloadAction),
           wifiOnly: typeof raw.wifiOnly === 'boolean' ? raw.wifiOnly : current.wifiOnly,
           ...liveRecordingMigration(raw),
+          settingsView: settingsViewMigration(raw as Record<string, unknown>),
           filenameTemplate:
             typeof raw.filenameTemplate === 'string'
               ? normalizeFilenameTemplate(raw.filenameTemplate)

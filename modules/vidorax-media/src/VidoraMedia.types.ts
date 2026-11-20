@@ -166,6 +166,8 @@ export type ProbeResult =
       durationMs: number | null;
       /** The download merges a separate audio track into the video (split files, HLS/DASH separate audio). */
       mergesAudio?: boolean;
+      /** P8 #514: redirect hops the first request followed (progressive files). Absent from older native builds. */
+      redirects?: number;
     }
   | {
       ok: false;
@@ -174,7 +176,74 @@ export type ProbeResult =
       message: string | null;
       /** #299: the server answered 401 and asks for HTTP Basic sign-in. Absent from older native builds. */
       authChallenge?: AuthChallenge | null;
+      /**
+       * P8 #461: `NOT_MEDIA` whose first bytes are this program or archive (an APK, EXE, … named like a video).
+       * Absent from older native builds.
+       */
+      disguisedAs?: ContentKind | null;
     };
+
+/** P8 #461: what a file's first bytes say it is, when it is a program or an archive. */
+export type ContentKind = 'apk' | 'jar' | 'dex' | 'exe' | 'elf' | 'macho' | 'msi' | 'script' | 'zip' | 'rar' | '7z';
+
+/**
+ * P8 #461 Malware Warning: a file's name against its contents. `disguised`: a video-looking (or picture, document,
+ * subtitle) name on a program or archive; `double_extension`: `clip.mp4.exe`; `program`: an honestly named program.
+ */
+export interface FileSafetyCheck {
+  risky: boolean;
+  reason: 'disguised' | 'double_extension' | 'program' | null;
+  detected: ContentKind | null;
+}
+
+/** P8 #407: why an archive is not opened at all. */
+export type ArchiveRefusal =
+  | 'not_zip'
+  | 'rar'
+  | 'seven_z'
+  | 'encrypted'
+  | 'path_escape'
+  | 'too_many_entries'
+  | 'too_large'
+  | 'compression_ratio'
+  | 'damaged'
+  | 'android_app';
+
+export interface ArchiveEntry {
+  /** The path inside the archive. */
+  name: string;
+  sizeBytes: number;
+  /** Only `video` and `subtitle` entries are ever extracted; `program` ones are warned about. */
+  kind: 'video' | 'subtitle' | 'program' | 'other';
+  /** Stored or deflated (the two methods VidoraX reads). */
+  readable: boolean;
+}
+
+/** `inspectIncomingArchive`: the archive's listing (at most 200 entries; the counts cover all), or why not. */
+export type ArchiveInspection =
+  | {
+      status: 'ok';
+      totalBytes: number;
+      entries: ArchiveEntry[];
+      entryCount: number;
+      videoCount: number;
+      subtitleCount: number;
+      /** Names of programs inside (never extracted). */
+      programs: string[];
+    }
+  | { status: 'refused'; reason: ArchiveRefusal };
+
+/** `extractIncomingArchive`: library item ids imported, duplicates skipped, and entries left out as disguised. */
+export type ArchiveExtraction =
+  | {
+      status: 'extracted';
+      imported: string[];
+      duplicates: number;
+      subtitles: number;
+      disguised: string[];
+      failed: number;
+    }
+  | { status: 'refused'; reason: ArchiveRefusal };
 
 /**
  * #299 Authentication Support: a `WWW-Authenticate: Basic` challenge. `origin` (scheme://host:port) is where the user
@@ -594,7 +663,8 @@ export interface IncomingMedia {
   displayName: string | null;
   mimeType: string | null;
   sizeBytes: number | null;
-  kind: 'video' | 'audio';
+  /** P8 #407: `archive` is a `.zip` (or RAR/7z, only to say it is not supported) — listed, never played. */
+  kind: 'video' | 'audio' | 'archive';
 }
 
 /** What the player needs to play an incoming file. */
@@ -1059,12 +1129,25 @@ export interface VidoraMediaModuleApi {
   /**
    * Copies the file into the library (thumbnail, SHA-256 duplicate check), announced with `onLibraryChange`
    * `imported`. Rejects with ERR_NOT_FOUND (unknown token or the file can no longer be read), ERR_INVALID_REQUEST (not
-   * an audio or video file, or empty), ERR_NO_SPACE (not enough free storage), ERR_STORAGE (the copy failed). Nothing is
+   * an audio or video file, or empty), ERR_UNSAFE_FILE (P8: its bytes are a program or an archive), ERR_NO_SPACE (not enough free storage), ERR_STORAGE (the copy failed). Nothing is
    * left behind when it rejects.
    */
   importIncomingMedia?(token: string): Promise<ImportIncomingResult>;
   /** System chooser to open the incoming file in another app. Rejects with ERR_NO_APP / ERR_NOT_FOUND. */
   openIncomingWith?(token: string): Promise<void>;
+  /**
+   * P8 #407: copies an incoming archive into the app's no-backup folder (once) and lists it under the zip guards.
+   * Rejects with ERR_NOT_FOUND / ERR_NO_SPACE / ERR_STORAGE.
+   */
+  inspectIncomingArchive?(token: string): Promise<ArchiveInspection>;
+  /** P8 #407: imports the archive's videos (and matching subtitles) into the library; the copy is deleted after. */
+  extractIncomingArchive?(token: string): Promise<ArchiveExtraction>;
+  /** P8 #407: deletes the copied archive (the user left without extracting). */
+  discardIncomingArchive?(): Promise<void>;
+  /** P8 #461: an incoming file's name against its first bytes. Rejects with ERR_NOT_FOUND for an unknown token. */
+  checkIncomingFileSafety?(token: string): Promise<FileSafetyCheck>;
+  /** P8 #461: a library item's file name against its first bytes. Rejects with ERR_NOT_FOUND. */
+  checkLibraryFileSafety?(id: string): Promise<FileSafetyCheck>;
 
   // Player helpers (synchronous)
   /** Media stream volume 0..1. */

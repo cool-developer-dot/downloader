@@ -25,6 +25,10 @@ import { browserTabsEn } from './catalogs/browserTabs.en';
 import { detectionEn } from './catalogs/detection.en';
 import { shellEn } from './catalogs/shell.en';
 import { videoPlayerEn } from './catalogs/videoPlayer.en';
+import { fileSafetyEn } from './catalogs/fileSafety.en';
+import { sourceCheckEn } from './catalogs/sourceCheck.en';
+import { archiveImportEn } from './catalogs/archiveImport.en';
+import { settingsViewEn } from './catalogs/settingsView.en';
 
 export const en = {
   common: {
@@ -2849,4 +2853,9 @@ export const en = {
   browserUrdu: browserUrduEn,
   browserCapture: browserCaptureEn,
   browserTabGroups: browserTabGroupsEn,
+  // P8 (safety + modes)
+  fileSafety: fileSafetyEn,
+  sourceCheck: sourceCheckEn,
+  archiveImport: archiveImportEn,
+  settingsView: settingsViewEn,
 } as const;
