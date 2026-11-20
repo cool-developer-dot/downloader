@@ -25,9 +25,17 @@ export type LinkIntakePorts = {
   ) => Promise<unknown>;
   /** A link check that takes longer is given up as "needs review". */
   timeoutMs?: number;
+  /** Tests only: the wait after the abort before a check that ignores it is left behind. */
+  abortGraceMs?: number;
 };
 
-export const LINK_CHECK_TIMEOUT_MS = 60_000;
+/**
+ * How long one link may take. The app's own Batch Add has no overall limit; a big file on a slow phone took ~65 s on
+ * the test device, so the cap is generous. It exists only so one stuck check never holds up the links behind it.
+ */
+export const LINK_CHECK_TIMEOUT_MS = 180_000;
+/** After the abort, how long a check may take to wind down before the queue moves on without it. */
+const ABORT_GRACE_MS = 5_000;
 const REMEMBERED_REQUESTS = 200;
 
 export type LinkIntakeQueue = {
@@ -43,14 +51,24 @@ export function createLinkIntakeQueue(ports: LinkIntakePorts): LinkIntakeQueue {
 
   async function checkOne(request: RemoteLinkRequest): Promise<void> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), ports.timeoutMs ?? LINK_CHECK_TIMEOUT_MS);
+    const limit = ports.timeoutMs ?? LINK_CHECK_TIMEOUT_MS;
+    const timer = setTimeout(() => controller.abort(), limit);
+    let giveUp: ReturnType<typeof setTimeout> | undefined;
+    // A check that ignores the abort (a native call with no cancel) must not stall the queue.
+    const stuck = new Promise<IntakeResult>((resolve) => {
+      giveUp = setTimeout(
+        () => resolve({ outcome: 'needs-review', title: null, downloadId: null, detail: 'TIMEOUT' }),
+        limit + (ports.abortGraceMs ?? ABORT_GRACE_MS),
+      );
+    });
     let result: IntakeResult;
     try {
-      result = await ports.addLink(request.url, controller.signal);
+      result = await Promise.race([ports.addLink(request.url, controller.signal), stuck]);
     } catch {
       result = { outcome: 'needs-review', title: null, downloadId: null, detail: 'ERROR' };
     } finally {
       clearTimeout(timer);
+      clearTimeout(giveUp);
     }
     try {
       await ports.report(request.requestId, result.outcome, result.title, result.downloadId, result.detail);

@@ -19,7 +19,7 @@ const TOKEN_KEY = 'vidorax-remote-token';
 const QUEUE_POLL_MS = 1500;
 const SENT_POLL_MS = 5000;
 const LINK_POLL_MS = 1500;
-const LINK_POLL_LIMIT = 60;
+const LINK_POLL_LIMIT = 130; // ~3 minutes: the phone gives one link check up to 3 minutes
 
 let t = translator('en');
 let token = readToken();
@@ -186,49 +186,84 @@ function element(tag, className, text) {
   return node;
 }
 
+const QUEUE_ACTIONS = ['pause', 'resume', 'retry', 'cancel'];
+
+/** The words under a download's title. */
+function queueMeta(item) {
+  const parts = [t(stateKey(item.state))];
+  const pct = percent(item.fraction);
+  if (pct != null && item.state !== 'completed') parts.push(`${pct}%`);
+  if (item.totalBytes) parts.push(t('progressBytes', { done: formatBytes(item.bytesDone), total: formatBytes(item.totalBytes) }));
+  else if (item.bytesDone) parts.push(formatBytes(item.bytesDone));
+  const speed = formatSpeed(item.speedBps);
+  const eta = formatEta(item.etaSeconds);
+  if (speed && eta) parts.push(t('speedEta', { speed, eta }));
+  else if (speed) parts.push(speed);
+  if (item.quality) parts.push(item.quality);
+  return parts.join(' · ');
+}
+
+function queueRow() {
+  const row = element('li');
+  const title = element('div', 'item-title');
+  const meta = element('div', 'item-meta');
+  const bar = element('div', 'bar');
+  const fill = element('span');
+  bar.append(fill);
+  bar.setAttribute('role', 'progressbar');
+  bar.setAttribute('aria-valuemin', '0');
+  bar.setAttribute('aria-valuemax', '100');
+  const actions = element('div', 'actions');
+  row.append(title, meta, bar, actions);
+  return { row, title, meta, bar, fill, actions, actionKey: null, item: null };
+}
+
+// Rows are kept per download id and updated in place: rebuilding them on every poll would swap a button out from
+// under a click that spans a refresh.
+const queueRows = new Map();
+
 function renderQueue(downloads) {
   const list = $('queue');
-  list.replaceChildren();
   $('queue-empty').hidden = downloads.length > 0;
-  for (const item of downloads) {
-    const row = element('li');
-    row.dataset.id = item.id;
-    row.append(element('div', 'item-title', item.title || item.id));
-
-    const parts = [t(stateKey(item.state))];
+  const keep = new Set();
+  downloads.forEach((item, index) => {
+    keep.add(item.id);
+    let entry = queueRows.get(item.id);
+    if (!entry) {
+      entry = queueRow();
+      queueRows.set(item.id, entry);
+    }
+    entry.item = item;
+    entry.row.dataset.id = item.id;
+    entry.title.textContent = item.title || item.id;
+    entry.meta.textContent = queueMeta(item);
     const pct = percent(item.fraction);
-    if (pct != null && item.state !== 'completed') parts.push(`${pct}%`);
-    if (item.totalBytes) parts.push(t('progressBytes', { done: formatBytes(item.bytesDone), total: formatBytes(item.totalBytes) }));
-    else if (item.bytesDone) parts.push(formatBytes(item.bytesDone));
-    const speed = formatSpeed(item.speedBps);
-    const eta = formatEta(item.etaSeconds);
-    if (speed && eta) parts.push(t('speedEta', { speed, eta }));
-    else if (speed) parts.push(speed);
-    if (item.quality) parts.push(item.quality);
-    row.append(element('div', 'item-meta', parts.join(' · ')));
-
-    if (pct != null && item.state !== 'completed' && item.state !== 'cancelled') {
-      const bar = element('div', 'bar');
-      const fill = element('span');
-      fill.style.width = `${pct}%`;
-      bar.append(fill);
-      bar.setAttribute('role', 'progressbar');
-      bar.setAttribute('aria-valuenow', String(pct));
-      bar.setAttribute('aria-valuemin', '0');
-      bar.setAttribute('aria-valuemax', '100');
-      row.append(bar);
+    const showBar = pct != null && item.state !== 'completed' && item.state !== 'cancelled';
+    entry.bar.hidden = !showBar;
+    if (showBar) {
+      entry.fill.style.width = `${pct}%`;
+      entry.bar.setAttribute('aria-valuenow', String(pct));
     }
-
-    const actions = element('div', 'actions');
-    for (const action of item.actions || []) {
-      if (!['pause', 'resume', 'retry', 'cancel'].includes(action)) continue;
-      const button = element('button', action === 'cancel' ? 'secondary' : '', t(action));
-      button.type = 'button';
-      button.addEventListener('click', () => void downloadAction(item, action, button));
-      actions.append(button);
+    const actions = (item.actions || []).filter((action) => QUEUE_ACTIONS.includes(action));
+    const actionKey = actions.join(',');
+    if (actionKey !== entry.actionKey) {
+      entry.actionKey = actionKey;
+      entry.actions.replaceChildren();
+      for (const action of actions) {
+        const button = element('button', action === 'cancel' ? 'secondary' : '', t(action));
+        button.type = 'button';
+        button.addEventListener('click', () => void downloadAction(entry.item, action, button));
+        entry.actions.append(button);
+      }
+      entry.actions.hidden = actions.length === 0;
     }
-    if (actions.childElementCount > 0) row.append(actions);
-    list.append(row);
+    if (list.children[index] !== entry.row) list.insertBefore(entry.row, list.children[index] ?? null);
+  });
+  for (const [id, entry] of queueRows) {
+    if (!keep.has(id)) {
+      entry.row.remove();
+      queueRows.delete(id);
+    }
   }
 }
 
@@ -240,10 +275,16 @@ async function downloadAction(item, action, button) {
   } catch (error) {
     if (error instanceof ApiError && error.status !== 0 && error.status !== 401) showGlobal(t('actionFailed'));
   }
+  button.disabled = false;
   void refreshQueue();
 }
 
+let sentKey = null;
+
 function renderSent(items) {
+  const key = JSON.stringify(items);
+  if (key === sentKey) return;
+  sentKey = key;
   const list = $('sent');
   list.replaceChildren();
   $('sent-empty').hidden = items.length > 0;

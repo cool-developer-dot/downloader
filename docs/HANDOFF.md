@@ -2274,6 +2274,30 @@ already handled them; now they download (ARCHITECTURE §1).
 - **Not supported:** `.m2ts` (192-byte packets), a `.ts` served without a length (indistinguishable from IPTV live);
   that refusal shows the generic "This video can't be downloaded".
 
+### 4.37 P6 — Remote control and integrations (branch `claude/focused-goodall-8b843b`, 2026-11-20)
+
+On top of `claude/downloader-finalized-formats-4a36f8` (`56d5ab7`). Package P6 of the client-approved 1.2.0 plan:
+#439 Web UI, #438 Remote, #501 CLI, #499 Automation API, #500 browser extension, #511 Send to device. Design in
+ARCHITECTURE §3.9; API in `docs/REMOTE_API.md`; intents in `docs/AUTOMATION.md`.
+
+- **Native:** `modules/vidorax-media/.../remote/` (NanoHTTPD 2.3.1) and a second Expo module `VidoraRemote`. Off by
+  default; started from Settings → Downloads → Remote control. Binds the Wi-Fi IPv4 address (+ loopback for USB
+  `adb forward`), random port kept in prefs `vidorax_remote`; stops after 30 min idle, on Wi-Fi loss, or a minute in
+  the background with nothing downloading. No service and no permission added. PIN pairing with lockout, hashed
+  tokens, Host/Origin/JSON checks (DNS rebinding and cross-site requests refused).
+- **JS:** `src/remote/` (store, `link-intake-queue.ts` → `addLinkFromBatch`), `src/screens/remote-control/`,
+  `RemoteControlSettingsSection`, "Send to computer" in the link long-press menu, the download card menu and
+  Download Details. Strings in `remoteControl.{en,ur}.ts`; privacy policy section "Remote control and other apps".
+- **Automation:** exported `AutomationReceiver` (`com.vidorax.action.ADD_DOWNLOAD` / `PAUSE_ALL` / `RESUME_ALL`) and the
+  `DOWNLOAD_COMPLETE` broadcast (id + title), all behind "Allow other apps to control downloads" (off).
+- **Outside the app:** `extensions/cli/vidorax-cli` (sh + curl), `extensions/vidorax-bridge/` (MV3, Chrome/Edge/Firefox;
+  store publishing is the owner's step — `extensions/vidorax-bridge/README.md`, `package.sh`).
+- **Tests:** Kotlin `remote/*Test` (56: auth/lockout, routing/security, real-socket server, stop policy, inbox,
+  automation); Node `src/remote/*.test.ts`, `modules/vidorax-media/remote-web.test.ts`.
+- DEVICE_CHECK_PLACEHOLDER
+- **P7 hook:** pairing and transport are reusable — `RemoteAuth` tokens + `/api/v1` routes; a queue push to another
+  VidoraX can be a new authenticated route on `RemoteRouter` plus a client that pairs with the other phone's PIN.
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

@@ -16,7 +16,7 @@ set -eu
 
 CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/vidorax-cli"
 CONFIG_FILE="$CONFIG_DIR/config"
-WAIT_SECONDS="${VIDORAX_WAIT:-60}"
+WAIT_SECONDS="${VIDORAX_WAIT:-200}"
 
 die() {
   printf 'vidorax-cli: %s\n' "$*" >&2

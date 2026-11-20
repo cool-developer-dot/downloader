@@ -15,7 +15,7 @@ extensions/cli/vidorax-cli unpair
 - `pair` saves the address and token in `~/.config/vidorax-cli/config` (mode 600). `VIDORAX_URL` and `VIDORAX_TOKEN`
   override it, e.g. for scripts.
 - The token is handed to curl on stdin (`curl -K -`), never on the command line.
-- `add` waits up to `VIDORAX_WAIT` seconds (default 60) for the phone to check the link and prints the outcome:
+- `add` waits up to `VIDORAX_WAIT` seconds (default 200; the phone gives one link check up to 3 minutes) for the phone to check the link and prints the outcome:
   added, already there, needs review on the phone, or refused (YouTube, DRM, audio-only…). `--no-wait` returns at once.
 - `list` prints a tab-separated table: `ID  STATE  PROGRESS  TITLE`.
 - Exit status: 0 done, 1 error (message on stderr), 2 wrong usage.

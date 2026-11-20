@@ -3,7 +3,7 @@ import { describe, it } from 'node:test';
 
 import type { RemoteLinkRequest } from '@modules/vidorax-media/src/VidoraRemote.types';
 
-import { createLinkIntakeQueue, type IntakeResult } from './link-intake-queue';
+import { LINK_CHECK_TIMEOUT_MS, createLinkIntakeQueue, type IntakeResult } from './link-intake-queue';
 
 const request = (id: string, url = `https://example.com/${id}.mp4`): RemoteLinkRequest => ({
   requestId: id,
@@ -80,6 +80,32 @@ describe('remote link intake (P6)', () => {
       ['throws', 'needs-review', null, null, 'ERROR'],
       ['slow', 'needs-review', null, null, 'STALE'],
     ]);
+  });
+
+  it('moves on when a check ignores the abort', async () => {
+    const reports: unknown[][] = [];
+    const queue = createLinkIntakeQueue({
+      timeoutMs: 10,
+      abortGraceMs: 10,
+      addLink: (url) =>
+        url.includes('hangs')
+          ? new Promise<IntakeResult>(() => undefined)
+          : Promise.resolve({ outcome: 'added', title: 'Next', downloadId: 'd2', detail: 'ENQUEUED' }),
+      report: async (...args) => {
+        reports.push(args);
+      },
+    });
+    queue.enqueue(request('hangs'));
+    queue.enqueue(request('next'));
+    await queue.whenIdle();
+    assert.deepEqual(reports, [
+      ['hangs', 'needs-review', null, null, 'TIMEOUT'],
+      ['next', 'added', 'Next', 'd2', 'ENQUEUED'],
+    ]);
+  });
+
+  it('gives a slow check minutes, not seconds', () => {
+    assert.ok(LINK_CHECK_TIMEOUT_MS >= 120_000);
   });
 
   it('keeps going when the phone cannot take a report', async () => {

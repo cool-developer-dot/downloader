@@ -133,13 +133,16 @@ $('pair-form').addEventListener('submit', (event) => {
     say(t('badPin'), 'error');
     return;
   }
-  // Asked for inside the click itself: browsers grant optional host access only on a user gesture.
-  const granted = ext.permissions.request({ origins: [originPattern(origin)] });
+  // Asked for inside the click itself (browsers grant optional host access only on a user gesture). It is a help,
+  // not a requirement: the phone answers extension origins with CORS, so pairing goes ahead either way.
+  let granted;
+  try {
+    granted = Promise.resolve(ext.permissions.request({ origins: [originPattern(origin)] })).catch(() => false);
+  } catch {
+    granted = Promise.resolve(false);
+  }
   void (async () => {
-    if (!(await granted)) {
-      say(t('permissionDenied'), 'error');
-      return;
-    }
+    const hostAccess = await granted;
     $('pair-button').disabled = true;
     say(t('pairing'));
     try {
@@ -148,7 +151,8 @@ $('pair-form').addEventListener('submit', (event) => {
       say('');
       await showMain(pairing);
     } catch (error) {
-      say(errorText(error), 'error');
+      const unreachable = !(error instanceof PhoneError) || error.status === 0;
+      say(unreachable && !hostAccess ? t('permissionDenied') : errorText(error), 'error');
     } finally {
       $('pair-button').disabled = false;
     }
