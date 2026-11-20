@@ -2466,6 +2466,20 @@ ARCHITECTURE §3.9; API in `docs/REMOTE_API.md`; intents in `docs/AUTOMATION.md`
 - **P7 hook:** pairing and transport are reusable — `RemoteAuth` tokens + `/api/v1` routes; a queue push to another
   VidoraX can be a new authenticated route on `RemoteRouter` plus a client that pairs with the other phone's PIN.
 
+#### Merged and released as 1.2.0 (versionCode 5), 2026-11-20
+
+- **Merges** on `claude/downloader-finalized-formats-4a36f8`: P1/P3/P4/P5/P7 `52f1e02`, then P2 `02aab55`, P8 `050f44b`,
+  P6 `6358c86`. Joins: the settings records carry the P1 and P2 fields together; the ranged write cache also counts each
+  route's bytes; FTP reads use the tunable buffer; Batch Add takes `{ rules, title, mirrors }` and a `link | mirror`
+  line works beside patterns and playlists (`batchLinksFromText`). Only P2 changes the database (v7). Simple view hides
+  multi-network, the Performance section, Download rules and "Allow other apps to control downloads". The P6 extension
+  test now type-checks under `tsconfig.test.json`.
+- **Fix found by the merged run:** parallel progress could step back by one write when two parts reported out of order
+  (`RangedDownload.report`, `00bf104`).
+- **Tests after the merges:** JS 2 002/2 002, both type checks clean; native vidorax-media 1 134, vidorax-web 171.
+- **Version:** 1.2.0 / versionCode 5 in `android/app/build.gradle` and `app.json`; Play release notes and the zip
+  intent-filter row in `docs/play-console/PLAY_SUBMISSION.md`. Play upload stays the owner's step.
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

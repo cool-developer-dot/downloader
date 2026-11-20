@@ -256,6 +256,22 @@ The edit the user started would stop part-way when they leave the app, the parti
   (local web UI) adds no permission beyond `INTERNET`. No new foreground-service type.
 - **Privacy policy.** `privacy.sections.backend.p4` describes the above (updated date 2026-11-20).
 
+**1.2.0 release notes (en-US, under Play's 500 characters)**
+
+```
+<en-US>
+New in VidoraX 1.2.0
+• Watch links and video feeds, and get new videos automatically
+• Add many links at once: patterns, playlists, RSS and rules
+• Save a whole site to read offline
+• FTP downloads, mirrors, and Wi-Fi + mobile data together
+• Control downloads from your computer on the same Wi-Fi
+• Save copies to your cloud app; import videos from a cloud folder
+• Warnings for disguised files, zip extract, Simple/Advanced settings
+• Live stream recording is on by default
+</en-US>
+```
+
 ### C. Other declarations: none required
 
 Checked against every permission in the final merged manifest:
@@ -272,8 +288,8 @@ Checked against every permission in the final merged manifest:
 | `BIND_GET_INSTALL_REFERRER_SERVICE` (install-referrer library, never called) | No |
 | Launcher badge permissions (ShortcutBadger in expo-notifications) | No |
 | `http`/`https` VIEW intent filters (can be default browser) | No |
-
 | `content`/`file` VIEW intent filters for `video/*` and `audio/*` ("Open with VidoraX", F16) | No |
+| P8 `content` VIEW/SEND intent filters for `application/zip` ("Extract archive", #407: videos and subtitles go into the library; nothing is installed or run) | No |
 | P6 Remote control: a LAN-only web server inside the app (NanoHTTPD), started by the user, using the existing `INTERNET` / `ACCESS_NETWORK_STATE`; no new permission and no new foreground-service type (it runs only while the app is open or the existing `dataSync` download runner is up) | No |
 | P6 exported broadcast receiver `AutomationReceiver` (`com.vidorax.action.ADD_DOWNLOAD` / `PAUSE_ALL` / `RESUME_ALL`), ignored unless the user turns on "Allow other apps to control downloads" (off by default) | No |
 
