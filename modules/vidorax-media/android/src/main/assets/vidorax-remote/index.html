@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>VidoraX Remote control</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+    <script type="module" src="app.mjs"></script>
+  </head>
+  <body>
+    <header class="top">
+      <img src="icon.svg" alt="" width="32" height="32" />
+      <h1 id="title">VidoraX Remote control</h1>
+    </header>
+
+    <main>
+      <section id="pair-view" class="card" hidden>
+        <h2 data-t="pairTitle"></h2>
+        <p class="muted" data-t="pairHint"></p>
+        <form id="pair-form" autocomplete="off">
+          <label for="pin" data-t="pinLabel"></label>
+          <input id="pin" name="pin" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" required autocomplete="one-time-code" />
+          <button id="pair-button" type="submit" data-t="pair"></button>
+        </form>
+        <p id="pair-message" class="message" role="status" aria-live="polite"></p>
+      </section>
+
+      <div id="main-view" hidden>
+        <section class="card">
+          <h2 data-t="addTitle"></h2>
+          <form id="add-form" class="row" autocomplete="off">
+            <input id="link" name="link" type="url" inputmode="url" data-placeholder="addPlaceholder" required />
+            <button type="submit" data-t="add"></button>
+          </form>
+          <p id="add-message" class="message" role="status" aria-live="polite"></p>
+        </section>
+
+        <section class="card">
+          <div class="section-head">
+            <h2 data-t="queueTitle"></h2>
+            <div class="row">
+              <button id="pause-all" type="button" class="secondary" data-t="pauseAll"></button>
+              <button id="resume-all" type="button" class="secondary" data-t="resumeAll"></button>
+            </div>
+          </div>
+          <ul id="queue" class="list"></ul>
+          <p id="queue-empty" class="muted" data-t="queueEmpty" hidden></p>
+        </section>
+
+        <section class="card">
+          <h2 data-t="sentTitle"></h2>
+          <ul id="sent" class="list"></ul>
+          <p id="sent-empty" class="muted" data-t="sentEmpty" hidden></p>
+        </section>
+
+        <p class="footer-row">
+          <button id="unpair" type="button" class="link-button" data-t="unpair"></button>
+        </p>
+      </div>
+
+      <p id="global-message" class="message error" role="alert"></p>
+    </main>
+
+    <footer class="muted" data-t="footer"></footer>
+  </body>
+</html>

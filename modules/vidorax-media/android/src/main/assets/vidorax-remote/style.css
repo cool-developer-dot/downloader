@@ -1,0 +1,239 @@
+:root {
+  --bg: #f4f5f8;
+  --card: #ffffff;
+  --text: #15171c;
+  --muted: #5d6472;
+  --line: #e3e6ec;
+  --accent: #6c3cf0;
+  --accent-text: #ffffff;
+  --track: #e8e4f9;
+  --error: #b3261e;
+  --ok: #1c7c45;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115;
+    --card: #181b21;
+    --text: #eceef2;
+    --muted: #9aa2b1;
+    --line: #2a2f38;
+    --accent: #9b7bff;
+    --accent-text: #0f1115;
+    --track: #2b2640;
+    --error: #ff8a80;
+    --ok: #6fdc9a;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, "Noto Nastaliq Urdu", "Noto Sans Arabic", sans-serif;
+}
+
+html[dir="rtl"] body {
+  font-size: 16px;
+  line-height: 1.8;
+}
+
+.top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 20px 16px 8px;
+}
+
+h1 {
+  font-size: 20px;
+  margin: 0;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 0 0 12px;
+}
+
+main {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 0 16px 16px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 16px;
+  margin: 12px 0;
+}
+
+.row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.section-head h2 {
+  margin: 0;
+}
+
+input {
+  flex: 1 1 240px;
+  min-width: 0;
+  font: inherit;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+
+#pin {
+  letter-spacing: 0.35em;
+  font-size: 22px;
+  max-width: 220px;
+  text-align: center;
+  direction: ltr;
+}
+
+#pair-form {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+button {
+  font: inherit;
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 14px;
+  background: var(--accent);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+}
+
+button.link-button {
+  background: none;
+  color: var(--muted);
+  text-decoration: underline;
+  padding: 4px;
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.list li {
+  border-top: 1px solid var(--line);
+  padding: 12px 0;
+  display: grid;
+  gap: 6px;
+}
+
+.list li:first-child {
+  border-top: 0;
+}
+
+.item-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.item-meta {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--track);
+  overflow: hidden;
+}
+
+.bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.4s ease;
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.actions button,
+.actions a {
+  padding: 6px 12px;
+  font-size: 13px;
+}
+
+.actions a {
+  border-radius: 10px;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.message {
+  min-height: 1.4em;
+  margin: 10px 0 0;
+}
+
+.message.error {
+  color: var(--error);
+}
+
+.message.ok {
+  color: var(--ok);
+}
+
+.footer-row {
+  text-align: center;
+}
+
+footer {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 8px 16px 32px;
+  font-size: 13px;
+  text-align: center;
+}

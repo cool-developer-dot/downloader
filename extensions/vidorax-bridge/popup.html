@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VidoraX Bridge</title>
+    <link rel="stylesheet" href="popup.css" />
+    <script type="module" src="popup.mjs"></script>
+  </head>
+  <body>
+    <header>
+      <img src="icons/icon-32.png" alt="" width="24" height="24" />
+      <strong>VidoraX Bridge</strong>
+    </header>
+
+    <section id="pair-view" hidden>
+      <h1 data-t="pairTitle"></h1>
+      <p class="muted" data-t="pairHint"></p>
+      <form id="pair-form" autocomplete="off">
+        <label for="address" data-t="addressLabel"></label>
+        <input id="address" type="text" inputmode="url" data-placeholder="addressPlaceholder" required />
+        <label for="pin" data-t="pinLabel"></label>
+        <input id="pin" type="text" inputmode="numeric" maxlength="6" pattern="[0-9]{6}" required />
+        <button id="pair-button" type="submit" data-t="pair"></button>
+      </form>
+    </section>
+
+    <section id="main-view" hidden>
+      <p id="paired-with" class="muted"></p>
+      <button id="send-page" type="button" data-t="sendPage"></button>
+      <h2 data-t="videosTitle"></h2>
+      <ul id="videos"></ul>
+      <p id="no-videos" class="muted" data-t="noVideos" hidden></p>
+      <div class="row">
+        <button id="open-web-ui" type="button" class="secondary" data-t="openWebUi"></button>
+        <button id="unpair" type="button" class="secondary" data-t="unpair"></button>
+      </div>
+    </section>
+
+    <p id="message" role="status" aria-live="polite"></p>
+  </body>
+</html>

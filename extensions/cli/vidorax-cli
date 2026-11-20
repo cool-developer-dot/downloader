@@ -1,0 +1,226 @@
+#!/bin/sh
+# vidorax-cli — drive VidoraX on your phone from a terminal (P6 #501).
+#
+# Talks to the phone's Remote control server on your own network (Settings → Downloads → Remote control).
+# Needs only a POSIX shell and curl. The token is kept in ~/.config/vidorax-cli/config (mode 600) and is passed
+# to curl on stdin, so it never shows up in the process list.
+#
+#   vidorax-cli pair http://192.168.1.20:41234 123456
+#   vidorax-cli add https://example.com/video.mp4
+#   vidorax-cli list
+#   vidorax-cli pause <id> | pause --all
+#   vidorax-cli resume <id> | resume --all
+#
+# See docs/REMOTE_API.md for the full JSON API.
+set -eu
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/vidorax-cli"
+CONFIG_FILE="$CONFIG_DIR/config"
+WAIT_SECONDS="${VIDORAX_WAIT:-60}"
+
+die() {
+  printf 'vidorax-cli: %s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  cat <<'EOF'
+Usage: vidorax-cli <command> [arguments]
+
+  pair <address> <pin>   Pair with the phone (address and PIN from VidoraX → Remote control)
+  add <url> [--no-wait]  Add a link; waits for the phone to check it unless --no-wait
+  list                   Show the download queue (ID, state, progress, title)
+  pause <id> | --all     Pause one download, or all
+  resume <id> | --all    Resume one download, or all
+  retry <id>             Retry a failed download
+  cancel <id>            Cancel a download
+  sent                   Show what the phone sent to this computer (JSON)
+  unpair                 Forget this computer on the phone and here
+  info                   Check that the phone answers
+
+Environment: VIDORAX_URL and VIDORAX_TOKEN override the saved pairing; VIDORAX_WAIT (seconds) bounds "add".
+EOF
+}
+
+command -v curl >/dev/null 2>&1 || die "curl is required"
+
+URL="${VIDORAX_URL:-}"
+TOKEN="${VIDORAX_TOKEN:-}"
+if [ -f "$CONFIG_FILE" ]; then
+  [ -n "$URL" ] || URL=$(sed -n 's/^url=//p' "$CONFIG_FILE" | head -n 1)
+  [ -n "$TOKEN" ] || TOKEN=$(sed -n 's/^token=//p' "$CONFIG_FILE" | head -n 1)
+fi
+
+STATUS=""
+BODY=""
+
+# request METHOD PATH [JSON]: sets STATUS and BODY.
+request() {
+  method=$1
+  path=$2
+  data=${3-}
+  [ -n "$URL" ] || die "not paired yet: run 'vidorax-cli pair <address> <pin>'"
+  set -- -sS -X "$method" -K - -w '\n%{http_code}' "$URL$path"
+  if [ -n "$data" ]; then
+    set -- -H 'Content-Type: application/json' --data-binary "$data" "$@"
+  fi
+  out=$(
+    if [ -n "$TOKEN" ]; then printf 'header = "Authorization: Bearer %s"\n' "$TOKEN"; fi | curl "$@"
+  ) || die "can't reach $URL — is Remote control still on, and are you on the same Wi-Fi?"
+  STATUS=$(printf '%s\n' "$out" | tail -n 1)
+  BODY=$(printf '%s\n' "$out" | sed '$d')
+}
+
+json_field() {
+  # json_field NAME: the first string value of "NAME" in $BODY (the API's own flat answers only).
+  printf '%s' "$BODY" | sed -n "s/.*\"$1\":\"\\([^\"]*\\)\".*/\\1/p" | head -n 1
+}
+
+json_number() {
+  printf '%s' "$BODY" | sed -n "s/.*\"$1\":\\([0-9][0-9]*\\).*/\\1/p" | head -n 1
+}
+
+json_escape() {
+  printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+fail_from_body() {
+  message=$(json_field message)
+  [ -n "$message" ] || message="the phone answered HTTP $STATUS"
+  if [ "$STATUS" = 401 ]; then
+    message="$message (pair again with 'vidorax-cli pair')"
+  fi
+  die "$message"
+}
+
+expect_ok() {
+  case "$STATUS" in
+    2??) ;;
+    *) fail_from_body ;;
+  esac
+}
+
+valid_id() {
+  case "$1" in
+    '' | *[!A-Za-z0-9_.:-]*) die "not a download id: $1" ;;
+  esac
+}
+
+cmd=${1-}
+[ $# -gt 0 ] && shift
+
+case "$cmd" in
+  pair)
+    [ $# -eq 2 ] || { usage >&2; exit 2; }
+    address=${1%/}
+    case "$address" in
+      http://*) ;;
+      *) address="http://$address" ;;
+    esac
+    case "$2" in
+      [0-9][0-9][0-9][0-9][0-9][0-9]) ;;
+      *) die "the PIN is the 6 digits shown on the phone" ;;
+    esac
+    URL=$address
+    TOKEN=""
+    host=$(hostname 2>/dev/null || echo computer)
+    request POST /api/v1/pair "{\"pin\":\"$2\",\"name\":\"$(json_escape "vidorax-cli on $host")\"}"
+    case "$STATUS" in
+      200) ;;
+      401) die "wrong PIN ($(json_number attemptsLeft) tries left before a short wait)" ;;
+      429) die "too many wrong PINs; try again in $(json_number retryAfterSeconds) seconds" ;;
+      *) fail_from_body ;;
+    esac
+    token=$(json_field token)
+    [ -n "$token" ] || die "the phone did not send a token"
+    umask 077
+    mkdir -p "$CONFIG_DIR"
+    printf 'url=%s\ntoken=%s\n' "$URL" "$token" >"$CONFIG_FILE"
+    chmod 600 "$CONFIG_FILE"
+    echo "Paired with $URL"
+    ;;
+  add)
+    [ $# -ge 1 ] || { usage >&2; exit 2; }
+    link=$1
+    wait=yes
+    [ "${2-}" = "--no-wait" ] && wait=no
+    case "$link" in
+      http://* | https://*) ;;
+      *) die "only http and https links can be added" ;;
+    esac
+    request POST /api/v1/downloads "{\"url\":\"$(json_escape "$link")\",\"source\":\"cli\"}"
+    expect_ok
+    id=$(json_field requestId)
+    state=$(json_field status)
+    if [ "$wait" = no ]; then
+      echo "Sent ($state): request $id"
+      exit 0
+    fi
+    waited=0
+    while [ "$state" = checking ] || [ "$state" = waiting_for_app ]; do
+      if [ "$waited" -ge "$WAIT_SECONDS" ]; then
+        echo "Still $state on the phone (request $id)"
+        exit 0
+      fi
+      sleep 2
+      waited=$((waited + 2))
+      request GET "/api/v1/links/$id"
+      expect_ok
+      state=$(json_field status)
+    done
+    title=$(json_field title)
+    download=$(json_field downloadId)
+    case "$state" in
+      added) echo "Added: ${title:-$link}${download:+ (id $download)}" ;;
+      duplicate) echo "Already downloading or downloaded: ${title:-$link}${download:+ (id $download)}" ;;
+      needs_review) die "VidoraX couldn't pick one video there; open the link on the phone to choose" ;;
+      refused) die "VidoraX can't download from this link" ;;
+      *) echo "$state" ;;
+    esac
+    ;;
+  list)
+    request GET '/api/v1/downloads?format=tsv'
+    expect_ok
+    printf '%s\n' "$BODY"
+    ;;
+  pause | resume)
+    [ $# -eq 1 ] || { usage >&2; exit 2; }
+    if [ "$1" = "--all" ]; then
+      request POST "/api/v1/queue/$cmd-all" '{}'
+    else
+      valid_id "$1"
+      request POST "/api/v1/downloads/$1/$cmd" '{}'
+    fi
+    expect_ok
+    echo "OK"
+    ;;
+  retry | cancel)
+    [ $# -eq 1 ] || { usage >&2; exit 2; }
+    valid_id "$1"
+    request POST "/api/v1/downloads/$1/$cmd" '{}'
+    expect_ok
+    echo "OK"
+    ;;
+  sent)
+    request GET /api/v1/sent
+    expect_ok
+    printf '%s\n' "$BODY"
+    ;;
+  unpair)
+    request POST /api/v1/unpair '{}'
+    rm -f "$CONFIG_FILE"
+    echo "Unpaired"
+    ;;
+  info)
+    request GET /api/v1/info
+    expect_ok
+    printf '%s\n' "$BODY"
+    ;;
+  '' | -h | --help | help)
+    usage
+    ;;
+  *)
+    usage >&2
+    exit 2
+    ;;
+esac

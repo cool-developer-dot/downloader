@@ -18,6 +18,7 @@ import { browserUrduEn } from './catalogs/browserUrdu.en';
 import { browserCaptureEn } from './catalogs/browserCapture.en';
 import { browserTabGroupsEn } from './catalogs/browserTabGroups.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
+import { remoteControlEn } from './catalogs/remoteControl.en';
 import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
 import { browserSettingsEn } from './catalogs/browserSettings.en';
@@ -2820,6 +2821,7 @@ export const en = {
   browserAddress: browserAddressEn,
   browserNav: browserNavEn,
   browserProfiles: browserProfilesEn,
+  remoteControl: remoteControlEn,
   browserPrivacy: browserPrivacyEn,
   // B8 (Hamza)
   browserSelection: browserSelectionEn,

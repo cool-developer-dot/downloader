@@ -45,6 +45,9 @@ Goals
 - A clean player: autoplay, resume position, simple controls, gestures, fullscreen, picture-in-picture, speed,
   next/previous.
 - The browser is usable immediately at launch.
+- **Remote control and integrations (P6, §3.9):** off by default. A LAN-only web server on the phone (Web UI, JSON API,
+  `vidorax-cli`, the VidoraX Bridge browser extension, "Send to computer") and an Automation API for other apps on
+  the phone (Tasker). No server of ours, nothing reachable from the internet, no new permission or service type.
 - **Downloadable ≠ internally playable.** A container nothing on the device can read (ASF/WMV: Media3 has no ASF
   extractor and Android no WMV decoder) is kept exactly as downloaded and relies on "Open with" / an external player.
   The same holds for an AVI whose header declares a video stream Android cannot decode (DivX 3 / `DIV3`: Media3 reads
@@ -346,6 +349,44 @@ both live in the engine's SharedPreferences (pushed by `ensure-bridge`), so a re
   rule). Nothing recorded → `failed` (`NO_SPACE` when storage ran out, else `NETWORK`). A recording has no identity:
   two recordings of one stream are two videos. A Retry of a failed recording finalizes what is on disk, else records
   anew.
+
+### 3.9 Remote control and integrations (P6: #439, #438, #501, #499, #500, #511)
+
+Kotlin package `remote/` (NanoHTTPD 2.3.1, BSD-3) plus a separate Expo module `VidoraRemote` (`remote/VidoraRemoteModule.kt`,
+contract `modules/vidorax-media/src/VidoraRemote.types.ts`), so the remote features stay apart from `VidoraMedia`.
+API reference: `docs/REMOTE_API.md`; Automation intents: `docs/AUTOMATION.md`.
+
+- **`RemoteControl`** (process singleton): started only from the app (Settings → Downloads → Remote control). Binds
+  the phone's IPv4 address on Wi-Fi/Ethernet (`LanAddress`, never mobile data or VPN) and 127.0.0.1 (USB
+  `adb forward`), on a random port 20000–59999 remembered in SharedPreferences `vidorax_remote`. A watchdog every 10 s
+  applies `RemoteStopPolicy`: 30 min without a request → stop; the bound address gone (also on the
+  `NetworkCallback.onLost` of that network) → stop; a minute in the background (`ActivityLifecycleCallbacks`) with
+  `BackgroundDownloads.hasLiveWork()` false → stop. It owns no service: the existing download runner keeps the process
+  up while downloads run.
+- **`RemoteServer`** (NanoHTTPD adapter): ≤ 16 connections, bodies ≤ 16 KB read by `Content-Length` (never to a temp
+  file), converts to a plain `RemoteRequest` for **`RemoteRouter`**, which does all checks: `Host` must be the bound
+  address (loopback names only on the loopback listener) → 421; an `Origin` must be the Web UI or a browser extension
+  → 403 (CORS only for extensions); `POST` must be JSON → 415; then Bearer-token auth for everything but `info`/`pair`.
+- **`RemoteAuth`**: a 6-digit PIN per server run (QR code shows `url/#pin=…`); 5 wrong → 30 s lock doubling to 15 min,
+  15 wrong → PIN withdrawn until "New PIN". Tokens: 256-bit random, stored as SHA-256 (`paired_clients`), ≤ 10,
+  expire after 90 days unused.
+- **Links in** (`LinkInbox`): Web UI, extension, CLI and the `ADD_DOWNLOAD` intent submit a link; it is handed to
+  JavaScript (`onLinkRequest`) where `src/remote/link-intake-queue.ts` runs `addLinkFromBatch` one at a time — the
+  same analysis, refusals and atomic duplicate check as Batch Add — and reports `added/duplicate/needs_review/refused`
+  back (`GET /api/v1/links/<id>`). Links that arrive with no JavaScript running are kept (`pending_links`, ≤ 50) and
+  handed over when the app's JS starts.
+- **Queue out:** `GET /api/v1/downloads` is `engine.listDownloads()` + the last progress event per id (collected only
+  while the server runs); pause/resume/retry/cancel/pause-all/resume-all call the engine exactly as the app's buttons.
+- **Send to computer** (`SentList`, `sent_items`, ≤ 30): a link and, for a finished download, its library item. The
+  Web UI downloads the file through a 10-minute ticket path `/files/<48-hex>/<name>` (Range supported); the library is
+  asked again on every ticket, so a file moved to Private or deleted is not served.
+- **Automation API** (`Automation.kt`): exported `AutomationReceiver` for `com.vidorax.action.ADD_DOWNLOAD`,
+  `PAUSE_ALL`, `RESUME_ALL`; `AutomationEvents` (attached once in `BackgroundDownloads.install`) broadcasts
+  `com.vidorax.action.DOWNLOAD_COMPLETE` with `id` + `title` only. Both do nothing unless `allow_other_apps` is on.
+- **Web UI:** static files in `android/src/main/assets/vidorax-remote/` (no build step; strict CSP, DOM built with
+  `textContent` only; English/Urdu from the phone's language; polls the queue every 1.5 s).
+- **Outside the app:** `extensions/cli/vidorax-cli` (POSIX sh + curl) and `extensions/vidorax-bridge/` (Manifest V3,
+  Chrome/Edge/Firefox, one manifest; optional host permission for the single phone origin asked at pairing).
 
 ## 4. Native module: `modules/vidorax-web`
 

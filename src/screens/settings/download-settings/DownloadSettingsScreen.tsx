@@ -26,6 +26,7 @@ import {
   useSettingsStore,
 } from '@/store/settings';
 import { LinkIntakeSettingsSection } from '@/screens/settings/download-settings/LinkIntakeSettingsSection';
+import { RemoteControlSettingsSection } from '@/screens/settings/download-settings/RemoteControlSettingsSection';
 import { AdvancedNetworkSettingsSection } from '@/screens/settings/download-settings/AdvancedNetworkSettingsSection';
 
 import {
@@ -177,6 +178,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
         />
 
         <LinkIntakeSettingsSection index={0} disabled={preferenceDisabled} />
+        <RemoteControlSettingsSection index={0} disabled={preferenceDisabled} />
 
         <SettingsStaggerItem index={0}>
           <SettingsSection
