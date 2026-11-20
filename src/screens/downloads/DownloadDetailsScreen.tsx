@@ -52,6 +52,7 @@ import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
 import { DownloadSaveThumbnailAction } from './components/DownloadSaveThumbnailAction';
 import { useDownloadDetailsScreen } from './hooks/useDownloadDetailsScreen';
 import { DownloadSubtitlesSection } from './components/DownloadSubtitlesSection';
+import { DownloadSafetySection } from './components/DownloadSafetySection';
 import { useDownloadsTokens } from './theme/downloads-tokens';
 import { DownloadProgressDetailsRows } from './components/DownloadProgressDetailsRows';
 import {
@@ -472,6 +473,9 @@ const DetailsBody = memo(function DetailsBody({
           />
         </Box>
       ) : null}
+
+      {/* P8 #461 Malware Warning: only when the file's bytes do not match its name. */}
+      <DownloadSafetySection id={item.id} fileName={item.fileName ?? null} />
 
       {/* H20 File integrity: the checksum, Repair, or Play while downloading — as the download's state allows. */}
       <DownloadIntegritySection id={item.id} status={item.status} workerState={item.workerState} />

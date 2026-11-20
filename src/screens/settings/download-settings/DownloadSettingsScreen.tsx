@@ -29,11 +29,13 @@ import { LinkIntakeSettingsSection } from '@/screens/settings/download-settings/
 import { AdvancedNetworkSettingsSection } from '@/screens/settings/download-settings/AdvancedNetworkSettingsSection';
 
 import {
+  AdvancedSetting,
   SettingsFeedbackBanner,
   SettingsRow,
   SettingsSection,
   SettingsStaggerItem,
 } from '../components';
+import { SettingsViewModeSection } from './SettingsViewModeSection';
 import { useSettingsTokens } from '../theme/settings-tokens';
 import { NotificationAlertOptions } from './NotificationAlertOptions';
 import {
@@ -179,6 +181,9 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
           message={feedback?.message ?? ''}
         />
 
+        {/* P8 #516/#517: the Settings view (Simple / Advanced) heads the screen. */}
+        <SettingsViewModeSection disabled={preferenceDisabled} />
+
         <LinkIntakeSettingsSection index={0} disabled={preferenceDisabled} />
 
         <SettingsStaggerItem index={0}>
@@ -279,6 +284,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
                 testID="download-settings-max-concurrent-control"
               />
             </Box>
+            <AdvancedSetting>
             <Box gap={12} py={8}>
               <SettingsRow
                 title={t('settings.connectionsPerFile')}
@@ -299,6 +305,7 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
               />
             </Box>
             <MultiNetworkSettingRow disabled={!hydrated} />
+            </AdvancedSetting>
             <Box gap={12} py={8}>
               <SettingsRow
                 title={t('settings.speedLimit')}
@@ -320,9 +327,13 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
             </Box>
           </SettingsSection>
         </SettingsStaggerItem>
-        <AdvancedNetworkSettingsSection index={1} disabled={preferenceDisabled} />
+        <AdvancedSetting>
+          <AdvancedNetworkSettingsSection index={1} disabled={preferenceDisabled} />
+        </AdvancedSetting>
 
-        <FilenameSettingsSection index={2} disabled={preferenceDisabled} />
+        <AdvancedSetting>
+          <FilenameSettingsSection index={2} disabled={preferenceDisabled} />
+        </AdvancedSetting>
         <BeforeDownloadSettingsSection index={2} disabled={preferenceDisabled} />
 
         <SettingsStaggerItem index={2}>
@@ -374,13 +385,17 @@ export const DownloadSettingsScreen = memo(function DownloadSettingsScreen() {
 
         <AfterDownloadSettingsSection index={3} disabled={preferenceDisabled} />
 
-        <SettingsStaggerItem index={4}>
-          <DownloadAdvancedSection disabled={preferenceDisabled} />
-        </SettingsStaggerItem>
+        <AdvancedSetting>
+          <SettingsStaggerItem index={4}>
+            <DownloadAdvancedSection disabled={preferenceDisabled} />
+          </SettingsStaggerItem>
+        </AdvancedSetting>
 
-        <SettingsStaggerItem index={5}>
-          <DownloadPerformanceSection disabled={preferenceDisabled} />
-        </SettingsStaggerItem>
+        <AdvancedSetting>
+          <SettingsStaggerItem index={5}>
+            <DownloadPerformanceSection disabled={preferenceDisabled} />
+          </SettingsStaggerItem>
+        </AdvancedSetting>
       </View>
     </SafeAreaScreen>
   );

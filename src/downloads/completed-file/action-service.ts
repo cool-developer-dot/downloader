@@ -27,6 +27,7 @@ import {
   v2CompletedLibraryFile,
   verifyV2LibraryFile,
 } from '@/downloads/v2';
+import { confirmLibraryFileAction } from '@/downloads/safety/file-safety-dialog';
 import { useDownloadsStore } from '@/store/downloads';
 import { playerPath, type PlayerRoute } from '@/navigation/constants/route-paths';
 
@@ -54,7 +55,8 @@ import {
 
 export type CompletedFileActionResult =
   | { ok: true; kind: 'play'; route: PlayerRoute }
-  | { ok: true; kind: 'open' | 'share' }
+  /** `cancelled`: P8's Malware Warning was shown and the user kept the file closed. Not an error. */
+  | { ok: true; kind: 'open' | 'share' | 'cancelled' }
   | { ok: false; error: CompletedFileActionError };
 
 /** Authoritative resolved completed media for Open / Share / future Notifications. */
@@ -345,10 +347,14 @@ export async function openCompletedFile(
     });
     if (isV2Download(downloadId.trim())) {
       // The v2 module owns these files and shares them through its own FileProvider.
-      resolveV2LocalFile(downloadId.trim());
+      const local = resolveV2LocalFile(downloadId.trim());
       const engine = getV2Engine();
       if (!engine) {
         throw new CompletedFileActionError('UNSUPPORTED', 'Downloads are unavailable in this build.');
+      }
+      // P8 #461: a file whose bytes do not match its name is warned about before another app opens it.
+      if (!(await confirmLibraryFileAction(downloadId.trim(), 'open', local.descriptor.fileName))) {
+        return { ok: true, kind: 'cancelled' };
       }
       await engine.openWith(downloadId.trim());
       hardeningLog('EXTERNAL_OPEN_LAUNCHED', { downloadId: downloadId.trim() });
@@ -432,10 +438,14 @@ export async function shareCompletedFile(
       hardeningLog('COMPLETED_MEDIA_SHARE_REQUESTED', { downloadId: id });
 
       if (isV2Download(id)) {
-        resolveV2LocalFile(id);
+        const local = resolveV2LocalFile(id);
         const engine = getV2Engine();
         if (!engine) {
           throw new CompletedFileActionError('UNSUPPORTED', 'Downloads are unavailable in this build.');
+        }
+        // P8 #461: the same warning before the file is shared.
+        if (!(await confirmLibraryFileAction(id, 'share', local.descriptor.fileName))) {
+          return { ok: true, kind: 'cancelled' };
         }
         await engine.share([id]);
         return { ok: true, kind: 'share' };

@@ -420,4 +420,38 @@ class ProbeTest {
     assertTrue("expected Failure, got $result", result is ProbeResult.Failure)
     assertEquals(reason, (result as ProbeResult.Failure).reason)
   }
+
+  // P8 #461 / #514
+  @Test fun anAppRenamedMp4IsNotMediaAndSaysWhatItIs() = runBlocking {
+    val apk = java.io.ByteArrayOutputStream().also { out ->
+      java.util.zip.ZipOutputStream(out).use { zip ->
+        zip.putNextEntry(java.util.zip.ZipEntry("AndroidManifest.xml")); zip.write(ByteArray(64)); zip.closeEntry()
+        zip.putNextEntry(java.util.zip.ZipEntry("classes.dex")); zip.write(ByteArray(64)); zip.closeEntry()
+      }
+    }.toByteArray()
+    server.enqueue(MockResponse().setHeader("Content-Type", "video/mp4").setBody(Buffer().write(apk)))
+
+    val result = probe.probe(request(server.url("/holiday.mp4").toString()))
+
+    assertTrue(result is ProbeResult.Failure)
+    result as ProbeResult.Failure
+    assertEquals(ProbeFailure.NOT_MEDIA, result.reason)
+    assertEquals("apk", result.disguisedAs)
+  }
+
+  @Test fun theRedirectHopsOfAFileAreReported() = runBlocking {
+    val bytes = fixture("/media/progressive/av.mp4")
+    server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", "/hop1"))
+    server.enqueue(MockResponse().setResponseCode(302).setHeader("Location", "/hop2"))
+    server.enqueue(MockResponse().setResponseCode(301).setHeader("Location", "/clip.mp4"))
+    server.enqueue(
+      MockResponse().setResponseCode(206).setHeader("Content-Type", "video/mp4")
+        .setHeader("Content-Range", "bytes 0-${bytes.size - 1}/${bytes.size}").setBody(Buffer().write(bytes)),
+    )
+
+    val result = probe.probe(request(server.url("/short").toString())) as ProbeResult.Success
+
+    assertEquals(3, result.redirects)
+    assertTrue(result.finalUrl.endsWith("/clip.mp4"))
+  }
 }

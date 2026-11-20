@@ -37,6 +37,7 @@ export const DownloadAdvancedSection = memo(function DownloadAdvancedSection({ d
   return (
     <SettingsSection
       testID="download-settings-advanced"
+      advanced
       title={t('settings.advancedSection')}
       description={t('settings.advancedDescription')}
       icon="tune-variant">

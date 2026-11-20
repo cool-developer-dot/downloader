@@ -628,6 +628,54 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
   alone; nothing is un-favorited; the legacy tables are only read. MMKV
   `vidorax.mmkv.flags.favoritesPerItemMigrated.v1` is set only after success.
 
+### 6.1 Safety and modes (P8, 1.2.0)
+
+Everything here runs on the device: no list is downloaded and nothing is looked up online.
+
+- **Malware Warning (#461).** `vidorax-media` `safety/ContentSniff` reads a file's first 4 KB: ZIP/APK/JAR, DEX, PE
+  (`MZ` + `PE\0\0`), ELF, Mach-O, OLE/MSI, `#!/` scripts, RAR and 7z. `assess(name, prefix)` gives
+  `disguised` (a video, picture, document or subtitle name on such bytes), `double_extension` (`clip.mp4.exe`) or
+  `program`. Used by:
+  - the probe: a "video" whose bytes are a program or archive is `NOT_MEDIA` with `disguisedAs` (e.g. an APK
+    renamed `.mp4`); `src/downloads/safety/probe-observations.ts` sees every probe through `observeEngine` (the one
+    wrapper in `getV2Engine`) and `file-safety-dialog.ts` tells the user once per link ("VidoraX did not download it");
+  - "Save to VidoraX" (`IncomingImport` refuses with `ERR_UNSAFE_FILE`), Open with / Share of a library file
+    (`checkLibraryFileSafety`, asked in `completed-file/action-service.ts` before `openWith`/`share`; "Open anyway"
+    or Cancel), Open with of an incoming file (`checkIncomingFileSafety`) and Download Details
+    (`DownloadSafetySection`);
+  - H17 (`dangerous-download.ts` + `vidorax-web` `RiskyDownloads`): more program types (`com pif ps1 hta wsf cpl lnk`),
+    a double extension or a video-looking name sent with a program MIME type routes to the warning before detection
+    (`RiskyDownloads.isDisguised`) with the stronger "This file is disguised" text. A video by MIME type is still
+    never checked by name (HLS segments carry odd names); its bytes are, by the probe and by the browser verifier
+    (`resolveVideoResource` → `content-kind.ts`, reason `DISGUISED_PROGRAM`). A video-typed download detection does
+    not take (a private-network page, no tab owner) still goes to DownloadManager unchecked. The lists are kept equal
+    in JS, `RiskyDownloads` and `ContentSniff` by `dangerous-download.native-parity.test.ts`.
+- **Source check (#514).** `src/downloads/safety/source-check.ts` + `SourceCheckBadge` in the quality sheet:
+  Secure / Check source / Not secure from the page or pasted link, the media URL and the final URL. Not secure: plain
+  HTTP, or HTTPS → HTTP. Check source: a numeric IP host (also number/hex forms), an international (punycode) host,
+  a mixed-script look-alike label (Punycode decoded in JS, RFC 3492), a known link shortener, a free file-locker host
+  (both short bundled lists), or ≥ 3 redirect hops (`ProbeResult.redirects`, counted by `HttpClient` for a
+  progressive file). Tapping the badge lists every reason.
+- **Extract archive (#407).** The manifest takes `VIEW` of `application/zip` (and RAR/7z, only to say they are not
+  supported) and `SEND` of a zip, so a zip the browser handed to DownloadManager opens from its notification too.
+  `IncomingMediaIntents` gives `kind: 'archive'`; `IncomingMediaHost` opens `/archive-import?token=` instead of the
+  Player. `archive/ArchiveImport` copies the zip once to `no_backup/archives/` (≤ 4 GB + 64 MB) and `ZipArchive`
+  reads its central directory without trusting it: the whole archive is refused when an entry is encrypted (flag bit
+  0/6 or AES method 99), a path escapes (`..`, `/`, `C:`, NUL), there are > 1000 entries, the contents add up to
+  > 4 GB, an entry over 1 MB (or the whole) inflates > 100×, or it is an APK. Extraction enforces the same limits on
+  the bytes actually inflated and checks each CRC. Only video entries are imported, one by one through
+  `IncomingImport` (SHA-256 duplicates skipped); a "video" entry whose bytes are a program is left out as disguised;
+  programs inside are listed and warned about, never extracted. `.srt` (converted by `subtitles/SrtToVtt`) and
+  `.vtt` entries matching a video's name (or all of them, with one video) are saved beside it as a finished subtitle
+  record (`SubtitleDownloads.saveLocal`). The copy is deleted after extraction or when the screen closes.
+- **Simple / Advanced (#516/#517).** `settingsView` in the settings store: `simple` for a new install, `advanced`
+  for settings saved before 1.2.0 (`settings-view.ts` `settingsViewMigration`); it travels in a settings backup.
+  `SettingsRow` and `SettingsSection` take `advanced`; `<AdvancedSetting>` wraps anything else (a row with its
+  control). Simple hides, in Download Settings: Connections per file, the download hours schedule, Advanced network
+  (user agent, headers, timeouts, retries), File naming and the Advanced section (live recording). Any package marks
+  its own rows the same way. The switch heads Download Settings ("Settings view: Simple"); the main Settings row
+  shows the mode.
+
 ## 7. Player: `src/player`
 
 - Built directly on `expo-video` 57: `useVideoPlayer`, `VideoView` with `nativeControls={false}`, events via

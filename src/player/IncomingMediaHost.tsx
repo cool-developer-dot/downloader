@@ -1,7 +1,9 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { usePathname } from 'expo-router';
 
+import { navigation } from '@/navigation/helpers/navigation';
 import { openPlayer } from '@/navigation/helpers/open-player';
+import { archiveImportPath } from '@/screens/archive-import/archive-import';
 import {
   isLaunchHandedOver,
   isSplashShown,
@@ -11,7 +13,7 @@ import {
 import { useAppLockStore } from '@/security/app-lock';
 
 import { playerLog } from './diagnostics';
-import { isAppShellRoute } from './external-media';
+import { externalTokenOf, isAppShellRoute, knownIncomingMedia } from './external-media';
 import { incomingMediaQueue } from './incoming-media.runtime';
 
 /**
@@ -49,7 +51,12 @@ export function IncomingMediaHost(): null {
     const timer = setTimeout(() => {
       const waiting = incomingMediaQueue.hasPending();
       const mediaId = incomingMediaQueue.takeIfAllowed({ shellReady, appLockEnabled, unlocked });
-      if (mediaId) {
+      const token = mediaId ? externalTokenOf(mediaId) : null;
+      if (mediaId && token && knownIncomingMedia(mediaId)?.kind === 'archive') {
+        // P8 #407: a .zip opens the Extract archive screen, never the Player.
+        playerLog('player.incoming', { step: 'opened_archive', route: routeSection(pathname) });
+        navigation.push(archiveImportPath(token));
+      } else if (mediaId) {
         playerLog('player.incoming', { step: 'opened', route: routeSection(pathname) });
         openPlayer(mediaId);
       } else if (waiting) {

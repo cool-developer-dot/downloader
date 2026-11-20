@@ -32,3 +32,4 @@ export const selectLiveRecording = (state: SettingsStore) => state.liveRecording
 export const selectLiveRecordingMaxMinutes = (state: SettingsStore) => state.liveRecordingMaxMinutes;
 export const selectDataLimitDailyMb = (state: SettingsStore) => state.dataLimitDailyMb;
 export const selectDataLimitMonthlyMb = (state: SettingsStore) => state.dataLimitMonthlyMb;
+export const selectSettingsView = (state: SettingsStore) => state.settingsView;

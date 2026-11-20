@@ -3,7 +3,11 @@ package com.vidorax.media
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.vidorax.media.archive.ArchiveRefusedException
+import com.vidorax.media.archive.toArchiveJs
 import com.vidorax.media.bridge.DownloadBandwidthRecord
+import com.vidorax.media.safety.ContentSniff
+import com.vidorax.media.safety.FileSafety
 import com.vidorax.media.bridge.DownloadSettingsRecord
 import com.vidorax.media.bridge.EnqueueRequestRecord
 import com.vidorax.media.bridge.LeftoverFilesRecord
@@ -609,6 +613,39 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("importIncomingMedia") Coroutine { token: String ->
       services.incomingImport.import(incomingMediaFor(token)).toJs()
+    }
+
+    // P8 #407 Extract Archive and #461 Malware Warning (files opened from other apps, library files).
+
+    AsyncFunction("inspectIncomingArchive") Coroutine { token: String ->
+      services.archiveImport.inspect(incomingMediaFor(token)).toArchiveJs()
+    }
+
+    AsyncFunction("extractIncomingArchive") Coroutine { token: String ->
+      try {
+        services.archiveImport.extract(incomingMediaFor(token)).toArchiveJs()
+      } catch (e: ArchiveRefusedException) {
+        mapOf("status" to "refused", "reason" to e.refusal.wire)
+      }
+    }
+
+    AsyncFunction("discardIncomingArchive") Coroutine { ->
+      services.archiveImport.discard()
+    }
+
+    AsyncFunction("checkIncomingFileSafety") Coroutine { token: String ->
+      val media = incomingMediaFor(token)
+      withContext(Dispatchers.IO) {
+        val prefix = runCatching { context.contentResolver.openInputStream(media.uri)?.use(FileSafety::prefixOf) }.getOrNull()
+        ContentSniff.assess(media.displayName ?: media.uri.lastPathSegment, prefix).let { with(FileSafety) { it.toJs() } }
+      }
+    }
+
+    AsyncFunction("checkLibraryFileSafety") Coroutine { id: String ->
+      val item = services.library.get(id) ?: throw NotFoundException("No such library item")
+      withContext(Dispatchers.IO) {
+        FileSafety.check(item.file, item.file.name).let { with(FileSafety) { it.toJs() } }
+      }
     }
 
     AsyncFunction("openIncomingWith") Coroutine { token: String ->

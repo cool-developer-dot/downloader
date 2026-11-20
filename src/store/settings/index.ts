@@ -21,6 +21,7 @@ import {
 import { normalizeLinkRules } from '@/downloads/bulk/link-rules';
 
 import { liveRecordingMigration } from './migrations';
+import { settingsViewMigration } from './settings-view';
 import { normalizeDefaultTab } from '@/navigation/helpers/default-tab';
 import { normalizeTabSortOrder } from '@/browser/tabs/tab-list-ops';
 import { normalizeAddressBarPosition } from '@/browser/address-bar/address-bar-settings';
@@ -281,6 +282,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         prayerAsr: state.prayerAsr,
         pdfOpenChoice: state.pdfOpenChoice,
         groupTabsFromOpener: state.groupTabsFromOpener,
+        settingsView: state.settingsView,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -308,6 +310,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
           cooldownSeconds: normalizeCooldownSeconds(raw.cooldownSeconds ?? current.cooldownSeconds),
           exitWhenDone: typeof raw.exitWhenDone === 'boolean' ? raw.exitWhenDone : current.exitWhenDone,
           linkRules: raw.linkRules === undefined ? current.linkRules : normalizeLinkRules(raw.linkRules),
+          settingsView: settingsViewMigration(raw as Record<string, unknown>),
           filenameTemplate:
             typeof raw.filenameTemplate === 'string'
               ? normalizeFilenameTemplate(raw.filenameTemplate)

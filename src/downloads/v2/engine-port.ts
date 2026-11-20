@@ -20,6 +20,8 @@ import type {
   VidoraMediaEvents,
 } from '@modules/vidorax-media/src/VidoraMedia.types';
 
+import { observeEngine } from '@/downloads/safety/probe-observations';
+
 /**
  * The part of the native `VidoraMedia` module the browser handoff, Downloads and Library use. The v2 DownloadEngine
  * behind it is the single downloader and the single persisted download state; JavaScript only mirrors it.
@@ -121,7 +123,8 @@ export function getV2Engine(): V2EnginePort | null {
   if (override) {
     return override;
   }
-  return isVidoraMediaAvailable() ? getVidoraMedia() : null;
+  // P8: every probe is seen once here (redirect count for Source check, disguised programs for the Malware Warning).
+  return isVidoraMediaAvailable() ? observeEngine(getVidoraMedia()) : null;
 }
 
 export function setV2EngineForTests(port: V2EnginePort | null): void {

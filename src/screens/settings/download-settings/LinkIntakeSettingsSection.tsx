@@ -59,6 +59,7 @@ export const LinkIntakeSettingsSection = memo(function LinkIntakeSettingsSection
           testID="download-settings-batch-add"
         />
         <SettingsRow
+          advanced
           title={t('bulkAdd.rulesRow')}
           description={t('bulkAdd.rulesRowHint')}
           icon="filter-variant"

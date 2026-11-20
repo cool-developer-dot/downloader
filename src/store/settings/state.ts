@@ -20,6 +20,7 @@ import { DEFAULT_PRELOAD_PAGES } from '@/browser/preload/preload-policy';
 import { DEFAULT_COOKIE_POLICY, DEFAULT_JAVASCRIPT_EXCEPTIONS_JSON } from '@/browser/privacy/privacy-settings';
 
 import type { SettingsState } from './types';
+import { DEFAULT_SETTINGS_VIEW } from './settings-view';
 import { DEFAULT_AFTER_DOWNLOAD_ACTION } from '@/downloads/v2/after-download';
 // B21 (Hamza)
 import { DEFAULT_STARTUP_OPTION } from '@/browser/startup/startup-settings';
@@ -187,4 +188,5 @@ export const initialSettingsState: SettingsState = {
   prayerAsr: 'hanafi',
   pdfOpenChoice: 'ask',
   groupTabsFromOpener: false,
+  settingsView: DEFAULT_SETTINGS_VIEW,
 };

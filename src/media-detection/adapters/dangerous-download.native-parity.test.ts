@@ -7,6 +7,7 @@ import {
   assessDownloadDanger,
   DANGEROUS_EXTENSIONS,
   DANGEROUS_MIME_TYPES,
+  HARMLESS_EXTENSIONS,
   routeRiskyDownload,
 } from './dangerous-download';
 
@@ -33,6 +34,20 @@ describe('H17 native routing: the Kotlin and JavaScript lists agree', () => {
 
   test('the risky MIME types', () => {
     assert.deepEqual(kotlinSet(source, 'MIME_TYPES').sort(), [...DANGEROUS_MIME_TYPES].sort());
+  });
+
+  // P8 #461: the same lists drive the browser routing (vidorax-web) and the content check (vidorax-media).
+  test('the harmless-looking extensions', () => {
+    assert.deepEqual(kotlinSet(source, 'HARMLESS_EXTENSIONS').sort(), [...HARMLESS_EXTENSIONS].sort());
+  });
+
+  test('the media module content check uses the same lists', () => {
+    const sniff = readFileSync(
+      join(process.cwd(), 'modules/vidorax-media/android/src/main/java/com/vidorax/media/safety/ContentSniff.kt'),
+      'utf8',
+    );
+    assert.deepEqual(kotlinSet(sniff, 'PROGRAM_EXTENSIONS').sort(), [...DANGEROUS_EXTENSIONS].sort());
+    assert.deepEqual(kotlinSet(sniff, 'HARMLESS_EXTENSIONS').sort(), [...HARMLESS_EXTENSIONS].sort());
   });
 });
 

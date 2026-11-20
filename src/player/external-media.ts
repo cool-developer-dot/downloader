@@ -130,6 +130,8 @@ export type SaveIncomingOutcome =
   | { kind: 'duplicate'; libraryItemId: string | null }
   | { kind: 'no_space' }
   | { kind: 'unavailable' }
+  /** P8 #461: the file's bytes are a program or an archive; it is not kept as a video. */
+  | { kind: 'unsafe' }
   | { kind: 'failed' };
 
 /** Maps the module's result and rejection codes to what the Player tells the user. */
@@ -145,6 +147,8 @@ export function saveOutcomeFrom(result: ImportIncomingResult | null, errorCode: 
       return { kind: 'no_space' };
     case 'ERR_NOT_FOUND':
       return { kind: 'unavailable' };
+    case 'ERR_UNSAFE_FILE':
+      return { kind: 'unsafe' };
     default:
       return { kind: 'failed' };
   }
