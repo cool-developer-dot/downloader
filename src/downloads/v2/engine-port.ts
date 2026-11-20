@@ -84,6 +84,9 @@ export type V2EnginePort = {
   listDownloadBandwidth?(): Promise<DownloadBandwidth[]>;
   /** F3 "Start at…" (epoch ms; null = now). Missing on older native builds: the control is hidden. */
   setDownloadStartAt?(id: string, startAt: number | null): Promise<DownloadRecord>;
+  /** #347 a download's mirrors (see `VidoraMediaModuleApi`). Missing on older native builds: "Add mirror" is hidden. */
+  getDownloadMirrors?(id: string): Promise<string[]>;
+  setDownloadMirrors?(id: string, urls: string[]): Promise<string[]>;
   /** F6: stops a live recording and finalizes what was recorded. Missing on older native builds. */
   stopRecording?(id: string): Promise<DownloadRecord>;
   /** Download files that belong to nothing (F15). Missing on older native builds: the Storage row is not shown. */

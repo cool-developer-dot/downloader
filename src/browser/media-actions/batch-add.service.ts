@@ -16,6 +16,8 @@ import {
   type BatchOutcome,
 } from '@/browser/services/link-intake';
 import { getV2Engine } from '@/downloads/v2/engine-port';
+import { startFtpDownload, type FtpStartOutcome } from '@/downloads/v2/ftp-download';
+import { ftpLinkWithoutCredentials, isFtpLink } from '@/downloads/v2/sources';
 import { directOfferIdentity } from '@/media-detection/direct-analyzer/direct-offer-policy';
 import {
   defaultDirectVerifierDeps,
@@ -41,11 +43,71 @@ export type BatchLinkResult = {
   downloadId: string | null;
 };
 
-export async function addLinkFromBatch(url: string, signal: AbortSignal): Promise<BatchLinkResult> {
+export async function addLinkFromBatch(
+  url: string,
+  signal: AbortSignal,
+  /** #347: other links to the same file, given on the link's line; saved with the download it starts. */
+  mirrors: readonly string[] = [],
+): Promise<BatchLinkResult> {
   const verdict = classifyIntakeLink(url);
   if (verdict !== 'ok') {
     return { url, outcome: 'refused', detail: verdict.toUpperCase(), title: null, downloadId: null };
   }
+  // #304: an FTP file goes straight to the engine (its bytes decide), never through a page.
+  if (isFtpLink(url)) {
+    const ftp = await startFtpDownload(getV2Engine(), url);
+    return ftpBatchResult(url, ftp);
+  }
+  const result = await addPageLink(url, signal);
+  if (result.downloadId && result.outcome === 'added' && mirrors.length > 0) {
+    await saveMirrors(result.downloadId, mirrors);
+  }
+  return result;
+}
+
+/** #347: mirrors for a download Batch Add just started (the engine checks each before using it). */
+async function saveMirrors(downloadId: string, mirrors: readonly string[]): Promise<void> {
+  const engine = getV2Engine();
+  if (!engine?.setDownloadMirrors) {
+    return;
+  }
+  const valid = mirrors.filter((mirror) => classifyIntakeLink(mirror) === 'ok' && !isFtpLink(mirror));
+  if (valid.length === 0) {
+    return;
+  }
+  try {
+    await engine.setDownloadMirrors(downloadId, valid);
+  } catch {
+    // A download that is not a single file (a stream) has no mirrors; it is still added.
+  }
+}
+
+function ftpBatchResult(url: string, ftp: FtpStartOutcome): BatchLinkResult {
+  const display = ftpLinkWithoutCredentials(url);
+  switch (ftp.kind) {
+    case 'started':
+      return { url: display, outcome: 'added', detail: 'ENQUEUED', title: ftp.title, downloadId: ftp.downloadId };
+    case 'duplicate':
+      return {
+        url: display,
+        outcome: 'duplicate',
+        detail: ftp.already === 'downloading' ? 'ALREADY_DOWNLOADING' : 'ALREADY_DOWNLOADED',
+        title: null,
+        downloadId: ftp.downloadId,
+      };
+    default:
+      return {
+        url: display,
+        outcome: ftp.reason === 'network' ? 'needs-review' : 'refused',
+        detail: `FTP_${ftp.reason.toUpperCase().replace(/-/g, '_')}`,
+        title: null,
+        downloadId: null,
+      };
+  }
+}
+
+async function addPageLink(url: string, signal: AbortSignal): Promise<BatchLinkResult> {
+  const verdict = classifyIntakeLink(url);
   const engine = getV2Engine();
   if (!engine?.fetchPage) {
     return { url, outcome: 'needs-review', detail: 'UNAVAILABLE', title: null, downloadId: null };

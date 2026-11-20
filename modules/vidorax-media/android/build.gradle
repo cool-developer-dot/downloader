@@ -42,6 +42,9 @@ dependencies {
   implementation "androidx.media3:media3-transformer:${media3Version}"
 
   implementation "com.squareup.okhttp3:okhttp:4.12.0"
+  // #304 FTP/FTPS downloads (Apache-2.0). Its FTPClient keeps java.time fields, so FTP runs on Android 8+ only
+  // (net/FtpSession.kt refuses it below API 26 instead of crashing).
+  implementation "commons-net:commons-net:3.13.0"
 
   testImplementation "junit:junit:4.13.2"
   testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"
@@ -49,6 +52,8 @@ dependencies {
   testImplementation "org.robolectric:robolectric:4.16.1"
   // android.jar only ships throwing org.json stubs; JVM tests need the real implementation.
   testImplementation "org.json:json:20250517"
+  // #304: an in-process FTP/FTPS server (Apache-2.0) for the FTP probe and transfer tests.
+  testImplementation "org.apache.ftpserver:ftpserver-core:1.2.1"
 
   // Instrumented on-device E2E of the real download engine against an on-device MockWebServer.
   androidTestImplementation "androidx.test.ext:junit:1.2.1"

@@ -40,7 +40,15 @@ export type SourceKind =
    * `probe` of a live HLS stream (`kind: 'hls'` or `'live'`) answers `ok` with `kind: 'live'` — classified as the
    * recording would meet it, so an encrypted live stream is still `DRM_PROTECTED`.
    */
-  | 'live';
+  | 'live'
+  /**
+   * #304: one file on an FTP server — `ftp://` (explicit TLS when the server offers it) or `ftps://` (implicit TLS,
+   * the certificate must verify). Classified like a progressive file from its size and first bytes; one connection,
+   * resumed by byte offset. A user name and password in the link become the download's sign-in (native memory only,
+   * like `credentials`); the stored link never holds them. Android 8+ (`UNSUPPORTED_FORMAT` below). Probe with
+   * `kind: 'ftp'` (or no kind) and enqueue with `kind: 'ftp'`.
+   */
+  | 'ftp';
 
 export type SiteId =
   | 'instagram'
@@ -317,6 +325,13 @@ export interface EnqueueRequest {
    * saved. Omitted = today's checks. Ignored by older native builds (they answer ALREADY_DOWNLOADED as before).
    */
   allowDuplicate?: boolean;
+  /**
+   * #347: other http(s) links to the same file (`progressive` only, at most 4). Persisted with the download; each is
+   * used only after it serves byte ranges of a file of the same length whose first 64 KiB have the same SHA-256 as
+   * `url`'s, checked again at every start. A mirror that fails or answers other bytes is dropped and its parts go back
+   * to the others. ERR_INVALID_REQUEST for another kind. Ignored by older native builds.
+   */
+  mirrors?: string[];
 }
 
 /**
@@ -709,6 +724,13 @@ export interface DownloadSettings {
    * place). Persisted by the engine. Missing = true.
    */
   autoResume?: boolean;
+  /**
+   * #446 Download Settings → "Experimental: use Wi-Fi and mobile data together". Default false. On Wi-Fi, a
+   * multi-connection download also puts some parts on mobile data (Android's `requestNetwork`, held only while such a
+   * download runs). Always off while `wifiOnly` is on, and never for a download with its own `wifiOnly: true`. The
+   * mobile bytes are part of the download's progress, so they count toward the data limit like any other.
+   */
+  multiNetwork?: boolean;
 }
 
 /**
@@ -883,6 +905,15 @@ export interface VidoraMediaModuleApi {
    * Rejects with ERR_NOT_FOUND for an unknown id, ERR_INVALID_STATE for a finished one. Missing on older native builds.
    */
   setDownloadStartAt?(id: string, startAt: number | null): Promise<DownloadRecord>;
+  /** #347: a download's mirrors, in order. Rejects with ERR_NOT_FOUND for an unknown id. Missing on older builds. */
+  getDownloadMirrors?(id: string): Promise<string[]>;
+  /**
+   * #347: replaces a `progressive` download's mirrors (http(s) only, at most 4; the main link and repeats are
+   * dropped) and resolves with those kept. A running download restarts its transfer from the bytes on disk so they
+   * are checked and used now. ERR_INVALID_REQUEST for another kind or a bad link, ERR_INVALID_STATE for a completed or
+   * cancelled one. Missing on older native builds: "Add mirror" is hidden.
+   */
+  setDownloadMirrors?(id: string, urls: string[]): Promise<string[]>;
   /**
    * F6: ends a live recording; what was recorded is finalized into the library like any download. Rejects with
    * ERR_NOT_FOUND for an unknown id, ERR_INVALID_STATE for anything that is not recording. Missing on older builds.

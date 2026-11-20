@@ -47,6 +47,7 @@ describe('v2 download settings', () => {
       liveRecordingMaxMinutes: 120,
       language: 'en',
       autoResume: true,
+      multiNetwork: false,
     });
   });
 

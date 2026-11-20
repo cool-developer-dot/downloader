@@ -43,6 +43,7 @@ import { DownloadMoveToPrivateAction } from '@/screens/downloads/components/Down
 import { DownloadBandwidthControls } from './components/DownloadBandwidthControls';
 import { DownloadDeleteDialog } from './components/DownloadDeleteDialog';
 import { DownloadStartAtControl } from './components/DownloadStartAtControl';
+import { DownloadMirrorsSection } from './components/DownloadMirrorsSection';
 import { DownloadDetailsLinkActions } from './components/DownloadDetailsLinkActions';
 import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
 import { DownloadSaveThumbnailAction } from './components/DownloadSaveThumbnailAction';
@@ -583,6 +584,11 @@ const DetailsBody = memo(function DetailsBody({
           <DownloadStartAtControl downloadId={item.id} startAt={transfer?.startAt ?? null} />
           <DownloadBandwidthControls downloadId={item.id} />
         </>
+      ) : null}
+
+      {/* #347: other links to the same file (a file download that can still run, or be retried). */}
+      {transfer?.sourceKind === 'progressive' && item.status !== 'COMPLETED' && item.status !== 'CANCELLED' ? (
+        <DownloadMirrorsSection downloadId={item.id} />
       ) : null}
 
       {(sourceHost || item.sourceUrl) && (

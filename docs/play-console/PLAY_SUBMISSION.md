@@ -243,6 +243,7 @@ Checked against every permission in the final merged manifest:
 | --- | --- |
 | `INTERNET`, `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE`, `WAKE_LOCK`, `VIBRATE`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED` (resume downloads after reboot), `FOREGROUND_SERVICE` | No |
 | `RUN_USER_INITIATED_JOBS` | No (not a foreground-service type) |
+| `CHANGE_NETWORK_STATE` (1.2.0, #446 "Experimental: use Wi-Fi and mobile data together", off by default: `ConnectivityManager.requestNetwork` for mobile data while a multi-connection download runs on Wi-Fi) | No (normal, install-time permission; no foreground-service type added; no data leaves the device beyond the download itself) |
 | `USE_BIOMETRIC` / `USE_FINGERPRINT` (App Lock fingerprint/face unlock, expo-local-authentication; also `androidx.biometric` via expo-secure-store) | No |
 | Home-screen widget receiver (H22), static app shortcut "Paste link" (H7), non-exported content provider for Play while downloading (H20) | No |
 | `READ/WRITE_EXTERNAL_STORAGE` (maxSdk 28, "Save to Gallery" on Android 7–9) | No |

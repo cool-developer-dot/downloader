@@ -2274,6 +2274,39 @@ already handled them; now they download (ARCHITECTURE §1).
 - **Not supported:** `.m2ts` (192-byte packets), a `.ts` served without a length (indistinguishable from IPTV live);
   that refusal shows the generic "This video can't be downloaded".
 
+### 4.37 Downloader 1.2.0 packages (client "add all", plan `kind-spinning-dijkstra`)
+
+#### P2 Sources — FTP, mirrors, Wi-Fi + mobile data (branch `claude/kind-pasteur-9d2dc3`, 2026-11-20)
+
+On top of `claude/downloader-finalized-formats-4a36f8` (`56d5ab7`). ARCHITECTURE §1 (Sources), §3.1, §3.2, §3.4.
+
+- **#304 FTP/FTPS.** `SourceKind.FTP` (`'ftp'`); Commons Net 3.13.0. `net/FtpSession` (link parsing, TLS, the
+  private-network rule, reply → HTTP status), `plan/FtpProbe` (SIZE + first 64 KiB through `MediaSniffer`; trailing
+  `moov` read with REST), `transfer/FtpTransfer` (one connection, REST resume against `ftp <size> <mdtm>`). Routed by
+  `Probe.probeBlocking` (an ftp link with no kind is FTP) and `RealTransfers` (by scheme); the engine runs it through
+  `runProgressive` (verify/process/finalize unchanged), FTP identity in `DownloadIdentity`, play-while-downloading
+  allowed. Sign-in: the link's `user:pass@` is moved by `EnqueueRequestRecord` into `DownloadCredentials` (memory,
+  pinned to the ftp origin; `ftpLoginFor`), the row keeps the link without it; `Redact.url` strips it. JS:
+  `downloads/v2/sources.ts` + `ftp-download.ts`, `browser/services/ftp-link.service.ts`; the address bar, pasted and
+  shared links (`openPastedLink`), the clipboard offer and Batch Add send FTP links to the engine (`ftp:` stays a
+  blocked WebView scheme). Android 8+ only (Commons Net's `java.time` fields) — refused below with
+  `UNSUPPORTED_FORMAT` ("FTP downloads need Android 8 or later").
+- **#347 Mirrors.** `download_mirrors` (schema **v7**, new table only — renumber if another package also takes v7),
+  `setDownloadMirrors`/`getDownloadMirrors` (a running download restarts its transfer from disk), `EnqueueRequest.
+  mirrors`. `transfer/MirrorCheck` (same total + SHA-256 of the first 64 KiB, at every start), `PartRoute`s in
+  `RangedDownload` (a mirror that fails or answers other bytes is dropped, its part handed back). UI: Download
+  details → "Mirrors" (`DownloadMirrorsSection`, file downloads only), Batch Add lines `link | mirror | mirror`.
+- **#446 Wi-Fi + mobile data.** `DownloadSettings.multiNetwork` (bridge/prefs/JS `multiNetwork`, off by default,
+  forced off with Wi-Fi only), `net/MultiNetwork` (`requestNetwork(TRANSPORT_CELLULAR)`, `HttpClient.boundTo`),
+  engine `SecondNetwork` lease per transfer; parts on both networks via the same routes. `CHANGE_NETWORK_STATE`
+  (normal) in the media module manifest and PLAY_SUBMISSION §C. Data limit (H6): mobile bytes are download progress,
+  counted like every byte.
+- **Tests.** Kotlin: `FtpSourceTest` (in-process Apache FtpServer; its throwaway TLS certificate is made by the JDK's keytool at run time — `*.p12` stays git-ignored),
+  `SourcesTransferTest` (mirrors accepted/rejected/failed/wrong bytes, two clients, lost network),
+  `DownloadEngineSourcesTest`, DB upgrade v6→v7. JS: `downloads/v2/sources.test.ts`; link-intake/clipboard tests
+  updated (FTP file links are links now).
+- **Device check:** DEVICE_RESULTS
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

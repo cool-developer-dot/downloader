@@ -10,6 +10,7 @@ import com.vidorax.media.model.RequestContext
 import com.vidorax.media.model.SourceKind
 import com.vidorax.media.model.VariantChoice
 import com.vidorax.media.net.BasicChallenge
+import com.vidorax.media.net.FtpUrl
 import com.vidorax.media.net.HttpClient
 import com.vidorax.media.net.MediaNetworkException
 import com.vidorax.media.net.MediaRefusedException
@@ -66,6 +67,8 @@ internal class Probe(
   private val http: HttpClient,
   private val hls: HlsPlanner = HlsPlanner(http),
   private val dash: DashPlanner = DashPlanner(http),
+  /** #304: `ftp://` / `ftps://` files, classified from the same first bytes. */
+  private val ftp: FtpProbe = FtpProbe(),
 ) {
   suspend fun probe(request: ProbeRequest): ProbeResult =
     withContext(Dispatchers.IO) { withAuthChallenge(probeBlocking(request, request.variant), request) }
@@ -92,6 +95,13 @@ internal class Probe(
     }
     if (isPolicyBlockedHost(request.url)) {
       return failure(ProbeFailure.POLICY_BLOCKED, null, "This source is not supported")
+    }
+    // #304: an FTP link is one file whatever the request called it (a download re-probes with no kind).
+    if (request.kind == SourceKind.FTP || FtpUrl.isFtp(request.url)) {
+      if (request.kind != null && request.kind != SourceKind.FTP) {
+        return failure(ProbeFailure.UNSUPPORTED_FORMAT, null, "FTP links are single files")
+      }
+      return ftp.probe(request.url, request.request)
     }
     return when (request.kind) {
       SourceKind.HLS -> planHls(request.url, request.request, choice)

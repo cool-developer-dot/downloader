@@ -50,6 +50,9 @@ export const BatchAddScreen = memo(function BatchAddScreen() {
       <Text variant="bodySmall" color="textSecondary">
         {t('linkIntake.batchHint')}
       </Text>
+      <Text variant="caption" color="textSecondary" testID="batch-add-mirrors-hint">
+        {t('downloadSources.batchMirrorsHint')}
+      </Text>
       <TextField
         label={t('linkIntake.batchField')}
         value={batch.text}
@@ -111,7 +114,9 @@ export const BatchAddScreen = memo(function BatchAddScreen() {
                 variant="caption"
                 color={row.result?.outcome === 'refused' ? 'error' : 'textSecondary'}
                 numberOfLines={1}>
-                {rowLabel(row, t)}
+                {row.mirrors.length > 0
+                  ? `${rowLabel(row, t)} · ${t('downloadSources.batchMirrorsAdded', { count: row.mirrors.length })}`
+                  : rowLabel(row, t)}
               </Text>
             </Box>
           ))}

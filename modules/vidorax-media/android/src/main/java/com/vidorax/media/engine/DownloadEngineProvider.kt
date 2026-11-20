@@ -81,6 +81,18 @@ object DownloadEngineProvider {
       freeSpace = { services.paths.workRoot.usableSpace },
       // #332: the saved retry limit applies from process start, before any JavaScript runs.
       retryLimit = { RetryLimit.current(context) },
+      // #446: mobile data beside Wi-Fi, requested only while a multi-connection download with the setting on runs.
+      secondNetwork = com.vidorax.media.net.AndroidMobileData(context, http),
+      // #347/#446: one line per multi-connection run that used mirrors or two networks (counts only, no URL).
+      onRoutes = { id, report ->
+        runCatching {
+          android.util.Log.i(
+            "VidoraSources",
+            "download ${id.take(8)}: mirrors accepted=${report.mirrorsAccepted} rejected=${report.mirrorsRejected} " +
+              "bytes=${report.bytesByRoute} dropped=${report.dropped}",
+          )
+        }
+      },
     )
     // #299: credentials of a download are dropped when it completes, is cancelled or fails (memory only).
     com.vidorax.media.net.DownloadCredentials.install(context, engine.stateChanges, services.scope)
@@ -121,6 +133,7 @@ object DownloadEngineProvider {
       liveRecordingMaxMinutes = stored.getInt(KEY_LIVE_MAX_MINUTES, DownloadSettings.DEFAULT_LIVE_MAX_MINUTES)
         .coerceIn(DownloadSettings.MIN_LIVE_MAX_MINUTES, DownloadSettings.MAX_LIVE_MAX_MINUTES),
       autoResume = stored.getBoolean(KEY_AUTO_RESUME, true),
+      multiNetwork = stored.getBoolean(KEY_MULTI_NETWORK, false) && !stored.getBoolean(KEY_WIFI_ONLY, defaults.wifiOnly),
     )
   }
 
@@ -151,6 +164,7 @@ object DownloadEngineProvider {
         .putBoolean(KEY_LIVE_RECORDING, settings.liveRecording)
         .putInt(KEY_LIVE_MAX_MINUTES, settings.liveRecordingMaxMinutes)
         .putBoolean(KEY_AUTO_RESUME, settings.autoResume)
+        .putBoolean(KEY_MULTI_NETWORK, settings.multiNetwork)
         .apply()
     }
   }
@@ -170,4 +184,5 @@ object DownloadEngineProvider {
   private const val KEY_LIVE_RECORDING = "liveRecording"
   private const val KEY_LIVE_MAX_MINUTES = "liveRecordingMaxMinutes"
   private const val KEY_AUTO_RESUME = "autoResume"
+  private const val KEY_MULTI_NETWORK = "multiNetwork"
 }

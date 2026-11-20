@@ -160,6 +160,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         fileExtension: state.fileExtension,
         confirmBeforeStart: state.confirmBeforeStart,
         autoResume: state.autoResume,
+        multiNetwork: state.multiNetwork,
         debugLogs: state.debugLogs,
         notifications: state.notifications,
         notificationSound: state.notificationSound,
@@ -324,6 +325,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.tapToToggle === 'boolean' ? raw.tapToToggle : current.tapToToggle,
           autoResume:
             typeof raw.autoResume === 'boolean' ? raw.autoResume : current.autoResume,
+          multiNetwork:
+            typeof raw.multiNetwork === 'boolean' ? raw.multiNetwork : current.multiNetwork,
           debugLogs: typeof raw.debugLogs === 'boolean' ? raw.debugLogs : current.debugLogs,
           notifications:
             typeof raw.notifications === 'boolean'

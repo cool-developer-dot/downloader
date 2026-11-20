@@ -32,6 +32,13 @@ enum class SourceKind(override val wire: String) : WireEnum {
    * then finalized like any download. Only while Settings → "Live recording (beta)" is on.
    */
   LIVE("live"),
+
+  /**
+   * #304: one file on an FTP server (`ftp://`, explicit TLS when the server offers it; `ftps://`, implicit TLS that
+   * must verify). Classified like a progressive file from its size and first bytes (net/FtpSession, plan/FtpProbe),
+   * downloaded on one connection, resumed by byte offset (transfer/FtpTransfer). Android 8+ only.
+   */
+  FTP("ftp"),
 }
 
 enum class SiteId(override val wire: String, val folderName: String) : WireEnum {

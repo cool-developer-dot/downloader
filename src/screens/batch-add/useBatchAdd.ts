@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { addLinkFromBatch, type BatchLinkResult } from '@/browser/media-actions/batch-add.service';
 import { pendingNavigationService } from '@/browser/services';
-import { extractLinks } from '@/browser/services/link-intake';
+import { extractLinks, MAX_BATCH_LINKS } from '@/browser/services/link-intake';
+import { batchLinesWithMirrors } from '@/downloads/v2/sources';
 import { useBrowserStore } from '@/browser/stores';
 import { navigation, routePaths } from '@/navigation';
 import { withExpectedSystemScreen } from '@/security/app-lock/expected-system-screen';
@@ -12,7 +13,13 @@ import { batchAddPrefill } from './batch-add-prefill';
 
 const MAX_FILE_BYTES = 512 * 1024;
 
-export type BatchRow = { url: string; status: 'pending' | 'running' | 'done'; result: BatchLinkResult | null };
+export type BatchRow = {
+  url: string;
+  /** #347: mirrors given on the link's line (`link | mirror`); none = today's row. */
+  mirrors: string[];
+  status: 'pending' | 'running' | 'done';
+  result: BatchLinkResult | null;
+};
 
 /**
  * Batch Add (#292) and Import Links from File (#293). Links run one at a time; leaving the screen stops the run
@@ -30,13 +37,15 @@ export function useBatchAdd() {
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const links = useMemo(() => extractLinks(text), [text]);
+  // #347: a line `link | mirror | mirror` is one download with its mirrors; any other line is today's.
+  const entries = useMemo(() => batchLinesWithMirrors(text, (line) => extractLinks(line), MAX_BATCH_LINKS), [text]);
+  const links = useMemo(() => entries.map((entry) => entry.url), [entries]);
 
   const start = useCallback(async () => {
     if (runningRef.current) {
       return;
     }
-    const queue = links;
+    const queue = entries;
     if (queue.length === 0) {
       return;
     }
@@ -44,7 +53,7 @@ export function useBatchAdd() {
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
-    setRows(queue.map((url) => ({ url, status: 'pending', result: null })));
+    setRows(queue.map(({ url, mirrors }) => ({ url, mirrors, status: 'pending', result: null })));
     for (let index = 0; index < queue.length; index += 1) {
       if (controller.signal.aborted) {
         break;
@@ -52,9 +61,9 @@ export function useBatchAdd() {
       setRows((current) => current.map((row, i) => (i === index ? { ...row, status: 'running' } : row)));
       let result: BatchLinkResult;
       try {
-        result = await addLinkFromBatch(queue[index]!, controller.signal);
+        result = await addLinkFromBatch(queue[index]!.url, controller.signal, queue[index]!.mirrors);
       } catch {
-        result = { url: queue[index]!, outcome: 'needs-review', detail: 'ERROR', title: null, downloadId: null };
+        result = { url: queue[index]!.url, outcome: 'needs-review', detail: 'ERROR', title: null, downloadId: null };
       }
       // Stop while this link was being checked: it was never decided, so it waits like the links after it.
       if (controller.signal.aborted && result.outcome === 'needs-review') {
@@ -65,7 +74,7 @@ export function useBatchAdd() {
     }
     runningRef.current = false;
     setRunning(false);
-  }, [links]);
+  }, [entries]);
 
   const stop = useCallback(() => abortRef.current?.abort(), []);
 

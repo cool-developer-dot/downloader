@@ -231,6 +231,13 @@ class VidoraMediaModule : Module() {
       engine.setDownloadQueues(queues.take(com.vidorax.media.engine.QueueOrder.MAX_QUEUES + 1).map { it.toModel() }).toJs()
     }
 
+    // #347: a download's mirrors (other links to the same file); each is checked before any part uses it.
+    AsyncFunction("getDownloadMirrors") Coroutine { id: String -> engine.downloadMirrors(id) }
+
+    AsyncFunction("setDownloadMirrors") Coroutine { id: String, urls: List<String> ->
+      engine.setDownloadMirrors(id, com.vidorax.media.bridge.mirrorUrls(urls))
+    }
+
     AsyncFunction("listDownloads") Coroutine { ->
       engine.listDownloads().map { it.toJs() }
     }

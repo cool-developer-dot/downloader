@@ -172,6 +172,8 @@ export function projectV2Download(
     waitReason: record.state === 'waiting_conditions' ? (record.waitReason ?? null) : null,
     waitUntil: record.state === 'waiting_conditions' ? (record.waitUntil ?? null) : null,
     startAt: record.startAt ?? null,
+    // #347: Download details offers "Mirrors" for a single-file (progressive) download only.
+    sourceKind: record.kind,
     // Said on the row ("Waiting for Wi-Fi" / "Waiting for network") instead of a plain "Queued".
     ...(record.state === 'waiting_network' ? { waitingNetwork: true } : {}),
     // F6: a recording is stopped, never paused; its length comes with every progress event.

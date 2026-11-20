@@ -120,6 +120,7 @@ export function ensureV2DownloadBridge(): void {
       liveRecordingMaxMinutes: settings.liveRecordingMaxMinutes,
       language: settings.language,
       autoResume: settings.autoResume,
+      multiNetwork: settings.multiNetwork,
       notificationSound: settings.notificationSound,
       notificationVibrate: settings.notificationVibrate,
       notificationSilent: settings.notificationSilent,
