@@ -10,6 +10,8 @@ import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 internal object Redact {
   /** `scheme://host[:port]/path` only. Query, fragment and userinfo (where signed-URL secrets live) are dropped. */
   fun url(raw: String): String {
+    // #304: an ftp(s) link loses its user name and password the same way.
+    if (FtpUrl.isFtp(raw)) return FtpUrl.parse(raw)?.redacted ?: "<url>"
     val parsed = raw.toHttpUrlOrNull() ?: return "<url>"
     val port = if (parsed.port == HttpUrl_defaultPort(parsed.scheme)) "" else ":${parsed.port}"
     return "${parsed.scheme}://${parsed.host}$port${parsed.encodedPath}"

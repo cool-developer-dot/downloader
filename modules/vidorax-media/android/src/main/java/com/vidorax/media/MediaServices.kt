@@ -4,6 +4,9 @@ import android.content.Context
 import android.os.StatFs
 import com.vidorax.media.analyze.BrowserIdentity
 import com.vidorax.media.analyze.PageFetcher
+import com.vidorax.media.archive.ArchiveImport
+import com.vidorax.media.engine.DownloadEngineProvider
+import com.vidorax.media.subtitles.SubtitleDownloads
 import com.vidorax.media.db.MediaDatabase
 import com.vidorax.media.files.FileActions
 import com.vidorax.media.incoming.IncomingMediaRegistry
@@ -49,6 +52,17 @@ class MediaServices private constructor(context: Context) {
     makeThumbnail = thumbnails::create,
     findSameContent = { file, audioOnly -> savedVideos.findByContent(file, excludeId = "", audioOnly = audioOnly) },
     freeBytes = { StatFs(paths.filesDir.path).availableBytes },
+  )
+
+  /** P8 #407: a `.zip` opened from another app — its videos (and their subtitles) imported through [incomingImport]. */
+  val archiveImport = ArchiveImport(
+    workRoot = java.io.File(paths.importRoot.parentFile, "archives"),
+    openStream = { uri -> context.contentResolver.openInputStream(uri) },
+    freeBytes = { StatFs(paths.filesDir.path).availableBytes },
+    importFile = { media -> incomingImport.import(media) },
+    saveSubtitles = { id, subtitles ->
+      SubtitleDownloads.require { DownloadEngineProvider.get(context) }.saveLocal(id, subtitles.map { it.language to it.vtt })
+    },
   )
 
   // Advanced network: the saved User-Agent and timeouts apply from process start, before any JavaScript runs.

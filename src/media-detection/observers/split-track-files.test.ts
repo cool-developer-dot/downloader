@@ -36,7 +36,7 @@ function fakeWindow() {
     return new (SourceBufferCtor as unknown as new () => FakeBuffer)();
   };
 
-  function XhrCtor() {
+  function XhrCtor(this: { listeners: unknown[]; responseType: string; _response: unknown; responseURL: string }) {
     this.listeners = [];
     this.responseType = '';
     this._response = null;

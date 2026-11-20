@@ -21,6 +21,10 @@ export type SaveLocationCopierDeps = {
   getItem: (id: string) => Promise<CopierItem | null>;
   copy: (id: string, treeUri: string, subfolders: string[]) => Promise<FolderCopy>;
   hasRecord: (id: string) => boolean;
+  /** #513: false while a copy must wait (Wi-Fi only, not on Wi-Fi); the item stays without a record and catches up. */
+  canCopyNow?: () => boolean;
+  /** #513: earlier failed tries of this item, so a new failure counts on. */
+  failedAttempts?: (id: string) => number;
   record: (id: string, record: ExternalCopyRecord) => void;
   /** The folder can no longer be written: turn the option off and say so (once per loss). */
   onAccessLost: () => void;
@@ -69,7 +73,7 @@ export function createSaveLocationCopier(deps: SaveLocationCopierDeps): SaveLoca
 
   async function copyOne(id: string): Promise<void> {
     // Re-checked right before acting: the option may be off now, the item deleted, or a copy already made.
-    if (!usable(deps.getSettings()) || deps.hasRecord(id)) {
+    if (!usable(deps.getSettings()) || deps.hasRecord(id) || deps.canCopyNow?.() === false) {
       return;
     }
     let item: CopierItem | null = null;
@@ -106,7 +110,7 @@ export function createSaveLocationCopier(deps: SaveLocationCopierDeps): SaveLoca
         deps.onAccessLost();
       } else if (code !== 'ERR_NOT_FOUND') {
         // A deleted item needs no record; any other failure is recorded so it is not retried in a loop.
-        deps.record(id, { status: 'failed', reason: 'storage', at: deps.now() });
+        deps.record(id, { status: 'failed', reason: 'storage', at: deps.now(), attempts: (deps.failedAttempts?.(id) ?? 0) + 1 });
         deps.onFailed?.(item);
       }
     } finally {

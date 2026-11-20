@@ -3,7 +3,11 @@ package com.vidorax.media
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
+import com.vidorax.media.archive.ArchiveRefusedException
+import com.vidorax.media.archive.toArchiveJs
 import com.vidorax.media.bridge.DownloadBandwidthRecord
+import com.vidorax.media.safety.ContentSniff
+import com.vidorax.media.safety.FileSafety
 import com.vidorax.media.bridge.DownloadSettingsRecord
 import com.vidorax.media.bridge.EnqueueRequestRecord
 import com.vidorax.media.bridge.LeftoverFilesRecord
@@ -100,6 +104,8 @@ class VidoraMediaModule : Module() {
         // Files removed or moved outside VidoraX since the last run: their rows must not look playable.
         runCatching { media.library.removeMissingFiles() }
       }
+      // #362: a force-stop drops scheduled jobs; watched links get their hourly check back at the next start.
+      media.scope.launch { runCatching { com.vidorax.media.watch.Watches.schedule(context) } }
       // This scope ends with the JavaScript runtime, so a reload never leaves a second set of forwarders behind.
       val events = appContext.backgroundCoroutineScope
       events.launch { media.library.changes.collect { sendEvent(ON_LIBRARY_CHANGE, it.toJs()) } }
@@ -175,6 +181,26 @@ class VidoraMediaModule : Module() {
 
     // The app's "Download notifications" setting for the native runner (kept, so it holds before JavaScript runs)
 
+    // #362 Link Polling, #504 Update Detection, #363 RSS: watched links and feeds (JSON in, JSON out).
+    AsyncFunction("watchList") { -> com.vidorax.media.watch.Watches.listJson(context) }
+
+    AsyncFunction("watchAdd") Coroutine { url: String, kind: String?, intervalHours: Int, autoDownload: Boolean ->
+      withContext(Dispatchers.IO) { com.vidorax.media.watch.Watches.add(context, url, kind, intervalHours, autoDownload) }
+    }
+
+    AsyncFunction("watchUpdate") { id: String, intervalHours: Int?, autoDownload: Boolean? ->
+      com.vidorax.media.watch.Watches.update(context, id, intervalHours, autoDownload)
+    }
+
+    AsyncFunction("watchRemove") { id: String -> com.vidorax.media.watch.Watches.remove(context, id) }
+
+    AsyncFunction("watchCheck") Coroutine { id: String ->
+      withContext(Dispatchers.IO) { com.vidorax.media.watch.Watches.checkNow(context, id) }
+    }
+
+    // #505: the download rules for background feed downloads (the app sends them whenever they change).
+    AsyncFunction("setBulkRules") { json: String -> com.vidorax.media.watch.BulkRules.save(context, json) }
+
     AsyncFunction("setDownloadNotificationsEnabled") { enabled: Boolean ->
       com.vidorax.media.runner.DownloadNotificationsToggle.setEnabled(context, enabled)
     }
@@ -229,6 +255,13 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("setDownloadQueues") Coroutine { queues: List<com.vidorax.media.bridge.DownloadQueueRecord> ->
       engine.setDownloadQueues(queues.take(com.vidorax.media.engine.QueueOrder.MAX_QUEUES + 1).map { it.toModel() }).toJs()
+    }
+
+    // #347: a download's mirrors (other links to the same file); each is checked before any part uses it.
+    AsyncFunction("getDownloadMirrors") Coroutine { id: String -> engine.downloadMirrors(id) }
+
+    AsyncFunction("setDownloadMirrors") Coroutine { id: String, urls: List<String> ->
+      engine.setDownloadMirrors(id, com.vidorax.media.bridge.mirrorUrls(urls))
     }
 
     AsyncFunction("listDownloads") Coroutine { ->
@@ -391,6 +424,13 @@ class VidoraMediaModule : Module() {
       withContext(Dispatchers.Main) { SubtitleExport.share(context, appContext.currentActivity, file, mime) }
     }
 
+    // #510 Cross-device sync: the download queue as a .json file through the share sheet (Quick Share, Bluetooth…);
+    // the other phone imports it in Download history → Queue backup.
+    AsyncFunction("shareQueueFile") Coroutine { fileName: String, text: String ->
+      val (file, mime) = withContext(Dispatchers.IO) { SubtitleExport.write(services.paths, fileName, text, SubtitleExport.QUEUE_TYPES) }
+      withContext(Dispatchers.Main) { SubtitleExport.share(context, appContext.currentActivity, file, mime) }
+    }
+
     // Library
 
     AsyncFunction("listLibrary") Coroutine { query: LibraryQueryRecord ->
@@ -527,7 +567,35 @@ class VidoraMediaModule : Module() {
 
     OnActivityResult { _, payload ->
       com.vidorax.media.library.ActivityGalleryDeleteConsent.onActivityResult(payload.requestCode, payload.resultCode)
+      com.vidorax.media.library.SaveCopyAs.onActivityResult(payload.requestCode, payload.resultCode, payload.data)
     }
+
+    // #512 Save to cloud: Android's save screen (cloud apps included), then the finished file is written there.
+    AsyncFunction("saveCopyAs") Coroutine { id: String ->
+      com.vidorax.media.library.SaveCopyAs(context, services.library) { appContext.currentActivity }.save(id)
+    }
+
+    Function("getSaveCopyProgress") { id: String ->
+      com.vidorax.media.library.SaveCopyAs.progress(id)?.let { (done, total) ->
+        mapOf("bytesDone" to done.toDouble(), "totalBytes" to total.toDouble())
+      }
+    }
+
+    // #507 Cloud folder: the videos of a picked folder copied into the library (already saved ones skipped).
+    AsyncFunction("importFromFolder") Coroutine { treeUri: String ->
+      val summary = com.vidorax.media.library.FolderImport(context) { media -> services.incomingImport.import(media) }.run(treeUri)
+      mapOf(
+        "found" to summary.found,
+        "imported" to summary.imported,
+        "duplicates" to summary.duplicates,
+        "failed" to summary.failed,
+        "stopped" to summary.stopped,
+      )
+    }
+
+    Function("getFolderImportProgress") { -> com.vidorax.media.library.FolderImport.progress() }
+
+    Function("cancelFolderImport") { com.vidorax.media.library.FolderImport.cancel() }
 
     AsyncFunction("getStorageStats") Coroutine { ->
       services.storageUsage.read().toJs()
@@ -545,6 +613,39 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("importIncomingMedia") Coroutine { token: String ->
       services.incomingImport.import(incomingMediaFor(token)).toJs()
+    }
+
+    // P8 #407 Extract Archive and #461 Malware Warning (files opened from other apps, library files).
+
+    AsyncFunction("inspectIncomingArchive") Coroutine { token: String ->
+      services.archiveImport.inspect(incomingMediaFor(token)).toArchiveJs()
+    }
+
+    AsyncFunction("extractIncomingArchive") Coroutine { token: String ->
+      try {
+        services.archiveImport.extract(incomingMediaFor(token)).toArchiveJs()
+      } catch (e: ArchiveRefusedException) {
+        mapOf("status" to "refused", "reason" to e.refusal.wire)
+      }
+    }
+
+    AsyncFunction("discardIncomingArchive") Coroutine { ->
+      services.archiveImport.discard()
+    }
+
+    AsyncFunction("checkIncomingFileSafety") Coroutine { token: String ->
+      val media = incomingMediaFor(token)
+      withContext(Dispatchers.IO) {
+        val prefix = runCatching { context.contentResolver.openInputStream(media.uri)?.use(FileSafety::prefixOf) }.getOrNull()
+        ContentSniff.assess(media.displayName ?: media.uri.lastPathSegment, prefix).let { with(FileSafety) { it.toJs() } }
+      }
+    }
+
+    AsyncFunction("checkLibraryFileSafety") Coroutine { id: String ->
+      val item = services.library.get(id) ?: throw NotFoundException("No such library item")
+      withContext(Dispatchers.IO) {
+        FileSafety.check(item.file, item.file.name).let { with(FileSafety) { it.toJs() } }
+      }
     }
 
     AsyncFunction("openIncomingWith") Coroutine { token: String ->

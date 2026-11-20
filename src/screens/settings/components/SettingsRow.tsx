@@ -7,6 +7,7 @@ import { Pressable } from '@/components/base/Pressable';
 import { Text } from '@/components/base/Text';
 import { useTranslation } from '@/localization';
 import { useSettingsTokens } from '../theme/settings-tokens';
+import { useSettingVisible } from './AdvancedSetting';
 import { SettingsComingSoonBadge } from './SettingsComingSoonBadge';
 
 export type SettingsRowProps = {
@@ -22,6 +23,8 @@ export type SettingsRowProps = {
   destructive?: boolean;
   accessibilityHint?: string;
   testID?: string;
+  /** P8 #516/#517: shown only in the Advanced settings view. */
+  advanced?: boolean;
 };
 
 /**
@@ -40,7 +43,9 @@ export const SettingsRow = memo(function SettingsRow({
   destructive = false,
   accessibilityHint,
   testID,
+  advanced,
 }: SettingsRowProps) {
+  const visible = useSettingVisible(advanced);
   const settingsTokens = useSettingsTokens();
   const { t, rtl } = useTranslation();
   const interactive = Boolean(onPress) && !comingSoon;
@@ -142,6 +147,10 @@ export const SettingsRow = memo(function SettingsRow({
       ) : null}
     </Box>
   );
+
+  if (!visible) {
+    return null;
+  }
 
   const a11yLabel = comingSoon
     ? `${title}. ${t('common.comingSoon')}.${value ? ` ${t('settings.currentValue', { value })}` : ''} ${description ?? ''}`

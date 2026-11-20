@@ -35,6 +35,9 @@ import { DownloadTagsAndNote } from '@/screens/downloads/components/DownloadTags
 import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 import { DownloadSaveLocationAction } from '@/screens/downloads/components/DownloadSaveLocationAction';
+import { DownloadWatchAction } from '@/screens/downloads/components/DownloadWatchAction';
+import { DownloadCommentsSection } from '@/screens/downloads/components/DownloadCommentsSection';
+import { DownloadCloudSaveAction } from '@/screens/downloads/components/DownloadCloudSaveAction';
 import { renameMediaFileOnDevice } from '@/downloads/engine';
 import { DownloadEditActions } from '@/screens/downloads/components/DownloadEditActions';
 import { getV2Engine, isEngineOwned, renameEngineLibraryItem } from '@/downloads/v2';
@@ -43,11 +46,13 @@ import { DownloadMoveToPrivateAction } from '@/screens/downloads/components/Down
 import { DownloadBandwidthControls } from './components/DownloadBandwidthControls';
 import { DownloadDeleteDialog } from './components/DownloadDeleteDialog';
 import { DownloadStartAtControl } from './components/DownloadStartAtControl';
+import { DownloadMirrorsSection } from './components/DownloadMirrorsSection';
 import { DownloadDetailsLinkActions } from './components/DownloadDetailsLinkActions';
 import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
 import { DownloadSaveThumbnailAction } from './components/DownloadSaveThumbnailAction';
 import { useDownloadDetailsScreen } from './hooks/useDownloadDetailsScreen';
 import { DownloadSubtitlesSection } from './components/DownloadSubtitlesSection';
+import { DownloadSafetySection } from './components/DownloadSafetySection';
 import { useDownloadsTokens } from './theme/downloads-tokens';
 import { DownloadProgressDetailsRows } from './components/DownloadProgressDetailsRows';
 import {
@@ -469,6 +474,9 @@ const DetailsBody = memo(function DetailsBody({
         </Box>
       ) : null}
 
+      {/* P8 #461 Malware Warning: only when the file's bytes do not match its name. */}
+      <DownloadSafetySection id={item.id} fileName={item.fileName ?? null} />
+
       {/* H20 File integrity: the checksum, Repair, or Play while downloading — as the download's state allows. */}
       <DownloadIntegritySection id={item.id} status={item.status} workerState={item.workerState} />
 
@@ -574,6 +582,13 @@ const DetailsBody = memo(function DetailsBody({
         <DownloadTagsAndNote id={item.id} />
       </Box>
       <DownloadSaveLocationAction id={item.id} />
+      {item.status === 'COMPLETED' ? (
+        <>
+          <DownloadCloudSaveAction id={item.id} />
+          <DownloadWatchAction sourceUrl={item.sourceUrl} />
+          <DownloadCommentsSection id={item.id} sourceUrl={item.sourceUrl} />
+        </>
+      ) : null}
 
       <DownloadSaveThumbnailAction id={item.id} />
 
@@ -583,6 +598,11 @@ const DetailsBody = memo(function DetailsBody({
           <DownloadStartAtControl downloadId={item.id} startAt={transfer?.startAt ?? null} />
           <DownloadBandwidthControls downloadId={item.id} />
         </>
+      ) : null}
+
+      {/* #347: other links to the same file (a file download that can still run, or be retried). */}
+      {transfer?.sourceKind === 'progressive' && item.status !== 'COMPLETED' && item.status !== 'CANCELLED' ? (
+        <DownloadMirrorsSection downloadId={item.id} />
       ) : null}
 
       {(sourceHost || item.sourceUrl) && (

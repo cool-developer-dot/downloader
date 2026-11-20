@@ -21,7 +21,7 @@ import {
   resolveMediaType,
   parseFileSize,
 } from '@/downloads/analyze/format';
-import { isLikelyMediaSegment } from '../services/false-positive.filter';
+import { isLikelyMediaSegment, isUserRequestedTransportStream } from '../services/false-positive.filter';
 import { buildRequestContextFromDetectedMedia } from '../services/request-context.service';
 import { fetchManifestResource } from '../services/manifest.service';
 import { parseHlsManifest } from '../parsers/hls.parser';
@@ -760,7 +760,8 @@ export async function verifyGeneralSourceCandidate(
   if (url.toLowerCase().startsWith('blob:')) {
     return { ok: false, reason: 'BLOB_ONLY' };
   }
-  if (isLikelyMediaSegment(url, media.extension)) {
+  const transportStreamFile = isUserRequestedTransportStream(media);
+  if (!transportStreamFile && isLikelyMediaSegment(url, media.extension)) {
     return { ok: false, reason: 'SEGMENT_RESOURCE' };
   }
   if (isInitOrFragmentMediaPath(url)) {
@@ -937,6 +938,7 @@ export async function verifyGeneralSourceCandidate(
     pageUrl: input.pageUrl,
     requestContext: input.requestContext,
     signal: input.signal,
+    transportStreamFile,
   });
 
   if (!result.ok) {

@@ -5,6 +5,7 @@ import { mediaDetectionPipeline } from '../services/detection.service';
 import type { DetectedMedia } from '../types';
 import {
   isOfferedSourceRejectedNow,
+  isSegmentResource,
   resolveGeneralRequestProvenance,
   selectCurrentGeneralMedia,
 } from './general-correlation.service';
@@ -604,5 +605,23 @@ describe('publishing a verified file', () => {
     assert.equal(ask('https://media.example.org/v/next-clip?sig=7'), true, 'same file, rotated signature');
     assert.equal(ask(current), false);
     assert.equal(ask('https://media.example.org/v/rendition-720.m3u8'), false, 'no candidate names it');
+  });
+});
+
+describe('a .ts file the user opened is not an HLS segment', () => {
+  const media = (url: string, extra: Partial<DetectedMedia> = {}) =>
+    ({ url, extension: null, mimeType: null, ...extra }) as DetectedMedia;
+
+  test('a WebView download of a .ts is a file, whatever its name says', () => {
+    for (const url of ['https://archive.example.org/rec/12.ts', 'https://cdn.example.com/seg/news.ts', 'https://tv.example.com/a.ts?seg=1']) {
+      assert.equal(isSegmentResource(media(url, { userRequested: true })), false, url);
+      assert.equal(isSegmentResource(media(url, { userRequested: true, mimeType: 'video/MP2T' })), false, url);
+    }
+  });
+
+  test('the same names seen on the network are still segments, and a downloaded .m4s is still a fragment', () => {
+    assert.equal(isSegmentResource(media('https://archive.example.org/rec/12.ts')), true);
+    assert.equal(isSegmentResource(media('https://cdn.example.com/seg/news.ts')), true);
+    assert.equal(isSegmentResource(media('https://cdn.example.com/v/12.m4s', { userRequested: true })), true);
   });
 });

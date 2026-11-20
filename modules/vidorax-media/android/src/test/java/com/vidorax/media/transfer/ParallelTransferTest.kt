@@ -277,6 +277,40 @@ class ParallelTransferTest {
     assertTrue("no range starting inside the first part: $starts", starts.none { it in 1 until third })
   }
 
+  @Test fun withTheWriteCacheOnEveryPartStillLandsExactlyAndAPauseClaimsOnlyWhatIsOnDisk() = runBlocking {
+    // #344/#350: a 1 MB cache per part and a small read buffer.
+    TransferTuning.apply(com.vidorax.media.model.DownloadSettings.DEFAULT.copy(bufferKb = 32, writeCacheKb = 1024))
+    try {
+      origin.throttle = { 64 * 1024 }
+      val reported = java.util.concurrent.atomic.AtomicLong()
+      val job = launch(Dispatchers.IO) { ProgressiveTransfer(http, retryDelay = noDelay).transfer(spec(3)) { b, _ -> reported.set(b) } }
+      withTimeout(30_000) {
+        while ((PartsCheckpoint.read(part())?.parts?.count { it.done > 0 } ?: 0) < 3) delay(50)
+      }
+      job.cancelAndJoin()
+      val saved = checkNotNull(PartsCheckpoint.read(part()))
+      assertEquals("progress never counts bytes still in a cache", reported.get(), saved.bytesDone)
+      assertEquals(saved.bytesDone, PartProgress.bytesOnDisk(part()))
+
+      origin.throttle = { null }
+      ProgressiveTransfer(HttpClient.create(cookies = { null }, urlPolicy = UrlPolicy.ALLOW_ALL), retryDelay = noDelay).transfer(spec(3))
+      assertEquals(sha256(origin.bytes), sha256(part().readBytes()))
+    } finally {
+      TransferTuning.apply(com.vidorax.media.model.DownloadSettings.DEFAULT)
+    }
+  }
+
+  @Test fun withTheWriteCacheOnASlowPartIsStillSplitWithoutLosingBytes() = runBlocking {
+    TransferTuning.apply(com.vidorax.media.model.DownloadSettings.DEFAULT.copy(writeCacheKb = 4096))
+    try {
+      origin.throttle = { start -> if (start == 0L) 32 * 1024 else null }
+      ProgressiveTransfer(http, retryDelay = noDelay).transfer(spec(3))
+      assertEquals(sha256(origin.bytes), sha256(part().readBytes()))
+    } finally {
+      TransferTuning.apply(com.vidorax.media.model.DownloadSettings.DEFAULT)
+    }
+  }
+
   @Test fun aKilledDownloadResumesEveryPartFromItsCheckpoint() = runBlocking {
     origin.throttle = { 16 * 1024 }
     val reported = java.util.concurrent.atomic.AtomicLong()

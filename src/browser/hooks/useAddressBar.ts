@@ -23,6 +23,8 @@ import {
   takeAddressBarFocusRequest,
 } from '@/browser/services/address-bar-focus';
 import { isYouTubeLink, openPastedLink } from '@/browser/services/pasted-link.service';
+import { openFtpLink } from '@/browser/services/ftp-link.service';
+import { isFtpLink } from '@/downloads/v2/sources';
 import { announceYouTubeNotSupported } from '@/browser/services/youtube-refusal';
 import type { OmniboxSuggestion } from '@/browser/suggestions';
 import {
@@ -279,6 +281,12 @@ export function useAddressBar() {
 
     // Enter accepts an inline completion.
     const text = completion ?? draft;
+    // #304: an FTP link is a file to download, never a page the WebView loads (ftp: stays a blocked scheme there).
+    if (isFtpLink(text)) {
+      openFtpLink(text.trim());
+      dismissEditing();
+      return;
+    }
     const result = navigationService.resolveSubmission(text);
 
     if (!result.ok) {
@@ -306,7 +314,7 @@ export function useAddressBar() {
     setTimeout(() => {
       submitLockRef.current = false;
     }, 500);
-  }, [completion, draft, navigateTo]);
+  }, [completion, dismissEditing, draft, navigateTo]);
 
   const selectSuggestion = useCallback(
     (item: OmniboxSuggestion) => {

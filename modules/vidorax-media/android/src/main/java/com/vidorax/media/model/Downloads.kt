@@ -44,6 +44,8 @@ sealed interface ProbeResult {
     val durationMs: Long?,
     /** The download will merge a separate audio track into the video (split files, HLS/DASH separate audio). */
     val mergesAudio: Boolean = false,
+    /** P8 #514: redirect hops the first request followed (progressive files; 0 when not counted). */
+    val redirects: Int = 0,
   ) : ProbeResult
 
   data class Failure(
@@ -52,6 +54,8 @@ sealed interface ProbeResult {
     val message: String?,
     /** #299: the server answered 401 and asks for HTTP Basic authentication. */
     val authChallenge: AuthChallenge? = null,
+    /** P8 #461: NOT_MEDIA whose first bytes are this program or archive (`ContentKind.wire`), e.g. an APK named `.mp4`. */
+    val disguisedAs: String? = null,
   ) : ProbeResult
 }
 
@@ -136,6 +140,11 @@ data class EnqueueRequest(
    * copy of "Replace"): no identity check, and its finished file is kept even when the same bytes are saved.
    */
   val allowDuplicate: Boolean = false,
+  /**
+   * #347: other links to the same file (http(s), progressive downloads only), persisted with the download. A mirror
+   * is used only after it proved to be the same file (engine/MirrorCheck); parts are then spread across them.
+   */
+  val mirrors: List<String> = emptyList(),
 )
 
 /**
@@ -235,8 +244,41 @@ data class DownloadSettings(
    * reboot, a download that was running continues by itself; off, it waits paused for the user's Resume.
    */
   val autoResume: Boolean = true,
+  /** #350 "Buffer size": bytes read from the network per read (KiB, [MIN_BUFFER_KB]..[MAX_BUFFER_KB]). */
+  val bufferKb: Int = DEFAULT_BUFFER_KB,
+  /** #344 "Disk write cache": received bytes gathered in memory before each disk write (KiB, 0 = off). */
+  val writeCacheKb: Int = 0,
+  /** #348 "Low memory mode": [LowMemoryMode.AUTO] follows the device ([android.app.ActivityManager.isLowRamDevice]). */
+  val lowMemoryMode: LowMemoryMode = LowMemoryMode.AUTO,
+  /** #506 "Cooldown between files": seconds a site's next download waits after its previous one ended (0 = none). */
+  val cooldownSeconds: Int = 0,
+  /** #358 "Exit when done": close VidoraX when every download has finished while it is in the background. */
+  val exitWhenDone: Boolean = false,
+  /**
+   * #446 "Experimental: use Wi-Fi and mobile data together" (off by default): a multi-connection download on Wi-Fi
+   * also puts some of its parts on mobile data (net/MultiNetwork). Never while "Wi-Fi only" is on — the bridge stores
+   * it off then — and never for a download that keeps to Wi-Fi itself (#480).
+   */
+  val multiNetwork: Boolean = false,
 ) {
+  /**
+   * The settings the engine runs with: in low memory mode one download at a time on one connection, a small read
+   * buffer and no write cache, whatever was chosen (the chosen values stay saved for when the mode is off).
+   */
+  fun effective(lowRamDevice: Boolean): DownloadSettings =
+    if (lowMemoryMode == LowMemoryMode.ON || (lowMemoryMode == LowMemoryMode.AUTO && lowRamDevice)) {
+      copy(maxConcurrent = 1, connectionsPerFile = 1, bufferKb = LOW_MEMORY_BUFFER_KB, writeCacheKb = 0)
+    } else {
+      this
+    }
+
   companion object {
+    const val MIN_BUFFER_KB = 16
+    const val MAX_BUFFER_KB = 1024
+    const val DEFAULT_BUFFER_KB = 64
+    const val LOW_MEMORY_BUFFER_KB = 32
+    const val MAX_WRITE_CACHE_KB = 16 * 1024
+    const val MAX_COOLDOWN_SECONDS = 600
     const val MIN_LIVE_MAX_MINUTES = 15
     const val MAX_LIVE_MAX_MINUTES = 720
     /** F6 default: 2 hours. */
@@ -249,6 +291,18 @@ data class DownloadSettings(
     const val DEFAULT_CONNECTIONS = 3
     // A finished video also appears in the device gallery unless the user turned that off.
     val DEFAULT = DownloadSettings(maxConcurrent = 2, wifiOnly = false, autoSaveToGallery = true, preferredMaxHeight = null)
+  }
+}
+
+/** #348: low memory mode — automatic (the device decides), always on, or off. */
+enum class LowMemoryMode(val wire: String) {
+  AUTO("auto"),
+  ON("on"),
+  OFF("off"),
+  ;
+
+  companion object {
+    fun fromWire(value: String?): LowMemoryMode = entries.firstOrNull { it.wire == value } ?: AUTO
   }
 }
 

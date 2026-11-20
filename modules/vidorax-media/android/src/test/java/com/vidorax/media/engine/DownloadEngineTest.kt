@@ -1821,6 +1821,15 @@ internal class RecordingStore : DownloadStore {
     if (startAt == null) schedules.remove(id) else schedules[id] = startAt
   }
 
+  /** #347 mirrors, as `download_mirrors` keeps them. */
+  val mirrors = ConcurrentHashMap<String, List<String>>()
+
+  override suspend fun listMirrors(id: String): List<String> = mirrors[id].orEmpty()
+
+  override suspend fun saveMirrors(id: String, urls: List<String>) {
+    if (urls.isEmpty()) mirrors.remove(id) else mirrors[id] = urls
+  }
+
   fun current(id: String): DownloadRow? = rows[id]
   fun bytesHistory(id: String): List<Long> = history.filter { it.id == id }.map { it.bytesDone }
   fun stateHistory(id: String): List<DownloadState> = history.filter { it.id == id }.map { it.state }

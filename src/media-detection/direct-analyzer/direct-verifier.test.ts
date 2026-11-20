@@ -247,4 +247,15 @@ describe('direct candidates → the existing classifiers → one offer', () => {
     const hls = directCandidateMedia(candidate('https://cdn.example/master.m3u8', { kind: 'hls' }), PAGE, null);
     assert.equal(hls?.streamType, 'HLS');
   });
+
+  test('a pasted link that is the file itself is what the user asked for; a file named on a page is not', () => {
+    const direct = directCandidateMedia(
+      candidate('https://archive.example.org/rec/12.ts', { evidence: 'direct', origin: 'direct_link', mimeType: 'video/mp2t' }),
+      'https://archive.example.org/rec/12.ts',
+      null,
+    );
+    assert.equal(direct?.userRequested, true);
+    const named = directCandidateMedia(candidate('https://cdn.example/clip.mp4'), PAGE, null);
+    assert.notEqual(named?.userRequested, true);
+  });
 });

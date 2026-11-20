@@ -20,6 +20,8 @@ export type BrowserMenuActionId =
   | 'full_page'
   | 'print_page'
   | 'save_offline'
+  // #486
+  | 'save_site'
   | 'saved_pages'
   // B23
   | 'highlights_page'

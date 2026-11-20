@@ -18,6 +18,27 @@ export const DANGEROUS_EXTENSIONS: readonly string[] = [
   'vbs',
   'sh',
   'dex',
+  // P8 #461: more Windows program and shortcut types.
+  'com',
+  'pif',
+  'ps1',
+  'hta',
+  'wsf',
+  'cpl',
+  'lnk',
+];
+
+/**
+ * P8 #461: names a person reads as a video, picture, document or subtitle. Such a name in front of a program's
+ * extension (`clip.mp4.exe`), or on a file sent as a program, is a disguise. Kept equal to the native lists
+ * (`RiskyDownloads.HARMLESS_EXTENSIONS`, `ContentSniff.HARMLESS_EXTENSIONS`).
+ */
+export const HARMLESS_EXTENSIONS: readonly string[] = [
+  'mp4', 'm4v', 'mkv', 'webm', 'mov', 'avi', 'wmv', 'flv', 'f4v', 'ts', '3gp', '3g2', 'mpg', 'mpeg', 'vob', 'divx',
+  'mp3', 'm4a', 'aac', 'wav', 'ogg', 'opus',
+  'jpg', 'jpeg', 'png', 'gif', 'webp', 'heic', 'bmp',
+  'pdf', 'txt', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+  'srt', 'vtt', 'ass', 'ssa', 'sub',
 ];
 
 /** MIME types of the same kinds of file. */
@@ -64,8 +85,14 @@ export type DownloadDangerVerdict = {
   dangerous: boolean;
   /** The name to show the user: Content-Disposition's file name, else the URL's last path segment, else ''. */
   fileName: string;
-  reason: 'extension' | 'mime' | null;
+  /**
+   * `double-extension` (`clip.mp4.exe`) and `disguised` (a video-looking name sent as a program) are P8's Malware
+   * Warning: the stronger message. `extension` / `mime`: an honestly named app or program file (H17).
+   */
+  reason: DownloadDangerReason | null;
 };
+
+export type DownloadDangerReason = 'double-extension' | 'disguised' | 'extension' | 'mime';
 
 function normalizedMime(mimeType: string | null | undefined): string {
   return (mimeType ?? '').split(';')[0]!.trim().toLowerCase();
@@ -117,6 +144,17 @@ export function fileExtension(name: string | null | undefined): string | null {
   return base.slice(dot + 1).toLowerCase();
 }
 
+/** P8 #461: `clip.MP4.exe` — a harmless-looking extension right before a program's. */
+export function hasDoubleExtension(name: string | null | undefined): boolean {
+  const base = (name ?? '').trim().split(/[\\/]/).pop() ?? '';
+  const last = fileExtension(base);
+  if (!last || !DANGEROUS_EXTENSIONS.includes(last)) {
+    return false;
+  }
+  const inner = fileExtension(base.slice(0, base.length - last.length - 1));
+  return inner != null && HARMLESS_EXTENSIONS.includes(inner);
+}
+
 export function isVideoDownload(input: Pick<DownloadDangerInput, 'mimeType' | 'hint'>): boolean {
   if (input.hint === 'progressive' || input.hint === 'manifest-hls' || input.hint === 'manifest-dash') {
     return true;
@@ -133,11 +171,19 @@ export function assessDownloadDanger(input: DownloadDangerInput): DownloadDanger
   if (isVideoDownload(input)) {
     return { dangerous: false, fileName, reason: null };
   }
-  const extensions = [fileExtension(dispositionName), fileExtension(urlName)];
+  const names = [dispositionName, urlName];
+  if (names.some((name) => hasDoubleExtension(name))) {
+    return { dangerous: true, fileName, reason: 'double-extension' };
+  }
+  const extensions = names.map((name) => fileExtension(name));
+  const programMime = DANGEROUS_MIME_TYPES.includes(normalizedMime(input.mimeType));
+  if (programMime && extensions.some((ext) => ext != null && HARMLESS_EXTENSIONS.includes(ext))) {
+    return { dangerous: true, fileName, reason: 'disguised' };
+  }
   if (extensions.some((ext) => ext != null && DANGEROUS_EXTENSIONS.includes(ext))) {
     return { dangerous: true, fileName, reason: 'extension' };
   }
-  if (DANGEROUS_MIME_TYPES.includes(normalizedMime(input.mimeType))) {
+  if (programMime) {
     return { dangerous: true, fileName, reason: 'mime' };
   }
   return { dangerous: false, fileName, reason: null };
@@ -149,14 +195,14 @@ export function assessDownloadDanger(input: DownloadDangerInput): DownloadDanger
  */
 export async function allowSystemDownload(
   input: DownloadDangerInput,
-  confirm: (fileName: string) => Promise<boolean>,
+  confirm: (fileName: string, reason: DownloadDangerReason | null) => Promise<boolean>,
 ): Promise<boolean> {
   const verdict = assessDownloadDanger(input);
   if (!verdict.dangerous) {
     return true;
   }
   try {
-    return (await confirm(verdict.fileName)) === true;
+    return (await confirm(verdict.fileName, verdict.reason)) === true;
   } catch {
     return false;
   }
@@ -167,7 +213,7 @@ export async function allowSystemDownload(
  * for that URL is open, a repeat is dropped (false) and the first answer decides.
  */
 export function createSystemDownloadGate(
-  confirm: (fileName: string) => Promise<boolean>,
+  confirm: (fileName: string, reason: DownloadDangerReason | null) => Promise<boolean>,
 ): (input: DownloadDangerInput) => Promise<boolean> {
   const open = new Set<string>();
   return async (input) => {

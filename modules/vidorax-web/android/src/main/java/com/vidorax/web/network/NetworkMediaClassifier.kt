@@ -37,9 +37,10 @@ internal object NetworkMediaClassifier {
   private val SEGMENT_FILE_STEM =
     Regex("(?:^|[-_.])(?:init|seg|segment|chunk|frag|fragment)(?:\\d|[-_.]|$)", RegexOption.IGNORE_CASE)
 
-  // Downloads (responses the WebView cannot render): which ones the detection pipeline classifies.
+  // Downloads (responses the WebView cannot render): which ones the detection pipeline classifies. A `.ts` here is a
+  // transport-stream file the user opened: an HLS player fetches its segments, it never downloads them.
   private val VIDEO_FILE_EXTENSIONS =
-    setOf("mp4", "m4v", "f4v", "mov", "webm", "mkv", "avi", "divx", "wmv", "3gp", "3g2", "flv", "mpg", "mpeg", "vob")
+    setOf("mp4", "m4v", "f4v", "mov", "webm", "mkv", "avi", "divx", "wmv", "3gp", "3g2", "flv", "mpg", "mpeg", "vob", "ts")
   private val HLS_TYPES = setOf("application/vnd.apple.mpegurl", "application/x-mpegurl", "audio/mpegurl", "audio/x-mpegurl")
   private val GENERIC_BINARY_TYPES = setOf(
     "application/octet-stream", "binary/octet-stream", "application/binary", "application/x-binary",
@@ -84,7 +85,7 @@ internal object NetworkMediaClassifier {
    * instead of Android's DownloadManager saving it unseen. Decided from the response's MIME type, else the file name
    * (Content-Disposition, then the URL). [NetworkMediaHint.UNKNOWN] is a generic binary with no usable name: JS asks
    * the source and hands anything that is not a video back to DownloadManager. Null: not a video (documents, archives,
-   * apps, audio, lone transport segments) — the system download runs exactly as before.
+   * apps, audio) — the system download runs exactly as before.
    */
   fun classifyDownload(url: String, mimeType: String?, contentDisposition: String?): NetworkMediaHint? {
     if (url.length > MAX_URL_LENGTH) return null
@@ -94,7 +95,6 @@ internal object NetworkMediaClassifier {
     return when {
       type in HLS_TYPES -> NetworkMediaHint.MANIFEST_HLS
       type == "application/dash+xml" -> NetworkMediaHint.MANIFEST_DASH
-      type == "video/mp2t" -> null
       type.startsWith("video/") -> NetworkMediaHint.PROGRESSIVE
       type.isEmpty() || type in GENERIC_BINARY_TYPES -> {
         val named = fileExtension(dispositionFileName(contentDisposition)) ?: parts.extension

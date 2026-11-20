@@ -13,7 +13,14 @@ Goals
   - **Progressive:** MP4, M4V, MOV, WebM, AVI, WMV, standalone downloadable fMP4; F4V (ISO-BMFF, saved as `.mp4`),
     3G2 (saved as `.3g2`, `video/3gpp2`) and DivX/XviD (`.divx` is AVI and takes the AVI path); MPEG program streams
     (F4: `.mpg`, `.mpeg`, a DVD's `.vob`; MPEG-1 and MPEG-2 packaging) — converted to MP4 where the device decodes
-    MPEG-1/2 video, else kept as `.mpg`. CSS-scrambled DVD titles are refused as protected.
+    MPEG-1/2 video, else kept as `.mpg`. CSS-scrambled DVD titles are refused as protected. Matroska (`.mkv`, kept as
+    downloaded), FLV (`.flv`: H.264/AAC remuxed to MP4; Sorenson/VP6 FLV kept as `.flv` for "Open with") and MPEG-TS
+    files (`.ts` links: remuxed to MP4, kept as `.ts` when this device cannot decode a track) — each refused when its
+    own track list shows sound only, and encrypted Matroska or scrambled (conditional-access) TS as protected. A `.ts`
+    response with no length is a live channel (IPTV) and is refused as live; so is an `.flv` with no length unless its
+    `onMetaData` states a duration (HTTP-FLV live states 0). A `.ts` reaches the
+    engine only as a file the user opened (a pasted or shared link, a WebView download): one a player fetches is an
+    HLS segment and stays one. `.m2ts` (192-byte Blu-ray packets) is not supported.
   - **Streaming:** unencrypted VOD HLS (master and media playlists; MPEG-TS, fMP4/CMAF and packed-audio segments;
     byte ranges; a variant whose sound is a separate `EXT-X-MEDIA TYPE=AUDIO` rendition — both downloaded and
     merged). Unencrypted static single-period DASH: single-file (BaseURL/SegmentBase) or segmented
@@ -22,9 +29,26 @@ Goals
   - **Split audio/video:** a video-only file and an audio-only file of one video (a MediaSource player fed from two
     SourceBuffers — Instagram/Facebook-style), resolved, checked to be one video's, downloaded and merged.
   - **Extensionless URLs** when probe/verification confirms one of the above formats.
-  - **Live HLS recording** (F6, Settings → Downloads → Advanced → "Live recording (beta)", off by default): an
+  - **Live HLS recording** (F6, Settings → Downloads → Advanced → "Live recording", on by default since 1.2.0): an
     unencrypted live HLS stream is offered as **Record** and recorded from now until Stop, its end, the maximum length
     or low storage, then finalized to MP4 like any download (§3.8).
+  - **Sources (P2, 1.2.0):**
+    - **FTP/FTPS (#304):** an `ftp://` or `ftps://` link to a file (pasted, typed in the address bar, shared, offered
+      from the clipboard or put in Batch Add) never opens in the WebView (`ftp:` stays a blocked browser scheme); it
+      is classified by the engine from its size and first 64 KiB exactly like an http(s) file (video only; audio
+      only, playlists, encrypted MP4 and length-less TS/FLV refused) and downloaded on one connection, resumed by
+      byte offset. `ftp://` uses explicit TLS when the server offers it and its certificate verifies (else plain FTP,
+      what the user asked for); `ftps://` is implicit TLS that must verify. Android 8+ (Commons Net needs
+      `java.time`); below, `UNSUPPORTED_FORMAT`.
+    - **Mirrors (#347):** a file download can have up to 4 other links to the same file (Download details → "Add
+      mirror", or `link | mirror` on a Batch Add line). Each is used only after it serves byte ranges of a file of
+      the same length whose first 64 KiB have the same SHA-256 as the main link's, checked again at every start;
+      the parts of a multi-connection download are then spread across them, and one that fails or answers other
+      bytes (another length, a wrong range, a changed validator) is dropped with its parts handed back.
+    - **Wi-Fi + mobile data (#446, "Experimental", off by default):** on Wi-Fi, a multi-connection download also
+      puts some parts on mobile data (`requestNetwork(TRANSPORT_CELLULAR)` held only while it runs). Never with
+      "Wi-Fi only" (the app's or the download's own); the mobile bytes are the download's own progress, so they count
+      toward the data limit (H6) like every byte.
 - Progressive files are streamed directly to disk and kept byte for byte when they already play (MP4/M4V/MOV,
   WebM/MKV, 3GP/3G2); a container that plays or seeks poorly is remuxed without re-encoding (MPEG-TS, fragmented MP4, AVI,
   FLV → MP4); only a track the output cannot carry is re-encoded (MP3/AC-3 → AAC, VP8/MPEG-2 → H.264) with the
@@ -32,12 +56,23 @@ Goals
   WebM when both tracks are VP8/VP9 + Opus/Vorbis.
 - Downloads keep running with the app in the background, the screen off, and across process death.
   Pause, resume, retry and cancel always do what they say.
+- **Downloader extras (1.2.0, HANDOFF §4.37).** Engine tuning — buffer size, a write cache, low memory mode (automatic
+  on low-RAM phones), a per-site cooldown, "Close VidoraX when downloads finish". Bulk adding — URL patterns,
+  include/exclude rules, M3U/PLS/XSPF playlists and RSS/Atom feeds. Watched links (a file, a page or a feed checked
+  by an hourly JobScheduler job; a change notifies and can download). A site grabber (same-site pages, robots.txt,
+  depth 2, ≤ 50 pages, 1 request/s, saved to Saved pages, videos listed for choosing). Saved comments (JSON-LD,
+  Reddit). The user's own cloud apps: "Save a copy to…", folder import, Save Location into a cloud folder with Wi-Fi
+  only and retries, and the queue sent to another phone as a file. No server, no account, no cookies on pages
+  VidoraX reads by itself.
 - One library with a single source of truth: thumbnail, title, site, duration, resolution, size. Search, sort,
   filter by site, favorites, multi-select, rename, delete, share, open with, save to gallery. *(2026-10-03: filter by
   site and multi-select are not built yet — Phase 21 in `docs/ROADMAP.md`.)*
 - A clean player: autoplay, resume position, simple controls, gestures, fullscreen, picture-in-picture, speed,
   next/previous.
 - The browser is usable immediately at launch.
+- **Remote control and integrations (P6, §3.9):** off by default. A LAN-only web server on the phone (Web UI, JSON API,
+  `vidorax-cli`, the VidoraX Bridge browser extension, "Send to computer") and an Automation API for other apps on
+  the phone (Tasker). No server of ours, nothing reachable from the internet, no new permission or service type.
 - **Downloadable ≠ internally playable.** A container nothing on the device can read (ASF/WMV: Media3 has no ASF
   extractor and Android no WMV decoder) is kept exactly as downloaded and relies on "Open with" / an external player.
   The same holds for an AVI whose header declares a video stream Android cannot decode (DivX 3 / `DIV3`: Media3 reads
@@ -60,7 +95,7 @@ Non-goals (refused, with a clear message to the user)
 - Unresolved `blob:` / MSE-only sources: a player whose files cannot be tied to it exactly (e.g. several candidate
   files from a feed that prefetches the next item) is not guessed.
 - Merging tracks whose lengths or starts disagree (they are not one video's): `TRACK_MISMATCH`.
-- Live streams while "Live recording (beta)" is off; live DASH always (F6 records live HLS only, §3.8).
+- Live streams while "Live recording" is off; live DASH always (F6 records live HLS only, §3.8).
 - Bypassing logins or paywalls. Content is only reachable when the user can already play it in the browser.
 
 ## 2. System overview
@@ -104,6 +139,8 @@ All Media3 artifacts pinned to **exactly** the version expo-video uses (`1.9.0`,
 - `androidx.media3:media3-exoplayer-hls` (`HlsPlaylistParser` — for parsing unencrypted VOD playlists only),
   `media3-datasource-okhttp`, `media3-common`.
 - `com.squareup.okhttp3:okhttp` 4.x (already in the APK via React Native).
+- `commons-net:commons-net` 3.13.0 (Apache-2.0, #304 FTP/FTPS). Its `FTPClient` keeps `java.time` fields: FTP runs on
+  Android 8+ only (no core-library desugaring in the app). Tests use Apache FtpServer 1.2.1 in process.
 - `media3-exoplayer-dash` (`DashManifestParser` — planning MPDs; nothing is played with it) and `media3-inspector`
   (`MediaExtractorCompat`: library metadata and every read of a downloaded track — the player's own extractors).
 - `media3-muxer` (`Mp4Muxer`/`WebmMuxer`: lossless remux and A/V merge, `process/Remuxer`) and `media3-transformer`
@@ -123,8 +160,13 @@ All Media3 artifacts pinned to **exactly** the version expo-video uses (`1.9.0`,
 | `plan/DashPlanner` | Media3 `DashManifestParser` over a bounded (4 MiB) fetch. Refuses: any `ContentProtection` (raw, namespace-aware scan — Media3 records nothing for a bare `mp4protection`) or DRM init data → PROTECTED; `type="dynamic"` → LIVE; several periods and audio-only manifests → UNSUPPORTED; 401/403, 404/410, 5xx and transport failures keep their transient codes. Every decodable video representation on a public host is eligible: single-file (BaseURL/SegmentBase → `DashTrackSource.File`) or segmented (SegmentTemplate `$Number$`/`$Time$`/SegmentTimeline, SegmentList → init + every segment as an `HlsPlan`-shaped segment plan, bounded 20 000 segments; unbounded templates refused). Selection: `variant.videoId` exactly (never swapped), else best ≤ `maxHeight`, else best. Sound: the representation's own (muxed codecs), else the separate audio adaptation set's `variant.audioId`, else main role > unlabelled > AAC > Opus/Vorbis > others, highest bitrate. `presentationTimeOffset` becomes the track's time offset. A plan that is one complete muxed file keeps the progressive path (`DashResolution.Ready`); anything else is `DashResolution.Tracks` (file tracks classified by their own bytes for their role, segment tracks by their init section). The engine re-reads the manifest on every run. |
 | `plan/HlsPlanner` | Media3 `HlsPlaylistParser` (multivariant with its `EXT-X-DEFINE` imports, or media). Variant: `variant.videoId` exactly (never substituted), else best ≤ `maxHeight`, else best decodable. A variant whose `AUDIO` group has only renditions with a URI gets that group's rendition (`variant.audioId`, else `DEFAULT`, else `AUTOSELECT`, else the first) planned too, as `HlsPlan.audio` (same refusals; discontinuities with separate audio refused). Refuses: any `EXT-X-KEY`/`EXT-X-SESSION-KEY` method other than `NONE` (decided from the tag text too — Media3 records nothing for SAMPLE-AES identity or FairPlay), DRM init data, live (no `EXT-X-ENDLIST`; F6's `planLive` / `liveWindow` accept it for a recording, §3.8), `EXT-X-GAP`, audio-only, fMP4 that changes init section or timeline mid-stream, segments on non-public hosts. `confirmTrack` checks a track's first bytes for its role (video: a picture; audio: TS, packed audio or a sound track; never encrypted). A child playlist refused 401/403 is retried once with the parent's query (token propagation). Output: an `HlsPlan` with a structure fingerprint (not token-sensitive). |
 | `transfer/ProgressiveTransfer` | Streamed write to `.part` file. Resume at byte level with `Range` + `If-Range`: the validator (a strong ETag, else Last-Modified — never a weak ETag) of the response that started the `.part` is kept beside it (`download.part.validator`), so it survives pause, process death, reboot and a re-signed link. On server 200 to a ranged request, restart from zero (never append a 200 onto an existing partial). A write the disk refuses is a `StorageWriteException` (ENOSPC → `NO_SPACE`), never a network error. A superseded worker never touches the `.part`. Atomic rename on completion. **Several connections** (`DownloadSettings.connectionsPerFile` > 1, F1): the first request asks `bytes=<from>-`; when the answer proves ranges — a `206` at `<from>` with the total size, ≥ 16 MiB left, a strong validator — the rest goes to `transfer/RangedDownload`. A file the probe already knows is under 16 MiB gets one connection and today's exact requests. |
+| `net/FtpSession` | #304: `FtpUrl` (ftp/ftps link → host, port, decoded path; the user name and password kept apart — never in `withoutUserInfo`/`redacted`, `Redact.url` strips them too), `FtpHostPolicy` (the same private-network rule as http, no DNS), `FtpConnector` (Commons Net `FTPSClient`: `ftp://` tries AUTH TLS with the system trust store and endpoint checking and stays plain only when the server refuses TLS or its certificate does not verify — no trust-all manager; `ftps://` implicit TLS, never plain; PBSZ 0 + PROT P, and a server that refuses an encrypted data connection is reconnected with a clear one; the data connection always goes to the control connection's address, never to a PASV reply's; binary, passive, UTF-8; 20 s connect / 30 s read). Negative replies become the HTTP status the engine already classifies (`FtpReplies`: 530 → 401, 550/553/450 → 404, other 4xx → 503 transient, else 400); a message holds the reply code only. Android 8+ (`FTPClient` has `java.time` fields). |
+| `plan/FtpProbe` | #304: SIZE, then RETR of the first 64 KiB (the data connection dropped and the reply consumed), through the same `MediaSniffer` allowlist as http; MP4/MOV with a trailing `moov` is read again with REST at its offset (encrypted → `DRM_PROTECTED`). `kind: ftp`, `finalUrl` without user info, `resumable` = FEAT `REST STREAM`. Sign-in: the link's own (a probe before the download exists) or `DownloadCredentials.ftpLoginFor(authKey)`; anonymous otherwise. |
+| `transfer/FtpTransfer` | #304: one connection into `download.part`. Validator `ftp <size> <mdtm>` beside the `.part` (spaces on purpose: `ResumeValidator` would quote a space-less one as an ETag); a resume sends REST at the `.part`'s length when it still matches, else the whole file from 0; a server that refuses REST → from 0. Short read against the size → `MediaNetworkException` (kept for resume); no size → only a `226` makes it complete. Pause closes the sockets on their own thread. `RealTransfers` sends `ftp(s)://` here, everything else to `ProgressiveTransfer`. |
+| `transfer/MirrorCheck` | #347: the SHA-256 of `bytes=0-65535` of the main link and of each mirror; a mirror is accepted when it answers a `206` of exactly that range of a resource of the same total length with the same hash, is a public http(s) link (`HttpClient.allows`, never YouTube) and is not the main link. Its own validator is kept for its `If-Range`. Run at every multi-connection start, so a changed mirror is never used. |
+| `net/MultiNetwork` | #446: `MultiNetworkPolicy.wants` (setting on, the download may use mobile data, > 1 connection, on an unmetered network); `AndroidMobileData` (`SecondNetwork` port): `requestNetwork(TRANSPORT_CELLULAR + INTERNET)` on the first lease, released when the last lease ends; waits ≤ 4 s for the network, else the download runs on Wi-Fi alone; the client is `HttpClient.boundTo(network.socketFactory, network.getAllByName)` with its own pool. Needs `CHANGE_NETWORK_STATE` (normal). |
 | `transfer/LiveHlsRecorder` | F6: a live HLS media playlist recorded into `download.part` (§3.8): reload every target duration (half of it when nothing new came, RFC 8216 §6.3.4), segments keyed by media sequence, appended strictly in order through `HlsTransfer.liveIo` (the same fetch, token propagation, F1 fetch-ahead and F2 limiter), TS continuity renumbered and an fMP4 init written once; after each segment the `.part` is synced and `work/<id>/live.checkpoint` (JSON: last sequence, bytes, recorded µs, container, TS counters, discontinuities, missed — no URL) written atomically. Stops: Stop, `EXT-X-ENDLIST`, the maximum length, low storage (free < recorded + 64 MiB), a stall (no new segment for max(30 s, 3 × target)), an fMP4 init change. |
-| `transfer/RangedDownload` | One file over up to N connections: the `.part` pre-sized to the whole file, N equal parts, each a bounded `Range` with `If-Range` written at its offset (positional `FileChannel` writes — no join step, no second copy). `download.part.parts` (total, validator, `[start, end, done]` per part) is written ~1/s and whenever it stops, after `force()` — pause, network loss and process death resume every part. Dynamic segmentation: a free connection takes the second half of the largest running part (halves ≥ 1 MiB). Never a failure of its own: `200`/`416`/misaligned to a part → continue on one connection from the contiguous prefix; another validator → restart from 0 on one connection; `401`/`403`/`429` while others are open → carry on with one connection; a dropped part retries alone. `PartProgress.bytesOnDisk` is what the engine counts as downloaded (not the pre-sized length). |
+| `transfer/RangedDownload` | One file over up to N connections: the `.part` pre-sized to the whole file, N equal parts, each a bounded `Range` with `If-Range` written at its offset (positional `FileChannel` writes — no join step, no second copy). `download.part.parts` (total, validator, `[start, end, done]` per part) is written ~1/s and whenever it stops, after `force()` — pause, network loss and process death resume every part. Dynamic segmentation: a free connection takes the second half of the largest running part (halves ≥ 1 MiB). Never a failure of its own: `200`/`416`/misaligned to a part → continue on one connection from the contiguous prefix; another validator → restart from 0 on one connection; `401`/`403`/`429` while others are open → carry on with one connection; a dropped part retries alone. `PartProgress.bytesOnDisk` is what the engine counts as downloaded (not the pre-sized length). **Routes** (#347/#446): besides the main link, each accepted mirror and — with a second network — the main link and each mirror over mobile data are `PartRoute`s (own URL, validator, client); worker *i* uses route *i* mod *n*, and at least one connection per route is opened (max 4). Anything wrong on a mirror or mobile route (network, non-206, another length or range, a changed validator, refused, retries used up) drops that route for the run; its part goes back to the queue and the connections it added stop. The main route keeps today's rules. `RouteReport` (accepted/rejected mirrors, bytes per route label, dropped routes — never a URL) is logged by the engine as `VidoraSources`. |
 | `transfer/HlsTransfer` | One segment track (an HLS media playlist, the audio rendition, or a DASH segment representation — `HlsTransferSpec.role`) appended to its own `.part` (`download.part` / `audio.part`) in order; after each one the `.part` is synced and `work/<id>/hls.checkpoint` advanced (segments done, bytes, fingerprint, container, TS continuity counters — no URL, no token). Resume truncates to the checkpoint and continues at the next segment; a checkpoint for another stream restarts from zero. With `connections` > 1 (F1) up to N segments are fetched at once into `download.part.seg<i>` (`.tmp` until whole) and still appended strictly in order; a fetch's failure surfaces only when its turn comes, and whole fetched-ahead files of the same stream are reused after a pause or restart. MPEG-TS: byte concatenation with each packet's continuity counter renumbered so the joins are continuous (`transfer/TsContinuity`: per-segment counters made Media3's `TsExtractor` drop the last frame before every join, and frames after it when segments do not start on key frames; an older build's prefix is renumbered once on resume). fMP4: init once, each segment's own `sidx` renamed `free`, one global `sidx` written into space reserved after the init (`transfer/Fmp4Index`) so players get the real duration and seeking — no sample byte changes, no sample byte changes. The container is confirmed from the bytes (subtitles refused; DASH WebM accepted; `plan/HlsSegmentFormat`, shared with the classifier). An audio track may be HLS packed audio: each segment's ID3 tag is dropped and the first one's `com.apple.streaming.transportStreamTimestamp` is kept (checkpointed) as the track's time offset, so the merge keeps it in sync with an MPEG-TS video. |
 | `process/MediaProcessor` | After the transfers: keep (MP4/MOV/M4V/F4V not fragmented, WebM/MKV, 3GP/3G2, and anything Media3 cannot read — WMV, an AVI whose video only an external player decodes — byte for byte), remux (MPEG-TS, fragmented MP4, AVI, FLV → MP4), merge (separate video + audio → MP4, or WebM for VP8/VP9 + Opus/Vorbis) or transcode (only the track the output cannot carry, into its own file, then merged losslessly with the copied track at its original timeline offset). Split inputs are refused before a byte is written when their stated lengths disagree (`TRACK_MISMATCH`), and every produced file is read back: a video track, the audio when one went in, the source's length, and merged tracks that start within 2 s and last as long as each other (from the samples actually written). Failures: `VIDEO_TRACK_MISSING`, `AUDIO_TRACK_MISSING`, `TRACK_MISMATCH`, `MUX_FAILED`, `TRANSCODE_FAILED`, `INVALID_MEDIA`, `DRM_PROTECTED`. |
 | `process/Remuxer` | `MediaExtractorCompat` (Media3's extractors; MPEG-TS with `TimestampAdjuster.MODE_NO_OFFSET` so renditions keep their offsets) → `Mp4Muxer` (moov at the end: no reserved padding) / `WebmMuxer`. One video + at most one audio track; files interleaved by time; every file shifted by its time offset, the output moved so its earliest sample is at 0 (a later track keeps its delay as an edit list). A fragmented MP4's own edit-list start delays, which Media3's fragmented extractor leaves out (an empty edit followed by the media edit, as HLS fMP4 from ffmpeg writes them), are added per track (`process/FragmentEdits`) — without them an fMP4 audio rendition starts up to tens of ms early. In-band codec configs (MPEG-4 VOL, H.264 SPS/PPS, HEVC VPS/SPS/PPS in AVI/FLV) recovered from the first key frame (`process/CodecConfig`). Rotation kept. Cancellable between samples; a partial output is deleted. |
@@ -133,7 +175,7 @@ All Media3 artifacts pinned to **exactly** the version expo-video uses (`1.9.0`,
 | `process/MpegAudioTranscoder` | F4: MP2 track → `MpegAudioDecoder` → platform AAC-LC encoder (80 kb/s per channel) → single-track MP4 via `Mp4Muxer`, starting at zero like the Transformer path. A frame that does not decode becomes silence of its length (sync kept); mostly undecodable or no decodable frame → `TRANSCODE_FAILED`. |
 | `process/Mpeg1SystemStream` | F4: Media3's `PsExtractor` reads MPEG-2 packaging only. An MPEG-1 system stream is re-packaged first (`rewrapped-mpeg2.vob` in the work folder): 12-byte pack headers → 14-byte MPEG-2 ones (same SCR and mux rate), each packet's MPEG-1 header (stuffing, STD buffer, PTS/DTS) → an MPEG-2 PES header with the same PTS/DTS; payload byte for byte. When the copy would only be kept, the original download is kept. |
 | `plan/MpegProgramStream` | F4: pack-header detection (MPEG-1 `0010`, MPEG-2 `01`), `isScrambled` (any audio/video/private-1 PES with `PES_scrambling_control ≠ 00` — CSS — refused as `DRM_PROTECTED` at the probe and, over the first 4 MB, by the Verifier) and `hasVideoStream` (a video PES id: Android's metadata reader misses MPEG-1 system-stream video, so the engine's audio-only gate trusts the packets, as it trusts a DivX AVI's header). |
-| `verify/Verifier` | Post-download validation on the bytes on disk: expected length, container magic (MPEG-TS only when an HLS download produced it), no DRM brands and no encrypted tracks in the `moov` wherever it sits, no scrambled MPEG program stream packets (protected → `DRM_PROTECTED`, not "corrupt"). HLS output must also decode as a video (MediaExtractor) before COMPLETED. |
+| `verify/Verifier` | Post-download validation on the bytes on disk: expected length, container magic, no DRM brands and no encrypted tracks in the `moov` wherever it sits, no scrambled MPEG program or transport stream packets in the first 4 MB (protected → `DRM_PROTECTED`, not "corrupt"). HLS output must also decode as a video (MediaExtractor) before COMPLETED. |
 | `library/LibraryStore` | Library rows, queries (search, site, favorites, sort, paging), rename (title only), per-item favorites, delete (file + thumbnail; gallery copy is left alone). Missing-file repair: an item whose file is gone or empty (deleted or moved outside VidoraX) is removed with its thumbnail and announced `deleted` — at module start, on `reconcileLibrary` (Player tab focus, app foreground, pull-to-refresh, the player finding the file missing) and when an action finds the file gone. The recorded MIME type follows the container proven from the bytes (a MOV is `video/quicktime`, even when the platform says `video/mp4`). |
 | `library/MediaInfo` | `MediaMetadataRetriever` for duration, width, height, rotation, codecs. |
 | `library/Thumbnails` | Frame at 10% of duration (min 1 s), scaled to 480 px wide, WebP in `filesDir/thumbs/<id>.webp`. |
@@ -213,6 +255,12 @@ download_bandwidth(...)                                                    -- sc
 download_schedule(download_id TEXT PRIMARY KEY, start_at INTEGER NOT NULL) -- schema v6 (F3, §3.7)
 -- A download's own "Start at…" time (epoch ms). Dropped when the download completes or is removed, and once the
 -- time has passed and the download is let through. New table only: migration 6 is CREATE TABLE IF NOT EXISTS.
+download_mirrors(download_id TEXT NOT NULL, position INTEGER NOT NULL, url TEXT NOT NULL,
+                 PRIMARY KEY (download_id, position))                      -- schema v7 (#347)
+-- A progressive download's mirrors in the user's order (≤ 4; the main link and repeats dropped). Like downloads.url
+-- they may carry a signed query. Removed with the download. New table only: migration 7 is CREATE TABLE IF NOT EXISTS.
+-- #304: an FTP row has kind 'ftp' and url = the link WITHOUT user name or password; the sign-in lives in
+-- net/DownloadCredentials (memory only, pinned to the ftp(s) origin; after a process death the app asks again).
 ```
 
 Request context (`request_json`) contains User-Agent, Referer, Origin and extra headers, never cookie values.
@@ -316,7 +364,7 @@ user-initiated job / foreground service when allowed, else a plain continuation 
 
 ### 3.8 Live recording (F6)
 
-Behind Settings → Downloads → Advanced → **"Live recording (beta)"** (`DownloadSettings.liveRecording`, default off)
+Behind Settings → Downloads → Advanced → **"Live recording"** (`DownloadSettings.liveRecording`, on by default since 1.2.0 — a beta, off by default, before)
 and **"Maximum length"** (`liveRecordingMaxMinutes`, 30 min / 1 / 2 / 4 / 8 h offered, 15–720 accepted, default 2 h);
 both live in the engine's SharedPreferences (pushed by `ensure-bridge`), so a recording obeys them with the app closed.
 
@@ -339,6 +387,44 @@ both live in the engine's SharedPreferences (pushed by `ensure-bridge`), so a re
   rule). Nothing recorded → `failed` (`NO_SPACE` when storage ran out, else `NETWORK`). A recording has no identity:
   two recordings of one stream are two videos. A Retry of a failed recording finalizes what is on disk, else records
   anew.
+
+### 3.9 Remote control and integrations (P6: #439, #438, #501, #499, #500, #511)
+
+Kotlin package `remote/` (NanoHTTPD 2.3.1, BSD-3) plus a separate Expo module `VidoraRemote` (`remote/VidoraRemoteModule.kt`,
+contract `modules/vidorax-media/src/VidoraRemote.types.ts`), so the remote features stay apart from `VidoraMedia`.
+API reference: `docs/REMOTE_API.md`; Automation intents: `docs/AUTOMATION.md`.
+
+- **`RemoteControl`** (process singleton): started only from the app (Settings → Downloads → Remote control). Binds
+  the phone's IPv4 address on Wi-Fi/Ethernet (`LanAddress`, never mobile data or VPN) and 127.0.0.1 (USB
+  `adb forward`), on a random port 20000–59999 remembered in SharedPreferences `vidorax_remote`. A watchdog every 10 s
+  applies `RemoteStopPolicy`: 30 min without a request → stop; the bound address gone (also on the
+  `NetworkCallback.onLost` of that network) → stop; a minute in the background (`ActivityLifecycleCallbacks`) with
+  `BackgroundDownloads.hasLiveWork()` false → stop. It owns no service: the existing download runner keeps the process
+  up while downloads run.
+- **`RemoteServer`** (NanoHTTPD adapter): ≤ 16 connections, bodies ≤ 16 KB read by `Content-Length` (never to a temp
+  file), converts to a plain `RemoteRequest` for **`RemoteRouter`**, which does all checks: `Host` must be the bound
+  address (loopback names only on the loopback listener) → 421; an `Origin` must be the Web UI or a browser extension
+  → 403 (CORS only for extensions); `POST` must be JSON → 415; then Bearer-token auth for everything but `info`/`pair`.
+- **`RemoteAuth`**: a 6-digit PIN per server run (QR code shows `url/#pin=…`); 5 wrong → 30 s lock doubling to 15 min,
+  15 wrong → PIN withdrawn until "New PIN". Tokens: 256-bit random, stored as SHA-256 (`paired_clients`), ≤ 10,
+  expire after 90 days unused.
+- **Links in** (`LinkInbox`): Web UI, extension, CLI and the `ADD_DOWNLOAD` intent submit a link; it is handed to
+  JavaScript (`onLinkRequest`) where `src/remote/link-intake-queue.ts` runs `addLinkFromBatch` one at a time — the
+  same analysis, refusals and atomic duplicate check as Batch Add — and reports `added/duplicate/needs_review/refused`
+  back (`GET /api/v1/links/<id>`). Links that arrive with no JavaScript running are kept (`pending_links`, ≤ 50) and
+  handed over when the app's JS starts.
+- **Queue out:** `GET /api/v1/downloads` is `engine.listDownloads()` + the last progress event per id (collected only
+  while the server runs); pause/resume/retry/cancel/pause-all/resume-all call the engine exactly as the app's buttons.
+- **Send to computer** (`SentList`, `sent_items`, ≤ 30): a link and, for a finished download, its library item. The
+  Web UI downloads the file through a 10-minute ticket path `/files/<48-hex>/<name>` (Range supported); the library is
+  asked again on every ticket, so a file moved to Private or deleted is not served.
+- **Automation API** (`Automation.kt`): exported `AutomationReceiver` for `com.vidorax.action.ADD_DOWNLOAD`,
+  `PAUSE_ALL`, `RESUME_ALL`; `AutomationEvents` (attached once in `BackgroundDownloads.install`) broadcasts
+  `com.vidorax.action.DOWNLOAD_COMPLETE` with `id` + `title` only. Both do nothing unless `allow_other_apps` is on.
+- **Web UI:** static files in `android/src/main/assets/vidorax-remote/` (no build step; strict CSP, DOM built with
+  `textContent` only; English/Urdu from the phone's language; polls the queue every 1.5 s).
+- **Outside the app:** `extensions/cli/vidorax-cli` (POSIX sh + curl) and `extensions/vidorax-bridge/` (Manifest V3,
+  Chrome/Edge/Firefox, one manifest; optional host permission for the single phone origin asked at pairing).
 
 ## 4. Native module: `modules/vidorax-web`
 
@@ -427,7 +513,8 @@ with a document-start detector, was never mounted and was removed on 2026-09-24.
   user asked the browser for exactly this resource. It enters as a `userRequested` observation of the owning tab; the
   general page context adopts it as the page's current media (`adoptUserRequestedMedia`: a new generation, until the
   page's player moves to another element or source), and correlation gives it STRONG ownership. It is verified and
-  classified like any other source. This is how a pasted DASH/MOV/attachment/extensionless link gets its offer.
+  classified like any other source. This is how a pasted DASH/MOV/attachment/extensionless link gets its offer. A `.ts`
+  download (`video/mp2t` or the name) is claimed too: players fetch HLS segments, they never download them.
 - **Blob / MSE players** (`engine/mse-playback-context.ts`, `session-media/`): a `blob:` player is offered only when a
   real HTTP(S) source for it can be proven. The page reports each MediaSource's SourceBuffer layout (`mseTracks`, from
   the MIME types given to `addSourceBuffer`; a MediaSource created before the observer was injected is matched to its
@@ -581,6 +668,54 @@ paste ─► pasted-link.service ─► direct-analysis.service (one session per
   downloaded videos, a page where the user already favorited one of its videos, and a page with no download are left
   alone; nothing is un-favorited; the legacy tables are only read. MMKV
   `vidorax.mmkv.flags.favoritesPerItemMigrated.v1` is set only after success.
+
+### 6.1 Safety and modes (P8, 1.2.0)
+
+Everything here runs on the device: no list is downloaded and nothing is looked up online.
+
+- **Malware Warning (#461).** `vidorax-media` `safety/ContentSniff` reads a file's first 4 KB: ZIP/APK/JAR, DEX, PE
+  (`MZ` + `PE\0\0`), ELF, Mach-O, OLE/MSI, `#!/` scripts, RAR and 7z. `assess(name, prefix)` gives
+  `disguised` (a video, picture, document or subtitle name on such bytes), `double_extension` (`clip.mp4.exe`) or
+  `program`. Used by:
+  - the probe: a "video" whose bytes are a program or archive is `NOT_MEDIA` with `disguisedAs` (e.g. an APK
+    renamed `.mp4`); `src/downloads/safety/probe-observations.ts` sees every probe through `observeEngine` (the one
+    wrapper in `getV2Engine`) and `file-safety-dialog.ts` tells the user once per link ("VidoraX did not download it");
+  - "Save to VidoraX" (`IncomingImport` refuses with `ERR_UNSAFE_FILE`), Open with / Share of a library file
+    (`checkLibraryFileSafety`, asked in `completed-file/action-service.ts` before `openWith`/`share`; "Open anyway"
+    or Cancel), Open with of an incoming file (`checkIncomingFileSafety`) and Download Details
+    (`DownloadSafetySection`);
+  - H17 (`dangerous-download.ts` + `vidorax-web` `RiskyDownloads`): more program types (`com pif ps1 hta wsf cpl lnk`),
+    a double extension or a video-looking name sent with a program MIME type routes to the warning before detection
+    (`RiskyDownloads.isDisguised`) with the stronger "This file is disguised" text. A video by MIME type is still
+    never checked by name (HLS segments carry odd names); its bytes are, by the probe and by the browser verifier
+    (`resolveVideoResource` → `content-kind.ts`, reason `DISGUISED_PROGRAM`). A video-typed download detection does
+    not take (a private-network page, no tab owner) still goes to DownloadManager unchecked. The lists are kept equal
+    in JS, `RiskyDownloads` and `ContentSniff` by `dangerous-download.native-parity.test.ts`.
+- **Source check (#514).** `src/downloads/safety/source-check.ts` + `SourceCheckBadge` in the quality sheet:
+  Secure / Check source / Not secure from the page or pasted link, the media URL and the final URL. Not secure: plain
+  HTTP, or HTTPS → HTTP. Check source: a numeric IP host (also number/hex forms), an international (punycode) host,
+  a mixed-script look-alike label (Punycode decoded in JS, RFC 3492), a known link shortener, a free file-locker host
+  (both short bundled lists), or ≥ 3 redirect hops (`ProbeResult.redirects`, counted by `HttpClient` for a
+  progressive file). Tapping the badge lists every reason.
+- **Extract archive (#407).** The manifest takes `VIEW` of `application/zip` (and RAR/7z, only to say they are not
+  supported) and `SEND` of a zip, so a zip the browser handed to DownloadManager opens from its notification too.
+  `IncomingMediaIntents` gives `kind: 'archive'`; `IncomingMediaHost` opens `/archive-import?token=` instead of the
+  Player. `archive/ArchiveImport` copies the zip once to `no_backup/archives/` (≤ 4 GB + 64 MB) and `ZipArchive`
+  reads its central directory without trusting it: the whole archive is refused when an entry is encrypted (flag bit
+  0/6 or AES method 99), a path escapes (`..`, `/`, `C:`, NUL), there are > 1000 entries, the contents add up to
+  > 4 GB, an entry over 1 MB (or the whole) inflates > 100×, or it is an APK. Extraction enforces the same limits on
+  the bytes actually inflated and checks each CRC. Only video entries are imported, one by one through
+  `IncomingImport` (SHA-256 duplicates skipped); a "video" entry whose bytes are a program is left out as disguised;
+  programs inside are listed and warned about, never extracted. `.srt` (converted by `subtitles/SrtToVtt`) and
+  `.vtt` entries matching a video's name (or all of them, with one video) are saved beside it as a finished subtitle
+  record (`SubtitleDownloads.saveLocal`). The copy is deleted after extraction or when the screen closes.
+- **Simple / Advanced (#516/#517).** `settingsView` in the settings store: `simple` for a new install, `advanced`
+  for settings saved before 1.2.0 (`settings-view.ts` `settingsViewMigration`); it travels in a settings backup.
+  `SettingsRow` and `SettingsSection` take `advanced`; `<AdvancedSetting>` wraps anything else (a row with its
+  control). Simple hides, in Download Settings: Connections per file, the download hours schedule, Advanced network
+  (user agent, headers, timeouts, retries), File naming and the Advanced section (live recording). Any package marks
+  its own rows the same way. The switch heads Download Settings ("Settings view: Simple"); the main Settings row
+  shows the mode.
 
 ## 7. Player: `src/player`
 

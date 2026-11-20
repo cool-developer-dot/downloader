@@ -2,10 +2,14 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  COPY_RETRY_AFTER_MS,
+  copyRetryDue,
+  copySettled,
   copySubfolders,
   DEFAULT_SAVE_LOCATION,
   folderLabelFromTreeUri,
   MAX_CATCH_UP,
+  MAX_COPY_ATTEMPTS,
   MAX_COPY_RECORDS,
   MAX_FOLDER_NAME_LENGTH,
   normalizeCopyRecords,
@@ -38,6 +42,7 @@ describe('defaults', () => {
       bySite: false,
       enabledAt: null,
       accessLost: false,
+      wifiOnly: false,
     });
     assert.deepEqual(normalizeSaveLocation(undefined), DEFAULT_SAVE_LOCATION);
     assert.deepEqual(normalizeSaveLocation('nope'), DEFAULT_SAVE_LOCATION);
@@ -282,5 +287,41 @@ describe('catch-up', () => {
   test('a pass is bounded', () => {
     const many = Array.from({ length: MAX_CATCH_UP + 10 }, (_, i) => ({ id: `i${i}`, completedAt: 2_000 + i }));
     assert.equal(pendingCopyIds(many, {}, on()).length, MAX_CATCH_UP);
+  });
+});
+
+describe('#513 auto upload', () => {
+  test('Wi-Fi only is kept, off by default, and changed by its own action', () => {
+    assert.equal(normalizeSaveLocation({ wifiOnly: true }).wifiOnly, true);
+    assert.equal(normalizeSaveLocation({ wifiOnly: 'yes' }).wifiOnly, false);
+    const on = reduceSaveLocation(DEFAULT_SAVE_LOCATION, { type: 'set-wifi-only', value: true });
+    assert.equal(on.wifiOnly, true);
+    assert.equal(reduceSaveLocation(on, { type: 'set-wifi-only', value: true }), on);
+  });
+
+  test('a failed copy is tried again later, at most three times; a lost folder never', () => {
+    const failed = (at: number, attempts: number) => ({ status: 'failed' as const, reason: 'storage' as const, at, attempts });
+    assert.equal(copyRetryDue(failed(0, 1), COPY_RETRY_AFTER_MS - 1), false);
+    assert.equal(copyRetryDue(failed(0, 1), COPY_RETRY_AFTER_MS), true);
+    assert.equal(copyRetryDue(failed(0, 2), COPY_RETRY_AFTER_MS), false, 'the second wait is twice as long');
+    assert.equal(copyRetryDue(failed(0, 2), 2 * COPY_RETRY_AFTER_MS), true);
+    assert.equal(copyRetryDue(failed(0, MAX_COPY_ATTEMPTS), 10 * COPY_RETRY_AFTER_MS), false);
+    assert.equal(copyRetryDue({ status: 'failed', reason: 'access', at: 0 }, 10 * COPY_RETRY_AFTER_MS), false);
+    const settings = { enabled: true, treeUri: 'content://x/tree/1', enabledAt: 1 };
+    const items = [
+      { id: 'due', completedAt: 5 },
+      { id: 'wait', completedAt: 6 },
+      { id: 'done', completedAt: 7 },
+    ];
+    const records = {
+      due: failed(0, 1),
+      wait: failed(COPY_RETRY_AFTER_MS, 1),
+      done: { status: 'copied' as const, folderUri: 'content://f', documentUri: 'content://d', name: 'n', folderLabel: null, at: 1 },
+    };
+    assert.deepEqual(pendingCopyIds(items, records, settings, new Set(), COPY_RETRY_AFTER_MS), ['due']);
+    assert.deepEqual(pendingCopyIds(items, records, settings), [], 'without a time, every record counts as settled');
+    assert.equal(copySettled(records.wait, COPY_RETRY_AFTER_MS), true);
+    assert.equal(copySettled(undefined, 0), false);
+    assert.equal(normalizeCopyRecords({ a: { status: 'failed', reason: 'storage', at: 1 } }).a?.status, 'failed');
   });
 });

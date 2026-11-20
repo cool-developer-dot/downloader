@@ -40,7 +40,15 @@ export type SourceKind =
    * `probe` of a live HLS stream (`kind: 'hls'` or `'live'`) answers `ok` with `kind: 'live'` — classified as the
    * recording would meet it, so an encrypted live stream is still `DRM_PROTECTED`.
    */
-  | 'live';
+  | 'live'
+  /**
+   * #304: one file on an FTP server — `ftp://` (explicit TLS when the server offers it) or `ftps://` (implicit TLS,
+   * the certificate must verify). Classified like a progressive file from its size and first bytes; one connection,
+   * resumed by byte offset. A user name and password in the link become the download's sign-in (native memory only,
+   * like `credentials`); the stored link never holds them. Android 8+ (`UNSUPPORTED_FORMAT` below). Probe with
+   * `kind: 'ftp'` (or no kind) and enqueue with `kind: 'ftp'`.
+   */
+  | 'ftp';
 
 export type SiteId =
   | 'instagram'
@@ -166,6 +174,8 @@ export type ProbeResult =
       durationMs: number | null;
       /** The download merges a separate audio track into the video (split files, HLS/DASH separate audio). */
       mergesAudio?: boolean;
+      /** P8 #514: redirect hops the first request followed (progressive files). Absent from older native builds. */
+      redirects?: number;
     }
   | {
       ok: false;
@@ -174,7 +184,74 @@ export type ProbeResult =
       message: string | null;
       /** #299: the server answered 401 and asks for HTTP Basic sign-in. Absent from older native builds. */
       authChallenge?: AuthChallenge | null;
+      /**
+       * P8 #461: `NOT_MEDIA` whose first bytes are this program or archive (an APK, EXE, … named like a video).
+       * Absent from older native builds.
+       */
+      disguisedAs?: ContentKind | null;
     };
+
+/** P8 #461: what a file's first bytes say it is, when it is a program or an archive. */
+export type ContentKind = 'apk' | 'jar' | 'dex' | 'exe' | 'elf' | 'macho' | 'msi' | 'script' | 'zip' | 'rar' | '7z';
+
+/**
+ * P8 #461 Malware Warning: a file's name against its contents. `disguised`: a video-looking (or picture, document,
+ * subtitle) name on a program or archive; `double_extension`: `clip.mp4.exe`; `program`: an honestly named program.
+ */
+export interface FileSafetyCheck {
+  risky: boolean;
+  reason: 'disguised' | 'double_extension' | 'program' | null;
+  detected: ContentKind | null;
+}
+
+/** P8 #407: why an archive is not opened at all. */
+export type ArchiveRefusal =
+  | 'not_zip'
+  | 'rar'
+  | 'seven_z'
+  | 'encrypted'
+  | 'path_escape'
+  | 'too_many_entries'
+  | 'too_large'
+  | 'compression_ratio'
+  | 'damaged'
+  | 'android_app';
+
+export interface ArchiveEntry {
+  /** The path inside the archive. */
+  name: string;
+  sizeBytes: number;
+  /** Only `video` and `subtitle` entries are ever extracted; `program` ones are warned about. */
+  kind: 'video' | 'subtitle' | 'program' | 'other';
+  /** Stored or deflated (the two methods VidoraX reads). */
+  readable: boolean;
+}
+
+/** `inspectIncomingArchive`: the archive's listing (at most 200 entries; the counts cover all), or why not. */
+export type ArchiveInspection =
+  | {
+      status: 'ok';
+      totalBytes: number;
+      entries: ArchiveEntry[];
+      entryCount: number;
+      videoCount: number;
+      subtitleCount: number;
+      /** Names of programs inside (never extracted). */
+      programs: string[];
+    }
+  | { status: 'refused'; reason: ArchiveRefusal };
+
+/** `extractIncomingArchive`: library item ids imported, duplicates skipped, and entries left out as disguised. */
+export type ArchiveExtraction =
+  | {
+      status: 'extracted';
+      imported: string[];
+      duplicates: number;
+      subtitles: number;
+      disguised: string[];
+      failed: number;
+    }
+  | { status: 'refused'; reason: ArchiveRefusal };
 
 /**
  * #299 Authentication Support: a `WWW-Authenticate: Basic` challenge. `origin` (scheme://host:port) is where the user
@@ -317,6 +394,13 @@ export interface EnqueueRequest {
    * saved. Omitted = today's checks. Ignored by older native builds (they answer ALREADY_DOWNLOADED as before).
    */
   allowDuplicate?: boolean;
+  /**
+   * #347: other http(s) links to the same file (`progressive` only, at most 4). Persisted with the download; each is
+   * used only after it serves byte ranges of a file of the same length whose first 64 KiB have the same SHA-256 as
+   * `url`'s, checked again at every start. A mirror that fails or answers other bytes is dropped and its parts go back
+   * to the others. ERR_INVALID_REQUEST for another kind. Ignored by older native builds.
+   */
+  mirrors?: string[];
 }
 
 /**
@@ -594,7 +678,8 @@ export interface IncomingMedia {
   displayName: string | null;
   mimeType: string | null;
   sizeBytes: number | null;
-  kind: 'video' | 'audio';
+  /** P8 #407: `archive` is a `.zip` (or RAR/7z, only to say it is not supported) — listed, never played. */
+  kind: 'video' | 'audio' | 'archive';
 }
 
 /** What the player needs to play an incoming file. */
@@ -709,6 +794,26 @@ export interface DownloadSettings {
    * place). Persisted by the engine. Missing = true.
    */
   autoResume?: boolean;
+  /** #350 "Buffer size": KiB read from the network per read (16..1024). Missing = 64. */
+  bufferKb?: number;
+  /** #344 "Disk write cache": KiB gathered in memory before each disk write (0..16384, 0 = off). Missing = off. */
+  writeCacheKb?: number;
+  /**
+   * #348 "Low memory mode": 'auto' (the device decides), 'on' or 'off'. While on: one download at a time on one
+   * connection, a 32 KiB buffer and no write cache. Missing = 'auto'.
+   */
+  lowMemoryMode?: 'auto' | 'on' | 'off';
+  /** #506 "Cooldown between files": seconds a site's next download waits after its previous one (0..600). Missing = 0. */
+  cooldownSeconds?: number;
+  /** #358 "Exit when done": VidoraX closes when every download finished while it is in the background. Missing = off. */
+  exitWhenDone?: boolean;
+  /**
+   * #446 Download Settings → "Experimental: use Wi-Fi and mobile data together". Default false. On Wi-Fi, a
+   * multi-connection download also puts some parts on mobile data (Android's `requestNetwork`, held only while such a
+   * download runs). Always off while `wifiOnly` is on, and never for a download with its own `wifiOnly: true`. The
+   * mobile bytes are part of the download's progress, so they count toward the data limit like any other.
+   */
+  multiNetwork?: boolean;
 }
 
 /**
@@ -812,6 +917,9 @@ export interface VaultItem {
   unreadable?: boolean;
 }
 
+/** #507: what a folder import did. */
+export type FolderImportSummary = { found: number; imported: number; duplicates: number; failed: number; stopped: boolean };
+
 export interface VidoraMediaModuleApi {
   // Probing
   probe(request: ProbeRequest): Promise<ProbeResult>;
@@ -883,6 +991,15 @@ export interface VidoraMediaModuleApi {
    * Rejects with ERR_NOT_FOUND for an unknown id, ERR_INVALID_STATE for a finished one. Missing on older native builds.
    */
   setDownloadStartAt?(id: string, startAt: number | null): Promise<DownloadRecord>;
+  /** #347: a download's mirrors, in order. Rejects with ERR_NOT_FOUND for an unknown id. Missing on older builds. */
+  getDownloadMirrors?(id: string): Promise<string[]>;
+  /**
+   * #347: replaces a `progressive` download's mirrors (http(s) only, at most 4; the main link and repeats are
+   * dropped) and resolves with those kept. A running download restarts its transfer from the bytes on disk so they
+   * are checked and used now. ERR_INVALID_REQUEST for another kind or a bad link, ERR_INVALID_STATE for a completed or
+   * cancelled one. Missing on older native builds: "Add mirror" is hidden.
+   */
+  setDownloadMirrors?(id: string, urls: string[]): Promise<string[]>;
   /**
    * F6: ends a live recording; what was recorded is finalized into the library like any download. Rejects with
    * ERR_NOT_FOUND for an unknown id, ERR_INVALID_STATE for anything that is not recording. Missing on older builds.
@@ -1059,12 +1176,25 @@ export interface VidoraMediaModuleApi {
   /**
    * Copies the file into the library (thumbnail, SHA-256 duplicate check), announced with `onLibraryChange`
    * `imported`. Rejects with ERR_NOT_FOUND (unknown token or the file can no longer be read), ERR_INVALID_REQUEST (not
-   * an audio or video file, or empty), ERR_NO_SPACE (not enough free storage), ERR_STORAGE (the copy failed). Nothing is
+   * an audio or video file, or empty), ERR_UNSAFE_FILE (P8: its bytes are a program or an archive), ERR_NO_SPACE (not enough free storage), ERR_STORAGE (the copy failed). Nothing is
    * left behind when it rejects.
    */
   importIncomingMedia?(token: string): Promise<ImportIncomingResult>;
   /** System chooser to open the incoming file in another app. Rejects with ERR_NO_APP / ERR_NOT_FOUND. */
   openIncomingWith?(token: string): Promise<void>;
+  /**
+   * P8 #407: copies an incoming archive into the app's no-backup folder (once) and lists it under the zip guards.
+   * Rejects with ERR_NOT_FOUND / ERR_NO_SPACE / ERR_STORAGE.
+   */
+  inspectIncomingArchive?(token: string): Promise<ArchiveInspection>;
+  /** P8 #407: imports the archive's videos (and matching subtitles) into the library; the copy is deleted after. */
+  extractIncomingArchive?(token: string): Promise<ArchiveExtraction>;
+  /** P8 #407: deletes the copied archive (the user left without extracting). */
+  discardIncomingArchive?(): Promise<void>;
+  /** P8 #461: an incoming file's name against its first bytes. Rejects with ERR_NOT_FOUND for an unknown token. */
+  checkIncomingFileSafety?(token: string): Promise<FileSafetyCheck>;
+  /** P8 #461: a library item's file name against its first bytes. Rejects with ERR_NOT_FOUND. */
+  checkLibraryFileSafety?(id: string): Promise<FileSafetyCheck>;
 
   // Player helpers (synchronous)
   /** Media stream volume 0..1. */
@@ -1076,4 +1206,28 @@ export interface VidoraMediaModuleApi {
    * player view's own auto-enter does it. Optional: builds before this function simply have no PiP there.
    */
   setPictureInPictureAutoEnter?(armed: boolean, aspectWidth: number, aspectHeight: number): void;
+  /**
+   * #362 Link Polling, #504 Update Detection, #363 RSS: watched links and feeds (native watch/Watches.kt). JSON in
+   * and out (see src/downloads/watch/watch-core.ts). Missing on older native builds.
+   */
+  watchList?(): Promise<string>;
+  /** The link as JSON, or `full` / `unreachable`. */
+  watchAdd?(url: string, kind: 'file' | 'page' | 'feed' | null, intervalHours: number, autoDownload: boolean): Promise<string>;
+  watchUpdate?(id: string, intervalHours: number | null, autoDownload: boolean | null): Promise<string | null>;
+  watchRemove?(id: string): Promise<boolean>;
+  watchCheck?(id: string): Promise<string | null>;
+  /** #505: the download rules for background feed downloads, as JSON (the shape of `LinkRules`). */
+  setBulkRules?(json: string): Promise<void>;
+  /**
+   * #512 Save to cloud: Android's save screen (cloud apps appear there), then the finished file is written to the
+   * place picked. Rejects ERR_NOT_FOUND / ERR_STORAGE. Missing on older native builds.
+   */
+  saveCopyAs?(id: string): Promise<{ status: 'saved'; name: string; bytes: number } | { status: 'cancelled' }>;
+  getSaveCopyProgress?(id: string): { bytesDone: number; totalBytes: number } | null;
+  /** #507 Cloud folder: the videos of a picked folder (tree URI) copied into the library; saved ones skipped. */
+  importFromFolder?(treeUri: string): Promise<FolderImportSummary>;
+  getFolderImportProgress?(): { found: number; done: number; imported: number; duplicates: number; failed: number } | null;
+  cancelFolderImport?(): void;
+  /** #510: the download queue as a .json file through the share sheet (Quick Share, Bluetooth…). */
+  shareQueueFile?(fileName: string, text: string): Promise<void>;
 }

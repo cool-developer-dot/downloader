@@ -1,6 +1,6 @@
 {
   "platforms": ["android"],
   "android": {
-    "modules": ["com.vidorax.media.VidoraMediaModule"]
+    "modules": ["com.vidorax.media.VidoraMediaModule", "com.vidorax.media.remote.VidoraRemoteModule"]
   }
 }

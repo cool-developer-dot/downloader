@@ -10,6 +10,18 @@ import { bindLanguageReader } from '@/localization/translate';
 import { createStore } from '@/store/shared/create-store';
 import { normalizeAfterDownloadAction } from '@/downloads/v2/after-download';
 import { createPersistStorage } from '@/store/shared/persist-storage';
+
+import {
+  normalizeBufferKb,
+  normalizeCooldownSeconds,
+  normalizeLowMemoryMode,
+  normalizeWriteCacheKb,
+} from '@/downloads/v2/settings';
+
+import { normalizeLinkRules } from '@/downloads/bulk/link-rules';
+
+import { liveRecordingMigration } from './migrations';
+import { settingsViewMigration } from './settings-view';
 import { normalizeDefaultTab } from '@/navigation/helpers/default-tab';
 import { normalizeTabSortOrder } from '@/browser/tabs/tab-list-ops';
 import { normalizeAddressBarPosition } from '@/browser/address-bar/address-bar-settings';
@@ -158,6 +170,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         fileExtension: state.fileExtension,
         confirmBeforeStart: state.confirmBeforeStart,
         autoResume: state.autoResume,
+        multiNetwork: state.multiNetwork,
         debugLogs: state.debugLogs,
         notifications: state.notifications,
         notificationSound: state.notificationSound,
@@ -177,6 +190,13 @@ export const useSettingsStore = createStore<SettingsStore>()(
         pauseOnLowBattery: state.pauseOnLowBattery,
         onlyWhileCharging: state.onlyWhileCharging,
         liveRecording: state.liveRecording,
+        liveRecordingApproved: state.liveRecordingApproved,
+        bufferKb: state.bufferKb,
+        writeCacheKb: state.writeCacheKb,
+        lowMemoryMode: state.lowMemoryMode,
+        cooldownSeconds: state.cooldownSeconds,
+        exitWhenDone: state.exitWhenDone,
+        linkRules: state.linkRules,
         liveRecordingMaxMinutes: state.liveRecordingMaxMinutes,
         tapToToggle: state.tapToToggle,
         tabSortOrder: state.tabSortOrder,
@@ -262,6 +282,7 @@ export const useSettingsStore = createStore<SettingsStore>()(
         prayerAsr: state.prayerAsr,
         pdfOpenChoice: state.pdfOpenChoice,
         groupTabsFromOpener: state.groupTabsFromOpener,
+        settingsView: state.settingsView,
       }),
       merge: (persisted, current) => {
         const raw = unwrapPersistedSettings(persisted);
@@ -282,6 +303,14 @@ export const useSettingsStore = createStore<SettingsStore>()(
               ? current.afterDownloadAction
               : normalizeAfterDownloadAction(raw.afterDownloadAction),
           wifiOnly: typeof raw.wifiOnly === 'boolean' ? raw.wifiOnly : current.wifiOnly,
+          ...liveRecordingMigration(raw),
+          bufferKb: normalizeBufferKb(raw.bufferKb ?? current.bufferKb),
+          writeCacheKb: normalizeWriteCacheKb(raw.writeCacheKb ?? current.writeCacheKb),
+          lowMemoryMode: normalizeLowMemoryMode(raw.lowMemoryMode ?? current.lowMemoryMode),
+          cooldownSeconds: normalizeCooldownSeconds(raw.cooldownSeconds ?? current.cooldownSeconds),
+          exitWhenDone: typeof raw.exitWhenDone === 'boolean' ? raw.exitWhenDone : current.exitWhenDone,
+          linkRules: raw.linkRules === undefined ? current.linkRules : normalizeLinkRules(raw.linkRules),
+          settingsView: settingsViewMigration(raw as Record<string, unknown>),
           filenameTemplate:
             typeof raw.filenameTemplate === 'string'
               ? normalizeFilenameTemplate(raw.filenameTemplate)
@@ -320,6 +349,8 @@ export const useSettingsStore = createStore<SettingsStore>()(
             typeof raw.tapToToggle === 'boolean' ? raw.tapToToggle : current.tapToToggle,
           autoResume:
             typeof raw.autoResume === 'boolean' ? raw.autoResume : current.autoResume,
+          multiNetwork:
+            typeof raw.multiNetwork === 'boolean' ? raw.multiNetwork : current.multiNetwork,
           debugLogs: typeof raw.debugLogs === 'boolean' ? raw.debugLogs : current.debugLogs,
           notifications:
             typeof raw.notifications === 'boolean'

@@ -6,6 +6,7 @@ import { openInNewTabAction } from './open-in-new-tab.action';
 import { shareLinkAction } from './share-link.action';
 import { addToReadingListAction } from './add-to-reading-list.action';
 import { openInIncognitoAction } from './open-in-incognito.action';
+import { sendToComputerAction } from './send-to-computer.action';
 
 let defaultsRegistered = false;
 
@@ -24,5 +25,7 @@ export function registerDefaultBrowserActions(): void {
   browserActionRegistry.register(addToReadingListAction);
   // B11 #52
   browserActionRegistry.register(openInIncognitoAction);
+  // P6 #511
+  browserActionRegistry.register(sendToComputerAction);
   defaultsRegistered = true;
 }

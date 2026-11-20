@@ -10,10 +10,13 @@
  *   not part of the link.
  */
 
+import { isFtpLink } from '@/downloads/v2/sources';
+
 import { isYouTubeLink } from './pasted-link';
 
 // The authority must start right after `//` (`https:///x` is not a link, although the URL parser would accept it).
-const URL_START = /(^|[\s(<\[{"'“‘«])(https?:\/\/[^\s<>"'“”‘’«»/][^\s<>"'“”‘’«»]*)/gi;
+// #304: ftp:// and ftps:// file links too (the engine downloads them directly).
+const URL_START = /(^|[\s(<\[{"'“‘«])((?:https?|ftps?):\/\/[^\s<>"'“”‘’«»/][^\s<>"'“”‘’«»]*)/gi;
 const TRAILING_PUNCTUATION = /[.,!?;:…]+$/;
 
 function trimTrailing(url: string): string {
@@ -39,6 +42,9 @@ function count(text: string, char: string): number {
 }
 
 function hasHost(url: string): boolean {
+  if (/^ftps?:/i.test(url)) {
+    return isFtpLink(url);
+  }
   try {
     const parsed = new URL(url);
     return (parsed.protocol === 'http:' || parsed.protocol === 'https:') && parsed.hostname.length > 0;

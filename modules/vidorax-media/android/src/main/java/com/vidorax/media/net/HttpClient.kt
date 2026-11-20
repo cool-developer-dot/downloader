@@ -127,6 +127,24 @@ internal class HttpClient(client: OkHttpClient, private val policy: UrlPolicy = 
     )
   }
 
+  /**
+   * #446: this client — same cookies, interceptors and URL policy — with every connection opened on another network
+   * (mobile data next to Wi-Fi): its sockets come from [socketFactory] and its names resolve through [dns], both that
+   * network's own (`Network.socketFactory`, `Network.getAllByName`). A pool of its own, so no Wi-Fi connection is
+   * ever reused for it.
+   */
+  fun boundTo(socketFactory: javax.net.SocketFactory, dns: okhttp3.Dns): HttpClient = HttpClient(
+    client.newBuilder()
+      .socketFactory(socketFactory)
+      .dns(dns)
+      .connectionPool(ConnectionPool(SEPARATE_POOL_IDLE, 1, TimeUnit.MINUTES))
+      .build(),
+    policy,
+  )
+
+  /** The socket factory this client opens connections with (tests: which network a client is bound to). */
+  internal val socketFactory: javax.net.SocketFactory get() = client.socketFactory
+
   /** The protocols this client may negotiate (tests). */
   internal val protocols: List<Protocol> get() = client.protocols
 

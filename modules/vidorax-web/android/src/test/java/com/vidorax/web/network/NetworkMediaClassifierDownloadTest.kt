@@ -46,6 +46,17 @@ class NetworkMediaClassifierDownloadTest {
   }
 
   @Test
+  fun matroskaFlashVideoAndTransportStreamFilesAreVideos() {
+    // A `.ts` the WebView downloads is a file the user opened (players fetch HLS segments, never download them).
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://archive.example.org/rec/news.ts", "video/mp2t"))
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/files/match.TS", "application/octet-stream"))
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/dl?id=7", null, "attachment; filename=\"capture.ts\""))
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/a.mkv", "video/x-matroska"))
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/a.flv", "video/x-flv"))
+    assertEquals(NetworkMediaHint.PROGRESSIVE, classify("https://cdn.example.com/files/old.flv", "application/octet-stream"))
+  }
+
+  @Test
   fun unnamedBinariesAreAskedAbout() {
     assertEquals(NetworkMediaHint.UNKNOWN, classify("https://cdn.example.com/m/o/5e1d0c", "application/octet-stream"))
     assertEquals(NetworkMediaHint.UNKNOWN, classify("https://cdn.example.com/download.php?id=3", "application/force-download"))
@@ -58,7 +69,6 @@ class NetworkMediaClassifierDownloadTest {
     assertNull(classify("https://example.com/app.apk", "application/vnd.android.package-archive"))
     assertNull(classify("https://example.com/files/pack.zip", "application/octet-stream"))
     assertNull(classify("https://example.com/song.mp3", "audio/mpeg"))
-    assertNull(classify("https://example.com/seg12.ts", "video/mp2t"))
     assertNull(classify("https://example.com/dl", "application/octet-stream", "attachment; filename=\"notes.txt\""))
     assertNull(classify("https://rr3---sn.googlevideo.com/videoplayback?id=1", "video/mp4"))
     assertNull(classify("ftp://example.com/clip.mp4", "video/mp4"))

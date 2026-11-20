@@ -47,6 +47,12 @@ describe('v2 download settings', () => {
       liveRecordingMaxMinutes: 120,
       language: 'en',
       autoResume: true,
+      bufferKb: 64,
+      writeCacheKb: 0,
+      lowMemoryMode: 'auto',
+      cooldownSeconds: 0,
+      exitWhenDone: false,
+      multiNetwork: false,
     });
   });
 
@@ -152,4 +158,30 @@ describe('v2 download settings', () => {
   test('a build without the native module is not an error', async () => {
     assert.equal(await pushV2DownloadSettings(null, { wifiOnly: true, maxConcurrentDownloads: 2 }), null);
   });
+});
+
+test('P1 engine tuning: defaults, clamping to the offered choices, and change detection', () => {
+  const base = v2DownloadSettings({ wifiOnly: false, maxConcurrentDownloads: 2 });
+  assert.equal(base.bufferKb, 64);
+  assert.equal(base.writeCacheKb, 0);
+  assert.equal(base.lowMemoryMode, 'auto');
+  assert.equal(base.cooldownSeconds, 0);
+  assert.equal(base.exitWhenDone, false);
+  const tuned = v2DownloadSettings({
+    wifiOnly: false,
+    maxConcurrentDownloads: 2,
+    bufferKb: 300,
+    writeCacheKb: 5000,
+    lowMemoryMode: 'on',
+    cooldownSeconds: 20,
+    exitWhenDone: true,
+  });
+  assert.equal(tuned.bufferKb, 256);
+  assert.equal(tuned.writeCacheKb, 4096);
+  assert.equal(tuned.lowMemoryMode, 'on');
+  assert.equal(tuned.cooldownSeconds, 15);
+  assert.equal(tuned.exitWhenDone, true);
+  assert.equal(sameV2Settings(base, tuned), false);
+  assert.equal(sameV2Settings(tuned, { ...tuned }), true);
+  assert.equal(v2DownloadSettings({ wifiOnly: false, maxConcurrentDownloads: 2, lowMemoryMode: 'nonsense' as never }).lowMemoryMode, 'auto');
 });

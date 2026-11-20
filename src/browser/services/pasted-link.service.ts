@@ -15,6 +15,9 @@ import {
 } from '@/browser/media-actions/direct-analysis.service';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
 
+import { isFtpLink } from '@/downloads/v2/sources';
+
+import { openFtpLink } from './ftp-link.service';
 import { isYouTubeLink, shouldAnalyzePastedLink } from './pasted-link';
 import { loadUrlForTab } from './active-tab-navigation.service';
 import { pendingNavigationService } from './pending-navigation.service';
@@ -31,6 +34,11 @@ export function openPastedLink(url: string, options: { source: 'omnibox' | 'shar
   // Never loaded, never fetched: callers tell the user YouTube is not supported (isYouTubeLink).
   if (isYouTubeLink(trimmed)) {
     return false;
+  }
+  // #304: the WebView never opens an FTP link; the engine checks the file and downloads it.
+  if (isFtpLink(trimmed)) {
+    openFtpLink(trimmed);
+    return true;
   }
   if (!shouldAnalyzePastedLink(trimmed) || !isDirectAnalysisAvailable()) {
     return loadNowOrWhenReady(tabId, trimmed);

@@ -414,6 +414,8 @@ export interface VidoraWebModuleApi {
   captureFullPage?(viewTag: number, maxWidth: number): Promise<{ status: 'ok' | 'single' | 'tooLong' | 'failed'; uri?: string | null; width?: number; height?: number }>;
   /** B17 #178: saves the page as a web archive for `profile` under `id`; resolves its size in bytes (0 = failed). */
   saveOfflinePage?(viewTag: number, profile: string, id: string): Promise<number>;
+  /** #486 Site grabber: saves fetched HTML as the same web archive (`<id>.mht`); resolves its size, 0 when not saved. */
+  archiveOfflineHtml?(profile: string, id: string, url: string, html: string): Promise<number>;
   /** B17 #178: opens a saved page read-only; resolves when the viewer closes (false: couldn't open). */
   openOfflinePage?(profile: string, id: string, title: string): Promise<boolean>;
   deleteOfflinePage?(profile: string, id: string): boolean;

@@ -104,14 +104,63 @@ class MediaSnifferTest {
     assertUnsupported(ProbeFailure.UNSUPPORTED_FORMAT, sniff(bytes, total = bytes.size.toLong()))
   }
 
-  @Test fun rejectsMatroska() {
-    val bytes = fixture("/media/progressive/vp8-vorbis.mkv")
-    assertUnsupported(ProbeFailure.UNSUPPORTED_FORMAT, sniff(bytes, total = bytes.size.toLong()))
+  // --- MKV, FLV and MPEG-TS files ---
+
+  @Test fun classifiesMatroska() {
+    for (path in listOf("/media/progressive/vp8-vorbis.mkv", "/media/formats/av.mkv")) {
+      val bytes = fixture(path)
+      assertSupported(Container.MKV, sniff(bytes, url = "https://cdn.example/opaque", total = bytes.size.toLong()))
+    }
   }
 
-  @Test fun rejectsTransportStream() {
-    val bytes = fixture("/media/hls-ts/seg0.ts")
-    assertUnsupported(ProbeFailure.UNSUPPORTED_FORMAT, sniff(bytes, total = bytes.size.toLong()))
+  @Test fun rejectsEncryptedMatroskaAsDrm() {
+    val ebml = byteArrayOf(0x1A, 0x45, 0xDF.toByte(), 0xA3.toByte()) + "  matroska  ".toByteArray()
+    val encrypted = ebml + byteArrayOf(0x16, 0x54, 0xAE.toByte(), 0x6B, 0x6D, 0x80.toByte(), 0x62, 0x40, 0x50, 0x35, 0x47, 0xE1.toByte(), 0x81.toByte(), 0x05) +
+      byteArrayOf(0x1F, 0x43, 0xB6.toByte(), 0x75) + ByteArray(64)
+    assertUnsupported(ProbeFailure.DRM_PROTECTED, sniff(encrypted))
+  }
+
+  @Test fun classifiesFlv() {
+    for (name in listOf("av.flv", "sorenson.flv")) {
+      val bytes = fixture("/media/formats/$name")
+      assertSupported(Container.FLV, sniff(bytes, contentType = "video/x-flv", url = "https://cdn.example/$name", total = bytes.size.toLong()))
+    }
+    // `FLV` followed by a version that does not exist is not an FLV file.
+    val unknownVersion = "FLV".toByteArray() + byteArrayOf(9, 5) + ByteArray(32)
+    assertUnsupported(ProbeFailure.UNSUPPORTED_FORMAT, sniff(unknownVersion))
+  }
+
+  @Test fun classifiesTransportStreamFiles() {
+    for (path in listOf("/media/hls-ts/seg0.ts", "/media/process/av.ts", "/media/process/video.ts")) {
+      val bytes = fixture(path)
+      assertSupported(Container.TS, sniff(bytes, url = "https://cdn.example/rec.ts", total = bytes.size.toLong()))
+    }
+    // An HLS download's concatenated segments are one aligned stream too.
+    val joined = fixture("/media/hls-ts/seg0.ts") + fixture("/media/hls-ts/seg1.ts")
+    assertSupported(Container.TS, sniff(joined, total = joined.size.toLong()))
+  }
+
+  @Test fun rejectsTransportStreamThatLostSync() {
+    val bytes = fixture("/media/hls-ts/seg0.ts") + fixture("/media/hls-ts/seg1.ts")
+    val misaligned = bytes.copyOf().also { it[188 * 5] = 0 }
+    assertUnsupported(ProbeFailure.UNSUPPORTED_FORMAT, sniff(misaligned, total = misaligned.size.toLong()))
+  }
+
+  @Test fun rejectsScrambledTransportStreamAsDrm() {
+    val scrambled = TransportStreamTest.scramble(fixture("/media/process/av.ts"))
+    assertUnsupported(ProbeFailure.DRM_PROTECTED, sniff(scrambled, total = scrambled.size.toLong()))
+  }
+
+  @Test fun tellsAudioOnlyFilesFromTheirOwnTrackLists() {
+    assertTrue(MediaSniffer.isAudioOnly(fixture("/media/formats/audio-only.flv")))
+    assertTrue(MediaSniffer.isAudioOnly(fixture("/media/formats/audio-only.mka")))
+    assertTrue(MediaSniffer.isAudioOnly(fixture("/media/process/audio.ts")))
+    for (path in listOf(
+      "/media/formats/av.flv", "/media/formats/sorenson.flv", "/media/formats/av.mkv", "/media/progressive/vp8-vorbis.mkv",
+      "/media/process/av.ts", "/media/process/video.ts",
+    )) {
+      assertFalse(path, MediaSniffer.isAudioOnly(fixture(path)))
+    }
   }
 
   @Test fun rejectsDrmByBrand() {
@@ -132,16 +181,6 @@ class MediaSnifferTest {
   @Test fun rejectsHls() {
     val playlist = "#EXTM3U\n#EXT-X-VERSION:3\n".toByteArray()
     assertUnsupported(ProbeFailure.UNSUPPORTED_FORMAT, sniff(playlist))
-  }
-
-  @Test fun acceptsTransportStreamOnlyWhenAnHlsDownloadAssembledIt() {
-    val bytes = fixture("/media/hls-ts/seg0.ts") + fixture("/media/hls-ts/seg1.ts")
-    assertSupported(Container.TS, MediaSniffer.sniff(bytes, null, "x.ts", bytes.size.toLong(), allowTransportStream = true))
-    val misaligned = bytes.copyOf().also { it[188 * 5] = 0 }
-    assertUnsupported(
-      ProbeFailure.UNSUPPORTED_FORMAT,
-      MediaSniffer.sniff(misaligned, null, "x.ts", misaligned.size.toLong(), allowTransportStream = true),
-    )
   }
 
   @Test fun recognisesAPlaylistWhateverTheUrlSays() {
