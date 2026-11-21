@@ -14,6 +14,7 @@ import { isValidBrowserPageUrl } from '@/browser/utils';
 import { DsCard, DsHeader, DsRow, DsRowGroup, DsScreen, DsText, DsTile, DsTileGrid } from '@/design';
 import { useTranslation, type TranslationKey } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
+import { useVoiceSearch } from '@/browser/voice/use-voice-search';
 import { useSettingsStore } from '@/store/settings';
 import { toUrduDigits } from '@/utils/text-direction';
 
@@ -72,12 +73,21 @@ export const UtilitiesScreen = memo(function UtilitiesScreen() {
     ToastAndroid.show(t('common.notAvailableYet'), ToastAndroid.SHORT);
   }, [t]);
   const needsPage = useCallback(() => notify(t('lightUtilities.needsPage')), [t]);
+  // #282: say a site or a search; it opens like typed words (Android's voice input screen, #31).
+  const voiceSearch = useVoiceSearch();
   const openSettings = useCallback(() => navigation.push(routePaths.browserSettings), []);
 
   // B4 #268: the calculator is the address bar — open it with the keyboard up and say how to use it.
   const calculator = useCallback(() => {
     requestAddressBarFocus();
     notify(t('lightUtilities.calculatorHint'));
+    navigation.back();
+  }, [t]);
+
+  // #267: the converter lives in the address bar too (`5 km in mi`, `100 f to c`).
+  const converter = useCallback(() => {
+    requestAddressBarFocus();
+    notify(t('lightUtilities.converterHint'));
     navigation.back();
   }, [t]);
 
@@ -140,7 +150,7 @@ export const UtilitiesScreen = memo(function UtilitiesScreen() {
       />
       <DsTileGrid testID="browser-utilities-tiles">
         <DsTile icon="cpu" label={t('lightUtilities.calculator')} onPress={calculator} testID="browser-utilities-calculator" />
-        <DsTile icon="refresh-cw" label={t('lightUtilities.converter')} onPress={notYet} testID="browser-utilities-converter" />
+        <DsTile icon="refresh-cw" label={t('lightUtilities.converter')} onPress={converter} testID="browser-utilities-converter" />
         <DsTile icon="calendar" label={t('lightUtilities.dualCalendar')} onPress={dualCalendar} testID="browser-utilities-calendar" />
         <DsTile icon="star" label={t('lightUtilities.prayerTimes')} onPress={prayerTimes} testID="browser-utilities-prayer" />
         <DsTile icon="qr-code" label={t('lightUtilities.scanQr')} onPress={scan} testID="browser-utilities-scan-qr" />
@@ -170,7 +180,13 @@ export const UtilitiesScreen = memo(function UtilitiesScreen() {
           testID="browser-utilities-calendar-toggle"
         />
         <DsRow icon="image" title={t('lightUtilities.copyTextFromImage')} onPress={notYet} testID="browser-utilities-ocr" />
-        <DsRow icon="mic" title={t('lightUtilities.voiceCommands')} onPress={notYet} testID="browser-utilities-voice" />
+        <DsRow
+          icon="mic"
+          title={t('lightUtilities.voiceCommands')}
+          subtitle={t('voiceSearch.commandsHint')}
+          onPress={voiceSearch}
+          testID="browser-utilities-voice"
+        />
       </DsRowGroup>
     </DsScreen>
   );

@@ -16,7 +16,6 @@ import { siteGrabberPath } from '@/screens/site-grabber/route';
 import { WATCHED_LINKS_ROUTE } from '@/screens/watched-links/route';
 
 import { toast } from '../shared/toast';
-import { useNotYet } from '../shared/use-not-yet';
 import { useSettingsHeaderAction } from '../shared/use-settings-header-action';
 
 import {
@@ -67,7 +66,6 @@ const CheckTile = memo(function CheckTile({ checked }: { checked: boolean }) {
  */
 export const LinkGrabberScreen = memo(function LinkGrabberScreen() {
   const { t } = useTranslation();
-  const notYet = useNotYet();
   const settingsAction = useSettingsHeaderAction();
   const currentUrl = useBrowserStore(selectCurrentUrl);
   const [status, setStatus] = useState<ScanStatus>('scanning');

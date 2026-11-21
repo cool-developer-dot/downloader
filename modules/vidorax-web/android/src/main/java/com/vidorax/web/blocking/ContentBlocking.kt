@@ -27,6 +27,8 @@ import java.util.concurrent.atomic.AtomicReference
 internal class ContentBlocking(
   private val openAsset: (String) -> InputStream?,
   private val loader: Executor = Executors.newSingleThreadExecutor(),
+  /** Design 5: the blocked requests of the last 7 days (null in tests that don't need it). */
+  private val tally: BlockedTally? = null,
 ) {
   private class PageState(@Volatile var host: String?) {
     val blocked = AtomicInteger()
@@ -82,6 +84,7 @@ internal class ContentBlocking(
     )
     if (verdict == ContentBlocker.Verdict.ALLOW) return null
     page?.blocked?.incrementAndGet()
+    tally?.count()
     return emptyResponse()
   }
 
@@ -96,6 +99,9 @@ internal class ContentBlocking(
 
   /** Requests blocked on the WebView's current page. */
   fun blockedCount(view: WebView): Int = pages[view]?.blocked?.get() ?: 0
+
+  /** Requests blocked over the last 7 days (design 5's "this week"). */
+  fun blockedThisWeek(): Int = tally?.thisWeek() ?: 0
 
   private fun syncLists() {
     val current = rules.get()

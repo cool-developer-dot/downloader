@@ -17,4 +17,5 @@ export const lightFocusEn = {
   limitSites: '{minutes} min / day · {count} sites',
   blockAutoplay: 'Block autoplay',
   quietDownloads: 'Quiet downloads',
+  quietDownloadsSub: 'Download alerts without sound or vibration',
 } as const;

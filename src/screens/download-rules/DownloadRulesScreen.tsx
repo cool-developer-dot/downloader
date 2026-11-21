@@ -2,13 +2,11 @@ import { memo, useCallback, useState } from 'react';
 
 import { Text } from '@/components/base/Text';
 import { Button } from '@/components/buttons/Button';
-import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
-import { ScreenHeader } from '@/components/headers/ScreenHeader';
+import { DsHeader, DsScreen } from '@/design';
 import { TextField } from '@/components/inputs/TextField';
 import { EMPTY_LINK_RULES, isValidRulePattern, parseRuleList, type LinkRules } from '@/downloads/bulk/link-rules';
 import { useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
-import { useSettingsTokens } from '@/screens/settings/theme/settings-tokens';
 import { useSettingsStore } from '@/store/settings';
 
 type Draft = {
@@ -58,7 +56,6 @@ function rulesOf(draft: Draft): LinkRules {
  */
 export const DownloadRulesScreen = memo(function DownloadRulesScreen() {
   const { t } = useTranslation();
-  const settingsTokens = useSettingsTokens();
   const [draft, setDraft] = useState<Draft>(() => draftOf(useSettingsStore.getState().linkRules));
   const goBack = useCallback(() => navigation.back(), []);
 
@@ -91,14 +88,8 @@ export const DownloadRulesScreen = memo(function DownloadRulesScreen() {
   );
 
   return (
-    <SafeAreaScreen
-      testID="download-rules-screen"
-      scrollable
-      padded={false}
-      edges={['top', 'left', 'right', 'bottom']}
-      style={{ backgroundColor: settingsTokens.background }}
-      contentContainerStyle={{ flexGrow: 1, paddingHorizontal: settingsTokens.spacing.screenX, paddingBottom: 40, gap: 16 }}>
-      <ScreenHeader title={t('bulkAdd.rulesTitle')} showBack onBackPress={goBack} testID="download-rules-header" />
+    <DsScreen testID="download-rules-screen" edges={['top', 'bottom']}>
+      <DsHeader title={t('bulkAdd.rulesTitle')} onBack={goBack} testID="download-rules-header" />
       <Text variant="bodySmall" color="textSecondary">
         {t('bulkAdd.rulesHint')}
       </Text>
@@ -111,6 +102,6 @@ export const DownloadRulesScreen = memo(function DownloadRulesScreen() {
       {field('minSizeMb', t('bulkAdd.minSize'), t('bulkAdd.sizeHint'), true)}
       {field('maxSizeMb', t('bulkAdd.maxSize'), t('bulkAdd.sizeHint'), true)}
       <Button title={t('bulkAdd.clearRules')} variant="outline" size="small" leftIcon="filter-remove-outline" onPress={clear} testID="download-rules-clear" />
-    </SafeAreaScreen>
+    </DsScreen>
   );
 });

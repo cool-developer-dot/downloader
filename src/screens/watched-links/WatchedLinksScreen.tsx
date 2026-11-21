@@ -5,8 +5,7 @@ import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
 import { Button } from '@/components/buttons/Button';
 import { EmptyState } from '@/components/common/EmptyState';
-import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
-import { ScreenHeader } from '@/components/headers/ScreenHeader';
+import { DsHeader, DsScreen } from '@/design';
 import { SegmentedControl } from '@/components/inputs/SegmentedControl';
 import { Switch } from '@/components/inputs/Switch';
 import { TextField } from '@/components/inputs/TextField';
@@ -145,14 +144,8 @@ export const WatchedLinksScreen = memo(function WatchedLinksScreen() {
     link.kind === 'feed' ? t('watchedLinks.kindFeed') : link.kind === 'file' ? t('watchedLinks.kindFile') : t('watchedLinks.kindPage');
 
   return (
-    <SafeAreaScreen
-      testID="watched-links-screen"
-      scrollable
-      padded={false}
-      edges={['top', 'left', 'right', 'bottom']}
-      style={{ backgroundColor: tokens.background }}
-      contentContainerStyle={{ flexGrow: 1, paddingHorizontal: tokens.spacing.screenX, paddingBottom: 40, gap: 16 }}>
-      <ScreenHeader title={t('watchedLinks.title')} showBack onBackPress={() => navigation.back()} testID="watched-links-header" />
+    <DsScreen testID="watched-links-screen" edges={['top', 'bottom']}>
+      <DsHeader title={t('watchedLinks.title')} onBack={() => navigation.back()} testID="watched-links-header" />
       {!port ? (
         <EmptyState icon="update" title={t('watchedLinks.title')} description={t('watchedLinks.unavailable')} />
       ) : (
@@ -321,6 +314,6 @@ export const WatchedLinksScreen = memo(function WatchedLinksScreen() {
           )}
         </>
       )}
-    </SafeAreaScreen>
+    </DsScreen>
   );
 });

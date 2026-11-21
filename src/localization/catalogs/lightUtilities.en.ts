@@ -5,6 +5,7 @@ export const lightUtilitiesEn = {
   settingsA11y: 'Browser settings',
   calculator: 'Calculator',
   calculatorHint: 'Type a sum in the address bar, for example 12*(3+4)',
+  converterHint: 'Type a conversion in the address bar, for example 5 km in mi or 100 f to c',
   converter: 'Converter',
   dualCalendar: 'Dual calendar',
   dualCalendarHint: 'Gregorian + Hijri',

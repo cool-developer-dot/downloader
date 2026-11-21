@@ -1,4 +1,5 @@
 import { evaluateCalculation } from '@/browser/address-bar/calculator';
+import { evaluateConversion } from '@/browser/address-bar/unit-converter';
 import type { AutocompleteSource } from '@/browser/address-bar/inline-autocomplete';
 import { getSearchEngine } from '@/browser/search/search-engines';
 import { classifyNavigationInput, buildSearchUrl } from '@/browser/utils';
@@ -264,9 +265,9 @@ export class SuggestionService {
     return rankSuggestions(candidates, '', limit);
   }
 
-  /** B4 #268: `12*(3+4)/2` → "= 42" as the first row (copied on tap). */
+  /** B4 #268: `12*(3+4)/2` → "= 42"; #267: `5 km in mi` → "= 3.1 mi" — as the first row (copied on tap). */
   private collectCalculator(context: SuggestionQueryContext): RankableCandidate[] {
-    const result = evaluateCalculation(context.query);
+    const result = evaluateCalculation(context.query) ?? evaluateConversion(context.query);
     if (!result) {
       return [];
     }

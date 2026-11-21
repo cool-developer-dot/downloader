@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react';
-import { ScrollView, ToastAndroid, View } from 'react-native';
+import { ScrollView, View } from 'react-native';
 
 import { GuestModeCard } from '@/browser/components/ProfileSwitcher/GuestModeCard';
 import { START_PAGE_QUICK_SITES } from '@/browser/config/quick-sites';
@@ -8,6 +8,7 @@ import { ThemeModeOverrideContext, useTheme } from '@/hooks/use-theme';
 import { StartPageBackdrop, useStartPageBackground } from '@/browser/startup/components/StartPageBackdrop';
 import { useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
+import { useVoiceSearch } from '@/browser/voice/use-voice-search';
 import { useTourTargetRef } from '@/tour/tour-targets';
 import { useSaverEffects } from '@/browser/data-saver/data-saver.service';
 import { LightweightHome } from '@/browser/data-saver/components/LightweightHome';
@@ -53,10 +54,9 @@ export const BrowserHomeView = memo(function BrowserHomeView({
   // B18 #285 / #188: the text-only start page (its own switch, or Lite mode).
   const lightHome = useSaverEffects().lightHome;
 
-  const notYet = useCallback(() => {
-    ToastAndroid.show(t('common.notAvailableYet'), ToastAndroid.SHORT);
-  }, [t]);
   const openPageTools = useCallback(() => navigation.push(routePaths.browserPageTools), []);
+  // #31: Android's voice input screen, then the words open like a typed search or address.
+  const voiceSearch = useVoiceSearch();
   const openSearch = useCallback(() => navigation.push(routePaths.browserSearch), []);
   const scan = useCallback(() => {
     void scanQrCode();
@@ -97,7 +97,7 @@ export const BrowserHomeView = memo(function BrowserHomeView({
         accessibilityLabel={t('lightHome.searchA11y')}
         onPress={openSearch}
         actions={[
-          { icon: 'mic', accessibilityLabel: t('lightHome.micA11y'), onPress: notYet, testID: 'browser-home-mic' },
+          { icon: 'mic', accessibilityLabel: t('lightHome.micA11y'), onPress: voiceSearch, testID: 'browser-home-mic' },
           { icon: 'camera', accessibilityLabel: t('lightHome.cameraA11y'), onPress: scan, testID: 'browser-home-scan' },
         ]}
       />

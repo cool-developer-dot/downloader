@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <!-- #31 Voice search: lets Android 11+ see the phone's voice input screen. Not a permission; VidoraX never records. -->
+  <queries>
+    <intent>
+      <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+    </intent>
+  </queries>
   <application>
     <!--
       B20 #16 Move tab to new window: one tab in a task of its own (next to the app in split screen). Not exported:

@@ -187,6 +187,7 @@ export const BrowserScreen = memo(function BrowserScreen() {
 });
 
 const BrowserScreenBody = memo(function BrowserScreenBody() {
+  const theme = useTheme();
   useBrowserRouteLifecycle();
   useBrowserSessionContinuity();
   useBrowserHardwareBack();
@@ -277,6 +278,8 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
     <SafeAreaScreen
       padded={false}
       edges={['top', 'left', 'right']}
+      // The Red theme's band (start page header, address bar) reaches the top of the screen, as in the design.
+      safeAreaStyle={theme.colors.headerStyle === 'band' ? { backgroundColor: theme.colors.headerBackground } : undefined}
       testID="browser-screen">
       <MediaDetectionHost />
       <ProfileSwitcherHost />
@@ -362,7 +365,13 @@ const BrowserToolbarDock = memo(function BrowserToolbarDock({ swipeGesture }: { 
   const theme = useTheme();
 
   return (
-    <Box style={{ paddingBottom: TOOLBAR_DOCK_GAP, backgroundColor: theme.colors.background }}>
+    // The gap under the toolbar takes the Red theme's band colour, so no line of page colour shows between the toolbar
+    // and the red tab bar.
+    <Box
+      style={{
+        paddingBottom: TOOLBAR_DOCK_GAP,
+        backgroundColor: theme.colors.headerStyle === 'band' ? theme.colors.bottomNavBackground : theme.colors.background,
+      }}>
       <BrowserToolbar swipeGesture={swipeGesture} />
     </Box>
   );

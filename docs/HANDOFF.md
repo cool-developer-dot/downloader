@@ -2506,6 +2506,46 @@ Appearance shows six swatches. Palette table and chrome rules: `docs/design/ligh
 Work log: `docs/work-log/hamza-browser.md` → "The other five themes". Gate at the time: typecheck clean, 1881 / 1881
 unit tests, lint 0 errors. No device pass yet (checklist in the work log).
 
+### 4.40 Hamza's design merged onto 1.2.0, checked against the PDF (branch `claude/design-65-screens`, 2026-11-21)
+
+`origin/hamza/light-theme` (§4.38, §4.39) merged onto the 1.2.0 branch (`abc5c26`); every Hamza browser package
+(B2–B24) was already in 1.2.0 (only work-log and `.gitignore` leftovers differ). Checked screen by screen against
+`VidoraX-6-Themes-65-Screens.pdf` (Browser 1–9, 34–39; Downloads 10–17, 33, 40–47; all six themes) on the release
+build. Status sheet: `~/Downloads/VidoraX-Client-APK/VidoraX-Design-Check-1.2.0.xlsx`.
+
+- **Merge.** Batch Add body = Hamza's design + #485/#347/#368/#369/#505; Video sheet keeps the #514 Source check;
+  Download details rows open mirrors / cloud / watch / comments panels, the #461 warning and Send to computer;
+  Download settings = the design's sections + performance, low memory, multi-network, rules, watched links, site
+  grabber, cloud, remote control and the Simple / Advanced view (advanced rows hidden in Simple). `DsCheckTile` moved
+  into the kit. Hamza's pattern expander now calls the shared #485 `expandUrlPattern` (descending, letters, steps).
+- **"Not available yet" rows wired to 1.2.0:** Network (multi-network, remote control, extension bridge, automation
+  toggle; SSL and IPv6 say "always on"), Link grabber (RSS → watched links, site grabber), Alerts & sync (queue to
+  another phone, send to computer, cloud sheet, Android's battery-optimization list, Beginner / Advanced =
+  `settingsView`), Queues (exit when done), File actions (send to computer, save to cloud), Organize (size filter →
+  download rules), Add download (headers & referer), Statistics (API · CLI · bridge, send queue), Incognito
+  (per-script user scripts), Focus (quiet downloads = `notificationSilent`), Privacy (Safe Browsing on). Passwords
+  and Torrent now say plainly why there is no feature. The five 1.2.0 screens (watched links, download rules, remote
+  control, save a site, extract archive) use `DsScreen` / `DsHeader`, so they follow the six themes.
+- **Release blocker fixed: Quick Access.** The Play fix of 1.0.3 (`release/1.0` de1cf91 / e212d0a: login-free tiles)
+  had never reached main, so 1.1.0-browser and the first 1.2.0 APK promoted Instagram, TikTok, Facebook again. Now:
+  Vimeo, TED Talks, Wikimedia, Mixkit, NASA, ESA (NASA and ESA checked logged out in the app; Coverr rejected — sales
+  pop-up; Pexels / Pixabay / Videezy — Cloudflare).
+- **New:** #31 voice search (mic on the start page and in Search, Utilities → Voice commands) through Android's own
+  voice input (`VoiceSearchContract`, `<queries>` for RECOGNIZE_SPEECH, no microphone permission); #267 unit
+  converter in the address bar (`unit-converter.ts`: length, weight, volume, temperature, speed, data, time; no
+  currency); design 5's weekly total (`BlockedTally`, day buckets in prefs `vidorax_blocked_tally`, written at most
+  every 30 s off the network path).
+- **Red theme chrome:** the browser's top inset, the progress strip and the toolbar gap take the band colour (no
+  page-colour lines); the status-bar icons are re-applied after a theme change (Android put dark icons back on the band).
+- **Not in the design build:** OCR (copy text from image), anti-fingerprinting, performance profiler, password
+  manager (phone's own), torrent, proxy / SOCKS, floating widget, ask where to save, compress / metadata tagging,
+  tags manager, server limit detection, audio-only. Player, Files, Private folder and App settings screens (18–32,
+  48–65) are not redesigned yet (they follow the theme colours).
+- **Checks:** tsc (app + tests) clean, JS 2023 / 2023, eslint 0 errors, vidorax-web unit tests 177 (new
+  `VoiceSearchTest`, `BlockedTallyTest`). Device (VidoraX_Browser_F, release build installed over 1.2.0): every
+  Browser and Downloads screen opens; six themes switch live; voice search opens Google's voice input; `5 km in mi`
+  → `= 3.10686 mi`; w3schools: 5 blocked on the page = 5 this week.
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

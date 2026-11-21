@@ -9,15 +9,13 @@ import { Box } from '@/components/base/Box';
 import { Icon, type IconName } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
 import { Button } from '@/components/buttons/Button';
-import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
-import { ScreenHeader } from '@/components/headers/ScreenHeader';
+import { DsHeader, DsScreen } from '@/design';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { formatFileSize } from '@/media-detection/utils/format';
 import { navigation } from '@/navigation';
 import { routePaths } from '@/navigation/constants/route-paths';
 import { externalMediaId, isIncomingMediaToken, knownIncomingMedia } from '@/player/external-media';
-import { useSettingsTokens } from '@/screens/settings/theme/settings-tokens';
 
 import { isUnsupportedArchive, MALICIOUS_REFUSALS, refusalKey } from './archive-import';
 
@@ -49,7 +47,6 @@ function errorCode(error: unknown): string | null {
  */
 export const ArchiveImportScreen = memo(function ArchiveImportScreen() {
   const theme = useTheme();
-  const settingsTokens = useSettingsTokens();
   const { t } = useTranslation();
   const params = useLocalSearchParams<{ token?: string | string[] }>();
   const token = Array.isArray(params.token) ? params.token[0] : params.token;
@@ -130,14 +127,8 @@ export const ArchiveImportScreen = memo(function ArchiveImportScreen() {
   const card = { backgroundColor: theme.colors.surface, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border };
 
   return (
-    <SafeAreaScreen
-      testID="archive-import-screen"
-      scrollable
-      padded={false}
-      edges={['top', 'left', 'right', 'bottom']}
-      style={{ backgroundColor: settingsTokens.background }}
-      contentContainerStyle={{ flexGrow: 1, paddingHorizontal: settingsTokens.spacing.screenX, paddingBottom: 40, gap: 16 }}>
-      <ScreenHeader title={t('archiveImport.title')} showBack onBackPress={goBack} testID="archive-import-header" />
+    <DsScreen testID="archive-import-screen" edges={['top', 'bottom']}>
+      <DsHeader title={t('archiveImport.title')} onBack={goBack} testID="archive-import-header" />
       <Box row rtlRow gap={10} style={{ alignItems: 'center' }}>
         <Icon name="folder-zip-outline" size={24} color="primary" />
         <Text variant="subtitle" numberOfLines={2} style={{ flex: 1 }}>
@@ -253,6 +244,6 @@ export const ArchiveImportScreen = memo(function ArchiveImportScreen() {
           <Button title={t('common.done')} variant="outline" fullWidth onPress={goBack} testID="archive-import-close" />
         </Box>
       ) : null}
-    </SafeAreaScreen>
+    </DsScreen>
   );
 });

@@ -6,8 +6,7 @@ import Svg, { Path, Rect } from 'react-native-svg';
 import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
 import { Button } from '@/components/buttons/Button';
-import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
-import { ScreenHeader } from '@/components/headers/ScreenHeader';
+import { DsHeader, DsScreen } from '@/design';
 import { Switch } from '@/components/inputs/Switch';
 import { qrPath, qrRows } from '@/browser/share-qr/qr-code';
 import { useTranslation } from '@/localization';
@@ -31,7 +30,6 @@ import {
   stopReasonKey,
 } from '@/remote/remote-presentation';
 import { SettingsRow, SettingsSection } from '@/screens/settings/components';
-import { useSettingsTokens } from '@/screens/settings/theme/settings-tokens';
 
 function announce(message: string): void {
   if (Platform.OS === 'android') ToastAndroid.show(message, ToastAndroid.SHORT);
@@ -40,7 +38,6 @@ function announce(message: string): void {
 
 /** P6 Settings → Downloads → Remote control: the local Web UI's switch, address, PIN/QR and paired browsers. */
 export const RemoteControlScreen = memo(function RemoteControlScreen() {
-  const settingsTokens = useSettingsTokens();
   const { t, language, rtl } = useTranslation();
   const status = useRemoteStore((state) => state.status);
   const sent = useRemoteStore((state) => state.sent);
@@ -100,14 +97,8 @@ export const RemoteControlScreen = memo(function RemoteControlScreen() {
   const lockSeconds = lockSecondsLeft(status, now);
 
   return (
-    <SafeAreaScreen
-      testID="remote-control-screen"
-      scrollable
-      padded={false}
-      edges={['top', 'left', 'right', 'bottom']}
-      style={{ backgroundColor: settingsTokens.background }}
-      contentContainerStyle={{ flexGrow: 1, paddingHorizontal: settingsTokens.spacing.screenX, paddingBottom: 40, gap: 16 }}>
-      <ScreenHeader title={t('remoteControl.title')} showBack onBackPress={() => navigation.back()} testID="remote-control-header" />
+    <DsScreen testID="remote-control-screen" edges={['top', 'bottom']}>
+      <DsHeader title={t('remoteControl.title')} onBack={() => navigation.back()} testID="remote-control-header" />
 
       <Text variant="bodySmall" color="textSecondary">
         {t('remoteControl.intro')}
@@ -269,6 +260,6 @@ export const RemoteControlScreen = memo(function RemoteControlScreen() {
           {t('remoteControl.toolsHint')}
         </Text>
       </SettingsSection>
-    </SafeAreaScreen>
+    </DsScreen>
   );
 });

@@ -256,6 +256,13 @@ export interface VidoraWebModuleApi {
    * Resolves null when the user cancels. Missing on older native builds.
    */
   pickStartPageImage?(maxSize: number): Promise<StartPageImage | null>;
+  /** #31 Voice search: whether the phone has a voice input screen. Missing on older native builds. */
+  isVoiceSearchAvailable?(): boolean;
+  /**
+   * #31 Voice search: Android's own voice input screen (no microphone permission for VidoraX); resolves the words
+   * heard, or null when cancelled or nothing was heard. `language` is a BCP 47 tag, or null for the phone's default.
+   */
+  recognizeSpeech?(language: string | null): Promise<string | null>;
   /** B9 #87: whether this phone's launcher can pin shortcuts (Android 8+ and a launcher that supports it). */
   canPinShortcuts?(): boolean;
   /**
@@ -455,6 +462,8 @@ export interface VidoraWebModuleApi {
   setBlockingPage?(viewTag: number, url: string): Promise<boolean>;
   /** B14 #121: requests blocked on this WebView's current page (0 when the view is gone). */
   getBlockedCount?(viewTag: number): Promise<number>;
+  /** Design 5: ads and trackers blocked over the last 7 days, counted on the phone. Missing on older native builds. */
+  getBlockedThisWeek?(): number;
   /**
    * B18 #183 / #193 / #184: pictures from the network off (true) or on for the WebView with this view tag
    * (`WebSettings.setBlockNetworkImage`). Resolves false when the view is gone. Missing on older native builds.

@@ -7,6 +7,7 @@ export const lightUtilitiesUr: CatalogStrings<typeof lightUtilitiesEn> = {
   settingsA11y: 'براؤزر کی ترتیبات',
   calculator: 'کیلکولیٹر',
   calculatorHint: 'ایڈریس بار میں کوئی حساب لکھیں، مثلاً 12*(3+4)',
+  converterHint: 'ایڈریس بار میں تبدیلی لکھیں، مثلاً 5 km in mi یا 100 f to c',
   converter: 'کنورٹر',
   dualCalendar: 'دوہرا کیلنڈر',
   dualCalendarHint: 'عیسوی + ہجری',

@@ -2093,6 +2093,10 @@ export const ur: CatalogStrings<typeof en> = {
     offlineHint: 'اس ڈیوائس پر محفوظ واچ پیش رفت دکھائی جا رہی ہے۔',
     watchProgressA11y: 'واچ پیش رفت',
   },
+  voiceSearch: {
+    unavailable: 'اس فون میں وائس اِن پُٹ نہیں۔ آواز سے تلاش کے لیے گوگل وائس ٹائپنگ انسٹال یا آن کریں۔',
+    commandsHint: 'کوئی سائٹ یا تلاش بولیں',
+  },
   queueBackup: {
     section: 'قطار کا بیک اپ',
     sectionDescription: 'نامکمل ڈاؤن لوڈز فائل میں محفوظ کریں اور بعد میں واپس لائیں',

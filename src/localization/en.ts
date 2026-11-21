@@ -2088,6 +2088,10 @@ export const en = {
     offlineHint: 'Showing watch progress saved on this device.',
     watchProgressA11y: 'Watch progress',
   },
+  voiceSearch: {
+    unavailable: 'This phone has no voice input. Install or turn on Google voice typing to search by voice.',
+    commandsHint: 'Say a site or what to search',
+  },
   queueBackup: {
     section: 'Queue backup',
     sectionDescription: 'Save unfinished downloads to a file and bring them back later',

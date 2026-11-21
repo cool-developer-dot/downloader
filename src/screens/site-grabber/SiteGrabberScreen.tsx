@@ -4,8 +4,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
 import { Button } from '@/components/buttons/Button';
-import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
-import { ScreenHeader } from '@/components/headers/ScreenHeader';
+import { DsHeader, DsScreen } from '@/design';
 import { Switch } from '@/components/inputs/Switch';
 import { TextField } from '@/components/inputs/TextField';
 import { canSaveFetchedPages } from '@/browser/capture/offline-pages.service';
@@ -16,7 +15,6 @@ import { grabSite, type SiteGrabProgress, type SiteGrabResult } from '@/browser/
 import { useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import { PrivateCheckbox } from '@/screens/private/PrivateCheckbox';
-import { useSettingsTokens } from '@/screens/settings/theme/settings-tokens';
 import { useSettingsStore } from '@/store/settings';
 
 /** Up to this many found videos start chosen. */
@@ -36,7 +34,6 @@ const OUTCOME_KEY: Record<BatchOutcome, 'watchedLinks.queued' | 'watchedLinks.du
  */
 export const SiteGrabberScreen = memo(function SiteGrabberScreen() {
   const { t } = useTranslation();
-  const tokens = useSettingsTokens();
   const params = useLocalSearchParams<{ url?: string }>();
   const canSave = canSaveFetchedPages();
   const [url, setUrl] = useState(typeof params.url === 'string' ? params.url : '');
@@ -110,14 +107,8 @@ export const SiteGrabberScreen = memo(function SiteGrabberScreen() {
               : null;
 
   return (
-    <SafeAreaScreen
-      testID="site-grabber-screen"
-      scrollable
-      padded={false}
-      edges={['top', 'left', 'right', 'bottom']}
-      style={{ backgroundColor: tokens.background }}
-      contentContainerStyle={{ flexGrow: 1, paddingHorizontal: tokens.spacing.screenX, paddingBottom: 40, gap: 16 }}>
-      <ScreenHeader title={t('siteGrabber.title')} showBack onBackPress={() => navigation.back()} testID="site-grabber-header" />
+    <DsScreen testID="site-grabber-screen" edges={['top', 'bottom']}>
+      <DsHeader title={t('siteGrabber.title')} onBack={() => navigation.back()} testID="site-grabber-header" />
       <Text variant="bodySmall" color="textSecondary">
         {t('siteGrabber.hint', { pages: MAX_SITE_PAGES })}
       </Text>
@@ -231,6 +222,6 @@ export const SiteGrabberScreen = memo(function SiteGrabberScreen() {
           )}
         </Box>
       ) : null}
-    </SafeAreaScreen>
+    </DsScreen>
   );
 });

@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 
-import { blockedCountForTab } from '@/browser/blocking/content-blocking.service';
+import { blockedCountForTab, blockedThisWeek } from '@/browser/blocking/content-blocking.service';
 import { cleartextAllowed } from '@/browser/privacy/privacy.service';
 import { COOKIE_POLICIES, normalizeCookiePolicy, type CookiePolicy } from '@/browser/privacy/privacy-settings';
 import { SitePermissionsSheet } from '@/browser/site-permissions/components/SitePermissionsSheet';
@@ -32,16 +32,24 @@ const COOKIE_FULL: Record<CookiePolicy, { label: TranslationKey; hint: Translati
 
 const BLOCKED_POLL_MS = 5_000;
 
-/** Requests blocked on the page in front (B14's per-tab count; there is no weekly total), refreshed every 5 s. */
-function useBlockedCount(): number | null {
+/**
+ * The card's number, refreshed every 5 s: ads and trackers blocked over the last 7 days (counted on the phone), or —
+ * on a native build without the weekly count — the requests blocked on the page in front (B14's per-tab count).
+ */
+function useBlockedCount(): { count: number | null; week: boolean } {
   const tabId = useBrowserStore((s) => s.activeTabId);
-  const [count, setCount] = useState<number | null>(null);
+  const [state, setState] = useState<{ count: number | null; week: boolean }>({ count: null, week: false });
   useEffect(() => {
     let cancelled = false;
     const read = () => {
+      const week = blockedThisWeek();
+      if (week != null) {
+        setState({ count: week, week: true });
+        return;
+      }
       blockedCountForTab(tabId)
         .then((value) => {
-          if (!cancelled) setCount(value);
+          if (!cancelled) setState({ count: value, week: false });
         })
         .catch(() => undefined);
     };
@@ -52,7 +60,7 @@ function useBlockedCount(): number | null {
       clearInterval(timer);
     };
   }, [tabId]);
-  return count;
+  return state;
 }
 
 /**
@@ -69,7 +77,7 @@ export const BrowserPrivacyScreen = memo(function BrowserPrivacyScreen() {
   const cookiePolicy = normalizeCookiePolicy(useSettingsStore((s) => s.cookiePolicy));
   // A build that can't open plain http (release) is always HTTPS-only.
   const secureOnly = !cleartextAllowed();
-  const blocked = useBlockedCount();
+  const { count: blocked, week: blockedWeek } = useBlockedCount();
   const [sheet, setSheet] = useState<Sheet>(null);
   const close = useCallback(() => setSheet(null), []);
   const back = useCallback(() => navigation.back(), []);
@@ -104,7 +112,7 @@ export const BrowserPrivacyScreen = memo(function BrowserPrivacyScreen() {
       <DsCard style={{ alignItems: 'center', paddingVertical: 22 }} testID="browser-privacy-blocked">
         <View
           accessible
-          accessibilityLabel={t('lightPrivacy.blockedA11y', { count: blocked ?? 0 })}
+          accessibilityLabel={t(blockedWeek ? 'lightPrivacy.blockedWeekA11y' : 'lightPrivacy.blockedA11y', { count: blocked ?? 0 })}
           style={{ alignItems: 'center', gap: 4 }}>
           <View style={{ flexDirection: rtl.rowDirection, alignItems: 'center', gap: 10 }}>
             <DsIcon name="shield" size={30} color="success" strokeWidth={2.4} />
@@ -113,7 +121,7 @@ export const BrowserPrivacyScreen = memo(function BrowserPrivacyScreen() {
             </DsText>
           </View>
           <DsText variant="body" align="center">
-            {t('lightPrivacy.blocked')}
+            {t(blockedWeek ? 'lightPrivacy.blockedWeek' : 'lightPrivacy.blocked')}
           </DsText>
         </View>
       </DsCard>
@@ -146,7 +154,8 @@ export const BrowserPrivacyScreen = memo(function BrowserPrivacyScreen() {
         <DsRow
           icon="alert-triangle"
           title={t('lightPrivacy.phishing')}
-          toggle={{ value: false, onValueChange: notifyNotAvailableYet }}
+          subtitle={t('lightPrivacy.phishingSub')}
+          toggle={{ value: true, onValueChange: () => notify(t('lightPrivacy.phishingAlwaysOn')), accessibilityHint: t('lightPrivacy.phishingAlwaysOn') }}
           testID="browser-privacy-phishing"
         />
         <DsRow

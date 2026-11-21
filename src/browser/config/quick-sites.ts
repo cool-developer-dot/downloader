@@ -22,42 +22,21 @@ export type QuickSite = {
  * Unsupported video hosts are omitted from promotion (generic browsing still allowed).
  * Tiles show a generic glyph (`icon`) and the site name only: no brand logos or favicons (store-review and
  * trademark safety, and no favicon request leaves the device from the start page).
+ *
+ * Every promoted site must be fully usable while logged out. Play review rejected 1.0.2 because a reviewer opened
+ * the Facebook tile, landed on Facebook's own login page and reported VidoraX as needing sign-in details (fixed in
+ * 1.0.3, `release/1.0` de1cf91 / e212d0a — ported here for 1.2.0). Sites that open on a login, sign-up or
+ * phone-number wall (Facebook, Instagram, Telegram Web, X, Pinterest, Snapchat Web, TikTok, and Dailymotion, which
+ * shows "Join Dailymotion" to new visitors in the WebView) stay reachable by typing or pasting a link, but are never
+ * promoted here. Check a new tile on a fresh emulator install before adding it. The design draws six tiles (design 1,
+ * 3 × 2): the four from 1.0.3 plus NASA and ESA, both checked logged out in the app on 2026-11-21 (Coverr was not
+ * added: it opens on a full-screen sales pop-up; Pexels, Pixabay and Videezy answer with a Cloudflare challenge).
  */
 export const QUICK_SITES: readonly QuickSite[] = [
   {
-    id: 'instagram',
-    name: 'Instagram',
-    url: 'https://www.instagram.com/',
-    hostname: 'instagram.com',
-    category: 'social',
-    icon: 'account-group-outline',
-    dsIcon: 'camera',
-    accent: 'primary',
-  },
-  {
-    id: 'tiktok',
-    name: 'TikTok',
-    url: 'https://www.tiktok.com/',
-    hostname: 'tiktok.com',
-    category: 'video',
-    icon: 'video-outline',
-    dsIcon: 'music',
-    accent: 'textPrimary',
-  },
-  {
-    id: 'facebook',
-    name: 'Facebook',
-    url: 'https://www.facebook.com/',
-    hostname: 'facebook.com',
-    category: 'social',
-    icon: 'forum-outline',
-    dsIcon: 'users',
-    accent: 'info',
-  },
-  {
     id: 'vimeo',
     name: 'Vimeo',
-    url: 'https://vimeo.com/',
+    url: 'https://vimeo.com/watch',
     hostname: 'vimeo.com',
     category: 'video',
     icon: 'filmstrip',
@@ -65,88 +44,61 @@ export const QUICK_SITES: readonly QuickSite[] = [
     accent: 'info',
   },
   {
-    id: 'dailymotion',
-    name: 'Dailymotion',
-    url: 'https://www.dailymotion.com/',
-    hostname: 'dailymotion.com',
+    id: 'ted',
+    name: 'TED Talks',
+    url: 'https://www.ted.com/talks',
+    hostname: 'ted.com',
     category: 'video',
-    icon: 'play-circle-outline',
-    dsIcon: 'play',
-    accent: 'primary',
-  },
-  {
-    id: 'reddit',
-    name: 'Reddit',
-    url: 'https://www.reddit.com/',
-    hostname: 'reddit.com',
-    category: 'social',
-    icon: 'message-outline',
-    dsIcon: 'file-text',
-    accent: 'warning',
-  },
-  {
-    id: 'pinterest',
-    name: 'Pinterest',
-    url: 'https://www.pinterest.com/',
-    hostname: 'pinterest.com',
-    category: 'social',
-    icon: 'image-multiple-outline',
-    dsIcon: 'images',
+    icon: 'microphone-outline',
+    dsIcon: 'mic',
     accent: 'error',
   },
   {
-    id: 'telegram',
-    name: 'Telegram',
-    url: 'https://web.telegram.org/',
-    hostname: 'web.telegram.org',
-    category: 'social',
-    icon: 'compass-outline',
-    dsIcon: 'radio',
-    accent: 'info',
-  },
-  {
-    id: 'x',
-    name: 'X',
-    url: 'https://x.com/',
-    hostname: 'x.com',
-    category: 'social',
-    icon: 'web',
+    id: 'wikimedia-commons',
+    name: 'Wikimedia',
+    url: 'https://commons.wikimedia.org/wiki/Category:Videos',
+    hostname: 'commons.wikimedia.org',
+    category: 'video',
+    icon: 'earth',
     dsIcon: 'globe',
     accent: 'textPrimary',
   },
   {
-    id: 'twitch',
-    name: 'Twitch',
-    url: 'https://www.twitch.tv/',
-    hostname: 'twitch.tv',
+    id: 'mixkit',
+    name: 'Mixkit',
+    url: 'https://mixkit.co/free-stock-video/',
+    hostname: 'mixkit.co',
     category: 'video',
     icon: 'movie-open-outline',
-    dsIcon: 'tv',
+    dsIcon: 'play',
     accent: 'primary',
   },
   {
-    id: 'snapchat',
-    name: 'Snapchat',
-    url: 'https://web.snapchat.com/',
-    hostname: 'web.snapchat.com',
-    category: 'social',
-    icon: 'account-group-outline',
-    dsIcon: 'camera',
-    accent: 'warning',
+    id: 'nasa',
+    name: 'NASA',
+    url: 'https://images.nasa.gov/search?media=video',
+    hostname: 'images.nasa.gov',
+    category: 'video',
+    icon: 'rocket-launch-outline',
+    dsIcon: 'star',
+    accent: 'info',
+  },
+  {
+    id: 'esa',
+    name: 'ESA',
+    url: 'https://www.esa.int/ESA_Multimedia/Videos',
+    hostname: 'esa.int',
+    category: 'video',
+    icon: 'satellite-variant',
+    dsIcon: 'tv',
+    accent: 'textPrimary',
   },
 ] as const;
 
 /**
- * Visible Browser start-page Quick Access — exactly the design's six tiles (design 1 "Browser · Home": 3 × 2).
+ * Visible Browser start-page Quick Access — login-free shortcuts only, in the design's 3 × 2 grid (design 1).
  */
-export const START_PAGE_QUICK_SITE_IDS = [
-  'instagram',
-  'tiktok',
-  'facebook',
-  'vimeo',
-  'dailymotion',
-  'reddit',
-] as const;
+export const START_PAGE_QUICK_SITE_IDS = ['vimeo', 'ted', 'wikimedia-commons', 'mixkit', 'nasa', 'esa'] as const;
 
 const quickSiteById = new Map(QUICK_SITES.map((site) => [site.id, site]));
 
@@ -163,7 +115,7 @@ export const START_PAGE_QUICK_SITES: readonly QuickSite[] = START_PAGE_QUICK_SIT
 /** Quick Access always uses three columns on phones and tablets. */
 export const QUICK_ACCESS_COLUMNS = 3 as const;
 
-/** Start-page grid is a fixed 3 × 2 (6 tiles). */
+/** Start-page Quick Access tile count (laid out in QUICK_ACCESS_COLUMNS columns). */
 export const START_PAGE_QUICK_ACCESS_COUNT = START_PAGE_QUICK_SITE_IDS.length;
 
 /** @deprecated Use QUICK_ACCESS_COLUMNS — kept for bookmark grid compatibility. */

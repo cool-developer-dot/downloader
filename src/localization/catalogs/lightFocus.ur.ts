@@ -18,4 +18,5 @@ export const lightFocusUr: CatalogStrings<typeof lightFocusEn> = {
   limitSites: '{minutes} منٹ / دن · {count} سائٹس',
   blockAutoplay: 'خودکار پلے بند کریں',
   quietDownloads: 'خاموش ڈاؤن لوڈز',
+  quietDownloadsSub: 'ڈاؤن لوڈ اطلاعات بغیر آواز یا وائبریشن کے',
 };

@@ -34,6 +34,7 @@ import {
 import { useTranslation, type TranslationKey } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import { ChoiceSheet, type ChoiceOption } from '@/screens/settings/browser-settings/ChoiceSheet';
+import { isVoiceSearchAvailable, listenForWords } from '@/browser/voice/voice-search';
 import { useRecentSearchesStore } from '@/store/recent-searches';
 import { useSettingsStore } from '@/store/settings';
 
@@ -81,9 +82,6 @@ export const BrowserSearchScreen = memo(function BrowserSearchScreen() {
 
   const { suggestions } = useOmniboxSuggestions({ enabled: true, query });
 
-  const notYet = useCallback(() => {
-    ToastAndroid.show(t('common.notAvailableYet'), ToastAndroid.SHORT);
-  }, [t]);
   const openSettings = useCallback(() => navigation.push(routePaths.browserSettings), []);
   const clear = useCallback(() => {
     setQuery('');
@@ -114,8 +112,8 @@ export const BrowserSearchScreen = memo(function BrowserSearchScreen() {
     [recordRecentSearch, t],
   );
 
-  const submit = useCallback(() => {
-    const result = navigationService.resolveSubmission(query);
+  const submitText = useCallback((text: string) => {
+    const result = navigationService.resolveSubmission(text);
     if (!result.ok) {
       const key: TranslationKey =
         result.intent.kind === 'empty'
@@ -128,9 +126,23 @@ export const BrowserSearchScreen = memo(function BrowserSearchScreen() {
     }
     open(result.url, {
       typedLink: result.intent.kind === 'navigate',
-      recordSearchQuery: result.intent.kind === 'search' ? query : undefined,
+      recordSearchQuery: result.intent.kind === 'search' ? text : undefined,
     });
-  }, [open, query, t]);
+  }, [open, t]);
+  const submit = useCallback(() => submitText(query), [query, submitText]);
+
+  // #31: the mic — Android's voice input screen; the words heard are shown in the field and searched at once.
+  const listen = useCallback(() => {
+    if (!isVoiceSearchAvailable()) {
+      notify(t('voiceSearch.unavailable'));
+      return;
+    }
+    void listenForWords().then((words) => {
+      if (!words) return;
+      setQuery(words);
+      submitText(words);
+    });
+  }, [submitText, t]);
 
   const selectSuggestion = useCallback(
     (item: OmniboxSuggestion) => {
@@ -196,7 +208,7 @@ export const BrowserSearchScreen = memo(function BrowserSearchScreen() {
         blurOnSubmit={false}
         accessibilityLabel={t('lightSearch.fieldA11y')}
         actions={[
-          { icon: 'mic', accessibilityLabel: t('lightSearch.micA11y'), onPress: notYet, testID: 'browser-search-mic' },
+          { icon: 'mic', accessibilityLabel: t('lightSearch.micA11y'), onPress: listen, testID: 'browser-search-mic' },
           { icon: 'x', accessibilityLabel: t('lightSearch.clearA11y'), onPress: clear, testID: 'browser-search-clear' },
         ]}
       />

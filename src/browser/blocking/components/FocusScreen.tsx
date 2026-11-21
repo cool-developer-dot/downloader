@@ -54,6 +54,8 @@ export const FocusScreen = memo(function FocusScreen() {
   const update = useSettingsStore((s) => s.updateSetting);
   const chosen = normalizeFocusMinutesChoice(useSettingsStore((s) => s.focusMinutes));
   const autoplay = normalizeAutoplay(useSettingsStore((s) => s.autoplay));
+  // H16's silent mode: download notifications keep coming, without sound or vibration.
+  const quietDownloads = useSettingsStore((s) => s.notificationSilent);
   const serviceNow = useSiteClock();
   const focusOn = isFocusActive(limits, serviceNow);
   const now = useCountdownClock(focusOn);
@@ -130,7 +132,8 @@ export const FocusScreen = memo(function FocusScreen() {
         <DsRow
           icon="moon"
           title={t('lightFocus.quietDownloads')}
-          toggle={{ value: false, onValueChange: () => toast(t('common.notAvailableYet')) }}
+          subtitle={t('lightFocus.quietDownloadsSub')}
+          toggle={{ value: quietDownloads, onValueChange: (next) => update('notificationSilent', next) }}
           testID="focus-quiet-downloads"
         />
       </DsRowGroup>
