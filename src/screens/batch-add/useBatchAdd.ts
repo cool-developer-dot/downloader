@@ -44,6 +44,25 @@ async function readPlaylist(url: string): Promise<string | null> {
   }
 }
 
+export type BatchStartOptions = {
+  /** A subset of `links` to run (the Playlist screen's selection); the whole list by default. */
+  links?: readonly string[];
+  /** Playlist "Cooldown between files": the wait before each link after the first. 0 by default. */
+  cooldownMs?: number;
+};
+
+function wait(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done() {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', done);
+      resolve();
+    }
+    signal.addEventListener('abort', done);
+  });
+}
+
 /**
  * Batch Add (#292) and Import Links from File (#293), with patterns (#485), include/exclude rules (#505) and
  * playlists with a choice of items (#368, #369). Links run one at a time; leaving the screen stops the run (a link
@@ -84,20 +103,26 @@ export function useBatchAdd() {
   const selectAll = useCallback(() => setUnselected(new Set()), []);
   const selectNone = useCallback(() => setUnselected(new Set(candidates)), [candidates]);
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (options?: BatchStartOptions) => {
     if (runningRef.current) {
       return;
     }
-    const queue = links.map((url) => ({ url, mirrors: parsed.mirrors[url] ?? [] }));
+    const wanted = options?.links;
+    const chosen = wanted ? links.filter((url) => wanted.includes(url)) : links;
+    const queue = chosen.map((url) => ({ url, mirrors: parsed.mirrors[url] ?? [] }));
     if (queue.length === 0) {
       return;
     }
+    const cooldownMs = Math.max(0, options?.cooldownMs ?? 0);
     runningRef.current = true;
     const controller = new AbortController();
     abortRef.current = controller;
     setRunning(true);
     setRows(queue.map(({ url, mirrors }) => ({ url, mirrors, status: 'pending', result: null })));
     for (let index = 0; index < queue.length; index += 1) {
+      if (index > 0 && cooldownMs > 0) {
+        await wait(cooldownMs, controller.signal);
+      }
       if (controller.signal.aborted) {
         break;
       }

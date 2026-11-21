@@ -23,6 +23,7 @@ import {
   stepReaderFontSize,
   type ReaderTheme,
 } from '../reader-settings';
+import { isDarkThemeMode } from '@/theme/theme-preference';
 
 const THEME_KEYS = { app: 'themeApp', light: 'themeLight', sepia: 'themeSepia', dark: 'themeDark' } as const;
 const FONT_KEYS = { sans: 'fontSans', serif: 'fontSerif' } as const;
@@ -39,7 +40,7 @@ export const ReaderAppearanceSheet = memo(function ReaderAppearanceSheet({ visib
   const spacing = normalizeReaderLineSpacing(useSettingsStore((s) => s.readerLineSpacing));
   const images = useSettingsStore((s) => s.readerImages);
 
-  const swatch = (choice: ReaderTheme) => readerPalette(choice, theme.mode === 'dark');
+  const swatch = (choice: ReaderTheme) => readerPalette(choice, isDarkThemeMode(theme.mode));
 
   return (
     <SheetFrame visible={visible} title={t('browserReader.appearance')} onClose={onClose} testID="reader-appearance-sheet">

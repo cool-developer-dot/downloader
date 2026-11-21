@@ -16,6 +16,7 @@ export const tabRouteNames = {
   browser: 'browser',
   downloads: 'downloads',
   library: 'library',
+  files: 'files',
   settings: 'settings',
 } as const;
 
@@ -26,12 +27,7 @@ export const appStackRouteNames = {
   reportProblem: 'report-problem',
   privacy: 'privacy',
   terms: 'terms',
-  history: 'history',
   watchHistory: 'watch-history',
-  bookmarks: 'bookmarks',
-  favorites: 'favorites',
-  downloadDetails: 'downloads/[id]',
-  downloadSettings: 'download-settings',
   appLockSetup: 'app-lock-setup',
   appLockDisable: 'app-lock-disable',
   appLockChangePin: 'app-lock-change-pin',

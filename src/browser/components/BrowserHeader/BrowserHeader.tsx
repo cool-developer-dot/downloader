@@ -42,8 +42,8 @@ export const BrowserHeader = memo(function BrowserHeader({
       testID={testID}
       row
       px={16}
-      py={12}
-      gap={4}
+      py={10}
+      gap={6}
       style={{
         alignItems: 'flex-start',
         backgroundColor: incognito ? INCOGNITO_COLORS.surface : theme.colors.headerBackground,

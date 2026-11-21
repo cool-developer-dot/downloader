@@ -2487,6 +2487,25 @@ ARCHITECTURE §3.9; API in `docs/REMOTE_API.md`; intents in `docs/AUTOMATION.md`
 - **Version:** 1.2.0 / versionCode 5 in `android/app/build.gradle` and `app.json`; Play release notes and the zip
   intent-filter row in `docs/play-console/PLAY_SUBMISSION.md`. Play upload stays the owner's step.
 
+### 4.38 Light theme — the CEO's design (branch `hamza/light-theme`, 2026-11-17)
+
+The Browser and Downloads modules rebuilt to `VidoraX-6-Themes-65-Screens.pdf` (light theme, screens 1–17, 33–47):
+design tokens measured from the PDF vectors (`docs/design/light-theme-kit.md`, `src/design/*`), light as the
+default theme, Inter only, a five-tab bar (Browser · Downloads · Player · Files · Settings), Browser and Downloads
+as nested stacks inside their tabs (`src/app/(app)/(tabs)/browser/*`, `(tabs)/downloads/*`), every design screen
+as a route. Work log: `docs/work-log/hamza-browser.md` → "Light theme". Player and Files are not done.
+
+### 4.39 The six themes (branch `hamza/light-theme`, 2026-11-17)
+
+Dark, Red, Cream, Midnight and Blush join Light: `src/theme/colors.ts` builds every theme's tokens from one measured
+palette (`designPalettes` / `designTheme`, pinned by `src/theme/colors.test.ts`); `ThemePreference` is the six names
+in the PDF's order (a stored `logo` reads as `red`); `isDarkThemeMode` (Dark, Midnight) drives night mode, the dark
+navigation / Paper bases and force-dark pages; the Red theme's accent header band and bottom bar come from
+`theme.colors.headerStyle === 'band'` in `DsHeader`, `DsIconButton`, `DsScreen` and `DsTabBar`; Settings →
+Appearance shows six swatches. Palette table and chrome rules: `docs/design/light-theme-kit.md` → "The six themes".
+Work log: `docs/work-log/hamza-browser.md` → "The other five themes". Gate at the time: typecheck clean, 1881 / 1881
+unit tests, lint 0 errors. No device pass yet (checklist in the work log).
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

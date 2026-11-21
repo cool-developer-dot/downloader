@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, type ReactElement } from 'react';
 import {
   FlatList,
   SectionList,
@@ -6,6 +6,7 @@ import {
   type SectionListRenderItem,
 } from 'react-native';
 
+import { ds } from '@/design';
 import { useQueueOrderStore } from '@/downloads/v2/queue-order-store';
 
 import type { DownloadListSection } from '../utils/download-format';
@@ -35,6 +36,8 @@ export type DownloadsListProps = {
   onOpen: (id: string) => void;
   onShare: (id: string) => void;
   onRemove: (id: string) => void;
+  /** The screen's header, chips, speed card and buttons: they scroll with the cards, as in the design. */
+  ListHeaderComponent?: ReactElement | null;
   testID?: string;
 };
 
@@ -56,6 +59,7 @@ export const DownloadsList = memo(function DownloadsList({
   onOpen,
   onShare,
   onRemove,
+  ListHeaderComponent = null,
   testID = 'downloads-list',
 }: DownloadsListProps) {
   const queueReorderMode = useQueueOrderStore((s) => s.reorderMode);
@@ -122,8 +126,9 @@ export const DownloadsList = memo(function DownloadsList({
     [hasMore, loadingMore, orderedIds.length, sections.length],
   );
 
+  // Room under the last card for the floating "+ Add link".
   const contentStyle = useMemo(
-    () => ({ flexGrow: 1, paddingBottom: 24 }),
+    () => ({ flexGrow: 1, paddingHorizontal: ds.space.screenX, paddingBottom: 96 }),
     [],
   );
 
@@ -150,9 +155,11 @@ export const DownloadsList = memo(function DownloadsList({
         windowSize={5}
         removeClippedSubviews
         keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={ListHeaderComponent}
         ListFooterComponent={footer}
         ListEmptyComponent={narrowed.emptyNotice}
         contentContainerStyle={contentStyle}
+        showsVerticalScrollIndicator={false}
         accessibilityRole="list"
       />
     );
@@ -173,9 +180,11 @@ export const DownloadsList = memo(function DownloadsList({
       windowSize={5}
       removeClippedSubviews
       keyboardShouldPersistTaps="handled"
+      ListHeaderComponent={ListHeaderComponent}
       ListFooterComponent={footer}
       ListEmptyComponent={narrowed.emptyNotice}
       contentContainerStyle={contentStyle}
+      showsVerticalScrollIndicator={false}
       accessibilityRole="list"
     />
   );

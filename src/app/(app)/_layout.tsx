@@ -45,10 +45,6 @@ export default function AppLayout() {
     () => createStackHeaderOptions(t('nav.reportProblem'), theme),
     [t, theme],
   );
-  const downloadSettingsHeaderOptions = useMemo(
-    () => createStackHeaderOptions(t('nav.downloadSettings'), theme),
-    [t, theme],
-  );
   const appLockSetupHeaderOptions = useMemo(
     () => createStackHeaderOptions(t('nav.appLockSetup'), theme),
     [t, theme],
@@ -76,10 +72,6 @@ export default function AppLayout() {
   const termsHeaderOptions = useMemo(
     () => createStackHeaderOptions(t('nav.terms'), theme),
     [t, theme],
-  );
-  const historyHeaderOptions = useMemo(
-    () => createHiddenHeaderOptions(),
-    [],
   );
 
   return (
@@ -115,24 +107,8 @@ export default function AppLayout() {
               options={termsHeaderOptions}
             />
             <Stack.Screen
-              name={appStackRouteNames.history}
-              options={historyHeaderOptions}
-            />
-            <Stack.Screen
               name={appStackRouteNames.watchHistory}
               options={createHiddenHeaderOptions()}
-            />
-            <Stack.Screen
-              name={appStackRouteNames.bookmarks}
-              options={createHiddenHeaderOptions()}
-            />
-            <Stack.Screen
-              name={appStackRouteNames.favorites}
-              options={createHiddenHeaderOptions()}
-            />
-            <Stack.Screen
-              name={appStackRouteNames.downloadSettings}
-              options={downloadSettingsHeaderOptions}
             />
             <Stack.Screen
               name={appStackRouteNames.appLockSetup}
@@ -153,10 +129,6 @@ export default function AppLayout() {
             <Stack.Screen
               name={appStackRouteNames.storage}
               options={storageHeaderOptions}
-            />
-            <Stack.Screen
-              name={appStackRouteNames.downloadDetails}
-              options={createHiddenHeaderOptions()}
             />
             <Stack.Screen
               name={appStackRouteNames.player}

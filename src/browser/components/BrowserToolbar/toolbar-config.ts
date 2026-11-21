@@ -1,4 +1,4 @@
-import type { IconName } from '@/components/base/Icon';
+import type { DsIconName } from '@/design/DsIcon';
 import type { TranslateFn, TranslationKey } from '@/localization';
 
 /**
@@ -18,7 +18,8 @@ export type BrowserToolbarItemId =
 
 export type BrowserToolbarItem = {
   id: BrowserToolbarItemId;
-  icon: IconName;
+  /** A Lucide glyph of the design kit. */
+  icon: DsIconName;
   accessibilityLabel: string;
   /** When false, the item is omitted from the rendered toolbar. */
   enabled: boolean;
@@ -39,7 +40,7 @@ export const BROWSER_TOOLBAR_ITEMS: readonly BrowserToolbarItem[] = [
   },
   {
     id: 'home',
-    icon: 'home',
+    icon: 'house',
     accessibilityLabel: 'Go home',
     enabled: true,
   },
@@ -52,25 +53,25 @@ export const BROWSER_TOOLBAR_ITEMS: readonly BrowserToolbarItem[] = [
   },
   {
     id: 'tabs',
-    icon: 'tab',
+    icon: 'layers',
     accessibilityLabel: 'Tabs',
     enabled: false,
   },
   {
     id: 'menu',
-    icon: 'menu',
+    icon: 'ellipsis-vertical',
     accessibilityLabel: 'Browser menu',
     enabled: false,
   },
   {
     id: 'ai',
-    icon: 'auto-fix',
+    icon: 'sparkles',
     accessibilityLabel: 'AI assistant',
     enabled: false,
   },
   {
     id: 'settings',
-    icon: 'cog',
+    icon: 'settings',
     accessibilityLabel: 'Settings',
     enabled: false,
   },

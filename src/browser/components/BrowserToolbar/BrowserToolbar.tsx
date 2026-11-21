@@ -11,7 +11,7 @@ import { goBackInActiveTab, loadActiveTabBackHistory } from '@/browser/navigatio
 import { BROWSER_TOOLBAR_HEIGHT, BROWSER_TOUCH_TARGET } from '@/browser/constants';
 import { useBrowserNavigation } from '@/browser/hooks';
 import { useTranslation, type TranslationKey } from '@/localization';
-import type { IconName } from '@/components/base/Icon';
+import type { DsIconName } from '@/design';
 import { selectCurrentUrl, selectIsLoading, useBrowserStore } from '@/browser/stores';
 import { browserCommands } from '@/browser/startup/browser-commands';
 import { readHomepage } from '@/browser/startup/startup-settings';
@@ -23,14 +23,14 @@ import { getBrowserToolbarItems } from './toolbar-config';
 import { ToolbarButton } from './ToolbarButton';
 
 /** B21 #238: the buttons beyond today's Back / Forward / Home. */
-const EXTRA_BUTTONS: Record<Exclude<ToolbarButtonId, 'back' | 'forward' | 'home'>, { icon: IconName; label: TranslationKey }> = {
-  newTab: { icon: 'tab-plus', label: 'browserStartup.buttonNewTab' },
-  reload: { icon: 'refresh', label: 'browserStartup.buttonReload' },
-  share: { icon: 'share-variant', label: 'browserStartup.buttonShare' },
-  bookmarks: { icon: 'bookmark-outline', label: 'browserStartup.buttonBookmarks' },
+const EXTRA_BUTTONS: Record<Exclude<ToolbarButtonId, 'back' | 'forward' | 'home'>, { icon: DsIconName; label: TranslationKey }> = {
+  newTab: { icon: 'plus', label: 'browserStartup.buttonNewTab' },
+  reload: { icon: 'rotate-cw', label: 'browserStartup.buttonReload' },
+  share: { icon: 'share-2', label: 'browserStartup.buttonShare' },
+  bookmarks: { icon: 'bookmark', label: 'browserStartup.buttonBookmarks' },
   history: { icon: 'history', label: 'browserStartup.buttonHistory' },
   downloads: { icon: 'download', label: 'browserStartup.buttonDownloads' },
-  searchSite: { icon: 'magnify', label: 'browserStartup.buttonSearchSite' },
+  searchSite: { icon: 'search', label: 'browserStartup.buttonSearchSite' },
 };
 
 export type BrowserToolbarProps = {
@@ -87,15 +87,15 @@ export const BrowserToolbar = memo(function BrowserToolbar({
 
   const visibleItems = useMemo(() => {
     const base = getBrowserToolbarItems(t);
-    return toolbarIds.map((id): { id: ToolbarButtonId; icon: IconName; accessibilityLabel: string } => {
+    return toolbarIds.map((id): { id: ToolbarButtonId; icon: DsIconName; accessibilityLabel: string } => {
       if (id === 'back' || id === 'forward' || id === 'home') {
         const item = base.find((b) => b.id === id)!;
-        const icon = id === 'back' ? rtl.arrowBack : id === 'forward' ? rtl.arrowForward : item.icon;
+        const icon: DsIconName = id === 'back' ? rtl.arrowBack : id === 'forward' ? rtl.arrowForward : item.icon;
         return { id, icon, accessibilityLabel: item.accessibilityLabel };
       }
       const extra = EXTRA_BUTTONS[id];
       if (id === 'reload' && isLoading) {
-        return { id, icon: 'close', accessibilityLabel: t('browserStartup.buttonStop') };
+        return { id, icon: 'x', accessibilityLabel: t('browserStartup.buttonStop') };
       }
       return { id, icon: extra.icon, accessibilityLabel: t(extra.label) };
     });

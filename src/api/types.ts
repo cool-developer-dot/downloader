@@ -3,7 +3,7 @@
  * Date fields are ISO-8601 strings.
  */
 
-export type ThemeMode = 'SYSTEM' | 'LIGHT' | 'LOGO' | 'DARK';
+export type ThemeMode = 'SYSTEM' | 'LIGHT' | 'LOGO' | 'DARK' | 'RED' | 'CREAM' | 'MIDNIGHT' | 'BLUSH';
 
 export interface Settings {
   theme: ThemeMode;

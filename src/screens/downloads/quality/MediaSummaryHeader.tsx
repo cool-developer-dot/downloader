@@ -1,100 +1,56 @@
-import { Image } from 'expo-image';
-import { memo, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { memo } from 'react';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Icon } from '@/components/base/Icon';
-import { Text } from '@/components/base/Text';
+import { DsCard, DsText, DsThumb, ds } from '@/design';
 import {
   buildMediaInfoLine,
   resolveDisplayHost,
   resolveDisplayTitle,
   type AnalyzedMediaSelection,
 } from '@/downloads/quality';
-import { useTheme } from '@/hooks/use-theme';
-import { primaryAlphas } from '@/theme';
+import { useTranslation } from '@/localization';
 
 export type MediaSummaryHeaderProps = {
   selection: AnalyzedMediaSelection;
   testID?: string;
 };
 
+/** A compact "thumbnail · title · host · info" card for an analysed link. */
 export const MediaSummaryHeader = memo(function MediaSummaryHeader({
   selection,
   testID = 'quality-media-summary',
 }: MediaSummaryHeaderProps) {
-  const theme = useTheme();
-  const primary = primaryAlphas(theme.colors.primary);
-  const [imageFailed, setImageFailed] = useState(false);
-
+  const { t, rtl } = useTranslation();
   const title = resolveDisplayTitle(selection);
   const host = resolveDisplayHost(selection);
   const info = buildMediaInfoLine(selection);
-  const thumbnail = selection.thumbnailUrl?.trim();
-  const showImage = Boolean(thumbnail) && !imageFailed;
-
-  const placeholderIcon =
-    selection.mediaType === 'audio'
-      ? 'music-note'
-      : selection.mediaType === 'stream'
-        ? 'broadcast'
-        : 'play-circle-outline';
+  const thumbnail = selection.thumbnailUrl?.trim() || null;
 
   return (
-    <Box
-      testID={testID}
-      row
-      gap={14}
-      p={14}
-      borderRadius="md"
-      style={{
-        backgroundColor: theme.colors.surface,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.border,
-        alignItems: 'center',
-      }}
-      accessibilityRole="text"
-      accessibilityLabel={[title, host, info].filter(Boolean).join('. ')}>
-      <Box
-        style={{
-          width: 64,
-          height: 64,
-          borderRadius: theme.radius.sm,
-          overflow: 'hidden',
-          backgroundColor: primary.medium,
-        }}
-        accessibilityRole="image"
-        accessibilityLabel={showImage ? 'Media thumbnail' : 'Media placeholder'}>
-        {showImage ? (
-          <Image
-            source={{ uri: thumbnail }}
-            style={{ width: '100%', height: '100%' }}
-            contentFit="cover"
-            transition={160}
-            onError={() => setImageFailed(true)}
-          />
-        ) : (
-          <Box flex={1} center>
-            <Icon name={placeholderIcon} size={28} color="primary" />
-          </Box>
-        )}
-      </Box>
-
-      <Box flex={1} gap={4} style={{ justifyContent: 'center' }}>
-        <Text variant="subtitle" numberOfLines={2}>
-          {title}
-        </Text>
-        {host ? (
-          <Text variant="caption" color="textSecondary" numberOfLines={1}>
-            {host}
-          </Text>
-        ) : null}
-        {info ? (
-          <Text variant="caption" color="textSecondary" numberOfLines={1}>
-            {info}
-          </Text>
-        ) : null}
-      </Box>
-    </Box>
+    <DsCard testID={testID}>
+      <View
+        style={{ flexDirection: rtl.rowDirection, alignItems: 'center', gap: ds.space.rowGap }}
+        accessibilityRole="text"
+        accessibilityLabel={[title, host, info].filter(Boolean).join('. ')}>
+        <View accessibilityRole="image" accessibilityLabel={thumbnail ? t('mediaResult.thumbnailA11y') : t('mediaResult.placeholderA11y')}>
+          <DsThumb uri={thumbnail} kind="video" icon={selection.mediaType === 'audio' ? 'music' : 'play'} />
+        </View>
+        <View style={{ flex: 1, gap: 1 }}>
+          <DsText variant="rowTitle" numberOfLines={2}>
+            {title}
+          </DsText>
+          {host ? (
+            <DsText variant="rowSub" numberOfLines={1}>
+              {host}
+            </DsText>
+          ) : null}
+          {info ? (
+            <DsText variant="rowSub" numberOfLines={1}>
+              {info}
+            </DsText>
+          ) : null}
+        </View>
+      </View>
+    </DsCard>
   );
 });

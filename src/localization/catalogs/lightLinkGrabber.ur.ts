@@ -1,0 +1,31 @@
+import type { CatalogStrings } from '../types';
+import type { lightLinkGrabberEn } from './lightLinkGrabber.en';
+
+export const lightLinkGrabberUr: CatalogStrings<typeof lightLinkGrabberEn> = {
+  title: 'لنک گریبر',
+  subtitle: 'صفحے پر ڈاؤن لوڈز تلاش کریں',
+  scanning: 'اسکین ہو رہا ہے…',
+  linksFoundOne: '1 لنک ملا',
+  linksFoundOther: '{count} لنکس ملے',
+  noPage: 'پہلے براؤزر میں کوئی صفحہ کھولیں',
+  pageFailed: 'صفحے نے جواب نہیں دیا۔ لوڈ ہونے کے بعد دوبارہ اسکین کے لیے دبائیں۔',
+  rescanA11y: 'صفحہ دوبارہ اسکین کریں',
+  video: 'ویڈیو',
+  selectA11y: '{name} منتخب کریں',
+  deselectA11y: '{name} کا انتخاب ہٹائیں',
+  patternDownload: 'پیٹرن ڈاؤن لوڈ',
+  rssDownload: 'RSS ڈاؤن لوڈ',
+  includeExcludeRules: 'شامل / خارج کرنے کے اصول',
+  siteGrabber: 'سائٹ گریبر',
+  addSelected: 'منتخب شامل کریں',
+  patternHint: 'بریکٹ میں نمبروں کی حد والا ویب لنک، جیسے file[01-20].jpg۔ ہر نمبر ایک لنک بنتا ہے۔',
+  patternLabel: 'پیٹرن',
+  patternAdd: 'لنکس شامل کریں',
+  patternInvalid: '[01-20] جیسی حد والا ویب لنک درج کریں۔',
+  patternAddedOne: '1 لنک شامل ہوا',
+  patternAddedOther: '{count} لنکس شامل ہوئے',
+  rulesHint: 'صرف وہ لنکس دکھائے جاتے ہیں جن میں شامل کرنے والا متن ہو؛ خارج کرنے والے متن والے لنکس چھپ جاتے ہیں۔',
+  include: 'شامل کریں',
+  exclude: 'خارج کریں',
+  rulesApply: 'لاگو کریں',
+};

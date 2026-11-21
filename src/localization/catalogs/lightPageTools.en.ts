@@ -1,0 +1,28 @@
+/** Light theme (CEO design) — `lightPageTools` screen strings. Keys are added by the screen that uses them. */
+export const lightPageToolsEn = {
+  title: 'Page tools',
+  /** The header's second line on the start page (a web page shows its host there). */
+  home: 'VidoraX Home',
+  settingsA11y: 'Browser settings',
+  findInPage: 'Find in page',
+  findInPageHint: 'Count · Next/Prev · Case · Whole word',
+  readerMode: 'Reader mode',
+  readerModeHint: 'Theme · Font · Read aloud',
+  desktopSite: 'Desktop site',
+  desktopSiteHint: 'User agent',
+  textSize: 'Text size & zoom',
+  textSizeHint: 'Reflow · Font style · Urdu font',
+  highlightDraw: 'Highlight & draw',
+  highlightDrawHint: 'Annotate page',
+  savePdf: 'Save as PDF / Print',
+  savePdfHint: 'Full-page capture',
+  saveOffline: 'Save offline',
+  nightLight: 'Night light & filters',
+  nightLightHint: 'Force dark pages',
+  calculator: 'Address-bar calculator & converter',
+  selectedText: 'Selected text',
+  copy: 'Copy',
+  translate: 'Translate',
+  selectFirst: 'Select text on the page first',
+  more: 'More',
+} as const;

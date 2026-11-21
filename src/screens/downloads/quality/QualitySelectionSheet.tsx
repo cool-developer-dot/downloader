@@ -1,5 +1,5 @@
 import * as Clipboard from 'expo-clipboard';
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -7,30 +7,26 @@ import {
   Pressable as RNPressable,
   ScrollView,
   StyleSheet,
+  ToastAndroid,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { Box } from '@/components/base/Box';
-import { Icon } from '@/components/base/Icon';
-import { Pressable } from '@/components/base/Pressable';
-import { Text } from '@/components/base/Text';
-import { Button } from '@/components/buttons/Button';
-import { EmptyState } from '@/components/common/EmptyState';
-import { ErrorState } from '@/components/common/ErrorState';
-import { TextField } from '@/components/inputs/TextField';
+import { DsButton, DsButtonRow, DsChip, DsChipRow, DsHeader, DsRowGroup, DsSearchField, DsText, ds } from '@/design';
 import { isAnalyzeBusy } from '@/downloads/analyze/analyze-state-machine';
+import { resolveDisplayHost } from '@/downloads/quality';
 import { SourceCheckBadge } from '@/downloads/safety/SourceCheckBadge';
-import { isPlayableOffer, playsChosenQuality } from '@/player/remote-stream';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
-import { primaryAlphas } from '@/theme';
+import { navigation, routePaths } from '@/navigation';
+import { isPlayableOffer, playsChosenQuality } from '@/player/remote-stream';
 import { useTourBlocker } from '@/tour/tour-store';
 
 import { AnalysisLoadingState } from './AnalysisLoadingState';
 import { AnalyzeFallbackState } from './AnalyzeFallbackState';
 import { downloadButtonLabel } from './constants';
 import { DownloadOptionsPanel } from './DownloadOptionsPanel';
+import { DownloadPreview } from './DownloadPreview';
 import { MediaResultCard } from './MediaResultCard';
 import { QualityOptionRow } from './QualityOptionRow';
 import type { UseQualitySelectionResult } from './useQualitySelection';
@@ -39,11 +35,25 @@ export type QualitySelectionSheetProps = {
   controller: UseQualitySelectionResult;
 };
 
+type Track = 'video' | 'audio';
+
+function hostOf(url: string): string | null {
+  try {
+    return new URL(url).hostname.replace(/^www\./, '') || null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Design 33 "Video detected · Sheet": "Download video" over the page's host, the hero preview, Video · Audio only ·
+ * Subtitles chips, the quality rows (a tap downloads that quality) and the Rename · Save to · Trim card. The same
+ * bottom sheet as before (it opens over the browser), driven by the same controller; only its content changed.
+ */
 export const QualitySelectionSheet = memo(function QualitySelectionSheet({
   controller,
 }: QualitySelectionSheetProps) {
   const theme = useTheme();
-  const primary = primaryAlphas(theme.colors.primary);
   const { t } = useTranslation();
   const insets = useSafeAreaInsets();
   const {
@@ -76,6 +86,10 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
     isBrowserHandoffActive,
   } = controller;
 
+  const [track, setTrack] = useState<Track>('video');
+  // A row tap selects its quality and, once the selection landed, starts the download — one tap, as the design.
+  const pendingConfirmRef = useRef<string | null>(null);
+
   const handlePaste = useCallback(async () => {
     try {
       const text = await Clipboard.getStringAsync();
@@ -97,10 +111,6 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
     void retry();
   }, [retry]);
 
-  const handleDownload = useCallback(() => {
-    void confirmDownload();
-  }, [confirmDownload]);
-
   const handlePlay = useCallback(
     (optionId?: string) => {
       void playOption(optionId);
@@ -108,140 +118,153 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
     [playOption],
   );
 
+  const notYet = useCallback(() => {
+    ToastAndroid.show(t('common.notAvailableYet'), ToastAndroid.SHORT);
+  }, [t]);
+
+  const openSettings = useCallback(() => {
+    close();
+    navigation.push(routePaths.downloadSettings);
+  }, [close]);
+
+  const handleRowPress = useCallback(
+    (id: string) => {
+      if (phase !== 'ready') {
+        selectOption(id);
+        return;
+      }
+      if (id === selectedId) {
+        void confirmDownload();
+        return;
+      }
+      pendingConfirmRef.current = id;
+      selectOption(id);
+    },
+    [confirmDownload, phase, selectOption, selectedId],
+  );
+
+  useEffect(() => {
+    if (pendingConfirmRef.current && pendingConfirmRef.current === selectedId) {
+      pendingConfirmRef.current = null;
+      void confirmDownload();
+    }
+  }, [confirmDownload, selectedId]);
+
+  useEffect(() => {
+    if (!visible) {
+      pendingConfirmRef.current = null;
+      setTrack('video');
+    }
+  }, [visible]);
+
+  const videoOptions = useMemo(() => selection?.options.filter((option) => !option.isAudioOnly) ?? [], [selection]);
+  const audioOptions = useMemo(() => selection?.options.filter((option) => option.isAudioOnly) ?? [], [selection]);
+  const effectiveTrack: Track = track === 'audio' && audioOptions.length > 0 ? 'audio' : videoOptions.length > 0 ? 'video' : 'audio';
+  const shownOptions = effectiveTrack === 'audio' ? audioOptions : videoOptions;
+  const bestId = shownOptions.find((option) => option.downloadable)?.id ?? null;
+
+  const chooseAudio = useCallback(() => {
+    if (audioOptions.length === 0) {
+      notYet();
+      return;
+    }
+    setTrack('audio');
+  }, [audioOptions.length, notYet]);
+
   const showInput = phase === 'idle' || phase === 'failed' || phase === 'cancelled';
   const showAnalyzing = isAnalyzeBusy(phase);
   const showPlaybackFallback = phase === 'waiting_for_playback';
-  const showFooter =
-    showInput ||
-    phase === 'ready' ||
-    phase === 'empty' ||
-    showAnalyzing ||
-    showPlaybackFallback ||
-    phase === 'creating_download';
 
-  const canDownload =
-    phase === 'ready' &&
-    selectedOption?.downloadable === true &&
-    !creating &&
-    !playing &&
-    !analyzing;
-  // Online play (F17): a single source the player can open — never a split audio + video pair or a refused offer.
   const canPlay = phase === 'ready' && isPlayableOffer(selectedOption) && !creating && !analyzing;
+  const subtitle = selection ? resolveDisplayHost(selection) : hostOf(url.trim());
 
   const footer = (() => {
     if (showAnalyzing) {
+      return <DsButton label={progressMessage ?? t('downloads.analyzing')} fullWidth disabled loading testID="quality-selection-analyzing-cta" />;
+    }
+    if (showInput) {
       return (
-        <Button
-          title={progressMessage ?? t('downloads.analyzing')}
+        <DsButtonRow>
+          <DsButton
+            label={t('home.openBrowser')}
+            variant="secondary"
+            icon="globe"
+            flex
+            onPress={() => close()}
+            accessibilityHint={t('downloads.pasteLinkHint')}
+            testID="quality-selection-open-browser"
+          />
+          <DsButton label={t('downloads.analyzeAction')} icon="search" flex onPress={handleAnalyze} testID="quality-selection-analyze" />
+        </DsButtonRow>
+      );
+    }
+    if (phase === 'ready') {
+      const showPlay = isPlayableOffer(selectedOption);
+      const showChangeLink = !isBrowserQualityHandoff;
+      if (!createError && !showPlay && !showChangeLink) {
+        return null;
+      }
+      return (
+        <View style={{ gap: 8 }}>
+          {createError ? (
+            <DsText variant="body" color="primary" accessibilityLiveRegion="polite">
+              {createError}
+            </DsText>
+          ) : null}
+          {showPlay || showChangeLink ? (
+            <DsButtonRow>
+              {showPlay ? (
+                <DsButton
+                  label={t('downloads.playAction')}
+                  variant="secondary"
+                  icon="play"
+                  flex
+                  onPress={() => handlePlay()}
+                  loading={playing}
+                  disabled={!canPlay}
+                  accessibilityLabel={
+                    playsChosenQuality(selectedOption)
+                      ? t('downloads.playOptionA11y', { label: selectedOption?.label ?? '' })
+                      : t('browser.media.playVideoA11y')
+                  }
+                  accessibilityHint={t('downloads.playHint')}
+                  testID="quality-selection-play"
+                />
+              ) : null}
+              {showChangeLink ? (
+                <DsButton
+                  label={t('downloads.changeLinkAction')}
+                  variant="secondary"
+                  flex
+                  onPress={resetToInput}
+                  disabled={creating}
+                  testID="quality-selection-change-link"
+                />
+              ) : null}
+            </DsButtonRow>
+          ) : null}
+        </View>
+      );
+    }
+    if (phase === 'empty') {
+      return isBrowserQualityHandoff ? null : (
+        <DsButton label={t('downloads.changeLinkAction')} variant="secondary" fullWidth onPress={resetToInput} testID="quality-selection-change-link" />
+      );
+    }
+    if (showPlaybackFallback) {
+      return <DsButton label={t('lightVideoSheet.openVideo')} icon="globe" fullWidth onPress={openPendingInBrowser} testID="quality-open-video-footer" />;
+    }
+    if (phase === 'creating_download' || phase === 'verifying_media') {
+      return (
+        <DsButton
+          label={downloadButtonLabel(selectedOption?.label, selectedOption?.isLive === true)}
           fullWidth
           disabled
           loading
-          testID="quality-selection-analyzing-cta"
+          testID="quality-selection-download"
         />
       );
     }
-
-    if (showInput) {
-      return (
-        <Button
-          title={t('home.openBrowser')}
-          onPress={() => {
-            close();
-          }}
-          fullWidth
-          leftIcon="web"
-          accessibilityHint={t('downloads.pasteLinkHint')}
-          testID="quality-selection-open-browser"
-        />
-      );
-    }
-
-    if (phase === 'ready') {
-      return (
-        <Box gap={8}>
-          {createError ? (
-            <Text variant="caption" color="error" accessibilityLiveRegion="polite">
-              {createError}
-            </Text>
-          ) : selectedOption ? (
-            <Text variant="caption" color="textSecondary" align="center">
-              {t('downloads.selectedHint')}: {selectedOption.label}
-            </Text>
-          ) : null}
-          <Box row gap={8}>
-            {isPlayableOffer(selectedOption) ? (
-              <Button
-                title={t('downloads.playAction')}
-                variant="outline"
-                onPress={() => handlePlay()}
-                loading={playing}
-                disabled={!canPlay}
-                leftIcon="play"
-                accessibilityLabel={
-                  playsChosenQuality(selectedOption)
-                    ? t('downloads.playOptionA11y', { label: selectedOption?.label ?? '' })
-                    : t('browser.media.playVideoA11y')
-                }
-                accessibilityHint={t('downloads.playHint')}
-                style={{ flex: 1 }}
-                testID="quality-selection-play"
-              />
-            ) : null}
-            <Button
-              title={downloadButtonLabel(selectedOption?.label, selectedOption?.isLive === true)}
-              onPress={handleDownload}
-              loading={creating}
-              disabled={!canDownload}
-              fullWidth={!isPlayableOffer(selectedOption)}
-              leftIcon={selectedOption?.isLive ? 'record-rec' : 'download'}
-              accessibilityLabel={downloadButtonLabel(selectedOption?.label, selectedOption?.isLive === true)}
-              accessibilityHint={
-                canDownload
-                  ? 'Starts download with the selected format'
-                  : 'Select a downloadable format first'
-              }
-              style={isPlayableOffer(selectedOption) ? { flex: 2 } : undefined}
-              testID="quality-selection-download"
-            />
-          </Box>
-          {isBrowserQualityHandoff ? null : (
-            <Button
-              title={t('downloads.changeLinkAction')}
-              variant="outline"
-              onPress={resetToInput}
-              disabled={creating}
-              fullWidth
-              testID="quality-selection-change-link"
-            />
-          )}
-        </Box>
-      );
-    }
-
-    if (phase === 'empty') {
-      return isBrowserQualityHandoff ? null : (
-        <Button
-          title={t('downloads.changeLinkAction')}
-          onPress={resetToInput}
-          fullWidth
-          variant="outline"
-          testID="quality-selection-change-link"
-        />
-      );
-    }
-
-    if (showPlaybackFallback) {
-      return (
-        <Button
-          title="Open Video"
-          onPress={openPendingInBrowser}
-          fullWidth
-          leftIcon="web"
-          testID="quality-open-video-footer"
-        />
-      );
-    }
-
     return null;
   })();
 
@@ -254,12 +277,7 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
   }
 
   return (
-    <Modal
-      visible
-      transparent
-      animationType="fade"
-      onRequestClose={close}
-      statusBarTranslucent>
+    <Modal visible transparent animationType="fade" onRequestClose={close} statusBarTranslucent>
       <View style={styles.root} testID="quality-selection-sheet-root">
         <RNPressable
           accessibilityRole="button"
@@ -268,196 +286,89 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
           style={[styles.backdrop, { backgroundColor: theme.colors.overlay }]}
         />
 
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.sheetWrap}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.sheetWrap}>
           <View
             testID="quality-selection-sheet"
             style={[
               styles.sheet,
               {
-                backgroundColor: theme.colors.card,
-                borderTopLeftRadius: theme.radius.xl,
-                borderTopRightRadius: theme.radius.xl,
-                paddingBottom: Math.max(insets.bottom, 12) + 12,
-                maxHeight: '90%',
-                borderTopWidth: StyleSheet.hairlineWidth,
-                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.background,
+                borderTopLeftRadius: ds.radius.card,
+                borderTopRightRadius: ds.radius.card,
+                paddingBottom: Math.max(insets.bottom, 12),
+                maxHeight: '92%',
               },
             ]}>
-            <View
-              style={[styles.handle, { backgroundColor: theme.colors.textDisabled }]}
-            />
-
-            <Box
-              row
-              px={20}
-              pb={12}
-              style={{ alignItems: 'flex-start', justifyContent: 'space-between' }}>
-              <Box flex={1} gap={6} pr={12}>
-                <Box row gap={10} style={{ alignItems: 'center' }}>
-                  <Box
-                    center
-                    style={{
-                      width: 36,
-                      height: 36,
-                      borderRadius: 18,
-                      backgroundColor: primary.strong,
-                    }}
-                    accessibilityElementsHidden
-                    importantForAccessibility="no">
-                    <Icon name="link-variant" size={18} color="primary" />
-                  </Box>
-                  <Text variant="title">
-                    {isBrowserQualityHandoff
-                      ? t('downloads.qualitiesTitle')
-                      : t('downloads.qualitySheetTitle')}
-                  </Text>
-                </Box>
-                <Text variant="bodySmall" color="textSecondary">
-                  {isBrowserQualityHandoff
-                    ? t(
-                        selection?.options.some((option) => option.isLive)
-                          ? 'browser.media.chooseLiveQualityHint'
-                          : 'browser.media.chooseQualityHint',
-                      )
-                    : t('downloads.qualitySheetSubtitle')}
-                </Text>
-              </Box>
-
-              <Pressable
-                onPress={close}
-                accessibilityRole="button"
-                accessibilityLabel={t('downloads.closeLabel')}
-                testID="quality-selection-close"
-                hitSlop={8}
-                style={{
-                  width: 40,
-                  height: 40,
-                  borderRadius: 20,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  backgroundColor: theme.colors.surface,
-                  borderWidth: StyleSheet.hairlineWidth,
-                  borderColor: theme.colors.border,
-                }}>
-                <Icon name="close" size={20} color="secondary" />
-              </Pressable>
-            </Box>
+            <View style={[styles.handle, { backgroundColor: theme.colors.switchOff }]} />
 
             <ScrollView
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{
-                paddingHorizontal: 20,
-                paddingBottom: 8,
-                gap: 16,
-                flexGrow: 1,
-              }}>
+              contentContainerStyle={{ paddingHorizontal: ds.space.screenX, paddingBottom: 8, gap: ds.space.stack }}>
+              <DsHeader
+                title={showInput ? t('downloads.qualitySheetTitle') : t('lightVideoSheet.title')}
+                subtitle={subtitle ?? t('downloads.qualitySheetSubtitle')}
+                action={{
+                  icon: 'settings',
+                  accessibilityLabel: t('lightVideoSheet.settingsA11y'),
+                  onPress: openSettings,
+                  testID: 'quality-selection-settings',
+                }}
+              />
+
               {showInput ? (
-                <Box gap={16}>
-                  <Box
-                    gap={12}
-                    p={16}
-                    borderRadius="md"
-                    style={{
-                      backgroundColor: theme.colors.surface,
-                      borderWidth: StyleSheet.hairlineWidth,
-                      borderColor: theme.colors.border,
-                    }}>
-                    <Box
-                      row
-                      style={{ alignItems: 'center', justifyContent: 'space-between' }}>
-                      <Text variant="label" color="textSecondary">
-                        {t('downloads.urlLabel')}
-                      </Text>
-                      <Pressable
-                        onPress={() => {
-                          void handlePaste();
-                        }}
-                        accessibilityRole="button"
-                        accessibilityLabel={t('downloads.pasteAction')}
-                        testID="quality-selection-paste"
-                        hitSlop={6}
-                        style={{
-                          flexDirection: 'row',
-                          alignItems: 'center',
-                          gap: 6,
-                          minHeight: 32,
-                          paddingHorizontal: 10,
-                          borderRadius: theme.radius.full,
-                          backgroundColor: primary.medium,
-                        }}>
-                        <Icon name="content-paste" size={16} color="primary" />
-                        <Text variant="label" color="primary">
-                          {t('downloads.pasteAction')}
-                        </Text>
-                      </Pressable>
-                    </Box>
-
-                    <TextField
-                      placeholder={t('downloads.urlPlaceholder')}
-                      value={url}
-                      onChangeText={setUrl}
-                      autoCapitalize="none"
-                      autoCorrect={false}
-                      keyboardType="url"
-                      returnKeyType="go"
-                      onSubmitEditing={handleAnalyze}
-                      error={urlError ?? undefined}
-                      helperText={urlError ? undefined : t('downloads.urlHelper')}
-                      clearable
-                      onClear={() => setUrl('')}
-                      leftIcon="link"
-                      testID="quality-selection-url"
-                    />
-                  </Box>
-
+                <>
+                  <DsSearchField
+                    icon={null}
+                    placeholder={t('downloads.urlPlaceholder')}
+                    value={url}
+                    onChangeText={setUrl}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                    keyboardType="url"
+                    returnKeyType="go"
+                    onSubmitEditing={handleAnalyze}
+                    accessibilityLabel={t('downloads.urlLabel')}
+                    actions={[
+                      { icon: 'clipboard', accessibilityLabel: t('downloads.pasteAction'), onPress: () => void handlePaste(), testID: 'quality-selection-paste' },
+                      ...(url ? [{ icon: 'x' as const, accessibilityLabel: t('common.clearInput'), onPress: () => setUrl('') }] : []),
+                    ]}
+                    testID="quality-selection-url"
+                  />
+                  <DsText variant="rowSub" color={urlError ? 'primary' : 'textSecondary'} accessibilityLiveRegion="polite">
+                    {urlError ?? t('downloads.urlHelper')}
+                  </DsText>
                   {phase === 'failed' && errorMessage ? (
-                    <ErrorState
-                      title={t('downloads.qualityErrorTitle')}
-                      message={errorMessage}
-                      retryLabel={t('downloads.retryAction')}
-                      onRetry={handleRetry}
-                      testID="quality-selection-error"
-                    />
+                    <View style={{ gap: 8 }} testID="quality-selection-error">
+                      <DsText variant="bodyStrong">{t('downloads.qualityErrorTitle')}</DsText>
+                      <DsText variant="body">{errorMessage}</DsText>
+                      <DsButton label={t('downloads.retryAction')} variant="secondary" icon="refresh-cw" onPress={handleRetry} />
+                    </View>
                   ) : null}
                   {/* P8 #514: a link that could not be read still says how safe it looks (e.g. plain HTTP). */}
                   {phase === 'failed' && url.trim() ? (
                     <SourceCheckBadge urls={[url]} testID="quality-source-check-failed" />
                   ) : null}
-                </Box>
+                </>
               ) : null}
 
-              {showAnalyzing ? (
-                <AnalysisLoadingState
-                  phase={phase}
-                  platform={platform}
-                  message={progressMessage ?? undefined}
-                />
-              ) : null}
+              {showAnalyzing ? <AnalysisLoadingState phase={phase} platform={platform} message={progressMessage ?? undefined} /> : null}
 
               {showPlaybackFallback ? (
                 <AnalyzeFallbackState
-                  title="Video needs to be played once"
-                  description={
-                    emptyMessage ??
-                    'Play the video in Browser so VidoraX can detect the media.'
-                  }
+                  title={t('lightVideoSheet.playbackTitle')}
+                  description={emptyMessage ?? t('lightVideoSheet.playbackHint')}
                   onOpenVideo={openPendingInBrowser}
                   onRetry={handleRetry}
                 />
               ) : null}
 
               {phase === 'empty' && selection ? (
-                <Box gap={16}>
+                <>
                   <MediaResultCard selection={selection} selectedOption={selectedOption} />
                   <SourceCheckBadge urls={[url, selection.sourceUrl, selection.finalUrl]} testID="quality-source-check-empty" />
                   {selection.options.length > 0 ? (
-                    <Box gap={8}>
-                      <Text variant="label" color="textSecondary">
-                        {t('downloads.qualitiesTitle')}
-                      </Text>
+                    <DsRowGroup>
                       {selection.options.map((option) => (
                         <QualityOptionRow
                           key={option.id}
@@ -468,64 +379,51 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
                           testID={`quality-option-${option.id}`}
                         />
                       ))}
-                    </Box>
+                    </DsRowGroup>
                   ) : null}
-                  <EmptyState
-                    icon="alert-circle-outline"
-                    title={t('downloads.qualityEmptyTitle')}
-                    description={emptyMessage ?? undefined}
-                    testID="quality-selection-empty"
-                  />
-                </Box>
+                  <View style={{ gap: 4 }} testID="quality-selection-empty">
+                    <DsText variant="bodyStrong">{t('downloads.qualityEmptyTitle')}</DsText>
+                    {emptyMessage ? <DsText variant="body">{emptyMessage}</DsText> : null}
+                  </View>
+                </>
               ) : null}
 
               {phase === 'ready' && selection ? (
-                <Box gap={16}>
-                  <MediaResultCard selection={selection} selectedOption={selectedOption} />
+                <>
+                  <DownloadPreview option={selectedOption} thumbnailUrl={selection.thumbnailUrl} />
                   {/* P8 #514 Source check: the page or pasted link, the media URL and where it redirected to. */}
                   <SourceCheckBadge
                     urls={[url, selection.sourceUrl, selectedOption?.sourceUrl, selection.finalUrl]}
                     testID="quality-source-check"
                   />
-                  <DownloadOptionsPanel selection={selection} selectedOption={selectedOption} />
-
-                  {selection.options.length > 1 ? (
-                    <Box gap={10}>
-                      <Text variant="label" color="textSecondary">
-                        {t('downloads.qualitiesTitle')}
-                      </Text>
-                      <Box
-                        gap={10}
-                        accessibilityRole="radiogroup"
-                        accessibilityLabel={t('downloads.qualitiesTitle')}>
-                        {selection.options.map((option) => (
-                          <QualityOptionRow
-                            key={option.id}
-                            option={option}
-                            selected={selectedId === option.id}
-                            onSelect={selectOption}
-                            interactionDisabled={creating || playing}
-                            onPlay={playsChosenQuality(option) ? handlePlay : undefined}
-                            testID={`quality-option-${option.id}`}
-                          />
-                        ))}
-                      </Box>
-                    </Box>
+                  <DsChipRow testID="quality-selection-tracks">
+                    <DsChip label={t('lightVideoSheet.chipVideo')} selected={effectiveTrack === 'video'} onPress={() => setTrack('video')} testID="quality-chip-video" />
+                    <DsChip label={t('lightVideoSheet.chipAudio')} selected={effectiveTrack === 'audio'} onPress={chooseAudio} testID="quality-chip-audio" />
+                    <DsChip label={t('lightVideoSheet.chipSubtitles')} onPress={notYet} testID="quality-chip-subtitles" />
+                  </DsChipRow>
+                  {shownOptions.length > 0 ? (
+                    <DsRowGroup testID="quality-selection-options">
+                      {shownOptions.map((option) => (
+                        <QualityOptionRow
+                          key={option.id}
+                          option={option}
+                          selected={selectedId === option.id}
+                          best={option.id === bestId}
+                          onSelect={handleRowPress}
+                          interactionDisabled={creating || playing}
+                          onPlay={playsChosenQuality(option) ? handlePlay : undefined}
+                          testID={`quality-option-${option.id}`}
+                        />
+                      ))}
+                    </DsRowGroup>
                   ) : null}
-                </Box>
+                  <DownloadOptionsPanel selection={selection} selectedOption={selectedOption} />
+                </>
               ) : null}
             </ScrollView>
 
-            {showFooter && footer ? (
-              <Box
-                px={20}
-                pt={12}
-                style={{
-                  borderTopWidth: StyleSheet.hairlineWidth,
-                  borderTopColor: theme.colors.border,
-                }}>
-                {footer}
-              </Box>
+            {footer ? (
+              <View style={{ paddingHorizontal: ds.space.screenX, paddingTop: 8, paddingBottom: 4 }}>{footer}</View>
             ) : null}
           </View>
         </KeyboardAvoidingView>
@@ -554,6 +452,6 @@ const styles = StyleSheet.create({
     width: 36,
     height: 4,
     borderRadius: 2,
-    marginBottom: 12,
+    marginBottom: 4,
   },
 });

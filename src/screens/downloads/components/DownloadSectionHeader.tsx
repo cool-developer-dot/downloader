@@ -1,53 +1,43 @@
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Text } from '@/components/base/Text';
-
-import { useDownloadsTokens } from '../theme/downloads-tokens';
+import { ds, DsSectionLabel } from '@/design';
+import { useTheme } from '@/hooks/use-theme';
+import { useRtl } from '@/localization';
 
 export type DownloadSectionHeaderProps = {
   title: string;
   count?: number;
   testID?: string;
   /** Shown at the end of the header (H4: the Queued section's Reorder button). */
-  action?: import('react').ReactNode;
+  action?: ReactNode;
 };
 
+/** A list section ("Running · 3") as the design's red capitals label, on the page colour so it can stick. */
 export const DownloadSectionHeader = memo(function DownloadSectionHeader({
   title,
   count,
   testID,
   action,
 }: DownloadSectionHeaderProps) {
-  const downloadsTokens = useDownloadsTokens();
+  const theme = useTheme();
+  const rtl = useRtl();
   const label = typeof count === 'number' ? `${title} · ${count}` : title;
 
   return (
-    <Box
+    <View
       testID={testID}
-      px={downloadsTokens.spacing.screenX}
+      accessibilityLabel={label}
       style={{
-        paddingTop: downloadsTokens.spacing.sectionTop,
-        paddingBottom: downloadsTokens.spacing.sectionBottom,
-        backgroundColor: downloadsTokens.background,
-      }}
-      accessibilityRole="header"
-      accessibilityLabel={label}>
-      <Text
-        variant="label"
-        color="textSecondary"
-        style={{ textTransform: 'uppercase', letterSpacing: 0.6 }}>
-        {label}
-      </Text>
-      {action ? (
-        <Box
-          row
-          rtlRow
-          center
-          style={{ position: 'absolute', top: 0, bottom: 0, end: downloadsTokens.spacing.screenX }}>
-          {action}
-        </Box>
-      ) : null}
-    </Box>
+        flexDirection: rtl.rowDirection,
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingTop: 4,
+        paddingBottom: ds.space.sectionBottom,
+        backgroundColor: theme.colors.background,
+      }}>
+      <DsSectionLabel>{label}</DsSectionLabel>
+      {action ? <View>{action}</View> : null}
+    </View>
   );
 });

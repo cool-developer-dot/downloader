@@ -73,18 +73,28 @@ export const ShareSettingsSection = memo(function ShareSettingsSection() {
         onClose={() => setSheet(null)}
         testID="open-in-app-never-sheet"
       />
-      <TextListSheet
-        visible={sheet === 'snippets'}
-        title={t('browserShare.snippets')}
-        empty={t('browserShare.snippetsEmpty')}
-        items={snippets}
-        onRemove={(text) => update('formSnippets', serializeSnippets(snippets.filter((s) => s !== text)))}
-        onAdd={(text) => update('formSnippets', serializeSnippets([...snippets, text]))}
-        full={snippets.length >= MAX_SNIPPETS}
-        onClose={() => setSheet(null)}
-        testID="form-snippets-sheet"
-      />
+      <FormSnippetsSheet visible={sheet === 'snippets'} onClose={() => setSheet(null)} />
     </SettingsSection>
+  );
+});
+
+/** #274: the form snippets editor (add / remove). Also opened by the design's Passwords screen (Quick form fill). */
+export const FormSnippetsSheet = memo(function FormSnippetsSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { t } = useTranslation();
+  const update = useSettingsStore((s) => s.updateSetting);
+  const snippets = parseSnippets(useSettingsStore((s) => s.formSnippets));
+  return (
+    <TextListSheet
+      visible={visible}
+      title={t('browserShare.snippets')}
+      empty={t('browserShare.snippetsEmpty')}
+      items={snippets}
+      onRemove={(text) => update('formSnippets', serializeSnippets(snippets.filter((s) => s !== text)))}
+      onAdd={(text) => update('formSnippets', serializeSnippets([...snippets, text]))}
+      full={snippets.length >= MAX_SNIPPETS}
+      onClose={onClose}
+      testID="form-snippets-sheet"
+    />
   );
 });
 

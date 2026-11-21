@@ -1,103 +1,28 @@
 /**
- * VidoraX design tokens.
+ * VidoraX colour tokens — the six themes of the CEO's handoff `VidoraX-6-Themes-65-Screens.pdf`.
  *
- * Content modes:
- * - light — WHITE + BLACK + GRAY (DEFAULT). No sage/green brand identity.
- * - logo — white/neutral content + canonical brand-red chrome
- * - dark — BLACK + CHARCOAL + WHITE + GRAY private app (no olive/sage brand)
+ * Every theme draws the same 65 screens; only the colours change, so one builder (`designTheme`) turns a measured
+ * palette into the full token set. The palettes were read from the PDF's vector data, not from screenshots:
+ * each hex below is the fill or text colour the frames use (see `docs/design/light-theme-kit.md` → "The six themes").
  *
- * Canonical brand red (Logo only):
- * - HEX: #DC3C2C
- * - Source: assets/logos/vidorax-logo.png
+ * - light    — #FAF9FB page, white cards, #D92D20 accent (the default)
+ * - dark     — #121214 page, #1D1D20 cards, #E5382B accent
+ * - red      — #FDF1EF page, #FFF9F8 cards; the header and the bottom bar are a #D92D20 band with white text
+ * - cream    — #FBF6EC page, #FFFDF8 cards, #C8321F accent
+ * - midnight — #0D1424 page, #151D31 cards, #FF4A3D accent
+ * - blush    — #FFF5F7 page, white cards, #E0313F accent
  *
- * Green appears ONLY via semantic `success` (completed/positive status).
- * Olive/sage raw literals may remain in the palette reservoir for historical assets
- * but must NOT map into light/logo/dark tokens or startup intro/onboarding surfaces.
- * Sage is NOT used as Light primary / Dark private-app primary.
+ * Green appears only as the semantic `success` (completed / positive status). Legacy `logo` preferences resolve to
+ * `red` (`normalizeThemePreference`).
  */
 
-const palette = {
-  /**
-   * Legacy olive/sage reservoir — historical / native splash asset only.
-   * Must NOT map into private-app `colors.dark` or intro continuity surfaces.
-   */
-  sagePrimary: '#ACC8A2',
-  sageLight: '#C5D9BE',
-  sageDark: '#8FB583',
-  sageMuted: '#7A9470',
-  deepOlive: '#1A2517',
-  oliveSurface: '#222E1E',
-  oliveCard: '#2A3824',
-  oliveElevated: '#314030',
-  oliveBorder: '#3A4A35',
-  oliveBorderSubtle: '#2E3D28',
-  oliveInput: '#252F21',
-
-  /** Canonical VidoraX brand red — from logo asset sampling. */
+/** Canonical VidoraX brand red (logo asset) — kept for the splash / onboarding art. */
+export const brandPalette = {
   brandRed: '#DC3C2C',
   brandRedPressed: '#C43426',
   brandRedMuted: '#F2A39C',
   brandRedSoft: '#FCE8E6',
   onBrandRed: '#FFFFFF',
-
-  /** Neutral light surfaces (Light + Logo content). */
-  neutralWhite: '#FFFFFF',
-  neutralBg: '#FAFAFA',
-  neutralSurface: '#FFFFFF',
-  neutralElevated: '#FFFFFF',
-  neutralPressed: '#F5F5F5',
-  neutralSelected: '#F3F4F6',
-  neutralBorder: '#E5E5E5',
-  neutralDivider: '#EEEEEE',
-  neutralInputBorder: '#DADADA',
-
-  /** Light generic primary = dark neutral (NOT sage/green). */
-  ink: '#171717',
-  inkStrong: '#111111',
-  inkMuted: '#F3F4F6',
-
-  textPrimaryLight: '#171717',
-  textSecondaryLight: '#6B7280',
-  textMutedLight: '#737373',
-  textDisabledLight: '#A3A3A3',
-
-  /** Neutral Dark private-app surfaces (NOT olive). */
-  darkBg: '#0D0D0D',
-  darkBgSecondary: '#141414',
-  darkSurface: '#181818',
-  darkElevated: '#1F1F1F',
-  darkPressed: '#262626',
-  darkSelected: '#242424',
-  darkBorder: '#2A2A2A',
-  darkDivider: '#242424',
-  darkInputBorder: '#333333',
-  darkChrome: '#0F0F0F',
-  darkTextPrimary: '#F5F5F5',
-  darkTextSecondary: '#B3B3B3',
-  darkTextMuted: '#8A8A8A',
-  darkTextDisabled: '#666666',
-  /** Dark generic primary = off-white (NOT sage/green). */
-  darkPrimary: '#F5F5F5',
-  darkOnPrimary: '#171717',
-  darkPrimaryMuted: '#262626',
-  darkPrimaryStrong: '#FFFFFF',
-
-  /** Semantic status — success green is NOT theme brand identity. */
-  success: '#16A34A',
-  error: '#EF4444',
-  warning: '#D97706',
-  info: '#5B9AA9',
-
-  white: '#FFFFFF',
-  black: '#000000',
-} as const;
-
-export const brandPalette = {
-  brandRed: palette.brandRed,
-  brandRedPressed: palette.brandRedPressed,
-  brandRedMuted: palette.brandRedMuted,
-  brandRedSoft: palette.brandRedSoft,
-  onBrandRed: palette.onBrandRed,
   sourceAsset: 'assets/logos/vidorax-logo.png',
   sourceHex: '#DC3C2C',
 } as const;
@@ -111,121 +36,224 @@ export function withAlpha(hex: string, alpha: number): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
+const WHITE = '#FFFFFF';
+const BLACK = '#000000';
+
+/** The colours one design theme is drawn with (measured from its frames). */
+export type DesignPalette = {
+  /** The page behind the cards. */
+  page: string;
+  /** Cards, the search field, chips, tiles, the header button. */
+  card: string;
+  /** The hairline edge of cards, chips and fields. */
+  cardBorder: string;
+  /** The 1 dp line between rows; also the progress track. */
+  divider: string;
+  /** Buttons, toggles on, section labels, icons, the selected tab. */
+  accent: string;
+  /** The accent while pressed. */
+  accentPressed: string;
+  /** The 34 dp icon tiles and the selected chip. */
+  accentSoft: string;
+  /** A lighter accent for secondary bars / badges. */
+  accentMuted: string;
+  text: string;
+  textSecondary: string;
+  textDisabled: string;
+  /** A card while pressed. */
+  pressed: string;
+  /** A toggle that is off. */
+  switchOff: string;
+  success: string;
+  /** Dark page and cards (Android night mode, dark navigation / Paper bases, force-dark web pages). */
+  dark: boolean;
+  /** `band`: the header and the bottom bar are painted in the accent with white text (the Red theme). */
+  chrome: 'flat' | 'band';
+};
+
 const semanticShared = {
-  success: palette.success,
-  warning: palette.warning,
-  error: palette.error,
-  info: palette.info,
-  white: palette.white,
-  black: palette.black,
+  warning: '#D97706',
+  info: '#5B9AA9',
+  white: WHITE,
+  black: BLACK,
 } as const;
 
-/** White / near-white content shared by Light + Logo main surfaces. */
-const lightContent = {
-  background: palette.neutralWhite,
-  backgroundSecondary: palette.neutralBg,
-  surface: palette.neutralSurface,
-  surfaceElevated: palette.neutralElevated,
-  surfacePressed: palette.neutralPressed,
-  surfaceSelected: palette.neutralSelected,
-  card: palette.neutralWhite,
-  border: palette.neutralBorder,
-  divider: palette.neutralDivider,
-  overlay: withAlpha(palette.black, 0.45),
-  textPrimary: palette.textPrimaryLight,
-  textSecondary: palette.textSecondaryLight,
-  textMuted: palette.textMutedLight,
-  textDisabled: palette.textDisabledLight,
-  sheetBackground: palette.neutralWhite,
-  dialogBackground: palette.neutralWhite,
-  menuBackground: palette.neutralWhite,
-  inputBackground: palette.neutralWhite,
-} as const;
+/** Builds the token set every screen reads from one measured palette. */
+export function designTheme(p: DesignPalette) {
+  const band = p.chrome === 'band';
+  return {
+    ...semanticShared,
+    success: p.success,
+    error: p.accent,
+    background: p.page,
+    backgroundSecondary: p.card,
+    surface: p.card,
+    surfaceElevated: p.card,
+    surfacePressed: p.pressed,
+    surfaceSelected: p.accentSoft,
+    card: p.card,
+    border: p.cardBorder,
+    divider: p.divider,
+    overlay: withAlpha(p.dark ? BLACK : p.text, p.dark ? 0.6 : 0.45),
+    textPrimary: p.text,
+    textSecondary: p.textSecondary,
+    textMuted: p.textSecondary,
+    textDisabled: p.textDisabled,
+    sheetBackground: p.card,
+    dialogBackground: p.card,
+    menuBackground: p.card,
+    inputBackground: p.card,
+    // The design's one accent: on soft tiles, toggles, primary buttons, section labels.
+    primary: p.accent,
+    primaryLight: p.accentSoft,
+    primaryDark: p.accentPressed,
+    accent: p.accent,
+    accentSoft: p.accentSoft,
+    accentMuted: p.accentMuted,
+    track: p.divider,
+    switchOff: p.switchOff,
+    cardBorder: p.cardBorder,
+    textOnPrimary: WHITE,
+    /** `band`: a full-width accent header (85 dp, white title) and an accent bottom bar with a white active pill. */
+    headerStyle: p.chrome,
+    headerBackground: band ? p.accent : p.page,
+    headerText: band ? WHITE : p.text,
+    headerIcon: band ? WHITE : p.text,
+    headerBorder: band ? p.accent : p.page,
+    headerSubtitle: band ? withAlpha(WHITE, 0.7) : p.textSecondary,
+    headerButtonBackground: band ? withAlpha(WHITE, 0.15) : p.card,
+    headerButtonPressed: band ? withAlpha(WHITE, 0.28) : p.pressed,
+    headerButtonBorder: band ? 'transparent' : p.cardBorder,
+    bottomNavBackground: band ? p.accent : p.card,
+    bottomNavActive: band ? WHITE : p.accent,
+    bottomNavInactive: band ? withAlpha(WHITE, 0.7) : p.textSecondary,
+    bottomNavBorder: band ? p.accent : p.divider,
+    bottomNavPressed: band ? withAlpha(WHITE, 0.14) : withAlpha(p.accent, 0.08),
+    bottomNavActivePill: band ? withAlpha(WHITE, 0.2) : 'transparent',
+    link: p.accent,
+    statusBarStyle: (p.dark || band ? 'light' : 'dark') as 'light' | 'dark',
+  } as const;
+}
 
-export const colors = {
+/** The six measured palettes, in the PDF's order. */
+export const designPalettes = {
   light: {
-    ...semanticShared,
-    ...lightContent,
-    // Generic Light primary = dark neutral. Success green is separate.
-    primary: palette.ink,
-    primaryLight: palette.inkMuted,
-    primaryDark: palette.inkStrong,
-    accent: palette.ink,
-    textOnPrimary: palette.white,
-    headerBackground: palette.neutralWhite,
-    headerText: palette.textPrimaryLight,
-    headerIcon: palette.ink,
-    headerBorder: palette.neutralDivider,
-    headerSubtitle: palette.textSecondaryLight,
-    bottomNavBackground: palette.neutralWhite,
-    bottomNavActive: palette.ink,
-    bottomNavInactive: palette.textSecondaryLight,
-    bottomNavBorder: palette.neutralDivider,
-    bottomNavPressed: withAlpha(palette.ink, 0.08),
-    link: palette.ink,
-    statusBarStyle: 'dark' as const,
-  },
-  logo: {
-    ...semanticShared,
-    ...lightContent,
-    primary: palette.brandRed,
-    primaryLight: palette.brandRedMuted,
-    primaryDark: palette.brandRedPressed,
-    accent: palette.brandRed,
-    textOnPrimary: palette.onBrandRed,
-    headerBackground: palette.brandRed,
-    headerText: palette.onBrandRed,
-    headerIcon: palette.onBrandRed,
-    headerBorder: palette.brandRedPressed,
-    headerSubtitle: withAlpha(palette.onBrandRed, 0.6),
-    bottomNavBackground: palette.brandRed,
-    bottomNavActive: palette.onBrandRed,
-    // Muted on-red (~60%): disabled glyphs stay visible on #DC3C2C, distinct from white active.
-    bottomNavInactive: withAlpha(palette.onBrandRed, 0.6),
-    bottomNavBorder: palette.brandRedPressed,
-    bottomNavPressed: withAlpha(palette.onBrandRed, 0.14),
-    link: palette.brandRed,
-    statusBarStyle: 'light' as const,
+    page: '#FAF9FB',
+    card: '#FFFFFF',
+    cardBorder: '#EEEDF1',
+    divider: '#EDEDF0',
+    accent: '#D92D20',
+    accentPressed: '#B8261B',
+    accentSoft: '#FDECEA',
+    accentMuted: '#F3938C',
+    text: '#16161A',
+    textSecondary: '#6B6B76',
+    textDisabled: '#A9A9B2',
+    pressed: '#F3F2F5',
+    switchOff: '#D6D5DB',
+    success: '#12B76A',
+    dark: false,
+    chrome: 'flat',
   },
   dark: {
-    ...semanticShared,
-    background: palette.darkBg,
-    backgroundSecondary: palette.darkBgSecondary,
-    surface: palette.darkSurface,
-    surfaceElevated: palette.darkElevated,
-    surfacePressed: palette.darkPressed,
-    surfaceSelected: palette.darkSelected,
-    card: palette.darkSurface,
-    border: palette.darkBorder,
-    divider: palette.darkDivider,
-    overlay: withAlpha(palette.black, 0.6),
-    textPrimary: palette.darkTextPrimary,
-    textSecondary: palette.darkTextSecondary,
-    textMuted: palette.darkTextMuted,
-    textDisabled: palette.darkTextDisabled,
-    sheetBackground: palette.darkSurface,
-    dialogBackground: palette.darkSurface,
-    menuBackground: palette.darkElevated,
-    inputBackground: palette.darkSurface,
-    // Generic Dark primary = off-white. Success green is separate. No sage.
-    primary: palette.darkPrimary,
-    primaryLight: palette.darkPrimaryMuted,
-    primaryDark: palette.darkPrimaryStrong,
-    accent: palette.darkPrimary,
-    textOnPrimary: palette.darkOnPrimary,
-    headerBackground: palette.darkChrome,
-    headerText: palette.darkTextPrimary,
-    headerIcon: palette.darkPrimary,
-    headerBorder: palette.darkDivider,
-    headerSubtitle: palette.darkTextSecondary,
-    bottomNavBackground: palette.darkChrome,
-    bottomNavActive: palette.darkPrimaryStrong,
-    bottomNavInactive: palette.darkTextMuted,
-    bottomNavBorder: palette.darkPressed,
-    bottomNavPressed: withAlpha(palette.white, 0.12),
-    link: palette.darkPrimary,
-    statusBarStyle: 'light' as const,
+    page: '#121214',
+    card: '#1D1D20',
+    cardBorder: '#0A0A0B',
+    divider: '#2C2C31',
+    accent: '#E5382B',
+    accentPressed: '#C62F24',
+    accentSoft: '#3B1D1B',
+    accentMuted: '#F4958D',
+    text: '#F4F4F6',
+    textSecondary: '#9C9CA6',
+    textDisabled: '#6E6E78',
+    pressed: '#26262A',
+    switchOff: '#46464D',
+    success: '#34D399',
+    dark: true,
+    chrome: 'flat',
   },
+  red: {
+    page: '#FDF1EF',
+    card: '#FFF9F8',
+    cardBorder: '#F0D3CF',
+    divider: '#F2D8D4',
+    accent: '#D92D20',
+    accentPressed: '#B8261B',
+    accentSoft: '#FBE0DC',
+    accentMuted: '#F3938C',
+    text: '#2A1210',
+    textSecondary: '#8A5E59',
+    textDisabled: '#B49B98',
+    pressed: '#F8E4E0',
+    switchOff: '#D6D5DB',
+    success: '#12B76A',
+    dark: false,
+    chrome: 'band',
+  },
+  cream: {
+    page: '#FBF6EC',
+    card: '#FFFDF8',
+    cardBorder: '#F1E8D8',
+    divider: '#EEE3D0',
+    accent: '#C8321F',
+    accentPressed: '#A8281A',
+    accentSoft: '#F8E3D6',
+    accentMuted: '#F1948C',
+    text: '#2B2118',
+    textSecondary: '#8A7B6A',
+    textDisabled: '#B5AA9C',
+    pressed: '#F4EDDD',
+    switchOff: '#D6D5DB',
+    success: '#12B76A',
+    dark: false,
+    chrome: 'flat',
+  },
+  midnight: {
+    page: '#0D1424',
+    card: '#151D31',
+    cardBorder: '#060A12',
+    divider: '#232D47',
+    accent: '#FF4A3D',
+    accentPressed: '#E03A2E',
+    accentSoft: '#3A1F2B',
+    accentMuted: '#F89790',
+    text: '#EAF0FF',
+    textSecondary: '#8F9BB8',
+    textDisabled: '#5F6B88',
+    pressed: '#1B2540',
+    switchOff: '#3A4565',
+    success: '#3DDC97',
+    dark: true,
+    chrome: 'flat',
+  },
+  blush: {
+    page: '#FFF5F7',
+    card: '#FFFFFF',
+    cardBorder: '#F8DEE4',
+    divider: '#F8DDE3',
+    accent: '#E0313F',
+    accentPressed: '#C02835',
+    accentSoft: '#FFE1E7',
+    accentMuted: '#F49490',
+    text: '#3A1A22',
+    textSecondary: '#94626D',
+    textDisabled: '#BFA3AA',
+    pressed: '#FBEDF0',
+    switchOff: '#D6D5DB',
+    success: '#12B76A',
+    dark: false,
+    chrome: 'flat',
+  },
+} as const satisfies Record<string, DesignPalette>;
+
+export const colors = {
+  light: designTheme(designPalettes.light),
+  dark: designTheme(designPalettes.dark),
+  red: designTheme(designPalettes.red),
+  cream: designTheme(designPalettes.cream),
+  midnight: designTheme(designPalettes.midnight),
+  blush: designTheme(designPalettes.blush),
 } as const;
 
 export type ThemeMode = keyof typeof colors;

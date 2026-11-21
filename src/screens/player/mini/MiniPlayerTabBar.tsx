@@ -1,17 +1,19 @@
-import { BottomTabBar, type BottomTabBarProps } from 'expo-router/js-tabs';
+import { type BottomTabBarProps } from 'expo-router/js-tabs';
 import { View } from 'react-native';
+
+import { DsTabBar } from '@/navigation/components/DsTabBar';
 
 import { MiniPlayer } from './MiniPlayer';
 
 /**
  * The tab bar with the mini player docked on top of it: part of the bar's own layout, so tab screens end above it
- * (nothing of theirs is covered) and the tabs themselves stay free.
+ * (nothing of theirs is covered) and the tabs themselves stay free. The bar is the design's (`DsTabBar`).
  */
 export function MiniPlayerTabBar(props: BottomTabBarProps) {
   return (
     <View>
       <MiniPlayer placement="dock" />
-      <BottomTabBar {...props} />
+      <DsTabBar {...props} />
     </View>
   );
 }

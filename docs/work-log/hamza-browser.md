@@ -2762,3 +2762,160 @@ Feature items (details in each package's list):
   until native confirms it; wipe = deleting that profile after the WebViews unmount (not clearAllSiteData);
   downloads carry the session's cookie profile; incognito tabs identified by the `incog-` id prefix; the lock panel
   hides the normal profile's data and per-site settings in incognito.
+
+## Light theme — the CEO's design, Browser and Downloads modules (branch `hamza/light-theme`, 2026-11-17)
+
+Source: `VidoraX-6-Themes-65-Screens.pdf` (54 pages; pages 1–9 = the light theme, 65 screens). Scope: the Browser
+screens (1–9, 34–39) and the Downloads screens (10–17, 33, 40–47), light theme only; Player and Files come later
+(the Files tab is a shell linking to the device videos, private folder and storage screens). The other five themes
+are colour variants and are deferred.
+
+### How the design was read
+
+Nothing was eyeballed: the PDF's vector data was extracted with pymupdf (`get_drawings`, `get_text('dict')`) and the
+239.2 pt phone frames scaled to 360 dp (× 1.5047). Every colour, corner radius, size and text position is in
+`docs/design/light-theme-kit.md`; the per-screen crops and `specNN.json` files lived in the session scratchpad. A
+text-fidelity script compared every text line of each frame with the strings in `src/`; the only misses left are
+the frames' sample data (titles, counts, sizes) and the deliberate labels noted below.
+
+### Foundation (commits `70ef406`, `499a0d2`, `28835d3`)
+
+- `theme.colors.light` = the design palette (#FAF9FB page, white cards with a #EEEDF1 edge, #EDEDF0 dividers and
+  tracks, #D92D20 accent on #FDECEA tiles, #16161A / #6B6B76 text, #D6D5DB switch off, #12B76A success). Light is
+  now the default theme (`DEFAULT_THEME_PREFERENCE`); logo and dark keep working with the new tokens (`accentSoft`,
+  `track`, `switchOff`, `cardBorder`).
+- Inter only (regular + semibold; Poppins dropped); the type scale follows the design (title 22, body 15,
+  secondary 13, caption 12).
+- `src/design/*`: the kit — DsScreen, DsHeader, DsIconButton, DsSearchField, DsCard, DsRowGroup/DsRow, DsToggle,
+  DsChipRow/DsChip, DsSectionLabel, DsButton/DsButtonRow, DsTileGrid/DsTile, DsProgressBar, DsThumb, DsStatCard,
+  DsFab, DsText, DsIcon (Lucide, 134 names). Dimensions in `tokens.ts`, colours from the theme.
+- Five tabs (`DsTabBar`): Browser · Downloads · Player · Files · Settings; the mini player still docks above it and
+  the tour targets still register.
+- **Modules as nested stacks:** `src/app/(app)/(tabs)/browser/*` and `(tabs)/downloads/*`. Every Browser screen
+  lives under `/browser/…` and every Downloads screen under `/downloads/…`, with the tab bar showing, as every
+  frame draws it. `/downloads` and `/downloads/:id` keep their paths (notifications deep-link to them); bookmarks,
+  history, browser settings, notes, highlights, saved pages, download settings, batch add, favorites and download
+  history moved under their module (`routePaths` and `linking.ts` updated).
+- One string catalog per design screen group (`src/localization/catalogs/light*.{en,ur}.ts`), all in en + ur.
+- The browser chrome (address bar, toolbar) hides on the start page, which is its own screen in the design; it
+  comes back when the address bar is asked for (Paste link, the calculator, a focus request) or a page opens.
+  Browser-module screens pushed over the browser keep its pages mounted (`useBrowserRouteLifecycle` decides the
+  mount-budget clamp one tick after the blur).
+
+### Screens (commits `8bf612a` Browser, `3bd7bf7` Downloads)
+
+| # | Screen | Where | Behind the rows |
+| --- | --- | --- | --- |
+| 1 | Browser · Home | `browser/components/BrowserHome/BrowserHomeView.tsx` | Paste & Go = `openLinkFromClipboard`; Scan QR; clipboard monitor line from the banner store; six Quick Access tiles; Recent = latest completed download (play / share / show in folder / details) |
+| 2 | Tabs | `BrowserTabSwitcher/TabsScreen.tsx` (route `browser/tabs`) | chips All / Groups / Incognito / Sleeping, tile per tab with preview and pin / sound / sleep badge, "New", Smart Tab Grouping (`groupTabsFromOpener` + group by site), Timeline, Reopen closed tab; MANAGE card keeps search / sort / group by site / bookmark all / closed groups / close all |
+| 3 | Page tools | `browser/page-tools/PageToolsScreen.tsx` (⋮ in the header) | the nine rows on `browser-menu-actions.ts`; SELECTED TEXT chips read the page's selection (`page-selection.service.ts`, routed through `BrowserWebView.handleMessage`); a MORE card keeps every other old menu item |
+| 4 | Bookmarks | `browser/bookmarks/BookmarkManagerScreen.tsx` | folders, Bookmarks bar toggle, Tags & notes, Broken link check, Import / Export, Add to home screen, Bookmark all tabs; drag reorder kept |
+| 5 | Privacy & security | `browser/settings-screens/BrowserPrivacyScreen.tsx` | blockers, HTTPS-only, cookie policy, JS / DNT, site permissions, site data |
+| 6 | Incognito | `BrowserIncognitoScreen.tsx` | ⋮ = new incognito tab; lock = App Lock; incognito search engine |
+| 7 | Passwords | `BrowserPasswordsScreen.tsx` | Quick form fill = form snippets; the rest not available yet |
+| 8 | Developer tools | `BrowserDeveloperScreen.tsx` | each row opens the devtools panel at its section (turns `devTools` on first); User scripts toggle = `devTools` |
+| 9 | Browser settings (hub) | `screens/settings/browser-settings/BrowserSettingsScreen.tsx` | GENERAL / PERFORMANCE as drawn, then BROWSE / PRIVACY / ADVANCED (+ "More settings") so every B-package setting stays reachable |
+| 34 | Search | `browser/search-screen/BrowserSearchScreen.tsx` | SuggestionService rows, shortcut chips, site search, language, region, safe search, suggestions |
+| 35 | Tab options | `BrowserTabSwitcher/TabOptionsScreen.tsx` | pin, mute, duplicate, move to window, add to group, sleep, close others / all, open in background / incognito (+ move up / down, volume, close) |
+| 36 | History | `screens/history/HistoryScreen.tsx` | day sections, CLEAR chips → `clearBrowsingData`, auto clear, disable, export |
+| 37 | Focus mode | `browser/blocking/components/FocusScreen.tsx` | focus timer, site blocker, time limits, autoplay |
+| 38 | Utilities | `browser/utilities/UtilitiesScreen.tsx` | nine tiles + prayer card + calendar toggle |
+| 39 | Display | `browser/page-display/components/DisplayScreen.tsx` | page display settings |
+| 10 | Downloads · List | `screens/downloads/DownloadsScreen.tsx`, `DownloadCard.tsx` | chips, Total speed card with the 12-bar graph, Pause all / Resume all, design cards, "+ Add link" (long-press: queue, batch, paste link, history, cancel all) |
+| 11 | Add download | `screens/downloads/add/AddDownloadScreen.tsx` | Paste / Scan QR, Link / Batch / Torrent / Playlist chips, rows on the download settings; Download = the paste-link analysis |
+| 33 | Video detected sheet | `screens/downloads/quality/QualitySelectionSheet.tsx` | the same sheet, the design's look; one tap downloads |
+| 40 | Playlist | `screens/downloads/add/PlaylistScreen.tsx` | batch add with selection, quality, cooldown |
+| 12 | Download details | `screens/downloads/DownloadDetailsScreen.tsx` | hero card, segments, priority, connections, limit, checksum & repair, notes · tags · lock, every old action as a row |
+| 13 | Queues & schedule | `screens/downloads/queues/` | queue, download hours, smart rules |
+| 14 | Torrent | `screens/downloads/torrent/` | a shell: no torrent engine exists |
+| 15 | Statistics | `screens/downloads/statistics/` | data usage, counts, largest, data limit, history, automation rows |
+| 16 | Download settings | `screens/settings/download-settings/DownloadSettingsScreen.tsx` | STORAGE / SPEED / NETWORK as drawn, then every existing setting; a TOOLS section reaches screens 14, 15, 41–47 |
+| 17 | Alerts & sync | `screens/downloads/alerts/` | notification options; cloud rows not available |
+| 41–47 | Live & convert, Organize, Link grabber, Network, File actions, Failed, Notifications | `screens/downloads/extras/*` | live recording, after-download, organize settings, page link grabber + pattern, H15 network options, completed-file actions, failed downloads + retry limit, H16 notification options |
+
+### Rows that say "Not available yet" (the design draws them; the app has no such feature)
+
+Voice search / voice commands / copy text from image (no microphone or OCR), Converter, Phishing & safe browsing,
+Anti-fingerprinting, Proxy / DNS, Extensions in incognito, Password manager / checkup / strong passwords / autofill /
+never-save / import-export, Performance profiler, Quiet downloads, Torrent (whole screen), Mirror sources, Exit when
+done, API · CLI · Extension bridge, Ask where to save, Low memory mode, Multi-network download, Floating widget,
+Battery exemption, Cross-device sync, Send to device, Save / auto upload to cloud, Beginner / Advanced mode,
+Compress, Metadata tagging, Size filter, Tags manager, Custom extension · Urdu filenames, RSS download, Site grabber,
+Proxy · SOCKS, SSL verification (always on), IPv6, Remote control & Web UI, Server limit detection.
+
+### Deliberate deviations from the frames
+
+- Privacy card label reads "trackers & ads blocked" (per-page count; there is no weekly total).
+- Details "SEGMENTS" shows one bar (the engine exposes no per-connection parts).
+- Extra rows keep features reachable: Tabs MANAGE card; Tab options move up / down, volume, close; Page tools MORE
+  card; Browser settings BROWSE / PRIVACY / ADVANCED; Download settings TOOLS and the existing sections; History
+  "4 weeks" chip and "Clear recent searches"; Downloads list search / sort buttons.
+- Drag-to-reorder tabs is not in the tile grid (Move up / down in Tab options instead).
+
+### Gate
+
+`npm run typecheck` clean; unit tests 1870 / 1870; `npm run lint` 0 errors / 81 warnings; `git diff --check` clean.
+No native, patch, manifest, permission or download-rule change. No device here: the visual pass is Faran's.
+
+### Device checklist for Faran (light theme)
+
+- [ ] Every screen above against its frame: fonts (Inter), colours, radii, row heights, toggles, chips, tab bar
+- [ ] Start page: chrome hidden; Paste link / calculator bring the address bar back; a page opens with the chrome
+- [ ] Tabs screen: previews, badges, groups, New, long-press → Tab options; incognito tabs keep FLAG_SECURE there
+- [ ] Page tools from ⋮ on a page and on the start page; SELECTED TEXT chips with a selection
+- [ ] Downloads: cards during a download and after; "+ Add link" → Add download → Video sheet → download
+- [ ] Deep links: `vidorax://downloads`, `vidorax://downloads/<id>`, the notification tap, the home widget
+- [ ] Urdu (RTL) and font scale 1.3 on the new screens; TalkBack on toggles and rows
+
+## The other five themes — Dark, Red, Cream, Midnight, Blush (branch `hamza/light-theme`, 2026-11-17)
+
+Pages 10–54 of `VidoraX-6-Themes-65-Screens.pdf` repeat the 65 screens in five more themes. Their frames have the
+same geometry as the light ones (the structure audit was re-run against the dark and red pages: identical rows,
+chips, buttons), so nothing in the screens changed; the work is the colour system and the Red theme's chrome.
+
+### How the palettes were read
+
+Each theme page was compared shape-for-shape and span-for-span with the light page at the same position: every
+light fill or text colour maps to exactly one colour in the other theme (for example the `#FDECEA` icon tile is
+`#3B1D1B` in Dark, `#FBE0DC` in Red, `#F8E3D6` in Cream, `#3A1F2B` in Midnight, `#FFE1E7` in Blush). The Red
+header band is not a vector rectangle (it is a shading), so its extent was read from rendered pixels: 85 dp tall,
+square bottom edge, `#D92D20` at the top to `#C42419` at the edge, on every screen including the Video sheet. The
+full table is in `docs/design/light-theme-kit.md` → "The six themes".
+
+### What changed
+
+- `src/theme/colors.ts`: one `DesignPalette` per theme (`designPalettes`) and a builder (`designTheme`) that
+  produces the full token set; `colors.light … colors.blush`. New tokens: `headerStyle` (`flat` | `band`),
+  `headerButtonBackground` / `headerButtonPressed` / `headerButtonBorder`, `bottomNavActivePill`, `accentMuted`.
+  The old `logo` palette is gone; `colors.dark` is now the design's dark theme, not the private-app grey.
+- `src/theme/theme-preference.ts`: `ThemePreference` = light | dark | red | cream | midnight | blush (the PDF's
+  order); `normalizeThemePreference` maps a stored `logo` to `red` and `system` to `light`; `isDarkThemeMode`
+  (Dark, Midnight) decides night mode, the dark navigation / Paper bases, force-dark web pages and the reader's
+  dark palette (five `theme.mode === 'dark'` checks replaced).
+- Intro / splash / onboarding derive from the chosen theme's page, text and accent (`intro-palette.ts`,
+  `onboarding-surfaces.ts`); no more hard-wired light / logo / dark tables.
+- Kit: `DsHeader` draws the band when `headerStyle === 'band'` (white title, 70 % white subtitle, eight stacked
+  strips stand in for the gradient without a gradient library); `DsIconButton tone="header"` is the 15 % white
+  square with a white icon; `DsScreen` paints the status-bar strip in the band colour; `DsTabBar` draws the 52 × 26
+  white pill behind the active icon; `DsFab`'s shadow takes the theme's accent. `tokens.ts`: `headerBand`,
+  `tabPillWidth`, `tabPillHeight`.
+- Settings → Appearance: six swatch tiles (page, header band, card with accent tile) replace the three-segment
+  control; strings `settings.themeLight … themeBlush` (+ A11y) in en and ur; the help answer about themes updated.
+  `settings-validation.ts` / `api/types.ts` accept `RED` / `CREAM` / `MIDNIGHT` / `BLUSH` (`LOGO` still reads as red).
+- Tests: `src/theme/colors.test.ts` pins every theme's measured page, card, divider, tile, toggle-off, accent, text
+  and success colours, the Red band tokens and the night themes; `theme-preference.test.ts` covers the six
+  preferences and the legacy mappings.
+
+### Gate
+
+`npm run typecheck` clean; unit tests all passing (see the run in HANDOFF §4.39); `npm run lint` 0 errors;
+`git diff --check` clean. No native, patch, manifest, permission or download-rule change. No device here.
+
+### Device checklist for Faran (themes)
+
+- [ ] Settings → Appearance: the six swatches; each pick recolours every screen at once (tab bar included)
+- [ ] Red: the band reaches the top of the screen on every Browser and Downloads screen and on the Video sheet;
+      white title / button; red bottom bar with the white pill on the active tab; the in-page browser chrome on red
+- [ ] Dark and Midnight: status bar light; force-dark pages and the reader's dark palette follow them
+- [ ] Cold start in each theme: splash and onboarding colours match (no flash of the light page)
+- [ ] An upgrade from a build that stored `logo` opens in Red

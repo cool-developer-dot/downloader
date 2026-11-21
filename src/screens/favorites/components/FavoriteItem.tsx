@@ -1,14 +1,11 @@
-import { Image } from 'expo-image';
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback } from 'react';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Icon } from '@/components/base/Icon';
 import { Pressable } from '@/components/base/Pressable';
-import { Text } from '@/components/base/Text';
-import { useTranslation } from '@/localization';
+import { ds, DsCard, DsIcon, DsIconButton, DsText, DsThumb } from '@/design';
+import { useRtl, useTranslation } from '@/localization';
 import type { FavoriteItem as FavoriteEntry } from '@/store/favorites';
 
-import { useFavoritesTokens } from '../theme/favorites-tokens';
 import {
   buildFavoriteMetaLine,
   formatFavoriteHost,
@@ -23,6 +20,10 @@ export type FavoriteItemProps = {
   testID?: string;
 };
 
+/** The same thumbnail width as the Downloads cards (design 10). */
+const THUMB_WIDTH = 64;
+
+/** A favorite as the design's white card: thumbnail · title / platform · date / host · a heart, with ✕ to remove. */
 export const FavoriteItem = memo(function FavoriteItem({
   item,
   unavailable = false,
@@ -31,9 +32,8 @@ export const FavoriteItem = memo(function FavoriteItem({
   onRemove,
   testID,
 }: FavoriteItemProps) {
-  const favoritesTokens = useFavoritesTokens();
+  const rtl = useRtl();
   const { t } = useTranslation();
-  const [thumbFailed, setThumbFailed] = useState(false);
   const title = item.title?.trim() || formatFavoriteHost(item.sourceUrl) || t('favorites.title');
   const meta = buildFavoriteMetaLine(item);
   const host = formatFavoriteHost(item.sourceUrl);
@@ -51,18 +51,7 @@ export const FavoriteItem = memo(function FavoriteItem({
     : t('favorites.itemA11y', { title, meta });
 
   return (
-    <Box
-      testID={testID}
-      row
-      style={{
-        minHeight: favoritesTokens.rowMinHeight,
-        paddingVertical: favoritesTokens.spacing.rowY,
-        paddingLeft: favoritesTokens.spacing.screenX,
-        paddingRight: favoritesTokens.spacing.screenX - 4,
-        alignItems: 'center',
-        gap: 8,
-        opacity: unavailable ? 0.92 : 1,
-      }}>
+    <DsCard testID={testID} style={{ marginBottom: 8, opacity: unavailable ? 0.8 : 1 }}>
       <Pressable
         onPress={handlePress}
         onLongPress={handleRemove}
@@ -70,99 +59,42 @@ export const FavoriteItem = memo(function FavoriteItem({
         disabled={removing}
         accessibilityRole="button"
         accessibilityLabel={a11yLabel}
-        accessibilityHint={
-          unavailable ? t('favorites.unavailableHint') : t('favorites.openHint')
-        }
+        accessibilityHint={unavailable ? t('favorites.unavailableHint') : t('favorites.openHint')}
         accessibilityState={{ disabled: removing }}
-        style={({ pressed }) => ({
-          flex: 1,
-          flexDirection: 'row',
-          alignItems: 'center',
-          gap: favoritesTokens.spacing.rowGap,
-          minWidth: 0,
-          borderRadius: favoritesTokens.radius.row,
-          backgroundColor: pressed
-            ? favoritesTokens.rowPressed
-            : unavailable
-              ? favoritesTokens.unavailableBg
-              : 'transparent',
-          paddingVertical: 2,
-          paddingRight: 4,
-        })}>
-        <Box
-          style={{
-            width: favoritesTokens.thumbnailSize,
-            height: favoritesTokens.thumbnailSize,
-            borderRadius: favoritesTokens.radius.thumbnail,
-            backgroundColor: favoritesTokens.thumbnailBg,
-            alignItems: 'center',
-            justifyContent: 'center',
-            overflow: 'hidden',
-          }}>
-          {item.thumbnailUrl && !thumbFailed ? (
-            <Image
-              source={{ uri: item.thumbnailUrl }}
-              style={{
-                width: favoritesTokens.thumbnailSize,
-                height: favoritesTokens.thumbnailSize,
-              }}
-              contentFit="cover"
-              onError={() => setThumbFailed(true)}
-              accessibilityIgnoresInvertColors
-            />
-          ) : (
-            <Icon name="heart-outline" size="md" color="secondary" />
-          )}
-        </Box>
-
-        <Box flex={1} gap={2} style={{ minWidth: 0 }}>
-          <Box row gap={6} style={{ alignItems: 'center' }}>
-            <Box flex={1} style={{ minWidth: 0 }}>
-              <Text variant="body" numberOfLines={2}>
+        style={{ margin: -ds.space.cardPad, padding: ds.space.cardPad }}>
+        <View style={{ flexDirection: rtl.rowDirection, alignItems: 'flex-start', gap: ds.space.rowGap }}>
+          <DsThumb uri={item.thumbnailUrl || null} kind="video" width={THUMB_WIDTH} />
+          <View style={{ flex: 1, minWidth: 0, paddingEnd: 28 }}>
+            <View style={{ flexDirection: rtl.rowDirection, alignItems: 'center', gap: 6 }}>
+              <DsText variant="rowTitle" numberOfLines={2} style={{ flexShrink: 1 }}>
                 {title}
-              </Text>
-            </Box>
-            <Icon
-              name="heart"
-              size="sm"
-              color="error"
-              accessibilityLabel={t('favorites.favoritedA11y')}
-            />
-          </Box>
-          {meta ? (
-            <Text variant="caption" color="textSecondary" numberOfLines={1}>
-              {meta}
-            </Text>
-          ) : null}
-          <Text variant="caption" color="textSecondary" numberOfLines={1}>
-            {unavailable ? t('favorites.downloadUnavailableLabel') : host}
-          </Text>
-        </Box>
+              </DsText>
+              <DsIcon name="heart" size={14} color="primary" strokeWidth={2.2} accessibilityLabel={t('favorites.favoritedA11y')} />
+            </View>
+            {meta ? (
+              <DsText variant="rowSub" numberOfLines={1} style={{ marginTop: 1 }}>
+                {meta}
+              </DsText>
+            ) : null}
+            <DsText variant="rowSub" color={unavailable ? 'primary' : 'textSecondary'} numberOfLines={1}>
+              {unavailable ? t('favorites.downloadUnavailableLabel') : host}
+            </DsText>
+          </View>
+        </View>
       </Pressable>
 
-      <Pressable
-        onPress={handleRemove}
-        disabled={removing}
-        accessibilityRole="button"
-        accessibilityLabel={t('favorites.removeItemA11y', { title })}
-        accessibilityHint={t('favorites.removeOnlyHint')}
-        accessibilityState={{ disabled: removing }}
-        hitSlop={6}
-        testID={testID ? `${testID}-remove` : undefined}
-        style={({ pressed }) => ({
-          width: favoritesTokens.removeButtonSize,
-          height: favoritesTokens.removeButtonSize,
-          borderRadius: favoritesTokens.radius.removeButton,
-          alignItems: 'center',
-          justifyContent: 'center',
-          opacity: removing ? 0.5 : 1,
-          backgroundColor: pressed
-            ? favoritesTokens.removeButtonPressed
-            : favoritesTokens.removeButtonBg,
-          transform: [{ scale: pressed && !removing ? 0.92 : 1 }],
-        })}>
-        <Icon name="heart-off-outline" size="sm" color="error" />
-      </Pressable>
-    </Box>
+      <View style={{ position: 'absolute', top: 0, end: 0 }}>
+        <DsIconButton
+          variant="plain"
+          icon="x"
+          iconSize={18}
+          onPress={handleRemove}
+          disabled={removing}
+          accessibilityLabel={t('favorites.removeItemA11y', { title })}
+          accessibilityHint={t('favorites.removeOnlyHint')}
+          testID={testID ? `${testID}-remove` : undefined}
+        />
+      </View>
+    </DsCard>
   );
 });

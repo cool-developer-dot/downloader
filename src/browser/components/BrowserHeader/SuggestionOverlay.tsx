@@ -25,6 +25,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
 import { Loader } from '@/components/common/Loader';
+import { ds } from '@/design';
 import { useKeyboardHeight } from '@/hooks/use-keyboard-height';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
@@ -189,14 +190,13 @@ export const SuggestionOverlay = memo(function SuggestionOverlay({
       style={{
         minHeight: BROWSER_TOUCH_TARGET,
         height: BROWSER_ADDRESS_BAR_HEIGHT,
-        borderRadius: theme.radius.full,
-        backgroundColor: theme.colors.surface,
-        borderWidth: 1.5,
+        borderRadius: ds.radius.field,
+        backgroundColor: theme.colors.card,
+        borderWidth: 1,
         borderColor: theme.colors.primary,
         paddingHorizontal: 12,
         alignItems: 'center',
         gap: 8,
-        ...theme.elevation.md,
       }}
       accessibilityRole="search">
       <Box accessibilityLabel={t('browserAddress.engineA11y', { engine: engine.name })} accessible>
@@ -219,7 +219,8 @@ export const SuggestionOverlay = memo(function SuggestionOverlay({
         enablesReturnKeyAutomatically
         selectTextOnFocus={!caretAtEnd}
         placeholder={t('browser.addressPlaceholder')}
-        placeholderTextColor={theme.colors.textDisabled}
+        placeholderTextColor={theme.colors.textSecondary}
+        selectionColor={theme.colors.primary}
         accessibilityLabel={t('browser.addressBar')}
         accessibilityHint={t('browser.addressHint')}
         accessibilityState={{ busy: loading }}
@@ -243,13 +244,12 @@ export const SuggestionOverlay = memo(function SuggestionOverlay({
   const list = (
     <Box
       style={{
-        borderRadius: theme.radius.lg,
+        borderRadius: ds.radius.card,
         backgroundColor: theme.colors.card,
         borderWidth: 1,
-        borderColor: theme.colors.border,
+        borderColor: theme.colors.cardBorder,
         overflow: 'hidden',
         maxHeight: listMaxHeight,
-        ...theme.elevation.md,
       }}
       accessibilityRole="list"
       accessibilityLabel={t('browser.suggestionsA11y')}

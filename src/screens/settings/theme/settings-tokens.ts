@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 
 import { useTheme } from '@/hooks/use-theme';
 import {
-  colors,
   elevation,
   errorAlphas,
   primaryAlphas,
@@ -12,15 +11,16 @@ import {
   withAlpha,
   type Theme,
 } from '@/theme';
+import { isDarkThemeMode } from '@/theme/theme-preference';
 
 /**
- * Settings visual tokens — theme-aware (Light / Dark).
+ * Settings visual tokens — theme-aware (follow the active design theme; dark themes lift the tints).
  * Spacing/radius stay shared; colors follow the active app theme.
  */
 export type SettingsTokens = ReturnType<typeof createSettingsTokens>;
 
 export function createSettingsTokens(theme: Theme) {
-  const isDark = theme.mode === 'dark';
+  const isDark = isDarkThemeMode(theme.mode);
   const c = theme.colors;
   const primary = primaryAlphas(c.primary);
   const destructive = errorAlphas(c.error);
@@ -28,7 +28,7 @@ export function createSettingsTokens(theme: Theme) {
   return {
     background: isDark ? c.background : c.surface,
     card: c.card,
-    cardBorder: isDark ? withAlpha(c.textPrimary, 0.08) : withAlpha(colors.dark.background, 0.06),
+    cardBorder: withAlpha(c.textPrimary, isDark ? 0.08 : 0.06),
     sectionIconBg: isDark ? primary.emphasis : primary.subtle,
     actionIconBg: isDark ? primary.emphasis : primary.subtle,
     actionIconBgMuted: withAlpha(c.textSecondary, isDark ? 0.18 : 0.14),

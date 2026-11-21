@@ -29,6 +29,37 @@ import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
 import { browserSettingsEn } from './catalogs/browserSettings.en';
 import { browserTabsEn } from './catalogs/browserTabs.en';
+import { lightHomeEn } from './catalogs/lightHome.en';
+import { lightSearchEn } from './catalogs/lightSearch.en';
+import { lightUtilitiesEn } from './catalogs/lightUtilities.en';
+import { lightTabsEn } from './catalogs/lightTabs.en';
+import { lightPageToolsEn } from './catalogs/lightPageTools.en';
+import { lightDisplayEn } from './catalogs/lightDisplay.en';
+import { lightFocusEn } from './catalogs/lightFocus.en';
+import { lightBookmarksEn } from './catalogs/lightBookmarks.en';
+import { lightHistoryEn } from './catalogs/lightHistory.en';
+import { lightPrivacyEn } from './catalogs/lightPrivacy.en';
+import { lightIncognitoEn } from './catalogs/lightIncognito.en';
+import { lightPasswordsEn } from './catalogs/lightPasswords.en';
+import { lightDeveloperEn } from './catalogs/lightDeveloper.en';
+import { lightBrowserSettingsEn } from './catalogs/lightBrowserSettings.en';
+import { lightDownloadsEn } from './catalogs/lightDownloads.en';
+import { lightAddDownloadEn } from './catalogs/lightAddDownload.en';
+import { lightVideoSheetEn } from './catalogs/lightVideoSheet.en';
+import { lightPlaylistEn } from './catalogs/lightPlaylist.en';
+import { lightDetailsEn } from './catalogs/lightDetails.en';
+import { lightQueuesEn } from './catalogs/lightQueues.en';
+import { lightTorrentEn } from './catalogs/lightTorrent.en';
+import { lightStatisticsEn } from './catalogs/lightStatistics.en';
+import { lightDownloadSettingsEn } from './catalogs/lightDownloadSettings.en';
+import { lightAlertsEn } from './catalogs/lightAlerts.en';
+import { lightLiveConvertEn } from './catalogs/lightLiveConvert.en';
+import { lightOrganizeEn } from './catalogs/lightOrganize.en';
+import { lightLinkGrabberEn } from './catalogs/lightLinkGrabber.en';
+import { lightNetworkEn } from './catalogs/lightNetwork.en';
+import { lightFileActionsEn } from './catalogs/lightFileActions.en';
+import { lightFailedEn } from './catalogs/lightFailed.en';
+import { lightNotificationsEn } from './catalogs/lightNotifications.en';
 import { detectionEn } from './catalogs/detection.en';
 import { shellEn } from './catalogs/shell.en';
 import { videoPlayerEn } from './catalogs/videoPlayer.en';
@@ -64,6 +95,7 @@ export const en = {
     reset: 'Reset',
     dismiss: 'Dismiss',
     comingSoon: 'Coming Soon',
+    notAvailableYet: 'Not available yet',
     on: 'On',
     off: 'Off',
     default: 'Default',
@@ -93,6 +125,8 @@ export const en = {
     downloadsTab: 'Downloads tab',
     library: 'Player',
     libraryTab: 'Player tab',
+    files: 'Files',
+    filesTab: 'Files tab',
     settings: 'Settings',
     settingsTab: 'Settings tab',
     about: 'About',
@@ -1695,14 +1729,20 @@ export const en = {
       'We could not find your preferences. Pull to refresh or tap retry to try again.',
     signOut: 'Sign Out',
     theme: 'Theme',
-    themeHint: 'System, Red, or Dark',
+    themeHint: 'Light, Dark, Red, Cream, Midnight or Blush',
     themeA11y: 'Theme preference',
-    themeLight: 'System',
-    themeLogo: 'Red',
+    themeLight: 'Light',
     themeDark: 'Dark',
-    themeLightA11y: 'System theme',
-    themeLogoA11y: 'Red theme',
+    themeRed: 'Red',
+    themeCream: 'Cream',
+    themeMidnight: 'Midnight',
+    themeBlush: 'Blush',
+    themeLightA11y: 'Light theme',
     themeDarkA11y: 'Dark theme',
+    themeRedA11y: 'Red theme',
+    themeCreamA11y: 'Cream theme',
+    themeMidnightA11y: 'Midnight theme',
+    themeBlushA11y: 'Blush theme',
     language: 'Language',
     languageHint: 'Display language for VidoraX',
     languageSheetTitle: 'Choose language',
@@ -2404,8 +2444,8 @@ export const en = {
       themeSettings: {
         question: 'How do I change the theme?',
         answer:
-          'Open Settings → Appearance → Theme and pick System, Red, or Dark. Red, VidoraX’s own colours, is the default; System is a plain light look and Dark is dark. The theme applies across the whole app, including Help & Support.',
-        keywords: 'theme, red, dark, light, appearance, system',
+          'Open Settings → Appearance → Theme and pick Light, Dark, Red, Cream, Midnight or Blush. Light is the default; Dark and Midnight are dark looks, Red paints the header and the bottom bar in VidoraX’s red, Cream and Blush are warm light looks. The theme applies across the whole app, including Help & Support.',
+        keywords: 'theme, light, dark, red, cream, midnight, blush, appearance',
       },
       storageSettings: {
         question: 'How do I manage storage?',
@@ -2833,6 +2873,60 @@ export const en = {
   detection: detectionEn,
   videoPlayer: videoPlayerEn,
   browserTabs: browserTabsEn,
+  lightHome: lightHomeEn,
+  lightSearch: lightSearchEn,
+  lightUtilities: lightUtilitiesEn,
+  lightTabs: lightTabsEn,
+  lightPageTools: lightPageToolsEn,
+  lightDisplay: lightDisplayEn,
+  lightFocus: lightFocusEn,
+  lightBookmarks: lightBookmarksEn,
+  lightHistory: lightHistoryEn,
+  lightPrivacy: lightPrivacyEn,
+  lightIncognito: lightIncognitoEn,
+  lightPasswords: lightPasswordsEn,
+  lightDeveloper: lightDeveloperEn,
+  lightBrowserSettings: lightBrowserSettingsEn,
+  lightDownloads: lightDownloadsEn,
+  lightAddDownload: lightAddDownloadEn,
+  lightVideoSheet: lightVideoSheetEn,
+  lightPlaylist: lightPlaylistEn,
+  lightDetails: lightDetailsEn,
+  lightQueues: lightQueuesEn,
+  lightTorrent: lightTorrentEn,
+  lightStatistics: lightStatisticsEn,
+  lightDownloadSettings: lightDownloadSettingsEn,
+  lightAlerts: lightAlertsEn,
+  lightLiveConvert: lightLiveConvertEn,
+  lightOrganize: lightOrganizeEn,
+  lightLinkGrabber: lightLinkGrabberEn,
+  lightNetwork: lightNetworkEn,
+  lightFileActions: lightFileActionsEn,
+  lightFailed: lightFailedEn,
+  lightNotifications: lightNotificationsEn,
+  filesTab: {
+    title: 'Files',
+    subtitle: 'Internal storage',
+    searchA11y: 'Search files',
+    internal: 'Internal',
+    sdCard: 'SD card',
+    foldersAdded: 'Folders I added',
+    videos: 'Videos',
+    audio: 'Audio',
+    images: 'Images',
+    docs: 'Docs',
+    archives: 'Archives',
+    apks: 'APKs',
+    privateFolder: 'Private folder',
+    privateFolderHint: 'PIN or fingerprint',
+    folders: 'Folders',
+    movies: 'Movies',
+    moviesPath: 'Internal/Movies',
+    download: 'Download',
+    downloadPath: 'Internal/Download',
+    vidoraxPath: 'Movies/VidoraX',
+    notAvailableYet: 'Not available yet',
+  },
   browserSettings: browserSettingsEn,
   browserAddress: browserAddressEn,
   browserNav: browserNavEn,
