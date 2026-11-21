@@ -1,10 +1,8 @@
 import { memo, useCallback } from 'react';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
-import { ScreenHeader } from '@/components/headers/ScreenHeader';
-import { SearchField } from '@/components/inputs/SearchField';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
+import { ds, DsHeader, DsScreen, DsSearchField } from '@/design';
 import { useTranslation } from '@/localization';
 import type { FavoriteItem as FavoriteEntry } from '@/store/favorites';
 
@@ -16,11 +14,10 @@ import {
   FavoriteSkeleton,
 } from './components';
 import { useFavoritesScreen } from './hooks/useFavoritesScreen';
-import { useFavoritesTokens } from './theme/favorites-tokens';
 
+/** Favorites, in the light design's chrome: a sub-screen header, the 56 dp search field and white cards. */
 export const FavoritesScreen = memo(function FavoritesScreen() {
-  const favoritesTokens = useFavoritesTokens();
-  const { t } = useTranslation();
+  const { t, tp } = useTranslation();
   const {
     orderedIds,
     total,
@@ -77,45 +74,31 @@ export const FavoritesScreen = memo(function FavoritesScreen() {
     void confirmRemove();
   }, [confirmRemove]);
 
-  const subtitle = total > 0 ? `${total} item${total === 1 ? '' : 's'}` : undefined;
+  const subtitle = total > 0 ? tp('plurals.itemsOther', total) : undefined;
 
   return (
-    <SafeAreaScreen
-      testID="favorites-screen"
-      padded={false}
-      edges={['top', 'left', 'right', 'bottom']}
-      style={{ backgroundColor: favoritesTokens.background }}>
-      <ScreenHeader
-        title={t('favorites.title')}
-        subtitle={subtitle}
-        showBack
-        onBackPress={goBack}
-        testID="favorites-header"
-      />
-
-      <Box px={favoritesTokens.spacing.screenX} py={12}>
-        <SearchField
+    <DsScreen scroll={false} testID="favorites-screen">
+      <View style={{ paddingHorizontal: ds.space.screenX, gap: 10, marginBottom: 10 }}>
+        <DsHeader title={t('favorites.title')} subtitle={subtitle} onBack={goBack} testID="favorites-header" />
+        <DsSearchField
           value={searchDraft}
           onChangeText={onChangeSearch}
-          onSearch={onSubmitSearch}
+          onSubmitEditing={(event) => onSubmitSearch(event.nativeEvent.text)}
+          returnKeyType="search"
           placeholder={t('favorites.searchPlaceholder')}
+          accessibilityLabel={t('favorites.searchPlaceholder')}
+          actions={searchDraft ? [{ icon: 'x', accessibilityLabel: t('lightDownloads.clearSearch'), onPress: () => onSubmitSearch('') }] : undefined}
           testID="favorites-search-field"
         />
-      </Box>
+      </View>
 
       {status === 'loading' ? <FavoriteSkeleton /> : null}
 
-      {status === 'error' && error ? (
-        <FavoriteErrorState message={error} onRetry={handleRetry} />
-      ) : null}
+      {status === 'error' && error ? <FavoriteErrorState message={error} onRetry={handleRetry} /> : null}
 
-      {status === 'empty' ? (
-        <FavoriteEmptyState onActionPress={openDownloads} />
-      ) : null}
+      {status === 'empty' ? <FavoriteEmptyState onActionPress={openDownloads} /> : null}
 
-      {status === 'empty-search' ? (
-        <FavoriteEmptyState variant="search" />
-      ) : null}
+      {status === 'empty-search' ? <FavoriteEmptyState variant="search" /> : null}
 
       {status === 'ready' ? (
         <FavoritesList
@@ -143,12 +126,12 @@ export const FavoritesScreen = memo(function FavoritesScreen() {
         variant="error"
         title={t('favorites.openFailed')}
         message={openError ?? ''}
-        confirmLabel="OK"
-        cancelLabel="Close"
+        confirmLabel={t('common.ok')}
+        cancelLabel={t('common.close')}
         onConfirm={dismissOpenError}
         onCancel={dismissOpenError}
         testID="favorites-open-error"
       />
-    </SafeAreaScreen>
+    </DsScreen>
   );
 });

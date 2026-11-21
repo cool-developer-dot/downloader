@@ -500,8 +500,13 @@ internal class HlsTransfer(private val http: HttpClient) {
           CLOSERS.execute { runCatching { input.close() } }
         }
         try {
-          diskWrite { FileOutputStream(partial) }.use { out ->
-            val buffer = ByteArray(BUFFER_BYTES)
+          // #344: a fetched-ahead segment is its own temporary file, used only once it is whole, so its writes may be
+          // gathered freely.
+          val cacheBytes = TransferTuning.cacheCapacity(TransferTuning.bufferBytes)
+          diskWrite {
+            if (cacheBytes > 0) java.io.BufferedOutputStream(FileOutputStream(partial), cacheBytes) else FileOutputStream(partial)
+          }.use { out ->
+            val buffer = ByteArray(TransferTuning.bufferBytes)
             var toSkip = skip
             while (toSkip > 0) {
               currentCoroutineContext().ensureActive()
@@ -591,7 +596,7 @@ internal class HlsTransfer(private val http: HttpClient) {
     }
     try {
       var toSkip = skip
-      val buffer = ByteArray(BUFFER_BYTES)
+      val buffer = ByteArray(TransferTuning.bufferBytes)
       while (toSkip > 0) {
         currentCoroutineContext().ensureActive()
         val read = input.read(buffer, 0, minOf(buffer.size.toLong(), toSkip).toInt())
@@ -685,7 +690,6 @@ internal class HlsTransfer(private val http: HttpClient) {
   }
 
   private companion object {
-    const val BUFFER_BYTES = 64 * 1024
     const val SNIFF_BYTES = 64 * 1024
     const val PEEK_BYTES = 16L
     const val MAX_CONNECTIONS = 4

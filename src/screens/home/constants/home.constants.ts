@@ -41,6 +41,6 @@ export const HOME_DESTINATIONS = {
   downloads: '/downloads',
   library: '/library',
   settings: '/settings',
-  downloadSettings: '/download-settings',
+  downloadSettings: '/downloads/settings',
   watchHistory: '/watch-history',
 } as const;

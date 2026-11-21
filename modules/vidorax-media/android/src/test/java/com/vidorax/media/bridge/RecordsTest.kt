@@ -179,6 +179,39 @@ class SpeedLimitRecordsTest {
   }
 }
 
+/** P1 engine tuning from JavaScript: missing fields are today's behaviour, out-of-range ones are refused. */
+class EngineTuningRecordsTest {
+  @Test fun missingTuningIsTodaysBehaviour() {
+    val model = DownloadSettingsRecord().toModel()
+    assertEquals(DownloadSettings.DEFAULT_BUFFER_KB, model.bufferKb)
+    assertEquals(0, model.writeCacheKb)
+    assertEquals(com.vidorax.media.model.LowMemoryMode.AUTO, model.lowMemoryMode)
+    assertEquals(0, model.cooldownSeconds)
+    assertEquals(false, model.exitWhenDone)
+  }
+
+  @Test fun givenTuningReachesTheModel() {
+    val model = DownloadSettingsRecord(bufferKb = 256, writeCacheKb = 4096, lowMemoryMode = "on", cooldownSeconds = 30, exitWhenDone = true).toModel()
+    assertEquals(256, model.bufferKb)
+    assertEquals(4096, model.writeCacheKb)
+    assertEquals(com.vidorax.media.model.LowMemoryMode.ON, model.lowMemoryMode)
+    assertEquals(30, model.cooldownSeconds)
+    assertEquals(true, model.exitWhenDone)
+  }
+
+  @Test fun outOfRangeTuningIsRefused() {
+    for (record in listOf(
+      DownloadSettingsRecord(bufferKb = 8),
+      DownloadSettingsRecord(bufferKb = 4096),
+      DownloadSettingsRecord(writeCacheKb = -1),
+      DownloadSettingsRecord(lowMemoryMode = "sometimes"),
+      DownloadSettingsRecord(cooldownSeconds = 601),
+    )) {
+      assertThrows(CodedException::class.java) { record.toModel() }
+    }
+  }
+}
+
 /** F3: the download-hours and condition settings from JavaScript. */
 class ConditionRecordsTest {
   @Test fun windowAndRulesAreReadAndDefaultOff() {

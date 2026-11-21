@@ -8,6 +8,7 @@ import { type TextStyle } from 'react-native';
 
 import { colors, radius, typography, type ThemeMode } from '@/theme';
 import { fontFamilies, fontWeights } from '@/theme/typography';
+import { isDarkThemeMode } from '@/theme/theme-preference';
 
 type PaperFont = {
   fontFamily: string;
@@ -55,7 +56,7 @@ function createFontConfig() {
 
 export function createPaperTheme(mode: ThemeMode): MD3Theme {
   const palette = colors[mode];
-  const base = mode === 'dark' ? MD3DarkTheme : MD3LightTheme;
+  const base = isDarkThemeMode(mode) ? MD3DarkTheme : MD3LightTheme;
 
   return {
     ...base,

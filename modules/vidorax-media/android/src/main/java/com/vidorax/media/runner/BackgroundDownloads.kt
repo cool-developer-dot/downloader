@@ -56,6 +56,7 @@ internal object BackgroundDownloads {
     val runnerHost = AndroidRunnerHost(appContext, notifier)
     val downloadRunner = DownloadRunner(runnerHost, notifier)
     downloadRunner.isHeld = engine::isQueueHeld
+    downloadRunner.onAllFinished = { ExitWhenDone.maybeExit(appContext) }
     notifications = notifier
     host = runnerHost
     runner = downloadRunner
@@ -68,6 +69,8 @@ internal object BackgroundDownloads {
       runCatching { downloadRunner.restore(engine.listDownloads()) }
       wakeRequests.trySend(Unit)
     }
+    // P6 #499: "download finished" for other apps, only while the user allows them (AutomationSettings).
+    com.vidorax.media.remote.AutomationEvents.attach(appContext, engine, scope)
     // F3: every state change may change what waits for a rule, so the background wake-up follows it.
     scope.launch { engine.stateChanges.collect { wakeRequests.trySend(Unit) } }
     scope.launch {

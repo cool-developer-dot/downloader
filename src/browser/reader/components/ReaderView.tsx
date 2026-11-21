@@ -28,6 +28,7 @@ import {
 } from '../reader-settings';
 import { ReaderAppearanceSheet } from './ReaderAppearanceSheet';
 import { ReaderBlocks } from './ReaderBlocks';
+import { isDarkThemeMode } from '@/theme/theme-preference';
 
 /**
  * B15 #161 / #172 / #173 — reader mode: the article in the app's own views over the page (a window of its own, so
@@ -47,7 +48,7 @@ const ReaderView = memo(function ReaderView() {
   const insets = useSafeAreaInsets();
   const { open } = useReaderState();
   const readerTheme = normalizeReaderTheme(useSettingsStore((s) => s.readerTheme));
-  const palette = readerPalette(readerTheme, theme.mode === 'dark');
+  const palette = readerPalette(readerTheme, isDarkThemeMode(theme.mode));
   const [appearance, setAppearance] = useState(false);
 
   const close = useCallback(() => {

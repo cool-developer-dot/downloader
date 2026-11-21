@@ -57,6 +57,8 @@ export type PreDownloadGateInput = {
    * When HLS, skip progressive size/signature rules and validate the playlist.
    */
   transport?: PreDownloadTransport | null;
+  /** A verified `.ts` file the user opened: its name never makes it an HLS segment (see `isTransportStreamFileOffer`). */
+  transportStreamFile?: boolean;
 };
 
 function isTinyErrorSize(bytes: number | null | undefined): boolean {
@@ -221,6 +223,7 @@ export async function runPreDownloadGate(
   const verification = await verifyMediaCandidate(trimmed, {
     requestContext: ctx,
     signal: input.signal,
+    transportStreamFile: input.transportStreamFile,
   });
 
   if (!verification.ok) {

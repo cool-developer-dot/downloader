@@ -133,6 +133,13 @@ the downloads the user starts. Google's Data safety guidance treats this as the 
 the developer. Downloads, library, watch progress, history, bookmarks, App Lock PIN (one-way hash) and settings stay
 on the device.
 
+P6 Remote control (1.2.0) does not change the answer: the web server runs on the phone, only after the user turns it
+on, and answers only devices on the user's own network that the user paired with a PIN shown on the phone. The queue,
+links and files it serves go from the phone to the user's own computer; nothing reaches the developer or a third
+party ("data transferred to a device the user controls is not collection"). The Automation API only acts on, and
+announces titles to, apps on the same phone, and only once the user allows it.
+Privacy policy: the "Remote control and other apps" section (`src/legal/privacy-content.ts`).
+
 ## Permission declarations
 
 ### A. Photo and video permissions (`READ_MEDIA_VIDEO`, `READ_MEDIA_VISUAL_USER_SELECTED`)
@@ -235,6 +242,36 @@ The edit the user started would stop part-way when they leave the app, the parti
   VidoraX again and show the new trimmed video in the Player tab. Upload it (unlisted YouTube or Drive link) and paste
   the link.
 
+### 1.2.0 additions (HANDOFF §4.37) — Data safety answer unchanged
+
+- **Background requests the user set up.** Watched links and feeds (an hourly JobScheduler job, only while at least
+  one link is watched), "Save a site" and "Save comments" read the public pages the user chose, **without cookies**,
+  and keep the results on the device. Like browsing, these go only to the third-party sites the user picked; nothing
+  goes to a VidoraX server (there is none). Data safety stays **No data collected, no data shared**. The "traffic
+  without browsing" check above holds for a fresh install (nothing is watched by default).
+- **Cloud apps.** "Save a copy to…", folder import, Save Location into a cloud app's folder and "Send to another
+  phone" use Android's own file and share screens; the user's cloud app does any upload under its own policy.
+- **Permissions.** No new permission from these packages (the watch job reuses `RECEIVE_BOOT_COMPLETED`, notifications
+  reuse `POST_NOTIFICATIONS`). P2 (multi-network) adds `CHANGE_NETWORK_STATE`, a normal permission with no form; P6
+  (local web UI) adds no permission beyond `INTERNET`. No new foreground-service type.
+- **Privacy policy.** `privacy.sections.backend.p4` describes the above (updated date 2026-11-20).
+
+**1.2.0 release notes (en-US, under Play's 500 characters)**
+
+```
+<en-US>
+New in VidoraX 1.2.0
+• Watch links and video feeds, and get new videos automatically
+• Add many links at once: patterns, playlists, RSS and rules
+• Save a whole site to read offline
+• FTP downloads, mirrors, and Wi-Fi + mobile data together
+• Control downloads from your computer on the same Wi-Fi
+• Save copies to your cloud app; import videos from a cloud folder
+• Warnings for disguised files, zip extract, Simple/Advanced settings
+• Live stream recording is on by default
+</en-US>
+```
+
 ### C. Other declarations: none required
 
 Checked against every permission in the final merged manifest:
@@ -243,6 +280,7 @@ Checked against every permission in the final merged manifest:
 | --- | --- |
 | `INTERNET`, `ACCESS_NETWORK_STATE`, `ACCESS_WIFI_STATE`, `WAKE_LOCK`, `VIBRATE`, `POST_NOTIFICATIONS`, `RECEIVE_BOOT_COMPLETED` (resume downloads after reboot), `FOREGROUND_SERVICE` | No |
 | `RUN_USER_INITIATED_JOBS` | No (not a foreground-service type) |
+| `CHANGE_NETWORK_STATE` (1.2.0, #446 "Experimental: use Wi-Fi and mobile data together", off by default: `ConnectivityManager.requestNetwork` for mobile data while a multi-connection download runs on Wi-Fi) | No (normal, install-time permission; no foreground-service type added; no data leaves the device beyond the download itself) |
 | `USE_BIOMETRIC` / `USE_FINGERPRINT` (App Lock fingerprint/face unlock, expo-local-authentication; also `androidx.biometric` via expo-secure-store) | No |
 | Home-screen widget receiver (H22), static app shortcut "Paste link" (H7), non-exported content provider for Play while downloading (H20) | No |
 | `READ/WRITE_EXTERNAL_STORAGE` (maxSdk 28, "Save to Gallery" on Android 7–9) | No |
@@ -250,8 +288,10 @@ Checked against every permission in the final merged manifest:
 | `BIND_GET_INSTALL_REFERRER_SERVICE` (install-referrer library, never called) | No |
 | Launcher badge permissions (ShortcutBadger in expo-notifications) | No |
 | `http`/`https` VIEW intent filters (can be default browser) | No |
-
 | `content`/`file` VIEW intent filters for `video/*` and `audio/*` ("Open with VidoraX", F16) | No |
+| P8 `content` VIEW/SEND intent filters for `application/zip` ("Extract archive", #407: videos and subtitles go into the library; nothing is installed or run) | No |
+| P6 Remote control: a LAN-only web server inside the app (NanoHTTPD), started by the user, using the existing `INTERNET` / `ACCESS_NETWORK_STATE`; no new permission and no new foreground-service type (it runs only while the app is open or the existing `dataSync` download runner is up) | No |
+| P6 exported broadcast receiver `AutomationReceiver` (`com.vidorax.action.ADD_DOWNLOAD` / `PAUSE_ALL` / `RESUME_ALL`), ignored unless the user turns on "Allow other apps to control downloads" (off by default) | No |
 
 Not present (the ones that *would* need forms): `QUERY_ALL_PACKAGES`, `MANAGE_EXTERNAL_STORAGE`,
 `REQUEST_INSTALL_PACKAGES`, `ACCESS_*LOCATION`, `SCHEDULE_EXACT_ALARM`/`USE_EXACT_ALARM`, `USE_FULL_SCREEN_INTENT`,

@@ -153,6 +153,11 @@ export function resolveContainer(
   if ((known as string[]).includes(ext)) {
     return ext as MediaAnalysisContainer;
   }
+  // Files the engine downloads but the browser does not play: named by extension or type.
+  const base = mime?.split(';')[0]?.trim().toLowerCase() ?? '';
+  if (ext === 'mkv' || base === 'video/x-matroska' || base === 'video/matroska') return 'mkv';
+  if (ext === 'flv' || base === 'video/x-flv') return 'flv';
+  if (ext === 'ts' || base === 'video/mp2t') return 'ts';
   if (mime?.startsWith('video/mp4')) {
     return 'mp4';
   }

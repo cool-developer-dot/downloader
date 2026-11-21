@@ -4,47 +4,34 @@ import {
   normalizeLanguageCode,
 } from '@/constants/languages';
 import type { ThemePreference } from '@/store/theme';
-import { normalizeThemePreference } from '@/theme/theme-preference';
+import { isThemePreference, normalizeThemePreference } from '@/theme/theme-preference';
 
-const VALID_API_THEMES: ThemeMode[] = ['SYSTEM', 'LIGHT', 'LOGO', 'DARK'];
-const VALID_THEME_PREFERENCES: ThemePreference[] = ['light', 'logo', 'dark'];
+const VALID_API_THEMES: ThemeMode[] = ['SYSTEM', 'LIGHT', 'LOGO', 'DARK', 'RED', 'CREAM', 'MIDNIGHT', 'BLUSH'];
 
 export function isValidThemePreference(value: unknown): value is ThemePreference {
-  return (
-    typeof value === 'string' &&
-    VALID_THEME_PREFERENCES.includes(value as ThemePreference)
-  );
+  return isThemePreference(value);
 }
 
 export function isValidApiTheme(value: unknown): value is ThemeMode {
   return typeof value === 'string' && VALID_API_THEMES.includes(value as ThemeMode);
 }
 
+const API_BY_PREFERENCE: Record<ThemePreference, ThemeMode> = {
+  light: 'LIGHT',
+  dark: 'DARK',
+  red: 'RED',
+  cream: 'CREAM',
+  midnight: 'MIDNIGHT',
+  blush: 'BLUSH',
+};
+
 export function themePreferenceToApi(mode: ThemePreference): ThemeMode {
-  switch (normalizeThemePreference(mode)) {
-    case 'logo':
-      return 'LOGO';
-    case 'dark':
-      return 'DARK';
-    case 'light':
-    default:
-      return 'LIGHT';
-  }
+  return API_BY_PREFERENCE[normalizeThemePreference(mode)];
 }
 
+/** Legacy LOGO (the old brand-red chrome) → red; legacy SYSTEM → light (no OS takeover). */
 export function apiThemeToPreference(theme: ThemeMode): ThemePreference {
-  switch (theme) {
-    case 'LOGO':
-      return 'logo';
-    case 'DARK':
-      return 'dark';
-    case 'LIGHT':
-      return 'light';
-    case 'SYSTEM':
-    default:
-      // Legacy SYSTEM collapses to LIGHT (no OS takeover).
-      return 'light';
-  }
+  return normalizeThemePreference(theme);
 }
 
 export function validateLanguageOrThrow(language: string): string {

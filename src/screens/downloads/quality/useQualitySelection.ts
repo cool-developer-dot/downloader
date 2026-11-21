@@ -831,6 +831,7 @@ export function useQualitySelection(
         requestContext: ctx,
         verifiedAtMs: ctx.capturedAt,
         transport: gateTransport,
+        transportStreamFile: String(selectedOption.container).toLowerCase() === 'ts',
       });
       if (!gate.ok) {
         if (gate.refreshable && pendingMediaResolutionService.get()?.canonicalUrl) {
@@ -852,6 +853,7 @@ export function useQualitySelection(
                 sourceUrl: refresh.mediaUrl,
                 requestContext: refreshedCtx,
                 transport: gateTransport,
+                transportStreamFile: String(selectedOption.container).toLowerCase() === 'ts',
               });
               if (retryGate.ok) {
                 requestContextRef.current = retryGate.requestContext;

@@ -23,7 +23,7 @@ import {
   useSettingsStore,
 } from '@/store/settings';
 
-import { SettingsRow, SettingsSection } from '../components';
+import { SettingsRow, SettingsSection, useSettingVisible } from '../components';
 
 /** "From 01:00 [−] [+]": one end of the download hours. */
 const TimeStepper = memo(function TimeStepper({
@@ -77,6 +77,7 @@ const TimeStepper = memo(function TimeStepper({
  * Android decides the exact wake-up time, hence the "a few minutes late" note.
  */
 export const DownloadConditionsSection = memo(function DownloadConditionsSection({ disabled }: { disabled: boolean }) {
+  const hoursVisible = useSettingVisible(true);
   const { t, language } = useTranslation();
   const hours = normalizeDownloadHours(useSettingsStore(selectDownloadHours));
   const notOnRoaming = useSettingsStore(selectNotOnRoaming);
@@ -111,8 +112,10 @@ export const DownloadConditionsSection = memo(function DownloadConditionsSection
         showDivider={!hours.enabled}
         accessibilityHint={t('settings.downloadHoursHint')}
         testID="download-settings-hours"
+        advanced
       />
-      {hours.enabled ? (
+      {/* P8: the daily hours are a scheduling detail — Advanced view only. */}
+      {hours.enabled && hoursVisible ? (
         <Box gap={12} pb={14} testID="download-settings-hours-editor">
           <TimeStepper
             label={t('settings.downloadHoursFrom')}

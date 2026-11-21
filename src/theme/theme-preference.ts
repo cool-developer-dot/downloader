@@ -4,35 +4,40 @@
 
 import type { ThemeMode } from './colors';
 
-/** User-selectable persisted preference. Default: logo (brand). */
-export type ThemePreference = 'light' | 'logo' | 'dark';
+/** User-selectable persisted preference: the six themes of the design, in the PDF's order. */
+export type ThemePreference = 'light' | 'dark' | 'red' | 'cream' | 'midnight' | 'blush';
 
 /** First-run / missing / malformed preference default. */
-export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'logo';
+export const DEFAULT_THEME_PREFERENCE: ThemePreference = 'light';
 
-export const THEME_PREFERENCES: readonly ThemePreference[] = [
-  'light',
-  'logo',
-  'dark',
-] as const;
+export const THEME_PREFERENCES: readonly ThemePreference[] = ['light', 'dark', 'red', 'cream', 'midnight', 'blush'] as const;
+
+export function isThemePreference(value: unknown): value is ThemePreference {
+  return typeof value === 'string' && (THEME_PREFERENCES as readonly string[]).includes(value);
+}
 
 /**
  * Normalize stored / incoming preference.
- * Legacy `system` (case-insensitive: 'system' and 'SYSTEM' both occurred in older builds) → `light`;
- * unknown values → `DEFAULT_THEME_PREFERENCE` (first-time / safe default).
+ * Legacy `logo` (the old brand-red chrome) → `red`; legacy `system` (any case) → `light`;
+ * unknown values → `DEFAULT_THEME_PREFERENCE`.
  */
 export function normalizeThemePreference(value: unknown): ThemePreference {
-  if (value === 'light' || value === 'logo' || value === 'dark') {
+  if (isThemePreference(value)) {
     return value;
   }
-  if (typeof value === 'string' && value.toLowerCase() === 'system') {
-    return 'light';
+  if (typeof value === 'string') {
+    const lower = value.toLowerCase();
+    if (lower === 'logo') {
+      return 'red';
+    }
+    if (lower === 'system') {
+      return 'light';
+    }
+    if (isThemePreference(lower)) {
+      return lower;
+    }
   }
   return DEFAULT_THEME_PREFERENCE;
-}
-
-export function isThemePreference(value: unknown): value is ThemePreference {
-  return value === 'light' || value === 'logo' || value === 'dark';
 }
 
 /** Preference always maps 1:1 to a full theme object (no OS takeover). */
@@ -40,7 +45,12 @@ export function resolveThemeMode(preference: ThemePreference): ThemeMode {
   return preference;
 }
 
-/** Light/dark as Android's night mode sees it: Logo paints on the light native scheme. */
+/** Dark page and cards: Dark and Midnight. Decides night mode, the dark navigation / Paper bases and force-dark pages. */
+export function isDarkThemeMode(mode: ThemeMode): boolean {
+  return mode === 'dark' || mode === 'midnight';
+}
+
+/** Light/dark as Android's night mode sees it. */
 export function nightModeOf(preference: ThemePreference): 'light' | 'dark' {
-  return preference === 'dark' ? 'dark' : 'light';
+  return isDarkThemeMode(preference) ? 'dark' : 'light';
 }

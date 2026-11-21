@@ -1,3 +1,4 @@
+import { EMPTY_LINK_RULES } from '@/downloads/bulk/link-rules';
 import { DEFAULT_DOWNLOAD_SETTINGS } from '@/downloads/settings/types';
 import { DEFAULT_DOWNLOAD_HOURS } from '@/downloads/v2/conditions';
 import { DEFAULT_CONNECTIONS_PER_FILE, DEFAULT_LIVE_RECORDING_MAX_MINUTES } from '@/downloads/v2/settings';
@@ -19,6 +20,7 @@ import { DEFAULT_PRELOAD_PAGES } from '@/browser/preload/preload-policy';
 import { DEFAULT_COOKIE_POLICY, DEFAULT_JAVASCRIPT_EXCEPTIONS_JSON } from '@/browser/privacy/privacy-settings';
 
 import type { SettingsState } from './types';
+import { DEFAULT_SETTINGS_VIEW } from './settings-view';
 import { DEFAULT_AFTER_DOWNLOAD_ACTION } from '@/downloads/v2/after-download';
 // B21 (Hamza)
 import { DEFAULT_STARTUP_OPTION } from '@/browser/startup/startup-settings';
@@ -86,13 +88,21 @@ export const initialSettingsState: SettingsState = {
   dataLimitMonthlyMb: 0,
   saveToGallery: true,
   connectionsPerFile: DEFAULT_CONNECTIONS_PER_FILE,
+  multiNetwork: false,
   backgroundPlayback: false,
   downloadSpeedLimit: DEFAULT_SPEED_LIMIT,
   downloadHours: { ...DEFAULT_DOWNLOAD_HOURS, days: [...DEFAULT_DOWNLOAD_HOURS.days] },
   notOnRoaming: false,
   pauseOnLowBattery: false,
   onlyWhileCharging: false,
-  liveRecording: false,
+  liveRecording: true,
+  liveRecordingApproved: true,
+  bufferKb: 64,
+  writeCacheKb: 0,
+  lowMemoryMode: 'auto',
+  cooldownSeconds: 0,
+  exitWhenDone: false,
+  linkRules: { ...EMPTY_LINK_RULES },
   liveRecordingMaxMinutes: DEFAULT_LIVE_RECORDING_MAX_MINUTES,
   tapToToggle: false,
   tabSortOrder: DEFAULT_TAB_SORT_ORDER,
@@ -178,4 +188,5 @@ export const initialSettingsState: SettingsState = {
   prayerAsr: 'hanafi',
   pdfOpenChoice: 'ask',
   groupTabsFromOpener: false,
+  settingsView: DEFAULT_SETTINGS_VIEW,
 };

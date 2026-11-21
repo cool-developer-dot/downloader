@@ -38,14 +38,15 @@ internal object SubtitleExport {
   const val MAX_TEXT_CHARS = 10 * 1024 * 1024
   private const val FOLDER = ".subtitle-exports"
 
-  fun write(paths: StoragePaths, fileName: String, text: String): Pair<File, String> {
-    if (text.length > MAX_TEXT_CHARS) throw InvalidRequestException("Subtitle is too large")
+  private val SUBTITLE_TYPES = mapOf("vtt" to "text/vtt", "srt" to "application/x-subrip")
+
+  /** #510: a download queue sent to another phone (`vidorax.downloadQueue` JSON). */
+  val QUEUE_TYPES = mapOf("json" to "application/json")
+
+  fun write(paths: StoragePaths, fileName: String, text: String, types: Map<String, String> = SUBTITLE_TYPES): Pair<File, String> {
+    if (text.length > MAX_TEXT_CHARS) throw InvalidRequestException("The text is too large")
     val extension = fileName.substringAfterLast('.', "").lowercase()
-    val mime = when (extension) {
-      "vtt" -> "text/vtt"
-      "srt" -> "application/x-subrip"
-      else -> throw InvalidRequestException("Only .vtt and .srt subtitles can be exported")
-    }
+    val mime = types[extension] ?: throw InvalidRequestException("Only ${types.keys.joinToString()} files can be shared here")
     val folder = File(paths.libraryDir, FOLDER)
     folder.listFiles()?.forEach { it.delete() }
     folder.mkdirs()

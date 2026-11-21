@@ -4,12 +4,18 @@ import { translate } from '@/localization/translate';
 
 export function formatThemeLabel(theme: ThemeMode): string {
   switch (theme) {
-    case 'LIGHT':
-      return translate('settings.themeLight');
-    case 'LOGO':
-      return translate('settings.themeLogo');
     case 'DARK':
       return translate('settings.themeDark');
+    case 'LOGO':
+    case 'RED':
+      return translate('settings.themeRed');
+    case 'CREAM':
+      return translate('settings.themeCream');
+    case 'MIDNIGHT':
+      return translate('settings.themeMidnight');
+    case 'BLUSH':
+      return translate('settings.themeBlush');
+    case 'LIGHT':
     case 'SYSTEM':
     default:
       return translate('settings.themeLight');

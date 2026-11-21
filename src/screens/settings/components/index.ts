@@ -20,3 +20,4 @@ export { SettingsSkeleton } from './SettingsSkeleton';
 export { SettingsStaggerItem } from './SettingsStaggerItem';
 export { StorageSection } from './StorageSection';
 export type { StorageSectionProps } from './StorageSection';
+export { AdvancedSetting, useSettingVisible } from './AdvancedSetting';

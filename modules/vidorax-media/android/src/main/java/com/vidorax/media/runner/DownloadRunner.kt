@@ -63,6 +63,9 @@ internal class DownloadRunner(
   /** H4: whether a waiting download is in a held queue (the engine's answer); such a download is not work. */
   @Volatile var isHeld: (String) -> Boolean = { false }
 
+  /** #358: called when the last running download ends and none is paused (everything finished, failed or cancelled). */
+  @Volatile var onAllFinished: () -> Unit = {}
+
   /** Downloads the engine is working on, i.e. what the foreground host exists for. Paused work is not live. */
   fun hasLiveWork(): Boolean = synchronized(lock) { tracked.values.any { it.state in LIVE } }
 
@@ -242,7 +245,11 @@ internal class DownloadRunner(
       summary.activeCount > 0 -> HostAction { host.update(summary) }
       hostRunning -> {
         hostRunning = false
-        HostAction { host.stop() }
+        val allFinished = summary.pausedCount == 0
+        HostAction {
+          host.stop()
+          if (allFinished) onAllFinished()
+        }
       }
       else -> HostAction {}
     }

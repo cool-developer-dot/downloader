@@ -10,6 +10,9 @@ import com.vidorax.media.model.LibraryChange
 import com.vidorax.media.model.LibraryChangeReason
 import com.vidorax.media.model.LibraryItem
 import com.vidorax.media.model.SiteId
+import com.vidorax.media.safety.ContentSniff
+import com.vidorax.media.safety.FileSafety
+import com.vidorax.media.safety.UnsafeFileException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -64,6 +67,8 @@ class IncomingImport internal constructor(
       work.mkdirs()
       val temp = File(work, "incoming")
       val sha256 = copy(media.uri, temp)
+      // P8 #461: a program or an archive named like a video is never kept as one.
+      FileSafety.prefixOf(temp)?.let(ContentSniff::kindOf)?.let { throw UnsafeFileException(it) }
       val metadata = readMetadata(temp)
       val type = typeOf(media, metadata) ?: throw InvalidRequestException("Not an audio or video file")
       findSameContent(temp, type.isAudioOnly)?.let { return Outcome.Duplicate(it) }

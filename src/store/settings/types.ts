@@ -35,6 +35,11 @@ export interface SettingsState {
   saveToGallery: boolean;
   /** Connections one large file (or one stream's segments) may use at once, 1–4 (default 3). */
   connectionsPerFile: number;
+  /**
+   * #446 "Experimental: use Wi-Fi and mobile data together" (default off): on Wi-Fi, a multi-connection download also
+   * puts some parts on mobile data. Never sent on while `wifiOnly` is on.
+   */
+  multiNetwork: boolean;
   /** The player keeps playing (with a media notification) when VidoraX goes to the background (default off). */
   backgroundPlayback: boolean;
   /** Speed limit for all downloads together, bytes per second; 0 = off (default). */
@@ -47,8 +52,25 @@ export interface SettingsState {
   pauseOnLowBattery: boolean;
   /** F3: download only while charging (default off). */
   onlyWhileCharging: boolean;
-  /** F6: "Live recording (beta)" — a live stream offers Record instead of Download (default off). */
+  /** F6: "Live recording" — a live stream offers Record instead of Download (default on since 1.2.0). */
   liveRecording: boolean;
+  /**
+   * Internal: true once 1.2.0's "live recording on" default has been applied. An install from before 1.2.0 (where the
+   * switch was a beta, off by default) is switched on once when this is missing; a later choice is kept.
+   */
+  liveRecordingApproved: boolean;
+  /** #350 "Buffer size" (KiB, default 64). */
+  bufferKb: number;
+  /** #344 "Disk write cache" (KiB, 0 = off, the default). */
+  writeCacheKb: number;
+  /** #348 "Low memory mode": 'auto' (default), 'on' or 'off'. */
+  lowMemoryMode: 'auto' | 'on' | 'off';
+  /** #506 "Cooldown between files" (seconds, 0 = none, the default). */
+  cooldownSeconds: number;
+  /** #358 "Exit when done" (default off). */
+  exitWhenDone: boolean;
+  /** #505 Include/Exclude rules for bulk adding (Batch Add, patterns, playlists, feeds, the site grabber). */
+  linkRules: import('@/downloads/bulk/link-rules').LinkRules;
   /** F6: a recording stops by itself after this many minutes (15–720, default 120). */
   liveRecordingMaxMinutes: number;
   /** Tapping a running/paused download row pauses/resumes it instead of opening details (default off). */
@@ -218,6 +240,8 @@ export interface SettingsState {
   pdfOpenChoice: 'ask' | 'viewer' | 'download' | 'external';
   /** B2 #258: tabs opened from a page join that page's group (default off). */
   groupTabsFromOpener: boolean;
+  /** P8 #516/#517: Settings view 'simple' (new installs) or 'advanced' (installs from before 1.2.0). */
+  settingsView: import('./settings-view').SettingsView;
 }
 
 type DefaultTab = import('@/navigation/helpers/default-tab').DefaultTab;

@@ -3,6 +3,11 @@ import { browserSelectionEn } from './catalogs/browserSelection.en';
 import { browserHistoryEn } from './catalogs/browserHistory.en';
 import { browserStartupEn } from './catalogs/browserStartup.en';
 import { browserFindEn } from './catalogs/browserFind.en';
+import { downloadTuningEn } from './catalogs/downloadTuning.en';
+import { bulkAddEn } from './catalogs/bulkAdd.en';
+import { watchedLinksEn } from './catalogs/watchedLinks.en';
+import { siteGrabberEn } from './catalogs/siteGrabber.en';
+import { cloudEn } from './catalogs/cloud.en';
 import { browserTabSoundEn } from './catalogs/browserTabSound.en';
 import { browserSitePermissionsEn } from './catalogs/browserSitePermissions.en';
 import { browserBookmarksEn } from './catalogs/browserBookmarks.en';
@@ -17,14 +22,51 @@ import { browserAnnotateEn } from './catalogs/browserAnnotate.en';
 import { browserUrduEn } from './catalogs/browserUrdu.en';
 import { browserCaptureEn } from './catalogs/browserCapture.en';
 import { browserTabGroupsEn } from './catalogs/browserTabGroups.en';
+import { downloadSourcesEn } from './catalogs/downloadSources.en';
 import { browserProfilesEn } from './catalogs/browserProfiles.en';
+import { remoteControlEn } from './catalogs/remoteControl.en';
 import { browserPrivacyEn } from './catalogs/browserPrivacy.en';
 import { browserAddressEn } from './catalogs/browserAddress.en';
 import { browserSettingsEn } from './catalogs/browserSettings.en';
 import { browserTabsEn } from './catalogs/browserTabs.en';
+import { lightHomeEn } from './catalogs/lightHome.en';
+import { lightSearchEn } from './catalogs/lightSearch.en';
+import { lightUtilitiesEn } from './catalogs/lightUtilities.en';
+import { lightTabsEn } from './catalogs/lightTabs.en';
+import { lightPageToolsEn } from './catalogs/lightPageTools.en';
+import { lightDisplayEn } from './catalogs/lightDisplay.en';
+import { lightFocusEn } from './catalogs/lightFocus.en';
+import { lightBookmarksEn } from './catalogs/lightBookmarks.en';
+import { lightHistoryEn } from './catalogs/lightHistory.en';
+import { lightPrivacyEn } from './catalogs/lightPrivacy.en';
+import { lightIncognitoEn } from './catalogs/lightIncognito.en';
+import { lightPasswordsEn } from './catalogs/lightPasswords.en';
+import { lightDeveloperEn } from './catalogs/lightDeveloper.en';
+import { lightBrowserSettingsEn } from './catalogs/lightBrowserSettings.en';
+import { lightDownloadsEn } from './catalogs/lightDownloads.en';
+import { lightAddDownloadEn } from './catalogs/lightAddDownload.en';
+import { lightVideoSheetEn } from './catalogs/lightVideoSheet.en';
+import { lightPlaylistEn } from './catalogs/lightPlaylist.en';
+import { lightDetailsEn } from './catalogs/lightDetails.en';
+import { lightQueuesEn } from './catalogs/lightQueues.en';
+import { lightTorrentEn } from './catalogs/lightTorrent.en';
+import { lightStatisticsEn } from './catalogs/lightStatistics.en';
+import { lightDownloadSettingsEn } from './catalogs/lightDownloadSettings.en';
+import { lightAlertsEn } from './catalogs/lightAlerts.en';
+import { lightLiveConvertEn } from './catalogs/lightLiveConvert.en';
+import { lightOrganizeEn } from './catalogs/lightOrganize.en';
+import { lightLinkGrabberEn } from './catalogs/lightLinkGrabber.en';
+import { lightNetworkEn } from './catalogs/lightNetwork.en';
+import { lightFileActionsEn } from './catalogs/lightFileActions.en';
+import { lightFailedEn } from './catalogs/lightFailed.en';
+import { lightNotificationsEn } from './catalogs/lightNotifications.en';
 import { detectionEn } from './catalogs/detection.en';
 import { shellEn } from './catalogs/shell.en';
 import { videoPlayerEn } from './catalogs/videoPlayer.en';
+import { fileSafetyEn } from './catalogs/fileSafety.en';
+import { sourceCheckEn } from './catalogs/sourceCheck.en';
+import { archiveImportEn } from './catalogs/archiveImport.en';
+import { settingsViewEn } from './catalogs/settingsView.en';
 
 export const en = {
   common: {
@@ -53,6 +95,7 @@ export const en = {
     reset: 'Reset',
     dismiss: 'Dismiss',
     comingSoon: 'Coming Soon',
+    notAvailableYet: 'Not available yet',
     on: 'On',
     off: 'Off',
     default: 'Default',
@@ -82,6 +125,8 @@ export const en = {
     downloadsTab: 'Downloads tab',
     library: 'Player',
     libraryTab: 'Player tab',
+    files: 'Files',
+    filesTab: 'Files tab',
     settings: 'Settings',
     settingsTab: 'Settings tab',
     about: 'About',
@@ -1047,6 +1092,8 @@ export const en = {
     byTypeHint: 'Videos and audio go into Videos and Audio folders',
     bySite: 'Folder per site',
     bySiteHint: 'One folder for each site, such as Instagram',
+    wifiOnly: 'Only on Wi-Fi',
+    wifiOnlyHint: 'Copies wait for Wi-Fi. Pick a folder of OneDrive, Dropbox or Nextcloud to upload new videos automatically.',
     keepNote: 'Copies are separate files: deleting a video in VidoraX never deletes its copy.',
     accessLost: 'VidoraX can no longer save to the chosen folder, so “Also save a copy” was turned off. Choose the folder again in Download Settings.',
     accessLostTitle: 'Folder not available',
@@ -1682,14 +1729,20 @@ export const en = {
       'We could not find your preferences. Pull to refresh or tap retry to try again.',
     signOut: 'Sign Out',
     theme: 'Theme',
-    themeHint: 'System, Red, or Dark',
+    themeHint: 'Light, Dark, Red, Cream, Midnight or Blush',
     themeA11y: 'Theme preference',
-    themeLight: 'System',
-    themeLogo: 'Red',
+    themeLight: 'Light',
     themeDark: 'Dark',
-    themeLightA11y: 'System theme',
-    themeLogoA11y: 'Red theme',
+    themeRed: 'Red',
+    themeCream: 'Cream',
+    themeMidnight: 'Midnight',
+    themeBlush: 'Blush',
+    themeLightA11y: 'Light theme',
     themeDarkA11y: 'Dark theme',
+    themeRedA11y: 'Red theme',
+    themeCreamA11y: 'Cream theme',
+    themeMidnightA11y: 'Midnight theme',
+    themeBlushA11y: 'Blush theme',
     language: 'Language',
     languageHint: 'Display language for VidoraX',
     languageSheetTitle: 'Choose language',
@@ -1782,8 +1835,8 @@ export const en = {
     onlyWhileCharging: 'Only while charging',
     onlyWhileChargingHint: 'Downloads run only while your phone is charging.',
     advancedSection: 'Advanced',
-    advancedDescription: 'Features that are still being tested.',
-    liveRecording: 'Live recording (beta)',
+    advancedDescription: 'Live stream recording and fine-tuning for downloads.',
+    liveRecording: 'Live recording',
     liveRecordingHint: 'Live streams show Record instead of Download. A recording runs until you stop it or the stream ends.',
     liveRecordingMax: 'Maximum length',
     liveRecordingMaxHint: 'A recording stops by itself after this long, or when storage runs low.',
@@ -2035,6 +2088,10 @@ export const en = {
     offlineHint: 'Showing watch progress saved on this device.',
     watchProgressA11y: 'Watch progress',
   },
+  voiceSearch: {
+    unavailable: 'This phone has no voice input. Install or turn on Google voice typing to search by voice.',
+    commandsHint: 'Say a site or what to search',
+  },
   queueBackup: {
     section: 'Queue backup',
     sectionDescription: 'Save unfinished downloads to a file and bring them back later',
@@ -2044,6 +2101,9 @@ export const en = {
     exportTitle: 'VidoraX download queue',
     exportSaved: 'Queue saved',
     exportShared: 'Queue shared',
+    send: 'Send to another phone',
+    sendHint: 'Share the queue with Quick Share, Bluetooth or a chat. On the other phone, open it with Import queue.',
+    sendShared: 'Queue ready to send',
     import: 'Import queue',
     importHint: 'Restore a saved queue. Each video’s page opens in the browser so you can download it again.',
     restoredTitle: 'Restored pages ({count})',
@@ -2388,8 +2448,8 @@ export const en = {
       themeSettings: {
         question: 'How do I change the theme?',
         answer:
-          'Open Settings → Appearance → Theme and pick System, Red, or Dark. Red, VidoraX’s own colours, is the default; System is a plain light look and Dark is dark. The theme applies across the whole app, including Help & Support.',
-        keywords: 'theme, red, dark, light, appearance, system',
+          'Open Settings → Appearance → Theme and pick Light, Dark, Red, Cream, Midnight or Blush. Light is the default; Dark and Midnight are dark looks, Red paints the header and the bottom bar in VidoraX’s red, Cream and Blush are warm light looks. The theme applies across the whole app, including Help & Support.',
+        keywords: 'theme, light, dark, red, cream, midnight, blush, appearance',
       },
       storageSettings: {
         question: 'How do I manage storage?',
@@ -2495,6 +2555,7 @@ export const en = {
         p1: 'VidoraX does not require a VidoraX account, and it does not perform normal cloud sync of downloads, folders, favorites, history, bookmarks, playback, or settings. Those records stay on this device. VidoraX does not require its own API server for normal use.',
         p2: 'When you browse a website, analyze a media link, or download a file, VidoraX sends ordinary network requests to that third-party source. Source URLs and related media metadata may be sent to the sites you choose to open. Playback progress is stored locally and is not uploaded to a VidoraX account.',
         p3: 'Downloaded media files themselves remain on your device unless you choose to share or move them through your own device tools. If you contact support by email, the content of that message is sent only because you chose to send it.',
+        p4: 'Some features read public web pages for you: watched links and feeds are checked about once an hour, Save a site reads up to 50 pages of the site you choose, and Save comments reads the comments a video page shares. These requests go only to the addresses you chose, without your cookies or sign-ins, and what they find stays on this device. Save a copy, folder import and Save location use the folders and cloud apps you pick: VidoraX writes files only there, and any upload is done by that app under its own policy.',
       },
       thirdParties: {
         heading: '5. Third-party and service-provider processing',
@@ -2816,10 +2877,65 @@ export const en = {
   detection: detectionEn,
   videoPlayer: videoPlayerEn,
   browserTabs: browserTabsEn,
+  lightHome: lightHomeEn,
+  lightSearch: lightSearchEn,
+  lightUtilities: lightUtilitiesEn,
+  lightTabs: lightTabsEn,
+  lightPageTools: lightPageToolsEn,
+  lightDisplay: lightDisplayEn,
+  lightFocus: lightFocusEn,
+  lightBookmarks: lightBookmarksEn,
+  lightHistory: lightHistoryEn,
+  lightPrivacy: lightPrivacyEn,
+  lightIncognito: lightIncognitoEn,
+  lightPasswords: lightPasswordsEn,
+  lightDeveloper: lightDeveloperEn,
+  lightBrowserSettings: lightBrowserSettingsEn,
+  lightDownloads: lightDownloadsEn,
+  lightAddDownload: lightAddDownloadEn,
+  lightVideoSheet: lightVideoSheetEn,
+  lightPlaylist: lightPlaylistEn,
+  lightDetails: lightDetailsEn,
+  lightQueues: lightQueuesEn,
+  lightTorrent: lightTorrentEn,
+  lightStatistics: lightStatisticsEn,
+  lightDownloadSettings: lightDownloadSettingsEn,
+  lightAlerts: lightAlertsEn,
+  lightLiveConvert: lightLiveConvertEn,
+  lightOrganize: lightOrganizeEn,
+  lightLinkGrabber: lightLinkGrabberEn,
+  lightNetwork: lightNetworkEn,
+  lightFileActions: lightFileActionsEn,
+  lightFailed: lightFailedEn,
+  lightNotifications: lightNotificationsEn,
+  filesTab: {
+    title: 'Files',
+    subtitle: 'Internal storage',
+    searchA11y: 'Search files',
+    internal: 'Internal',
+    sdCard: 'SD card',
+    foldersAdded: 'Folders I added',
+    videos: 'Videos',
+    audio: 'Audio',
+    images: 'Images',
+    docs: 'Docs',
+    archives: 'Archives',
+    apks: 'APKs',
+    privateFolder: 'Private folder',
+    privateFolderHint: 'PIN or fingerprint',
+    folders: 'Folders',
+    movies: 'Movies',
+    moviesPath: 'Internal/Movies',
+    download: 'Download',
+    downloadPath: 'Internal/Download',
+    vidoraxPath: 'Movies/VidoraX',
+    notAvailableYet: 'Not available yet',
+  },
   browserSettings: browserSettingsEn,
   browserAddress: browserAddressEn,
   browserNav: browserNavEn,
   browserProfiles: browserProfilesEn,
+  remoteControl: remoteControlEn,
   browserPrivacy: browserPrivacyEn,
   // B8 (Hamza)
   browserSelection: browserSelectionEn,
@@ -2829,6 +2945,11 @@ export const en = {
   browserStartup: browserStartupEn,
   // B7 (Hamza)
   browserFind: browserFindEn,
+  downloadTuning: downloadTuningEn,
+  bulkAdd: bulkAddEn,
+  watchedLinks: watchedLinksEn,
+  siteGrabber: siteGrabberEn,
+  cloud: cloudEn,
   // B3 (Hamza)
   browserTabSound: browserTabSoundEn,
   // B13 (Hamza)
@@ -2849,4 +2970,11 @@ export const en = {
   browserUrdu: browserUrduEn,
   browserCapture: browserCaptureEn,
   browserTabGroups: browserTabGroupsEn,
+  // P2 Sources: FTP, mirrors, Wi-Fi + mobile data
+  downloadSources: downloadSourcesEn,
+  // P8 (safety + modes)
+  fileSafety: fileSafetyEn,
+  sourceCheck: sourceCheckEn,
+  archiveImport: archiveImportEn,
+  settingsView: settingsViewEn,
 } as const;

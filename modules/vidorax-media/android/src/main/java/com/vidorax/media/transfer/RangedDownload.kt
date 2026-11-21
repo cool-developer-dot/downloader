@@ -159,6 +159,27 @@ internal class RangesRefusedException(message: String) : IOException(message)
 internal class SourceChangedException(message: String) : IOException(message)
 
 /**
+ * Where a part's bytes come from: the download's own link, a mirror checked to be the same file (#347, MirrorCheck), and
+ * either of them over mobile data next to Wi-Fi (#446, net/MultiNetwork). Each has its own validator for `If-Range`
+ * (another server's ETag differs). A [droppable] route that fails, refuses or answers bytes other than the ones asked
+ * for is dropped for the rest of the run and its part goes back to the others; the main route never is.
+ */
+internal class PartRoute(
+  val url: String,
+  val validator: String?,
+  val http: HttpClient,
+  val droppable: Boolean,
+  /** For diagnostics and tests: `main`, `mirror1`, `main+mobile`… Never a URL. */
+  val label: String,
+) {
+  @Volatile var dropped: Boolean = false
+    internal set
+
+  /** Bytes this route delivered in this run. */
+  val bytes = AtomicLong()
+}
+
+/**
  * Downloads one file over up to `connections` HTTP connections, each a byte range written straight to its offset in
  * the pre-sized `.part` (no join step, no second copy on disk), with [PartsCheckpoint] persisted about once a second
  * and whenever it stops — so a pause, a dropped network or a process death resumes every part where it was.
@@ -186,6 +207,8 @@ internal class RangedDownload(
   private val onProgress: (bytesDone: Long, totalBytes: Long?) -> Unit,
   private val retryDelay: suspend (Long) -> Unit = { delay(it) },
   private val now: () -> Long = System::currentTimeMillis,
+  /** #347 mirrors and #446 mobile-data routes beside the main link; none = today's single source. */
+  extraRoutes: List<PartRoute> = emptyList(),
 ) {
   private class Part(val start: Long, end: Long, done: Long) {
     @Volatile var end: Long = end
@@ -196,28 +219,59 @@ internal class RangedDownload(
     @Volatile var streamingSince = 0L
     @Volatile var writtenAtStart = 0L
 
+    /** #344: bytes this part received that its write cache still holds (written once the cache passes them on). */
+    @Volatile var ahead = 0
+
     fun position(): Long = start + written.get()
 
     fun remaining(): Long = end - position() + 1
+
+    /** What no connection has received yet: [remaining] less what the write cache holds. */
+    fun unclaimed(): Long = remaining() - ahead
   }
 
   /** Every part on its own TCP connection, also from an HTTP/2 server (see [HttpClient.separateConnections]). */
   private val partsHttp = http.separateConnections
+
+  /** The main link first; a worker prefers the route at its own index, so parts spread across every route. */
+  private val routes: List<PartRoute> =
+    listOf(PartRoute(url, validator, partsHttp, droppable = false, label = MAIN)) + extraRoutes
   private val lock = Any()
   private val checkpointLock = Any()
   private val parts = ArrayList<Part>().apply {
     initialParts.forEach { add(Part(it.start, it.end, it.done.coerceIn(0, it.length))) }
   }
-  private var allowed = connections.coerceIn(1, MAX_CONNECTIONS)
+  private val configured = connections.coerceIn(1, MAX_CONNECTIONS)
+
+  // With extra routes, at least one connection per route (each server or network still gets at most its share).
+  private var allowed = maxOf(configured, minOf(routes.size, MAX_CONNECTIONS))
   private var running = 0
   private var peak = 0
   private val bytesDone = AtomicLong(parts.sumOf { it.written.get() })
+  /** The last count handed to [onProgress]: parts finish writes on their own threads, and a report never goes back. */
+  private val progressLock = Any()
+  private var reportedBytes = -1L
   /** How long a request takes to answer (headers), averaged: what a new split costs before it brings a byte. */
   private val requestLatencyMs = AtomicLong(0)
   @Volatile private var lastCheckpoint = 0L
 
   /** The most connections open at once during [run] (tests). */
   val peakConnections: Int get() = synchronized(lock) { peak }
+
+  /** Bytes each route delivered, by [PartRoute.label] (tests, diagnostics). */
+  fun bytesByRoute(): Map<String, Long> = routes.associate { it.label to it.bytes.get() }
+
+  /** Labels of the routes dropped during this run. */
+  fun droppedRoutes(): List<String> = routes.filter { it.dropped }.map { it.label }
+
+  /** The route worker [index] uses now: its own while that is alive, else the next live one (the main always is). */
+  private fun routeFor(index: Int): PartRoute {
+    for (step in routes.indices) {
+      val route = routes[(index + step) % routes.size]
+      if (!route.dropped) return route
+    }
+    return routes[0]
+  }
 
   /**
    * Runs until every part is written. [first] is the response that proved the server's ranges — it carries the start
@@ -236,7 +290,7 @@ internal class RangedDownload(
             allowed
           }
           repeat(workers) { index ->
-            launch { worker(if (index == 0 && firstPart != null) firstPart to first else null) }
+            launch { worker(index, if (index == 0 && firstPart != null) firstPart to first else null) }
           }
         }
       }
@@ -257,7 +311,7 @@ internal class RangedDownload(
   }
 
   /** One connection: works parts until [claim] has none for it. Counted in [running] from launch until it stops. */
-  private suspend fun worker(firstJob: Pair<Part, HttpResponse?>?) {
+  private suspend fun worker(index: Int, firstJob: Pair<Part, HttpResponse?>?) {
     var job = firstJob
     var counted = true
     try {
@@ -277,8 +331,10 @@ internal class RangedDownload(
         }
         job = null
         val (part, response) = next
+        // The pre-opened response is the main link's; any other part goes to this worker's route.
+        val route = if (response != null) routes[0] else routeFor(index)
         try {
-          if (runPart(part, response)) {
+          if (runPart(part, response, route)) {
             counted = false // [limitConnections] stopped counting it
             return
           }
@@ -307,8 +363,8 @@ internal class RangedDownload(
       it.active = true
       return Claim.Got(it)
     }
-    val largest = parts.filter { it.active }.maxByOrNull { it.remaining() } ?: return none()
-    val remaining = largest.remaining()
+    val largest = parts.filter { it.active }.maxByOrNull { it.unclaimed() } ?: return none()
+    val remaining = largest.unclaimed()
     if (remaining < 2 * MIN_SPLIT_BYTES) return none()
     when (splitPaysOff(largest, remaining)) {
       null -> return Claim.Wait
@@ -317,7 +373,7 @@ internal class RangedDownload(
     }
     // The running connection reads at most one buffer past where it is now, so a cut a whole part's minimum away
     // can never land behind bytes it already wrote.
-    val cut = largest.position() + remaining / 2
+    val cut = largest.position() + largest.ahead + remaining / 2
     val tail = Part(cut, largest.end, 0).apply { active = true }
     largest.end = cut - 1
     parts += tail
@@ -357,11 +413,16 @@ internal class RangedDownload(
     true
   }
 
-  /** Downloads [part] to its end. True when the server refused this extra connection (the worker has stopped). */
-  private suspend fun runPart(part: Part, preopened: HttpResponse?): Boolean {
+  /**
+   * Downloads [part] to its end from [route]. True when the server refused this extra connection (the worker has
+   * stopped). A droppable route that fails in any way is dropped instead and the part handed back (false): its worker
+   * carries on with another route.
+   */
+  private suspend fun runPart(part: Part, preopened: HttpResponse?, route: PartRoute): Boolean {
     var response = preopened
     var failures = 0
     var highWater = part.position()
+    val routeUrl = route.url
     // A dropped connection or an overloaded server is retried for this part alone; the count restarts with progress.
     suspend fun transient(error: IOException) {
       if (part.position() > highWater) {
@@ -372,58 +433,86 @@ internal class RangedDownload(
       if (failures > MAX_PART_ATTEMPTS) throw error
       retryDelay(PART_RETRY_DELAY_MS * failures)
     }
-    while (part.remaining() > 0) {
-      currentCoroutineContext().ensureActive()
-      val from = part.position()
-      val current = response ?: try {
-        val asked = now()
-        partsHttp.execute(MediaRequest(url = url, context = spec.context, rangeStart = from, rangeEnd = part.end, ifRange = validator))
-          .also { recordLatency(now() - asked) }
-      } catch (e: MediaNetworkException) {
-        transient(e)
-        continue
-      }
-      response = null
-      val status = current.status
-      val range = current.contentRange
-      val served = current.validator
-      when {
-        status == 206 && range != null && range.start == from && (range.total == null || range.total == total) -> {
-          if (served != null && served != validator) {
+    try {
+      while (part.remaining() > 0) {
+        currentCoroutineContext().ensureActive()
+        if (route.dropped) return false
+        val from = part.position()
+        val current = response ?: try {
+          val asked = now()
+          route.http.execute(
+            MediaRequest(url = routeUrl, context = spec.context, rangeStart = from, rangeEnd = part.end, ifRange = route.validator),
+          ).also { recordLatency(now() - asked) }
+        } catch (e: MediaNetworkException) {
+          transient(e)
+          continue
+        }
+        response = null
+        val status = current.status
+        val range = current.contentRange
+        val served = current.validator
+        when {
+          status == 206 && range != null && range.start == from && (range.total == null || range.total == total) -> {
+            if (served != null && route.validator != null && served != route.validator) {
+              current.close()
+              throw SourceChangedException("validator changed for ${Redact.url(routeUrl)}")
+            }
+            try {
+              stream(part, current, route)
+            } catch (e: MediaNetworkException) {
+              transient(e)
+            }
+          }
+          status == 200 -> {
             current.close()
-            throw SourceChangedException("validator changed for ${Redact.url(url)}")
+            if (served != null && served != route.validator) throw SourceChangedException("resource changed for ${Redact.url(routeUrl)}")
+            throw RangesRefusedException("ranges ignored for ${Redact.url(routeUrl)}")
           }
-          try {
-            stream(part, current)
-          } catch (e: MediaNetworkException) {
-            transient(e)
+          status == 206 || status == 416 -> {
+            current.close()
+            throw RangesRefusedException("range not served for ${Redact.url(routeUrl)} (HTTP $status)")
           }
-        }
-        status == 200 -> {
-          current.close()
-          if (served != null && served != validator) throw SourceChangedException("resource changed for ${Redact.url(url)}")
-          throw RangesRefusedException("ranges ignored for ${Redact.url(url)}")
-        }
-        status == 206 || status == 416 -> {
-          current.close()
-          throw RangesRefusedException("range not served for ${Redact.url(url)} (HTTP $status)")
-        }
-        status in LIMIT_STATUS && limitConnections() -> {
-          // The others are being served: this server limits connections per client. Carry on with fewer.
-          current.close()
-          return true
-        }
-        status >= 500 || status == 408 || status == 429 -> {
-          current.close()
-          transient(MediaHttpException.of(status, url))
-        }
-        else -> {
-          current.close()
-          throw MediaHttpException.of(status, url)
+          !route.droppable && status in LIMIT_STATUS && limitConnections() -> {
+            // The others are being served: this server limits connections per client. Carry on with fewer.
+            current.close()
+            return true
+          }
+          status >= 500 || status == 408 || status == 429 -> {
+            current.close()
+            transient(MediaHttpException.of(status, routeUrl))
+          }
+          else -> {
+            current.close()
+            throw MediaHttpException.of(status, routeUrl)
+          }
         }
       }
+    } catch (e: IOException) {
+      // A mirror or the second network: whatever went wrong (gone, refused, another file, other bytes, a lost mobile
+      // network), it is not used again in this run; the main link and the other routes finish the file.
+      if (!route.droppable || e is StorageWriteException) throw e
+      drop(route)
+      return false
     }
     return false
+  }
+
+  /** Drops [route]; the connections it added beyond the user's setting stop as their parts end ([claim]). */
+  private fun drop(route: PartRoute) {
+    synchronized(lock) {
+      route.dropped = true
+      val alive = routes.count { !it.dropped }
+      allowed = minOf(allowed, maxOf(configured, minOf(alive, MAX_CONNECTIONS)))
+    }
+  }
+
+  /** Hands [done] to [onProgress] unless a part on another thread already reported more. */
+  private fun report(done: Long) {
+    synchronized(progressLock) {
+      if (done <= reportedBytes) return
+      reportedBytes = done
+      onProgress(done, total)
+    }
   }
 
   private fun recordLatency(ms: Long) {
@@ -431,7 +520,7 @@ internal class RangedDownload(
   }
 
   /** Copies [response]'s body into the part's range, up to the part's end as it is at each read. */
-  private suspend fun stream(part: Part, response: HttpResponse) {
+  private suspend fun stream(part: Part, response: HttpResponse, route: PartRoute) {
     val input = response.byteStream()
     // A pause must stop the network now, even mid-read: the body is closed on its own thread, so the pausing thread
     // never waits for a stalled socket.
@@ -440,27 +529,38 @@ internal class RangedDownload(
     }
     part.writtenAtStart = part.written.get()
     part.streamingSince = now()
+    val buffer = ByteArray(TransferTuning.bufferBytes)
+    // #344: a part's received bytes may be gathered before each write. The part's count only grows when they reach the
+    // writer, so a checkpoint never claims bytes that are still in memory.
+    val cache = WriteCache(TransferTuning.cacheCapacity(buffer.size)) { position, bytes, offset, length ->
+      writer.write(position, bytes, offset, length)
+      part.written.addAndGet(length.toLong())
+      route.bytes.addAndGet(length.toLong())
+      report(bytesDone.addAndGet(length.toLong()))
+    }
     try {
-      val buffer = ByteArray(BUFFER_BYTES)
       while (true) {
         currentCoroutineContext().ensureActive()
-        val position = part.position()
+        val position = part.position() + cache.pending
         val left = part.end - position + 1
         if (left <= 0) break
         val read = input.read(buffer, 0, minOf(buffer.size.toLong(), left).toInt())
         if (read < 0) break
         spec.throttle.take(read)
-        writer.write(position, buffer, 0, read)
-        part.written.addAndGet(read.toLong())
-        onProgress(bytesDone.addAndGet(read.toLong()), total)
+        cache.write(position, buffer, 0, read)
+        part.ahead = cache.pending
         checkpoint(force = false)
       }
+      cache.flush()
+      part.ahead = 0
     } catch (io: IOException) {
       // A body closed by a pause is not a network failure.
       currentCoroutineContext().ensureActive()
       if (io is StorageWriteException || io is MediaNetworkException) throw io
       throw MediaNetworkException("part of ${Redact.url(url)} interrupted", io)
     } finally {
+      // Bytes still gathered when a part stops are fetched again (its count never included them).
+      part.ahead = 0
       onCancel.dispose()
       response.close()
     }
@@ -506,8 +606,8 @@ internal class RangedDownload(
     private const val MIN_LATENCY_MS = 200L
     private const val MIN_RATE_SAMPLE_MS = 300L
     private const val SPLIT_RECHECK_MS = 250L
-    private const val BUFFER_BYTES = 64 * 1024
     private const val MAX_PART_ATTEMPTS = 3
+    const val MAIN = "main"
     private const val PART_RETRY_DELAY_MS = 300L
 
     /** Answers to an extra connection that mean "not this many at once" while the others are being served. */

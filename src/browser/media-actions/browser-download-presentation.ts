@@ -209,6 +209,17 @@ export function isSplitOffer(
   return Boolean(analysis?.variants?.some((variant) => variant.audioSourceUrl?.trim()));
 }
 
+/**
+ * A verified MPEG-TS offer is a `.ts` file the user opened: TS bytes are verified only for a WebView download or a
+ * pasted or shared link (a player's segments never are), so its `.ts` name is not a segment's.
+ */
+export function isTransportStreamFileOffer(
+  analysis: { container?: string | null; variants?: { container?: string | null }[] } | null | undefined,
+): boolean {
+  const isTs = (container: string | null | undefined) => String(container ?? '').toLowerCase() === 'ts';
+  return isTs(analysis?.container) || Boolean(analysis?.variants?.some((variant) => isTs(variant.container)));
+}
+
 export function isRejectedDownloadTarget(url: string | null | undefined): boolean {
   if (!url || typeof url !== 'string') {
     return true;
@@ -584,7 +595,11 @@ export function isBrowserDownloadCtaEligible(
 
   const mediaUrl = actionState.mediaUrl ?? actionState.analysis.finalUrl ?? null;
   // A split pair's video file is a whole file the engine proved; only its own row may offer it, never on its own.
-  if (!isSplitOffer(actionState.analysis) && isRejectedDownloadTarget(mediaUrl)) {
+  if (
+    !isSplitOffer(actionState.analysis) &&
+    !isTransportStreamFileOffer(actionState.analysis) &&
+    isRejectedDownloadTarget(mediaUrl)
+  ) {
     return false;
   }
   if (isSplitOffer(actionState.analysis) && !isSafeMediaUrl(mediaUrl ?? '')) {

@@ -1,5 +1,4 @@
-import { memo, useCallback, useEffect, useState } from 'react';
-import { AccessibilityInfo } from 'react-native';
+import { memo, useCallback, useEffect } from 'react';
 import { useFocusEffect } from 'expo-router';
 import type { PanGesture } from 'react-native-gesture-handler';
 
@@ -8,7 +7,6 @@ import { EmptyState } from '@/components/common/EmptyState';
 import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { environment } from '@/constants/environment';
 import { useTheme } from '@/hooks/use-theme';
-import { useTranslation } from '@/localization';
 import {
   registerBrowserLoadUrl,
   useQualitySelectionContext,
@@ -22,9 +20,9 @@ import {
   BrowserTabBadge,
   BrowserToolbar,
 } from '@/browser/components';
-import { BrowserTabSwitcher } from '@/browser/components/BrowserTabSwitcher';
 import { AutoHideHeader } from '@/browser/components/BrowserHeader/AutoHideHeader';
 import { normalizeAddressBarPosition } from '@/browser/address-bar/address-bar-settings';
+import { addressBarVisibility } from '@/browser/address-bar/address-bar-visibility';
 import { useSettingsStore } from '@/store/settings';
 import { TabUndoSnackbar } from '@/browser/components/TabUndoSnackbar/TabUndoSnackbar';
 import { BackgroundTabSnackbar } from '@/browser/components/BackgroundTabSnackbar/BackgroundTabSnackbar';
@@ -48,7 +46,7 @@ import { ensureDataSaver } from '@/browser/data-saver/data-saver.service';
 import { ensureBrowsingTraffic } from '@/browser/data-saver/browsing-traffic.service';
 import { ensureContentBlocking } from '@/browser/blocking/content-blocking.service';
 import { ensureSiteBlocking } from '@/browser/blocking/site-blocking.service';
-import { ensureIncognito, setTabSwitcherOpen } from '@/browser/incognito/incognito.service';
+import { ensureIncognito } from '@/browser/incognito/incognito.service';
 import { ensureOpenInApp } from '@/browser/open-in-app/open-in-app.service';
 import { OpenInAppChip } from '@/browser/open-in-app/components/OpenInAppChip';
 import { FormSnippetBar } from '@/browser/form-snippets/components/FormSnippetBar';
@@ -66,6 +64,8 @@ import {
 import { pendingNavigationService } from '@/browser/services';
 import { useBrowserStore } from '@/browser/stores';
 import { tabControllerRegistry } from '@/browser/tabs/tab-controller-registry';
+import { tabSnapshots } from '@/browser/tabs/tab-snapshots';
+import { navigation, routePaths } from '@/navigation';
 import { isBrowserHomeUrl } from '@/browser/utils';
 import { BrowserMediaDownloadBar, browserMediaActionService } from '@/browser/media-actions';
 import { MediaDetectionHost } from '@/media-detection';
@@ -187,6 +187,7 @@ export const BrowserScreen = memo(function BrowserScreen() {
 });
 
 const BrowserScreenBody = memo(function BrowserScreenBody() {
+  const theme = useTheme();
   useBrowserRouteLifecycle();
   useBrowserSessionContinuity();
   useBrowserHardwareBack();
@@ -210,14 +211,12 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   useEffect(() => ensureTabGroups(), []);
   useEffect(() => scheduleCacheLimitCheck(), []);
   const { loadUrl } = useBrowserEngineContext();
-  const { t } = useTranslation();
-  const [tabSwitcherVisible, setTabSwitcherVisible] = useState(false);
-  // B11 #106: the switcher lists incognito tabs, so it is covered by FLAG_SECURE too while it's open.
-  useEffect(() => setTabSwitcherOpen(tabSwitcherVisible), [tabSwitcherVisible]);
-  useWebFullscreenLifecycle(tabSwitcherVisible);
+  // The Tabs screen (design 2) is a route of the Browser stack now, not a Modal over this screen: it keeps the
+  // incognito FLAG_SECURE itself (useTabsScreenPresence), so no overlay state lives here any more.
+  useWebFullscreenLifecycle(false);
   const webFullscreenActive = useIsWebFullscreen();
   // B6: Volume keys scroll the page (setting); swipes on the toolbar / page edges go back and forward.
-  useVolumeKeyScroll({ overlayOpen: tabSwitcherVisible || webFullscreenActive });
+  useVolumeKeyScroll({ overlayOpen: webFullscreenActive });
   const swipe = useSwipeNavigation();
   // B8: Search in pages' text-selection menu (Copy and Share stay Android's own).
   useSelectionMenu();
@@ -225,7 +224,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   useKeyboardShortcuts();
   // B3 #15: unused tabs sleep (Browser settings → Tabs; off by default).
   useTabSleep();
-  const pageControlsVisible = !tabSwitcherVisible && !webFullscreenActive;
+  const pageControlsVisible = !webFullscreenActive;
   // The page area: the tour shows where "Video available" appears (its bottom edge, above the toolbar).
   const pageAreaRef = useTourTargetRef('pageArea');
 
@@ -234,6 +233,13 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
   const qualitySelection = useQualitySelectionContext();
   // B4 #28: the address bar at the top (default) or at the bottom, just above the toolbar.
   const addressBarPosition = normalizeAddressBarPosition(useSettingsStore((state) => state.addressBarPosition));
+  // Light design: the start page is its own screen (header, field, Paste & Go) — the chrome and the toolbar step
+  // aside there; the address bar comes back when something asks for it (Paste link, the calculator, a focus request).
+  const onStartPage = useBrowserStore((state) => isBrowserHomeUrl(state.currentUrl));
+  useEffect(() => {
+    addressBarVisibility.setStartPage(onStartPage);
+    return () => addressBarVisibility.setStartPage(false);
+  }, [onStartPage]);
 
   const openWithUrl = qualitySelection.openWithUrl;
   const openWithAnalysis = qualitySelection.openWithAnalysis;
@@ -258,22 +264,22 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
     [openWithAnalysis, openWithUrl],
   );
 
-  const openTabSwitcher = useCallback(() => {
-    setTabSwitcherVisible(true);
+  // The tabs badge: a fresh preview of the page in front, then the Tabs screen.
+  const openTabs = useCallback(() => {
+    const state = useBrowserStore.getState();
+    const active = state.tabs.find((tab) => tab.id === state.activeTabId);
+    if (active) {
+      void tabSnapshots.capture(active);
+    }
+    navigation.push(routePaths.browserTabs);
   }, []);
-
-  const closeTabSwitcher = useCallback(() => {
-    setTabSwitcherVisible(false);
-  }, []);
-
-  const handleTabsLimit = useCallback(() => {
-    AccessibilityInfo.announceForAccessibility(t('browser.tabsLimitReached'));
-  }, [t]);
 
   return (
     <SafeAreaScreen
       padded={false}
       edges={['top', 'left', 'right']}
+      // The Red theme's band (start page header, address bar) reaches the top of the screen, as in the design.
+      safeAreaStyle={theme.colors.headerStyle === 'band' ? { backgroundColor: theme.colors.headerBackground } : undefined}
       testID="browser-screen">
       <MediaDetectionHost />
       <ProfileSwitcherHost />
@@ -289,7 +295,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
       {addressBarPosition === 'top' ? (
         <AutoHideHeader position="top">
           <BrowserHeader
-            leadingSlot={<BrowserTabBadge onPress={openTabSwitcher} />}
+            leadingSlot={<BrowserTabBadge onPress={openTabs} />}
             trailingSlot={<BrowserOverflowControls />}
           />
           {/* B9 #81: hides with the address bar. */}
@@ -302,17 +308,17 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
           <BrowserContainer />
         </PageEdgeSwipe>
         <BrowserMediaDownloadBar
-          overlayBlocking={tabSwitcherVisible || webFullscreenActive}
+          overlayBlocking={webFullscreenActive}
           onRequestDownload={handleRequestDownload}
         />
-        <InsecurePageBar visible={pageControlsVisible && !tabSwitcherVisible} />
+        <InsecurePageBar visible={pageControlsVisible} />
         <TabUndoSnackbar visible={pageControlsVisible} bottom={12} />
         <BackgroundTabSnackbar visible={pageControlsVisible} bottom={12} />
         <SiteNoticeBar visible={pageControlsVisible} bottom={12} />
         {/* B22 #273: "Open in <app>", once per site per session. */}
         <OpenInAppChip visible={pageControlsVisible} bottom={72} />
         {/* B22 #274: form snippets above the keyboard while a page field has focus. */}
-        <FormSnippetBar visible={!tabSwitcherVisible} />
+        <FormSnippetBar visible />
         {/* B22 #249 / #30: the QR code and scan result sheets. */}
         <ShareQrHost />
         {/* B19: Menu → Developer tools (only while they are on). */}
@@ -322,7 +328,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
         {/* B17: the page-picture sheet and the PDF open choice. */}
         <CaptureHost />
         <DrawOnPageHost />
-        {pageControlsVisible && !tabSwitcherVisible ? <TranslateOfferBanner /> : null}
+        {pageControlsVisible ? <TranslateOfferBanner /> : null}
         <ScrollJumpButton visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
         <AutoScrollControl visible={pageControlsVisible} bottom={PAGE_CONTROLS_BOTTOM} />
         <SwipeArrow shared={swipe.shared} bottom={24} />
@@ -335,17 +341,12 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
           <BookmarksBar />
           <BrowserHeader
             position="bottom"
-            leadingSlot={<BrowserTabBadge onPress={openTabSwitcher} />}
+            leadingSlot={<BrowserTabBadge onPress={openTabs} />}
             trailingSlot={<BrowserOverflowControls />}
           />
         </AutoHideHeader>
       ) : null}
-      <BrowserToolbarDock swipeGesture={swipe.toolbar} />
-      <BrowserTabSwitcher
-        visible={tabSwitcherVisible}
-        onClose={closeTabSwitcher}
-        onLimitReached={handleTabsLimit}
-      />
+      {onStartPage ? null : <BrowserToolbarDock swipeGesture={swipe.toolbar} />}
     </SafeAreaScreen>
   );
 });
@@ -364,7 +365,13 @@ const BrowserToolbarDock = memo(function BrowserToolbarDock({ swipeGesture }: { 
   const theme = useTheme();
 
   return (
-    <Box style={{ paddingBottom: TOOLBAR_DOCK_GAP, backgroundColor: theme.colors.background }}>
+    // The gap under the toolbar takes the Red theme's band colour, so no line of page colour shows between the toolbar
+    // and the red tab bar.
+    <Box
+      style={{
+        paddingBottom: TOOLBAR_DOCK_GAP,
+        backgroundColor: theme.colors.headerStyle === 'band' ? theme.colors.bottomNavBackground : theme.colors.background,
+      }}>
       <BrowserToolbar swipeGesture={swipeGesture} />
     </Box>
   );

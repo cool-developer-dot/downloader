@@ -15,6 +15,9 @@ import { cleanupObsoleteAuthSecrets } from './cleanup-obsolete-auth';
 import { logOnboardingPersistSnapshot } from './onboarding-persist-debug';
 import { rehydrateAndWait, waitForStoresHydration } from './wait-for-hydration';
 import { syncAppStoreFromDisk } from '@/store/app/persist-sync';
+import { getPersistStorageAdapter } from '@/store/shared/persist-storage';
+import { settingsViewToSave } from '@/store/settings/settings-view';
+import { storageKeys } from '@/constants/storage-keys';
 
 /** The one-time favorites migration waits for startup to settle. */
 const FAVORITES_MIGRATION_DELAY_MS = 4_000;
@@ -60,6 +63,17 @@ export async function runAppInitializer(): Promise<RoutePath> {
     await logOnboardingPersistSnapshot('bootstrap-after-sync');
 
     await rehydrateAndWait(useSettingsStore);
+
+    // P8 #516/#517: the Settings view is decided once and saved (existing installs Advanced, new ones Simple).
+    try {
+      const stored = await Promise.resolve(getPersistStorageAdapter().getItem(storageKeys.userPreferences));
+      const view = settingsViewToSave(stored, useAppStore.getState().onboardingComplete);
+      if (view) {
+        useSettingsStore.getState().updateSetting('settingsView', view);
+      }
+    } catch {
+      // The view in memory (from the saved settings) stays; it is decided again on the next start.
+    }
 
     try {
       const { hydrateDownloadSettings } = await import(
@@ -194,6 +208,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureLibraryCompletionBridge } = await import(
         '@/library/ensure-completion-bridge'
       );
+      // P8 #461: a program behind a "video" link gets one notice (see probe-observations.ts).
+      const { ensureDisguisedSourceNotices } = await import('@/downloads/safety/file-safety-dialog');
+      ensureDisguisedSourceNotices();
       const { ensureV2DownloadBridge } = await import('@/downloads/v2/ensure-bridge');
       // Mirrors the v2 DownloadEngine (its records and library items) into the downloads store.
       ensureV2DownloadBridge();
@@ -246,6 +263,9 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureClipboardLinkMonitor } = await import('@/browser/services/clipboard-link-monitor');
       // Download Settings → Copied links: only when on (default off), only on returning to the foreground.
       ensureClipboardLinkMonitor();
+      const { ensureRemoteControl } = await import('@/remote/remote-control');
+      // P6: links from the Web UI, the extension, the CLI and other apps go through Batch Add (server off by default).
+      ensureRemoteControl();
       if (typeof ensureLibraryCompletionBridge === 'function') {
         ensureLibraryCompletionBridge();
       }

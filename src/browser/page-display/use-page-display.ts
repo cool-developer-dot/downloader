@@ -24,6 +24,7 @@ import {
   type PageDisplayGlobals,
   type SiteDisplayMap,
 } from './page-display-settings';
+import { isDarkThemeMode } from '@/theme/theme-preference';
 
 export const pageDisplayNative = createPageDisplayNative(() => (isVidoraWebAvailable() ? getVidoraWeb() : null));
 
@@ -93,7 +94,7 @@ export function usePageDisplayFor(url: string): PageDisplay {
         { forceDark, textZoom, forceZoom, textReflow, fontStyle, urduNastaliq, colorFilter, nightLight, nightLightStrength },
         sites,
         url,
-        theme.mode === 'dark',
+        isDarkThemeMode(theme.mode),
       ),
     [colorFilter, fontStyle, forceDark, forceZoom, nightLight, nightLightStrength, sites, textReflow, textZoom, theme.mode, url, urduNastaliq],
   );

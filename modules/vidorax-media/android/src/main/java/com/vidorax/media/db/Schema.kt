@@ -2,7 +2,7 @@ package com.vidorax.media.db
 
 /** Schema of vidorax-media.db (docs/ARCHITECTURE.md section 3.4). */
 internal object Schema {
-  const val VERSION = 6
+  const val VERSION = 7
 
   val CREATE: List<String> = listOf(
     // downloads: the v2 engine reads/writes the columns marked ACTIVE below.
@@ -100,6 +100,7 @@ internal object Schema {
     GALLERY_EXPORTS_IDENTITY_INDEX,
     DOWNLOAD_BANDWIDTH_TABLE,
     DOWNLOAD_SCHEDULE_TABLE,
+    DOWNLOAD_MIRRORS_TABLE,
   )
 
   /**
@@ -134,6 +135,8 @@ internal object Schema {
     5 to listOf(DOWNLOAD_BANDWIDTH_TABLE),
     // v6 (F3): a download's own start time — a new table, no existing table touched; safe to run twice.
     6 to listOf(DOWNLOAD_SCHEDULE_TABLE),
+    // v7 (#347): a download's mirrors — a new table, no existing table touched; safe to run twice.
+    7 to listOf(DOWNLOAD_MIRRORS_TABLE),
   )
 
   /**
@@ -165,6 +168,14 @@ internal object Schema {
   /** F3 "Start at…": the earliest moment (epoch ms) a download may run. */
   private const val DOWNLOAD_SCHEDULE_TABLE =
     "CREATE TABLE IF NOT EXISTS download_schedule (download_id TEXT PRIMARY KEY, start_at INTEGER NOT NULL)"
+
+  /**
+   * #347: other links to a download's file, in the user's order. Like `downloads.url` they may carry a signed query; a
+   * mirror is only ever used after it proved to be the same file (engine/MirrorCheck).
+   */
+  private const val DOWNLOAD_MIRRORS_TABLE =
+    "CREATE TABLE IF NOT EXISTS download_mirrors " +
+      "(download_id TEXT NOT NULL, position INTEGER NOT NULL, url TEXT NOT NULL, PRIMARY KEY (download_id, position))"
 
   private const val GALLERY_EXPORTS_IDENTITY_INDEX =
     "CREATE INDEX gallery_exports_identity ON gallery_exports(identity_key)"

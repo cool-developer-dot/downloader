@@ -68,6 +68,7 @@ import { tabAudio } from '@/browser/tab-sound/tab-audio.service';
 import { tabAudioScript } from '@/browser/tab-sound/tab-audio-script';
 import { SITE_PERMISSION_PAGE_SCRIPT } from '@/browser/site-permissions/site-permission-script';
 import { readerMode } from '@/browser/reader/reader-mode.service';
+import { handlePageSelectionMessage } from '@/browser/page-tools/page-selection.service';
 import { applyPageDisplayNative, pageDisplayNative, usePageDisplay } from '@/browser/page-display/use-page-display';
 import { applySaverNative, saverNative, useSaverEffects } from '@/browser/data-saver/data-saver.service';
 import { LITE_PAGE_SCRIPT } from '@/browser/data-saver/data-saver-settings';
@@ -870,6 +871,10 @@ true;`);
       const raw = event.nativeEvent.data;
       // B15 #161: reader mode's answers have their own channel (articles are larger than the chrome channel's cap).
       if (readerMode.handleMessage(tabId, raw)) {
+        return;
+      }
+      // Light: the Page tools screen's read of the page's text selection.
+      if (handlePageSelectionMessage(tabId, raw)) {
         return;
       }
       // B23: how many highlights were restored, the page's language.

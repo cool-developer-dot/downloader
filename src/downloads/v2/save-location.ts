@@ -25,6 +25,11 @@ export type SaveLocationSettings = {
   enabledAt: number | null;
   /** The folder stopped being writable and the option was turned off; shown until a folder is picked again. */
   accessLost: boolean;
+  /**
+   * #513 Auto upload: copy only on Wi-Fi (a cloud app's folder uploads what lands in it). Copies wait, and catch up
+   * when Wi-Fi is back. Default off.
+   */
+  wifiOnly: boolean;
 };
 
 export const DEFAULT_SAVE_LOCATION: SaveLocationSettings = {
@@ -35,6 +40,7 @@ export const DEFAULT_SAVE_LOCATION: SaveLocationSettings = {
   bySite: false,
   enabledAt: null,
   accessLost: false,
+  wifiOnly: false,
 };
 
 const MAX_URI_LENGTH = 2048;
@@ -63,6 +69,7 @@ export function normalizeSaveLocation(raw: unknown): SaveLocationSettings {
     // Without it, only the catch-up pass waits; completions seen live are still copied.
     enabledAt,
     accessLost: value.accessLost === true && !enabled,
+    wifiOnly: value.wifiOnly === true,
   };
 }
 
@@ -73,6 +80,7 @@ export type SaveLocationAction =
   | { type: 'set-enabled'; enabled: boolean; now: number }
   | { type: 'set-by-type'; value: boolean }
   | { type: 'set-by-site'; value: boolean }
+  | { type: 'set-wifi-only'; value: boolean }
   /** Remove: forget the folder (its grant is given back) and turn the copy off. */
   | { type: 'remove' }
   /** The folder can no longer be written: turn off and say so. */
@@ -109,6 +117,8 @@ export function reduceSaveLocation(state: SaveLocationSettings, action: SaveLoca
       return state.byType === action.value ? state : { ...state, byType: action.value };
     case 'set-by-site':
       return state.bySite === action.value ? state : { ...state, bySite: action.value };
+    case 'set-wifi-only':
+      return state.wifiOnly === action.value ? state : { ...state, wifiOnly: action.value };
     case 'remove':
       return { ...state, enabled: false, treeUri: null, folderName: null, accessLost: false };
     case 'access-lost':
@@ -228,7 +238,7 @@ export function folderLabelFromTreeUri(treeUri: string): string | null {
 /** Where a library item's copy went, kept so Show in Folder can open it. Never the media bytes or a page URL. */
 export type ExternalCopyRecord =
   | { status: 'copied'; folderUri: string; documentUri: string; name: string; folderLabel: string | null; at: number }
-  | { status: 'failed'; reason: 'storage' | 'access'; at: number };
+  | { status: 'failed'; reason: 'storage' | 'access'; at: number; attempts?: number };
 
 export type ExternalCopyRecords = Record<string, ExternalCopyRecord>;
 
@@ -298,7 +308,8 @@ export function normalizeCopyRecords(raw: unknown): ExternalCopyRecords {
         at,
       };
     } else if (record.status === 'failed' && (record.reason === 'storage' || record.reason === 'access')) {
-      out[id] = { status: 'failed', reason: record.reason, at };
+      const attempts = typeof record.attempts === 'number' && record.attempts >= 1 ? Math.floor(record.attempts) : 1;
+      out[id] = { status: 'failed', reason: record.reason, at, attempts };
     }
   }
   return out;
@@ -316,6 +327,23 @@ export function showInFolderTarget(
 /** Copies a catch-up pass starts at most; the rest follow on the next pass. */
 export const MAX_CATCH_UP = 20;
 
+/** #513: a copy that failed (a cloud app offline, a full drive) is tried this many times in all… */
+export const MAX_COPY_ATTEMPTS = 3;
+/** …waiting this long after the first failure, twice as long after the second. */
+export const COPY_RETRY_AFTER_MS = 15 * 60 * 1000;
+
+/** Pure: whether a failed copy is due for another try at [now]. Access losses are never retried (the option is off). */
+export function copyRetryDue(record: ExternalCopyRecord | null | undefined, now: number): boolean {
+  if (record?.status !== 'failed' || record.reason !== 'storage') return false;
+  const attempts = record.attempts ?? 1;
+  return attempts < MAX_COPY_ATTEMPTS && now - record.at >= COPY_RETRY_AFTER_MS * attempts;
+}
+
+/** Pure: whether an item's copy is settled — made, or failed and not (or no longer) retried. */
+export function copySettled(record: ExternalCopyRecord | null | undefined, now: number): boolean {
+  return Boolean(record) && !copyRetryDue(record, now);
+}
+
 /**
  * Pure: library items that completed while the copy was on but got no copy yet (they finished while no JavaScript
  * ran, e.g. in the background), oldest first. Items with a record — copied or failed — are never retried here.
@@ -325,13 +353,20 @@ export function pendingCopyIds(
   records: ExternalCopyRecords,
   settings: Pick<SaveLocationSettings, 'enabled' | 'treeUri' | 'enabledAt'>,
   busy: ReadonlySet<string> = new Set(),
+  /** With it, failed copies that are due are tried again (#513); without it, every record counts as settled. */
+  now?: number,
 ): string[] {
   if (!settings.enabled || !settings.treeUri || !settings.enabledAt) {
     return [];
   }
   const since = settings.enabledAt;
   return items
-    .filter((item) => item.completedAt >= since && !records[item.id] && !busy.has(item.id))
+    .filter(
+      (item) =>
+        item.completedAt >= since &&
+        (now === undefined ? !records[item.id] : !copySettled(records[item.id], now)) &&
+        !busy.has(item.id),
+    )
     .sort((a, b) => a.completedAt - b.completedAt)
     .slice(0, MAX_CATCH_UP)
     .map((item) => item.id);

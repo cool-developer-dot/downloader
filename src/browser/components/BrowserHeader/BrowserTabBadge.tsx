@@ -7,14 +7,16 @@ import { BROWSER_TOUCH_TARGET } from '@/browser/constants';
 import { selectTabCount, useBrowserStore } from '@/browser/stores';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
+import { navigation, routePaths } from '@/navigation';
 
 export type BrowserTabBadgeProps = {
+  /** Default: opens the Tabs screen (design 2) inside the Browser tab. */
   onPress?: () => void;
   testID?: string;
 };
 
 /**
- * Tab count badge — count is always derived from tabs.length.
+ * Tab count badge — count is always derived from tabs.length. A tap opens the Tabs screen.
  */
 export const BrowserTabBadge = memo(function BrowserTabBadge({
   onPress,
@@ -25,7 +27,11 @@ export const BrowserTabBadge = memo(function BrowserTabBadge({
   const count = useBrowserStore(selectTabCount);
 
   const handlePress = useCallback(() => {
-    onPress?.();
+    if (onPress) {
+      onPress();
+      return;
+    }
+    navigation.push(routePaths.browserTabs);
   }, [onPress]);
 
   return (

@@ -93,6 +93,8 @@ private const val DOWNLOADING_MESSAGE = "Downloading"
 
 // B14: "Allow ads on this site" entries taken from JS (the settings list is capped lower).
 private const val MAX_ALLOWED_SITES = 1000
+/** Design 5: blocked requests per day (epoch day → count), the last 7 days only. */
+private const val BLOCKED_TALLY_PREFS = "vidorax_blocked_tally"
 private val INVALID_FILE_NAME_CHARS = Regex("[\\\\/%\"]")
 
 /** Contract: modules/vidorax-web/src/VidoraWeb.types.ts. */
@@ -130,6 +132,7 @@ class VidoraWebModule : Module() {
 
   // B21 #245: the system Photo Picker (or document picker) for the start page's background.
   private lateinit var startPagePhotoLauncher: AppContextActivityResultLauncher<StartPagePhotoContract.Request, android.net.Uri?>
+  private lateinit var voiceSearchLauncher: AppContextActivityResultLauncher<com.vidorax.web.voice.VoiceSearchContract.Request, String?>
 
   private val context: Context
     get() = appContext.reactContext ?: throw Exceptions.ReactContextLost()
@@ -138,7 +141,23 @@ class VidoraWebModule : Module() {
   private val bundledFonts = BundledFonts { appContext.reactContext?.applicationContext?.assets?.open(BundledFonts.ASSET_PATH) }
 
   // B14 #121 / #114: ad and tracker blocking (rules from JS ahead of time; bundled lists read natively).
-  private val contentBlocking = ContentBlocking({ name -> appContext.reactContext?.applicationContext?.assets?.open(name) })
+  private val contentBlocking = ContentBlocking(
+    { name -> appContext.reactContext?.applicationContext?.assets?.open(name) },
+    tally = com.vidorax.web.blocking.BlockedTally(
+      object : com.vidorax.web.blocking.BlockedTally.Store {
+        private fun prefs() = appContext.reactContext?.applicationContext
+          ?.getSharedPreferences(BLOCKED_TALLY_PREFS, Context.MODE_PRIVATE)
+
+        override fun load(): Map<Long, Int> =
+          prefs()?.all.orEmpty().mapNotNull { (key, value) -> key.toLongOrNull()?.let { day -> day to ((value as? Int) ?: 0) } }.toMap()
+
+        override fun save(days: Map<Long, Int>) {
+          val prefs = prefs() ?: return
+          prefs.edit().clear().apply { days.forEach { (day, count) -> putInt(day.toString(), count) } }.apply()
+        }
+      },
+    ),
+  )
 
   private val webViewHooks = object : RNCWebViewHooks.Listener {
     // B20: a new WebView joins the active browser profile before react-native-webview sets it up.
@@ -263,6 +282,15 @@ class VidoraWebModule : Module() {
     // B21 #245: the start page's background photo — picked without a permission, copied and scaled into app storage.
     RegisterActivityContracts {
       startPagePhotoLauncher = registerForActivityResult(StartPagePhotoContract())
+      voiceSearchLauncher = registerForActivityResult(com.vidorax.web.voice.VoiceSearchContract())
+    }
+
+    // #31 Voice search: Android's own voice input screen; resolves the words heard, or null (cancelled / nothing).
+    Function("isVoiceSearchAvailable") { com.vidorax.web.voice.VoiceSearch.isAvailable(context) }
+
+    AsyncFunction("recognizeSpeech") Coroutine { language: String? ->
+      if (!com.vidorax.web.voice.VoiceSearch.isAvailable(context)) return@Coroutine null
+      voiceSearchLauncher.launch(com.vidorax.web.voice.VoiceSearchContract.Request(language))
     }
 
     AsyncFunction("pickStartPageImage") Coroutine { maxSize: Int ->
@@ -512,6 +540,14 @@ class VidoraWebModule : Module() {
       OfflinePages.save(webView, target) { size -> promise.resolve(size.toDouble()) }
     }.runOnQueue(Queues.MAIN)
 
+    // #486 Site grabber: a page VidoraX fetched, saved as the same kind of web archive; resolves its size (0 = not saved).
+    AsyncFunction("archiveOfflineHtml") { profile: String, id: String, url: String, html: String, promise: Promise ->
+      val target = OfflinePages.archiveFile(context.filesDir, profile, id) ?: return@AsyncFunction promise.resolve(0)
+      val web = url.startsWith("https://") || url.startsWith("http://")
+      if (!web || html.isEmpty() || html.length > com.vidorax.web.offline.HtmlArchiver.MAX_HTML_CHARS) return@AsyncFunction promise.resolve(0)
+      com.vidorax.web.offline.HtmlArchiver.archive(context, html, url, target, 20_000L) { size -> promise.resolve(size.toDouble()) }
+    }.runOnQueue(Queues.MAIN)
+
     // B17 #178: a saved page, read-only (OfflinePageActivity); resolves when the viewer closes.
     AsyncFunction("openOfflinePage") { profile: String, id: String, title: String, promise: Promise ->
       val file = OfflinePages.archiveFile(context.filesDir, profile, id)
@@ -741,6 +777,9 @@ class VidoraWebModule : Module() {
       contentBlocking.setPage(webView, url)
       true
     }.runOnQueue(Queues.MAIN)
+
+    // Design 5: requests blocked over the last 7 days, counted on the phone only.
+    Function("getBlockedThisWeek") { contentBlocking.blockedThisWeek() }
 
     // B14 #121: requests blocked on this tab's current page (the lock-icon panel).
     AsyncFunction("getBlockedCount") { viewTag: Int ->

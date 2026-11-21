@@ -11,6 +11,7 @@ import com.vidorax.media.model.EnqueueRequest
 import com.vidorax.media.model.LegacyMetadata
 import com.vidorax.media.model.LibraryQuery
 import com.vidorax.media.model.LibrarySort
+import com.vidorax.media.model.LowMemoryMode
 import com.vidorax.media.model.ProbeRequest
 import com.vidorax.media.model.RequestContext
 import com.vidorax.media.model.SiteId
@@ -18,6 +19,7 @@ import com.vidorax.media.model.SourceKind
 import com.vidorax.media.model.VariantChoice
 import com.vidorax.media.model.WireEnum
 import com.vidorax.media.model.wireValueOf
+import com.vidorax.media.net.FtpUrl
 import expo.modules.kotlin.records.Field
 import expo.modules.kotlin.records.Record
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -61,6 +63,10 @@ data class ProbeRequestRecord(
     }
     if (audioUrl != null && sourceKind != SourceKind.SPLIT) invalid("audioUrl is only valid for split")
     if (sourceKind == SourceKind.SPLIT && audioUrl == null) invalid("a split probe needs audioUrl")
+    // #304: an FTP probe may carry the link's own user name and password; a probe is never stored.
+    if (sourceKind == SourceKind.FTP || (sourceKind == null && FtpUrl.isFtp(url))) {
+      return ProbeRequest(ftpUrl(url).first, SourceKind.FTP, null, request.toModel())
+    }
     return ProbeRequest(
       httpUrl(url, "url"),
       sourceKind,
@@ -129,14 +135,21 @@ data class EnqueueRequestRecord(
   @Field val identityUrl: String? = null,
   /** H12: "Keep both" / "Replace" — download it although it is already saved. Missing = false (today). */
   @Field val allowDuplicate: Boolean? = null,
+  /** #347: other links to the same file (a progressive download only); each is checked before any part uses it. */
+  @Field val mirrors: List<String>? = null,
 ) : Record {
   fun toModel(): EnqueueRequest {
     val sourceKind = parseWire<SourceKind>(kind, "kind")
     if (manifestText != null && sourceKind != SourceKind.DASH) invalid("manifestText is only valid for DASH")
     if (audioUrl != null && sourceKind != SourceKind.SPLIT) invalid("audioUrl is only valid for split")
     if (sourceKind == SourceKind.SPLIT && audioUrl == null) invalid("a split download needs audioUrl")
+    if (!mirrors.isNullOrEmpty() && sourceKind != SourceKind.PROGRESSIVE) invalid("mirrors are only valid for a file download")
+    // #304: the link's user name and password become this download's sign-in (memory only); the row keeps the link
+    // without them, so no password is ever written to the database.
+    val ftp = if (sourceKind == SourceKind.FTP) ftpUrl(url) else null
+    if (sourceKind != SourceKind.FTP && FtpUrl.isFtp(url)) invalid("an ftp link is downloaded with kind \"ftp\"")
     return EnqueueRequest(
-      url = httpUrl(url, "url"),
+      url = ftp?.second?.withoutUserInfo ?: httpUrl(url, "url"),
       kind = sourceKind,
       manifestText = manifestText,
       audioUrl = audioUrl?.let { httpUrl(it, "audioUrl") },
@@ -148,7 +161,8 @@ data class EnqueueRequestRecord(
       thumbnailUrl = thumbnailUrl.nonBlank(),
       durationMs = durationMs.positiveLong(),
       estimatedBytes = estimatedBytes.positiveLong(),
-      credentials = credentials?.toModel(url),
+      credentials = credentials?.toModel(url) ?: ftp?.second?.credentials,
+      mirrors = mirrors.orEmpty().map { httpUrl(it, "mirrors") }.distinct().take(com.vidorax.media.engine.DownloadEngine.MAX_MIRRORS),
       qualityLabel = qualityLabel.nonBlank()?.trim(),
       saveToGallery = saveToGallery,
       preferredExtension = PreferredExtensions.normalize(preferredExtension),
@@ -170,9 +184,12 @@ class CredentialsRecord(
 ) : Record {
   override fun toString(): String = "CredentialsRecord(<redacted>)"
 
-  /** For a download of [downloadUrl]: https only (the credentials are pinned to its origin). */
+  /** For a download of [downloadUrl]: https or (#304) an FTP server only (the credentials are pinned to its origin). */
   fun toModel(downloadUrl: String): BasicCredentials {
-    if (!downloadUrl.trim().startsWith("https://", ignoreCase = true)) invalid("Sign-in details are only sent over https")
+    val target = downloadUrl.trim()
+    if (!target.startsWith("https://", ignoreCase = true) && !FtpUrl.isFtp(target)) {
+      invalid("Sign-in details are only sent over https")
+    }
     return toModel()
   }
 
@@ -225,6 +242,18 @@ data class DownloadSettingsRecord(
   @Field val notificationSilent: Boolean? = null,
   /** "Automatically resume interrupted downloads"; missing from an older JavaScript bundle = on (the default). */
   @Field val autoResume: Boolean? = null,
+  /** #350 Buffer size (KiB); missing = 64. */
+  @Field val bufferKb: Int? = null,
+  /** #344 Disk write cache (KiB); missing or 0 = off. */
+  @Field val writeCacheKb: Int? = null,
+  /** #348 Low memory mode: "auto" (missing), "on" or "off". */
+  @Field val lowMemoryMode: String? = null,
+  /** #506 Cooldown between files (seconds); missing or 0 = none. */
+  @Field val cooldownSeconds: Int? = null,
+  /** #358 Exit when done; missing = off. */
+  @Field val exitWhenDone: Boolean? = null,
+  /** #446 "Experimental: use Wi-Fi and mobile data together"; missing = off. Always off with [wifiOnly]. */
+  @Field val multiNetwork: Boolean? = null,
 ) : Record {
   fun toModel(): DownloadSettings {
     if (maxConcurrent !in DownloadSettings.MIN_CONCURRENT..DownloadSettings.MAX_CONCURRENT) {
@@ -237,6 +266,17 @@ data class DownloadSettingsRecord(
     }
     val speedLimit = speedLimitBytesPerSecond
     if (speedLimit != null && (speedLimit.isNaN() || speedLimit < 0)) invalid("speedLimitBytesPerSecond must be 0 or more")
+    val buffer = bufferKb ?: DownloadSettings.DEFAULT_BUFFER_KB
+    if (buffer !in DownloadSettings.MIN_BUFFER_KB..DownloadSettings.MAX_BUFFER_KB) {
+      invalid("bufferKb must be ${DownloadSettings.MIN_BUFFER_KB}-${DownloadSettings.MAX_BUFFER_KB}")
+    }
+    val writeCache = writeCacheKb ?: 0
+    if (writeCache !in 0..DownloadSettings.MAX_WRITE_CACHE_KB) invalid("writeCacheKb must be 0-${DownloadSettings.MAX_WRITE_CACHE_KB}")
+    if (lowMemoryMode != null && LowMemoryMode.entries.none { it.wire == lowMemoryMode }) {
+      invalid("lowMemoryMode must be auto, on or off")
+    }
+    val cooldown = cooldownSeconds ?: 0
+    if (cooldown !in 0..DownloadSettings.MAX_COOLDOWN_SECONDS) invalid("cooldownSeconds must be 0-${DownloadSettings.MAX_COOLDOWN_SECONDS}")
     val liveMinutes = liveRecordingMaxMinutes ?: DownloadSettings.DEFAULT_LIVE_MAX_MINUTES
     if (liveMinutes !in DownloadSettings.MIN_LIVE_MAX_MINUTES..DownloadSettings.MAX_LIVE_MAX_MINUTES) {
       invalid("liveRecordingMaxMinutes must be ${DownloadSettings.MIN_LIVE_MAX_MINUTES}-${DownloadSettings.MAX_LIVE_MAX_MINUTES}")
@@ -256,6 +296,12 @@ data class DownloadSettingsRecord(
       liveRecording = liveRecording,
       liveRecordingMaxMinutes = liveMinutes,
       autoResume = autoResume ?: true,
+      bufferKb = buffer,
+      writeCacheKb = writeCache,
+      lowMemoryMode = LowMemoryMode.fromWire(lowMemoryMode),
+      cooldownSeconds = cooldown,
+      exitWhenDone = exitWhenDone ?: false,
+      multiNetwork = multiNetwork == true && !wifiOnly,
     )
   }
 }
@@ -338,10 +384,21 @@ private fun invalid(message: String): Nothing = throw InvalidRequestException(me
 private inline fun <reified T> parseWire(value: String, field: String): T where T : Enum<T>, T : WireEnum =
   wireValueOf<T>(value) ?: invalid("Unknown $field \"$value\"")
 
+/** #347: mirrors from JavaScript (Details → Add mirror, Batch Add): each an http(s) link, at most a few. */
+internal fun mirrorUrls(values: List<String>): List<String> =
+  values.map { httpUrl(it, "mirrors") }.distinct().take(com.vidorax.media.engine.DownloadEngine.MAX_MIRRORS)
+
 private fun httpUrl(value: String, field: String): String {
   val url = value.trim()
   if (url.toHttpUrlOrNull() == null) invalid("$field must be an http or https URL")
   return url
+}
+
+/** #304: an ftp(s) link (with any user name and password it carries) and its parsed form. */
+private fun ftpUrl(value: String): Pair<String, FtpUrl> {
+  val url = value.trim()
+  val parsed = FtpUrl.parse(url) ?: invalid("url must be an ftp or ftps link to a file")
+  return url to parsed
 }
 
 private fun String?.nonBlank(): String? = this?.takeIf { it.isNotBlank() }

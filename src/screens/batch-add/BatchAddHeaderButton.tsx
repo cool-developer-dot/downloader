@@ -2,12 +2,12 @@ import { memo, useCallback } from 'react';
 
 import { IconButton } from '@/components/buttons/IconButton';
 import { useTranslation } from '@/localization';
-import { navigation } from '@/navigation';
+import { navigation, routePaths } from '@/navigation';
 
 /** Downloads header → "Add several links" (Batch Add, #292). */
 export const BatchAddHeaderButton = memo(function BatchAddHeaderButton() {
   const { t } = useTranslation();
-  const open = useCallback(() => navigation.push('/batch-add'), []);
+  const open = useCallback(() => navigation.push(routePaths.batchAdd), []);
   return (
     <IconButton
       icon="playlist-plus"

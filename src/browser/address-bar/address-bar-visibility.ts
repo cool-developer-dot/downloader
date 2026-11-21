@@ -20,6 +20,9 @@ type Listener = () => void;
 
 let state: AutoHideState = INITIAL_AUTO_HIDE;
 let editing = false;
+// Light design: the start page draws its own header and field, so the chrome stays out of the way there until the
+// address bar is asked for (a focus request, Paste link, the calculator).
+let startPage = false;
 const listeners = new Set<Listener>();
 
 /** A verified offer is on screen ("Video available"). */
@@ -39,6 +42,16 @@ function currentHold(): AutoHideHold {
     editing,
     videoOffer: videoOfferShown(),
   };
+}
+
+function notify(): void {
+  for (const listener of listeners) {
+    try {
+      listener();
+    } catch {
+      // ignore
+    }
+  }
 }
 
 function set(next: AutoHideState): void {
@@ -79,7 +92,14 @@ function wireHolds(): void {
 
 export const addressBarVisibility = {
   isHidden(): boolean {
-    return state.hidden;
+    return state.hidden || (startPage && !editing);
+  },
+
+  /** The start page is in front: the header hides until the address bar is edited. */
+  setStartPage(value: boolean): void {
+    if (startPage === value) return;
+    startPage = value;
+    notify();
   },
 
   /** The active tab's page is at `scrollY`. */
@@ -91,8 +111,10 @@ export const addressBarVisibility = {
 
   /** The address bar is being edited (its overlay is open). */
   setEditing(value: boolean): void {
+    const changed = editing !== value;
     editing = value;
     if (value) recheckHolds();
+    if (changed && startPage) notify();
   },
 
   subscribe(listener: Listener): () => void {

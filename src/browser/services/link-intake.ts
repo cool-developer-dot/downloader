@@ -1,10 +1,13 @@
 /**
  * Links that enter VidoraX in new ways (H7): the clipboard monitor, Batch Add and Import Links from File. Pure.
+ * (#304: `ftp://`/`ftps://` file links too — the engine downloads them directly.)
  * Every link keeps the app's rules: YouTube is refused, and so is any private or local address (SSRF guard), before
  * anything is fetched.
  */
 
 import { isPrivateOrLocalHostname } from '@/media-detection/utils/url';
+
+import { classifyFtpLink, ftpLinkWithoutCredentials, isFtpLink } from '@/downloads/v2/sources';
 
 import { isYouTubeLink } from './pasted-link';
 
@@ -30,16 +33,21 @@ function trimTrailing(url: string): string {
 export function extractLinks(text: string, max = MAX_BATCH_LINKS): string[] {
   const found: string[] = [];
   const seen = new Set<string>();
-  const matches = text.match(/https?:\/\/[^\s<>"'`]+/gi) ?? [];
+  // #304: ftp:// and ftps:// links are files the engine downloads directly.
+  const matches = text.match(/(?:https?|ftps?):\/\/[^\s<>"'`|]+/gi) ?? [];
   for (const raw of matches) {
     const url = trimTrailing(raw);
     let key: string;
-    try {
-      const parsed = new URL(url);
-      parsed.hash = '';
-      key = parsed.toString().replace(/\/$/, '').toLowerCase();
-    } catch {
-      continue;
+    if (isFtpLink(url)) {
+      key = ftpLinkWithoutCredentials(url).toLowerCase();
+    } else {
+      try {
+        const parsed = new URL(url);
+        parsed.hash = '';
+        key = parsed.toString().replace(/\/$/, '').toLowerCase();
+      } catch {
+        continue;
+      }
     }
     if (seen.has(key)) {
       continue;
@@ -55,6 +63,10 @@ export function extractLinks(text: string, max = MAX_BATCH_LINKS): string[] {
 
 /** The app's rules for a link: refused before any request when it is YouTube or a private/local address. */
 export function classifyIntakeLink(url: string): LinkVerdict {
+  // #304: an FTP file on a public host (React Native's URL does not parse ftp links).
+  if (/^ftps?:/i.test(url.trim())) {
+    return classifyFtpLink(url);
+  }
   let parsed: URL;
   try {
     parsed = new URL(url);

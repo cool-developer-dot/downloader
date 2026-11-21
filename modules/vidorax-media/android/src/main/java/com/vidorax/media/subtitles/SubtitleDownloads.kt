@@ -210,6 +210,24 @@ internal class SubtitleDownloads(
     }
   }
 
+  /**
+   * P8 #407: subtitles that came with a video VidoraX imported (an archive's `.srt`/`.vtt`, already WebVTT here):
+   * written beside the video and recorded as done, exactly like downloaded ones. Nothing is saved without the video.
+   */
+  suspend fun saveLocal(id: String, subtitles: List<Pair<String?, String>>) {
+    if (subtitles.isEmpty()) return
+    val video = videoFile(id)?.takeIf { it.isFile } ?: return
+    lock.withLock {
+      val written = subtitles.take(MAX_TRACKS).mapNotNull { (language, text) ->
+        runCatching { SubtitleFiles.write(video, language, text) }.getOrNull()?.let { file ->
+          SavedSubtitle(language, null, paths.toStoredPath(file), file.length())
+        }
+      }
+      if (written.isEmpty()) return@withLock
+      store.put(id, SubtitleRecord(listOf(LOCAL_TRACK_ID), SubtitleRecord.State.DONE, written, 0, null))
+    }
+  }
+
   /** The subtitle file [index] of [downloadId], or null. */
   suspend fun file(downloadId: String, index: Int): File? =
     record(downloadId)?.files?.getOrNull(index)?.let { paths.fromStoredPath(it.path) }?.takeIf { it.isFile }
@@ -229,6 +247,9 @@ internal class SubtitleDownloads(
 
   companion object {
     const val MAX_TRACKS = 20
+
+    /** The track id recorded for subtitles that came with an imported file. */
+    const val LOCAL_TRACK_ID = "local"
     const val MAX_TRACK_ID_LENGTH = 300
 
     @Volatile

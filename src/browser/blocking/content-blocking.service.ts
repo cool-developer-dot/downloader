@@ -52,6 +52,11 @@ export function blockedCountForTab(tabId: string | null | undefined): Promise<nu
   return blockingNative.blockedCount(tabId ? getTabWebViewTag(tabId) : null);
 }
 
+/** Design 5: ads and trackers blocked over the last 7 days, or null on a native build without the weekly count. */
+export function blockedThisWeek(): number | null {
+  return blockingNative.blockedThisWeek();
+}
+
 /** Whether "Allow ads on this site" covers `url`. */
 export function adsAllowedOn(url: string, allowedSitesJson: string): boolean {
   return matchingSite(url, parseSiteList(allowedSitesJson)) != null;

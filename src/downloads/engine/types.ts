@@ -130,6 +130,8 @@ export type TransferProgressSnapshot = {
   recording?: boolean;
   /** F6: how much of the live stream is recorded (ms). */
   recordedMs?: number | null;
+  /** v2: the engine's source kind (`progressive`, `hls`, `ftp`…) — Download details shows "Mirrors" for a file only. */
+  sourceKind?: import('@modules/vidorax-media/src/VidoraMedia.types').SourceKind;
 };
 
 export type LocalDownloadRecord = {

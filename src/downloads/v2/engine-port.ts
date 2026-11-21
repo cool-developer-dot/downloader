@@ -20,6 +20,8 @@ import type {
   VidoraMediaEvents,
 } from '@modules/vidorax-media/src/VidoraMedia.types';
 
+import { observeEngine } from '@/downloads/safety/probe-observations';
+
 /**
  * The part of the native `VidoraMedia` module the browser handoff, Downloads and Library use. The v2 DownloadEngine
  * behind it is the single downloader and the single persisted download state; JavaScript only mirrors it.
@@ -84,6 +86,9 @@ export type V2EnginePort = {
   listDownloadBandwidth?(): Promise<DownloadBandwidth[]>;
   /** F3 "Start at…" (epoch ms; null = now). Missing on older native builds: the control is hidden. */
   setDownloadStartAt?(id: string, startAt: number | null): Promise<DownloadRecord>;
+  /** #347 a download's mirrors (see `VidoraMediaModuleApi`). Missing on older native builds: "Add mirror" is hidden. */
+  getDownloadMirrors?(id: string): Promise<string[]>;
+  setDownloadMirrors?(id: string, urls: string[]): Promise<string[]>;
   /** F6: stops a live recording and finalizes what was recorded. Missing on older native builds. */
   stopRecording?(id: string): Promise<DownloadRecord>;
   /** Download files that belong to nothing (F15). Missing on older native builds: the Storage row is not shown. */
@@ -118,7 +123,8 @@ export function getV2Engine(): V2EnginePort | null {
   if (override) {
     return override;
   }
-  return isVidoraMediaAvailable() ? getVidoraMedia() : null;
+  // P8: every probe is seen once here (redirect count for Source check, disguised programs for the Malware Warning).
+  return isVidoraMediaAvailable() ? observeEngine(getVidoraMedia()) : null;
 }
 
 export function setV2EngineForTests(port: V2EnginePort | null): void {

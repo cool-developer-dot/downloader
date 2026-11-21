@@ -1,8 +1,7 @@
 import { memo } from 'react';
-import { RefreshControl, ScrollView } from 'react-native';
+import { RefreshControl, ScrollView, View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { ErrorState } from '@/components/common/ErrorState';
+import { ds, DsButton, DsIcon, DsText } from '@/design';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 
@@ -25,7 +24,7 @@ export const DownloadErrorState = memo(function DownloadErrorState({
   return (
     <ScrollView
       style={{ flex: 1 }}
-      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}
+      contentContainerStyle={{ flexGrow: 1, justifyContent: 'center', paddingHorizontal: ds.space.screenX }}
       keyboardShouldPersistTaps="handled"
       refreshControl={
         <RefreshControl
@@ -36,14 +35,33 @@ export const DownloadErrorState = memo(function DownloadErrorState({
           accessibilityLabel={t('downloads.retryLoadA11y')}
         />
       }>
-      <Box flex={1} center py={48}>
-        <ErrorState
-          title={t('downloads.errorTitle')}
-          message={message}
-          onRetry={onRetry}
-          testID={testID}
+      <View testID={testID} style={{ alignItems: 'center', paddingVertical: 48, gap: 10 }}>
+        <View
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 16,
+            backgroundColor: theme.colors.accentSoft,
+            alignItems: 'center',
+            justifyContent: 'center',
+          }}>
+          <DsIcon name="alert-triangle" size={26} color="primary" strokeWidth={1.8} />
+        </View>
+        <DsText variant="cardTitle" align="center" accessibilityRole="header" style={{ marginTop: 6 }}>
+          {t('lightDownloads.loadFailed')}
+        </DsText>
+        <DsText variant="body" align="center" style={{ maxWidth: 300 }}>
+          {message}
+        </DsText>
+        <DsButton
+          label={t('lightDownloads.retryLoad')}
+          variant="secondary"
+          icon="refresh-cw"
+          onPress={onRetry}
+          style={{ marginTop: 10 }}
+          testID={`${testID}-retry`}
         />
-      </Box>
+      </View>
     </ScrollView>
   );
 });

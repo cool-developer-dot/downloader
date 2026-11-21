@@ -1,45 +1,48 @@
-import { memo, useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
-import { ScrollView, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { ScrollView, View, type TextInput } from 'react-native';
 
 import { Pressable } from '@/components/base/Pressable';
-import { Text } from '@/components/base/Text';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
-import { IconButton } from '@/components/buttons/IconButton';
-import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
-import { ScreenHeader } from '@/components/headers/ScreenHeader';
-import { SearchField } from '@/components/inputs/SearchField';
-import { SegmentedControl } from '@/components/inputs/SegmentedControl';
 import { pendingNavigationService } from '@/browser/services';
 import { announceTabsLimitReached } from '@/browser/services/tabs-limit-notice';
 import { useBrowserStore } from '@/browser/stores';
+import { isValidBrowserPageUrl } from '@/browser/utils';
+import { DsChip, DsChipRow, DsHeader, DsRow, DsRowGroup, DsScreen, DsSearchField, DsSectionLabel, DsText, DsToggle, ds } from '@/design';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
-import {
-  bookmarkOrganizerRepository,
-  type BookmarkFolder,
-  type OrganizedBookmark,
-} from '@/storage/repositories';
+import { bookmarkOrganizerRepository, type BookmarkFolder, type OrganizedBookmark } from '@/storage/repositories';
 import { useBookmarksStore } from '@/store/bookmarks';
+import { useSettingsStore } from '@/store/settings';
 import { BookmarkDeleteDialog } from '@/screens/bookmarks/components';
+import { openReadingListUri } from '@/browser/capture/offline-pages.service';
 
 import {
   addToHomeScreen,
+  bookmarkAllTabs,
   bookmarkChanges,
   bookmarkEditRequests,
   change,
   exportBookmarks,
   importBookmarks,
+  notify,
 } from './bookmarks.service';
-import { BookmarkRow, bookmarkRowHeight, FolderRow } from './components/BookmarkRows';
+import { BookmarkRow, bookmarkRowHeight, FolderRow, IconTile, ListRow } from './components/BookmarkRows';
 import { BookmarkEditHost, FolderNameSheet, FolderPickerSheet } from './components/BookmarkSheets';
 import { LinkCheckSheet } from './components/LinkCheckSheet';
 import { ReadingListView } from './components/ReadingListView';
 import { SortableRows } from './components/SortableRows';
-import { openReadingListUri } from '@/browser/capture/offline-pages.service';
 
 type Row = { id: string; kind: 'folder'; folder: BookmarkFolder } | { id: string; kind: 'bookmark'; bookmark: OrganizedBookmark };
+type StaticKey = 'bar' | 'tags' | 'links';
+type Item = Row | { id: string; kind: 'static'; key: StaticKey };
+
+const STATIC_ROWS: Item[] = [
+  { id: 'static:bar', kind: 'static', key: 'bar' },
+  { id: 'static:tags', kind: 'static', key: 'tags' },
+  { id: 'static:links', kind: 'static', key: 'links' },
+];
 
 function openInBrowser(url: string): void {
   pendingNavigationService.set(url, { targetTabId: useBrowserStore.getState().activeTabId });
@@ -56,22 +59,35 @@ function openInNewTab(url: string): void {
 }
 
 /**
- * B9 — Bookmarks (route `/bookmarks`): folders with breadcrumbs (#77), Edit (#78), drag / Move up / Move down (#80),
- * tags and notes in search with tag chips (#92 / #93), import / export (#84 / #85), Check links (#91), Add to home
- * screen (#87), and the reading list (#89) in its own tab.
+ * Design 4 "Browser · Bookmarks" over B9's bookmark organizer: header "Bookmarks / N items" with a search button that
+ * reveals the search field; chips Folders · Reading list · History · Notes; one card with the folders of the current
+ * level (and its bookmarks), then — at the root — Bookmarks bar (toggle), Tags & notes and Broken link check; the
+ * MANAGE card (Import / Export, Add to home screen, Bookmark all tabs). Inside a folder a breadcrumb line sits above
+ * the card and rows can be dragged (SortableRows); long-press opens the row's actions (rename / move / delete, Move
+ * up / Move down, Edit, Add to home screen…). Every B9 sheet and dialog is kept.
  */
 export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
   const theme = useTheme();
-  const { t, rtl } = useTranslation();
+  const { t, tp, rtl } = useTranslation();
   const version = useSyncExternalStore(bookmarkChanges.subscribe, bookmarkChanges.getVersion, bookmarkChanges.getVersion);
+  const total = useBookmarksStore((state) => state.total);
+  const bookmarksInitialized = useBookmarksStore((state) => state.initialized);
+  const bookmarksLoading = useBookmarksStore((state) => state.loading);
+  const loadBookmarks = useBookmarksStore((state) => state.load);
+  const bookmarksBar = useSettingsStore((state) => state.bookmarksBar === true);
+  const updateSetting = useSettingsStore((state) => state.updateSetting);
+
   const [tab, setTab] = useState<'bookmarks' | 'reading'>('bookmarks');
   const [folderId, setFolderId] = useState<string | null>(null);
   const [path, setPath] = useState<BookmarkFolder[]>([]);
   const [rows, setRows] = useState<Row[]>([]);
+  const [counts, setCounts] = useState<Record<string, number>>({});
   const [query, setQuery] = useState('');
   const [tag, setTag] = useState<string | null>(null);
   const [tags, setTags] = useState<{ tag: string; count: number }[]>([]);
-  const [menuOpen, setMenuOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [tagsMode, setTagsMode] = useState(false);
+  const [manageOpen, setManageOpen] = useState(false);
   const [options, setOptions] = useState<Row | null>(null);
   const [nameSheet, setNameSheet] = useState<{ mode: 'new' | 'rename'; folder?: BookmarkFolder } | null>(null);
   const [moving, setMoving] = useState<Row | null>(null);
@@ -79,12 +95,19 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
     null,
   );
   const [checking, setChecking] = useState(false);
-  // As the previous Bookmarks screen: a confirmation before deleting one bookmark, and Clear all.
   const [confirmDelete, setConfirmDelete] = useState<OrganizedBookmark | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const [importProgress, setImportProgress] = useState<{ done: number; total: number } | null>(null);
-  const searching = query.trim().length > 0 || tag != null;
+  const searchRef = useRef<TextInput>(null);
+
+  const searching = query.trim().length > 0 || tag != null || tagsMode;
+  const fieldVisible = searchOpen || tagsMode;
   const rowHeight = bookmarkRowHeight();
+
+  // The header's "N items" is the bookmarks store's total (refreshed after every change by bookmarkChanges).
+  useEffect(() => {
+    if (!bookmarksInitialized && !bookmarksLoading) void loadBookmarks(1).catch(() => undefined);
+  }, [bookmarksInitialized, bookmarksLoading, loadBookmarks]);
 
   useEffect(() => {
     let cancelled = false;
@@ -96,11 +119,15 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
         bookmarkOrganizerRepository.folderPath(folderId),
         bookmarkOrganizerRepository.listTags(),
       ]);
+      const folderCounts = await Promise.all(
+        list.folders.map((folder) => bookmarkOrganizerRepository.countInFolder(folder.id).then((c) => [folder.id, c.bookmarks + c.folders] as const)),
+      );
       if (cancelled) return;
       setRows([
         ...list.folders.map((folder): Row => ({ id: `f:${folder.id}`, kind: 'folder', folder })),
         ...list.bookmarks.map((bookmark): Row => ({ id: `b:${bookmark.id}`, kind: 'bookmark', bookmark })),
       ]);
+      setCounts(Object.fromEntries(folderCounts));
       setPath(crumbs);
       setTags(allTags);
     };
@@ -111,6 +138,8 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
   }, [folderId, query, searching, tag, version]);
 
   const folderCount = rows.filter((r) => r.kind === 'folder').length;
+  const atRoot = folderId == null && !searching;
+  const items: Item[] = useMemo(() => (atRoot ? [...rows, ...STATIC_ROWS] : rows), [atRoot, rows]);
 
   const saveOrder = useCallback(
     (next: Row[]) => {
@@ -128,7 +157,7 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
   const moveTo = useCallback(
     (id: string, toIndex: number) => {
       const from = rows.findIndex((r) => r.id === id);
-      if (from < 0 || from === toIndex) return;
+      if (from < 0 || from === toIndex || toIndex >= rows.length) return;
       const next = [...rows];
       const [item] = next.splice(from, 1);
       next.splice(toIndex, 0, item);
@@ -148,20 +177,56 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
     [folderCount, moveTo, rows],
   );
 
-  const openRow = useCallback((row: Row) => {
-    if (row.kind === 'folder') {
-      setFolderId(row.folder.id);
-      setQuery('');
-      setTag(null);
-    } else {
-      openInBrowser(row.bookmark.url);
-    }
+  const goToFolder = useCallback((id: string | null) => {
+    setFolderId(id);
+    setQuery('');
+    setTag(null);
+    setTagsMode(false);
+    setSearchOpen(false);
   }, []);
 
+  const openRow = useCallback(
+    (row: Row) => {
+      if (row.kind === 'folder') goToFolder(row.folder.id);
+      else openInBrowser(row.bookmark.url);
+    },
+    [goToFolder],
+  );
+
   const requestDeleteFolder = useCallback(async (folder: BookmarkFolder) => {
-    const counts = await bookmarkOrganizerRepository.countInFolder(folder.id);
-    setDeletingFolder({ folder, ...counts });
+    const counted = await bookmarkOrganizerRepository.countInFolder(folder.id);
+    setDeletingFolder({ folder, ...counted });
   }, []);
+
+  const openSearch = useCallback(() => {
+    if (tab !== 'bookmarks') setTab('bookmarks');
+    setSearchOpen(true);
+    // Already open: the button puts the cursor back in the field.
+    searchRef.current?.focus();
+  }, [tab]);
+
+  const closeSearch = useCallback(() => {
+    setQuery('');
+    setTag(null);
+    setSearchOpen(false);
+    setTagsMode(false);
+  }, []);
+
+  const enterTagsMode = useCallback(() => {
+    setTagsMode(true);
+    setQuery('');
+    setTag(null);
+  }, []);
+
+  const addCurrentPageToHome = useCallback(() => {
+    const state = useBrowserStore.getState();
+    const active = state.tabs.find((candidate) => candidate.id === state.activeTabId);
+    if (!active || !isValidBrowserPageUrl(active.url)) {
+      notify(t('lightBookmarks.noCurrentPage'));
+      return;
+    }
+    void addToHomeScreen(active.url, active.title || active.url);
+  }, [t]);
 
   const optionActions = useMemo((): ActionSheetItem[] => {
     if (!options) return [];
@@ -192,40 +257,28 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
       const b = options.bookmark;
       list.push(
         { id: 'home', label: t('browserBookmarks.addToHome'), icon: 'cellphone-arrow-down', onPress: () => void addToHomeScreen(b.url, b.title) },
-        {
-          id: 'delete',
-          label: t('browserBookmarks.delete'),
-          icon: 'delete-outline',
-          destructive: true,
-          onPress: () => setConfirmDelete(b),
-        },
+        { id: 'delete', label: t('browserBookmarks.delete'), icon: 'delete-outline', destructive: true, onPress: () => setConfirmDelete(b) },
       );
     } else {
       const f = options.folder;
-      list.push({
-        id: 'delete',
-        label: t('browserBookmarks.delete'),
-        icon: 'delete-outline',
-        destructive: true,
-        onPress: () => void requestDeleteFolder(f),
-      });
+      list.push({ id: 'delete', label: t('browserBookmarks.delete'), icon: 'delete-outline', destructive: true, onPress: () => void requestDeleteFolder(f) });
     }
     return list;
   }, [folderCount, moveBy, openRow, options, requestDeleteFolder, rows, searching, t]);
 
-  const menuActions = useMemo(
+  // The design's "Import / Export" row: the two pickers, plus New folder and Clear all (the frame has no row for them).
+  const manageActions = useMemo(
     (): ActionSheetItem[] => [
-      { id: 'new_folder', label: t('browserBookmarks.newFolder'), icon: 'folder-plus-outline', onPress: () => setNameSheet({ mode: 'new' }) },
       {
         id: 'import',
         label: t('browserBookmarks.importBookmarks'),
         icon: 'import',
         onPress: () => {
-          void importBookmarks((done, total) => setImportProgress({ done, total })).finally(() => setImportProgress(null));
+          void importBookmarks((done, all) => setImportProgress({ done, total: all })).finally(() => setImportProgress(null));
         },
       },
       { id: 'export', label: t('browserBookmarks.exportBookmarks'), icon: 'export', onPress: () => void exportBookmarks() },
-      { id: 'check', label: t('browserBookmarks.checkLinks'), icon: 'link-variant', onPress: () => setChecking(true) },
+      { id: 'new_folder', label: t('browserBookmarks.newFolder'), icon: 'folder-plus-outline', onPress: () => setNameSheet({ mode: 'new' }) },
       { id: 'clear_all', label: t('bookmarks.clearAllA11y'), icon: 'delete-sweep-outline', destructive: true, onPress: () => setConfirmClear(true) },
     ],
     [t],
@@ -255,145 +308,207 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
   }, [deletingFolder, path, t]);
 
   const renderRow = useCallback(
-    (row: Row, index: number) => {
-      const [min, max] = row.kind === 'folder' ? [0, folderCount - 1] : [folderCount, rows.length - 1];
-      const move = {
-        canMoveUp: !searching && index > min,
-        canMoveDown: !searching && index < max,
-        onMoveBy: (delta: -1 | 1) => moveBy(row, delta),
-        onOptions: () => setOptions(row),
-      };
-      return row.kind === 'folder' ? (
-        <FolderRow folder={row.folder} onOpen={() => openRow(row)} {...move} />
-      ) : (
-        <BookmarkRow bookmark={row.bookmark} onOpen={() => openRow(row)} {...move} />
+    (item: Item, index: number) => {
+      const divided = index > 0;
+      if (item.kind === 'folder') {
+        return (
+          <FolderRow
+            folder={item.folder}
+            itemCount={counts[item.folder.id] ?? null}
+            height={rowHeight}
+            divided={divided}
+            onOpen={() => openRow(item)}
+            onOptions={() => setOptions(item)}
+          />
+        );
+      }
+      if (item.kind === 'bookmark') {
+        return <BookmarkRow bookmark={item.bookmark} height={rowHeight} divided={divided} onOpen={() => openRow(item)} onOptions={() => setOptions(item)} />;
+      }
+      if (item.key === 'bar') {
+        const toggle = () => updateSetting('bookmarksBar', !bookmarksBar);
+        return (
+          <ListRow
+            leading={<IconTile icon="star" />}
+            title={t('browserBookmarks.bookmarksBar')}
+            subtitle={t('lightBookmarks.bookmarksBarShow')}
+            height={rowHeight}
+            divided={divided}
+            onPress={toggle}
+            accessibilityLabel={t('browserBookmarks.bookmarksBarSetting')}
+            accessibilityHint={t('browserBookmarks.bookmarksBarHint')}
+            trailing={<DsToggle value={bookmarksBar} onValueChange={toggle} accessibilityLabel={t('browserBookmarks.bookmarksBarSetting')} testID="bookmarks-bar-toggle" />}
+            testID="bookmark-manager-bar"
+          />
+        );
+      }
+      if (item.key === 'tags') {
+        return (
+          <ListRow
+            leading={<IconTile icon="tag" />}
+            title={t('lightBookmarks.tagsNotes')}
+            height={rowHeight}
+            divided={divided}
+            onPress={enterTagsMode}
+            testID="bookmark-manager-tags"
+          />
+        );
+      }
+      return (
+        <ListRow
+          leading={<IconTile icon="link" />}
+          title={t('lightBookmarks.brokenLinkCheck')}
+          subtitle={t('lightBookmarks.scanNow')}
+          height={rowHeight}
+          divided={divided}
+          onPress={() => setChecking(true)}
+          testID="bookmark-manager-links"
+        />
       );
     },
-    [folderCount, moveBy, openRow, rows.length, searching],
+    [bookmarksBar, counts, enterTagsMode, openRow, rowHeight, t, updateSetting],
   );
 
-  const crumbs: { id: string | null; name: string }[] = [{ id: null, name: t('browserBookmarks.root') }, ...path.map((f) => ({ id: f.id, name: f.name }))];
+  const range = useCallback(
+    (item: Item, index: number): [number, number] => {
+      if (item.kind === 'folder') return [0, Math.max(0, folderCount - 1)];
+      if (item.kind === 'bookmark') return [folderCount, Math.max(folderCount, rows.length - 1)];
+      return [index, index];
+    },
+    [folderCount, rows.length],
+  );
+
+  const crumbs: { id: string | null; name: string; tags?: boolean }[] = tagsMode
+    ? [
+        { id: null, name: t('browserBookmarks.allTags') },
+        { id: null, name: t('lightBookmarks.tagsNotes'), tags: true },
+      ]
+    : [{ id: null, name: t('browserBookmarks.allTags') }, ...path.map((f) => ({ id: f.id, name: f.name }))];
+  const showCrumbs = tab === 'bookmarks' && (tagsMode || (path.length > 0 && !searching));
+
+  // In the folders view the header is SortableRows' own (it pads the gutters); on the reading list DsScreen pads.
+  const header = (
+    <View style={tab === 'reading' ? { gap: ds.space.stack } : { paddingHorizontal: ds.space.screenX, gap: ds.space.stack, paddingBottom: ds.space.stack }}>
+      <DsHeader
+        title={t('browserBookmarks.title')}
+        subtitle={tp('plurals.itemsOther', total, { count: total })}
+        action={{ icon: 'search', accessibilityLabel: t('lightBookmarks.searchOpenA11y'), onPress: openSearch, testID: 'bookmark-manager-search-button' }}
+        testID="bookmark-manager-header"
+      />
+      {fieldVisible && tab === 'bookmarks' ? (
+        <DsSearchField
+          ref={searchRef}
+          value={query}
+          onChangeText={setQuery}
+          placeholder={t('browserBookmarks.searchPlaceholder')}
+          autoFocus={!tagsMode}
+          returnKeyType="search"
+          actions={[{ icon: 'x', accessibilityLabel: t('lightBookmarks.searchCloseA11y'), onPress: closeSearch, testID: 'bookmark-manager-search-close' }]}
+          testID="bookmark-manager-search"
+        />
+      ) : null}
+      <DsChipRow testID="bookmark-manager-tabs">
+        <DsChip label={t('lightBookmarks.chipFolders')} selected={tab === 'bookmarks'} onPress={() => (tab === 'bookmarks' ? goToFolder(null) : setTab('bookmarks'))} testID="bookmark-chip-folders" />
+        <DsChip label={t('browserBookmarks.tabReading')} selected={tab === 'reading'} onPress={() => setTab('reading')} testID="bookmark-chip-reading" />
+        <DsChip label={t('history.title')} onPress={() => navigation.push(routePaths.history)} testID="bookmark-chip-history" />
+        <DsChip label={t('lightBookmarks.chipNotes')} onPress={() => navigation.push(routePaths.notes)} testID="bookmark-chip-notes" />
+      </DsChipRow>
+      {tagsMode && tags.length > 0 ? (
+        <DsChipRow testID="bookmark-manager-tag-chips">
+          {[{ tag: null as string | null, count: 0 }, ...tags].map((chip) => (
+            <DsChip
+              key={chip.tag ?? '__all'}
+              label={chip.tag ? `#${chip.tag}` : t('browserBookmarks.allTags')}
+              selected={chip.tag === tag}
+              accessibilityLabel={chip.tag ? t('browserBookmarks.tagA11y', { tag: chip.tag }) : t('browserBookmarks.allTags')}
+              onPress={() => setTag(chip.tag)}
+              testID={`bookmark-tag-${chip.tag ?? 'all'}`}
+            />
+          ))}
+        </DsChipRow>
+      ) : null}
+      {showCrumbs ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: rtl.rowDirection, alignItems: 'center' }}>
+          {crumbs.map((crumb, index) => {
+            const last = index === crumbs.length - 1;
+            return (
+              <View key={crumb.tags ? 'tags' : (crumb.id ?? 'root')} style={{ flexDirection: rtl.rowDirection, alignItems: 'center' }}>
+                {index > 0 ? <DsText variant="rowSub">{rtl.isRtl ? ' ‹ ' : ' › '}</DsText> : null}
+                <Pressable
+                  accessibilityRole="link"
+                  accessibilityLabel={t('browserBookmarks.breadcrumbA11y', { name: crumb.name })}
+                  accessibilityState={{ selected: last }}
+                  disabled={last}
+                  onPress={() => goToFolder(crumb.id)}
+                  testID={`bookmark-crumb-${crumb.tags ? 'tags' : (crumb.id ?? 'root')}`}
+                  style={{ minHeight: 32, justifyContent: 'center', paddingHorizontal: 2 }}>
+                  <DsText variant={last ? 'tile' : 'rowSub'} color={last ? 'textPrimary' : 'primary'}>
+                    {crumb.name}
+                  </DsText>
+                </Pressable>
+              </View>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+      {importProgress ? (
+        <DsText variant="body" accessibilityLiveRegion="polite">
+          {t('browserBookmarks.importing', importProgress)}
+        </DsText>
+      ) : null}
+      {tab === 'bookmarks' && items.length === 0 ? (
+        <DsText variant="body" align="center" style={{ paddingVertical: 24 }}>
+          {searching ? t('browserBookmarks.emptySearch') : t('browserBookmarks.empty')}
+        </DsText>
+      ) : null}
+    </View>
+  );
+
+  const footer = !searching ? (
+    <View style={{ paddingHorizontal: ds.space.screenX, paddingTop: ds.space.stack, gap: ds.space.stack }}>
+      <DsSectionLabel>{t('lightBookmarks.manage')}</DsSectionLabel>
+      <DsRowGroup testID="bookmark-manager-manage">
+        <DsRow icon="download" title={t('lightBookmarks.importExport')} onPress={() => setManageOpen(true)} testID="bookmark-manager-import-export" />
+        <DsRow icon="smartphone" title={t('browserBookmarks.addToHome')} onPress={addCurrentPageToHome} testID="bookmark-manager-add-home" />
+        <DsRow icon="tag" title={t('browserBookmarks.bookmarkAllTabs')} onPress={() => void bookmarkAllTabs()} testID="bookmark-manager-bookmark-all" />
+      </DsRowGroup>
+    </View>
+  ) : null;
+
+  const listCard = {
+    height: items.length * rowHeight + 2,
+    marginHorizontal: ds.space.screenX,
+    backgroundColor: theme.colors.card,
+    borderRadius: ds.radius.card,
+    borderWidth: 1,
+    borderColor: theme.colors.cardBorder,
+    overflow: 'hidden' as const,
+  };
 
   return (
-    <SafeAreaScreen testID="bookmark-manager" padded={false} edges={['top', 'left', 'right', 'bottom']} style={{ backgroundColor: theme.colors.background }}>
-      <ScreenHeader
-        title={t('browserBookmarks.title')}
-        showBack
-        onBackPress={() => navigation.back()}
-        actions={
-          tab === 'bookmarks' ? (
-            <IconButton
-              icon="dots-vertical"
-              variant="ghost"
-              color="headerIcon"
-              accessibilityLabel={t('browserBookmarks.menu')}
-              onPress={() => setMenuOpen(true)}
-              testID="bookmark-manager-menu"
-            />
-          ) : null
-        }
-      />
-      <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
-        <SegmentedControl
-          options={[
-            { value: 'bookmarks', label: t('browserBookmarks.tabBookmarks') },
-            { value: 'reading', label: t('browserBookmarks.tabReading') },
-          ]}
-          value={tab}
-          onChange={setTab}
-          testID="bookmark-manager-tabs"
-        />
-      </View>
+    <DsScreen testID="bookmark-manager" scroll={tab === 'reading'}>
       {tab === 'reading' ? (
-        <ReadingListView
-          // B17 #178: a row with an offline copy opens it read-only (the page online when the copy is gone).
-          onOpen={(uri) => void openReadingListUri(uri, openInBrowser)}
-        />
+        <>
+          {header}
+          <ReadingListView onOpen={(uri) => void openReadingListUri(uri, openInBrowser)} />
+        </>
       ) : (
-        <View style={{ flex: 1 }}>
-          <View style={{ paddingHorizontal: 16, gap: 8 }}>
-            <SearchField
-              value={query}
-              onChangeText={setQuery}
-              placeholder={t('browserBookmarks.searchPlaceholder')}
-              testID="bookmark-manager-search"
-            />
-            {tags.length > 0 ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, flexDirection: rtl.rowDirection }}>
-                {[{ tag: null as string | null, count: 0 }, ...tags].map((chip) => {
-                  const selected = chip.tag === tag;
-                  const label = chip.tag ?? t('browserBookmarks.allTags');
-                  return (
-                    <Pressable
-                      key={chip.tag ?? '__all'}
-                      accessibilityRole="button"
-                      accessibilityState={{ selected }}
-                      accessibilityLabel={chip.tag ? t('browserBookmarks.tagA11y', { tag: chip.tag }) : label}
-                      onPress={() => setTag(chip.tag)}
-                      testID={`bookmark-tag-${chip.tag ?? 'all'}`}
-                      style={{
-                        minHeight: 48,
-                        justifyContent: 'center',
-                        paddingHorizontal: 14,
-                        borderRadius: 24,
-                        borderWidth: 1,
-                        borderColor: selected ? theme.colors.primary : theme.colors.border,
-                        backgroundColor: selected ? theme.colors.primary : 'transparent',
-                      }}>
-                      <Text variant="label" color={selected ? 'textOnPrimary' : 'textPrimary'}>
-                        {chip.tag ? `#${label}` : label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            ) : null}
-            {!searching ? (
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: rtl.rowDirection, alignItems: 'center' }}>
-                {crumbs.map((crumb, index) => (
-                  <View key={crumb.id ?? 'root'} style={{ flexDirection: rtl.rowDirection, alignItems: 'center' }}>
-                    {index > 0 ? <Text color="textSecondary">{rtl.isRtl ? ' ‹ ' : ' › '}</Text> : null}
-                    <Pressable
-                      accessibilityRole="link"
-                      accessibilityLabel={t('browserBookmarks.breadcrumbA11y', { name: crumb.name })}
-                      accessibilityState={{ selected: index === crumbs.length - 1 }}
-                      onPress={() => setFolderId(crumb.id)}
-                      testID={`bookmark-crumb-${crumb.id ?? 'root'}`}
-                      style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: 4 }}>
-                      <Text variant="label" color={index === crumbs.length - 1 ? 'textPrimary' : 'primary'}>
-                        {crumb.name}
-                      </Text>
-                    </Pressable>
-                  </View>
-                ))}
-              </ScrollView>
-            ) : null}
-            {importProgress ? (
-              <Text variant="caption" accessibilityLiveRegion="polite">
-                {t('browserBookmarks.importing', importProgress)}
-              </Text>
-            ) : null}
-          </View>
-          {rows.length === 0 ? (
-            <Text variant="body" color="textSecondary" style={{ padding: 24, textAlign: 'center' }}>
-              {searching ? t('browserBookmarks.emptySearch') : t('browserBookmarks.empty')}
-            </Text>
-          ) : (
-            <SortableRows
-              items={rows}
-              rowHeight={rowHeight}
-              dragEnabled={!searching}
-              range={(row) => (row.kind === 'folder' ? [0, Math.max(0, folderCount - 1)] : [folderCount, rows.length - 1])}
-              renderRow={renderRow}
-              onMove={moveTo}
-              onHold={(id) => setOptions(rows.find((r) => r.id === id) ?? null)}
-              testID="bookmark-manager-list"
-            />
-          )}
-        </View>
+        <SortableRows
+          items={items}
+          rowHeight={rowHeight}
+          dragEnabled={!searching}
+          range={range}
+          renderRow={renderRow}
+          onMove={moveTo}
+          onHold={(id) => setOptions(rows.find((r) => r.id === id) ?? null)}
+          header={header}
+          footer={footer}
+          listStyle={items.length === 0 ? { height: 0 } : listCard}
+          testID="bookmark-manager-list"
+        />
       )}
 
-      <ActionSheetModal visible={menuOpen} actions={menuActions} title={t('browserBookmarks.menu')} onClose={() => setMenuOpen(false)} />
+      <ActionSheetModal visible={manageOpen} actions={manageActions} title={t('lightBookmarks.importExport')} onClose={() => setManageOpen(false)} />
       <ActionSheetModal
         visible={options != null}
         actions={optionActions}
@@ -457,6 +572,6 @@ export const BookmarkManagerScreen = memo(function BookmarkManagerScreen() {
         onCancel={() => setConfirmClear(false)}
       />
       <BookmarkEditHost />
-    </SafeAreaScreen>
+    </DsScreen>
   );
 });

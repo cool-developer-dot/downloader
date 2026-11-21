@@ -3,6 +3,11 @@ import { browserSelectionUr } from './catalogs/browserSelection.ur';
 import { browserHistoryUr } from './catalogs/browserHistory.ur';
 import { browserStartupUr } from './catalogs/browserStartup.ur';
 import { browserFindUr } from './catalogs/browserFind.ur';
+import { downloadTuningUr } from './catalogs/downloadTuning.ur';
+import { bulkAddUr } from './catalogs/bulkAdd.ur';
+import { watchedLinksUr } from './catalogs/watchedLinks.ur';
+import { siteGrabberUr } from './catalogs/siteGrabber.ur';
+import { cloudUr } from './catalogs/cloud.ur';
 import { browserTabSoundUr } from './catalogs/browserTabSound.ur';
 import { browserSitePermissionsUr } from './catalogs/browserSitePermissions.ur';
 import { browserBookmarksUr } from './catalogs/browserBookmarks.ur';
@@ -17,16 +22,53 @@ import { browserAnnotateUr } from './catalogs/browserAnnotate.ur';
 import { browserUrduUr } from './catalogs/browserUrdu.ur';
 import { browserCaptureUr } from './catalogs/browserCapture.ur';
 import { browserTabGroupsUr } from './catalogs/browserTabGroups.ur';
+import { downloadSourcesUr } from './catalogs/downloadSources.ur';
 import { browserProfilesUr } from './catalogs/browserProfiles.ur';
+import { remoteControlUr } from './catalogs/remoteControl.ur';
 import { browserPrivacyUr } from './catalogs/browserPrivacy.ur';
 import { browserAddressUr } from './catalogs/browserAddress.ur';
 import { browserSettingsUr } from './catalogs/browserSettings.ur';
 import { browserTabsUr } from './catalogs/browserTabs.ur';
+import { lightHomeUr } from './catalogs/lightHome.ur';
+import { lightSearchUr } from './catalogs/lightSearch.ur';
+import { lightUtilitiesUr } from './catalogs/lightUtilities.ur';
+import { lightTabsUr } from './catalogs/lightTabs.ur';
+import { lightPageToolsUr } from './catalogs/lightPageTools.ur';
+import { lightDisplayUr } from './catalogs/lightDisplay.ur';
+import { lightFocusUr } from './catalogs/lightFocus.ur';
+import { lightBookmarksUr } from './catalogs/lightBookmarks.ur';
+import { lightHistoryUr } from './catalogs/lightHistory.ur';
+import { lightPrivacyUr } from './catalogs/lightPrivacy.ur';
+import { lightIncognitoUr } from './catalogs/lightIncognito.ur';
+import { lightPasswordsUr } from './catalogs/lightPasswords.ur';
+import { lightDeveloperUr } from './catalogs/lightDeveloper.ur';
+import { lightBrowserSettingsUr } from './catalogs/lightBrowserSettings.ur';
+import { lightDownloadsUr } from './catalogs/lightDownloads.ur';
+import { lightAddDownloadUr } from './catalogs/lightAddDownload.ur';
+import { lightVideoSheetUr } from './catalogs/lightVideoSheet.ur';
+import { lightPlaylistUr } from './catalogs/lightPlaylist.ur';
+import { lightDetailsUr } from './catalogs/lightDetails.ur';
+import { lightQueuesUr } from './catalogs/lightQueues.ur';
+import { lightTorrentUr } from './catalogs/lightTorrent.ur';
+import { lightStatisticsUr } from './catalogs/lightStatistics.ur';
+import { lightDownloadSettingsUr } from './catalogs/lightDownloadSettings.ur';
+import { lightAlertsUr } from './catalogs/lightAlerts.ur';
+import { lightLiveConvertUr } from './catalogs/lightLiveConvert.ur';
+import { lightOrganizeUr } from './catalogs/lightOrganize.ur';
+import { lightLinkGrabberUr } from './catalogs/lightLinkGrabber.ur';
+import { lightNetworkUr } from './catalogs/lightNetwork.ur';
+import { lightFileActionsUr } from './catalogs/lightFileActions.ur';
+import { lightFailedUr } from './catalogs/lightFailed.ur';
+import { lightNotificationsUr } from './catalogs/lightNotifications.ur';
 import { detectionUr } from './catalogs/detection.ur';
 import { shellUr } from './catalogs/shell.ur';
 import { videoPlayerUr } from './catalogs/videoPlayer.ur';
 import type { CatalogStrings } from './types';
 import type { en } from './en';
+import { fileSafetyUr } from './catalogs/fileSafety.ur';
+import { sourceCheckUr } from './catalogs/sourceCheck.ur';
+import { archiveImportUr } from './catalogs/archiveImport.ur';
+import { settingsViewUr } from './catalogs/settingsView.ur';
 
 export const ur: CatalogStrings<typeof en> = {
   common: {
@@ -55,6 +97,7 @@ export const ur: CatalogStrings<typeof en> = {
     reset: 'ری سیٹ',
     dismiss: 'بند کریں',
     comingSoon: 'جلد آ رہا ہے',
+    notAvailableYet: 'ابھی دستیاب نہیں',
     on: 'آن',
     off: 'آف',
     default: 'ڈیفالٹ',
@@ -84,6 +127,8 @@ export const ur: CatalogStrings<typeof en> = {
     downloadsTab: 'ڈاؤن لوڈز ٹیب',
     library: 'پلیئر',
     libraryTab: 'پلیئر ٹیب',
+    files: 'فائلیں',
+    filesTab: 'فائلیں ٹیب',
     settings: 'سیٹنگز',
     settingsTab: 'سیٹنگز ٹیب',
     about: 'تعارف',
@@ -1051,6 +1096,8 @@ export const ur: CatalogStrings<typeof en> = {
     byTypeHint: 'ویڈیوز اور آڈیو، Videos اور Audio فولڈرز میں جاتے ہیں',
     bySite: 'ہر سائٹ کا الگ فولڈر',
     bySiteHint: 'ہر سائٹ کے لیے ایک فولڈر، جیسے Instagram',
+    wifiOnly: 'صرف Wi-Fi پر',
+    wifiOnlyHint: 'کاپیاں Wi-Fi کا انتظار کرتی ہیں۔ نئی ویڈیوز خود اپ لوڈ کرنے کے لیے OneDrive، Dropbox یا Nextcloud کا کوئی فولڈر چنیں۔',
     keepNote: 'کاپیاں الگ فائلیں ہیں: VidoraX میں ویڈیو حذف کرنے سے اس کی کاپی کبھی حذف نہیں ہوتی۔',
     accessLost: 'VidoraX اب منتخب فولڈر میں محفوظ نہیں کر سکتا، اس لیے «ایک کاپی یہاں بھی محفوظ کریں» بند کر دیا گیا۔ ڈاؤن لوڈ سیٹنگز میں فولڈر دوبارہ منتخب کریں۔',
     accessLostTitle: 'فولڈر دستیاب نہیں',
@@ -1687,14 +1734,20 @@ export const ur: CatalogStrings<typeof en> = {
       'ترجیحات نہیں ملیں۔ نیچے کھینچ کر تازہ کریں یا دوبارہ کوشش کریں۔',
     signOut: 'سائن آؤٹ',
     theme: 'تھیم',
-    themeHint: 'سسٹم، ریڈ، یا ڈارک',
+    themeHint: 'لائٹ، ڈارک، ریڈ، کریم، مڈنائٹ یا بلش',
     themeA11y: 'تھیم کی ترجیح',
-    themeLight: 'سسٹم',
-    themeLogo: 'ریڈ',
+    themeLight: 'لائٹ',
     themeDark: 'ڈارک',
-    themeLightA11y: 'سسٹم تھیم',
-    themeLogoA11y: 'ریڈ تھیم',
+    themeRed: 'ریڈ',
+    themeCream: 'کریم',
+    themeMidnight: 'مڈنائٹ',
+    themeBlush: 'بلش',
+    themeLightA11y: 'لائٹ تھیم',
     themeDarkA11y: 'ڈارک تھیم',
+    themeRedA11y: 'ریڈ تھیم',
+    themeCreamA11y: 'کریم تھیم',
+    themeMidnightA11y: 'مڈنائٹ تھیم',
+    themeBlushA11y: 'بلش تھیم',
     language: 'زبان',
     languageHint: 'VidoraX کی ڈسپلے زبان',
     languageSheetTitle: 'زبان منتخب کریں',
@@ -1787,8 +1840,8 @@ export const ur: CatalogStrings<typeof en> = {
     onlyWhileCharging: 'صرف چارجنگ کے دوران',
     onlyWhileChargingHint: 'ڈاؤن لوڈ صرف اسی وقت چلتے ہیں جب فون چارج ہو رہا ہو۔',
     advancedSection: 'اعلیٰ ترتیبات',
-    advancedDescription: 'وہ سہولیات جن کی ابھی جانچ ہو رہی ہے۔',
-    liveRecording: 'لائیو ریکارڈنگ (بیٹا)',
+    advancedDescription: 'لائیو سٹریم کی ریکارڈنگ اور ڈاؤن لوڈ کی باریک ترتیبات۔',
+    liveRecording: 'لائیو ریکارڈنگ',
     liveRecordingHint: 'لائیو سٹریمز پر ڈاؤن لوڈ کی جگہ ریکارڈ دکھایا جاتا ہے۔ ریکارڈنگ اس وقت تک چلتی ہے جب تک آپ اسے بند نہ کریں یا سٹریم ختم نہ ہو جائے۔',
     liveRecordingMax: 'زیادہ سے زیادہ دورانیہ',
     liveRecordingMaxHint: 'ریکارڈنگ اتنی دیر بعد، یا سٹوریج کم ہونے پر، خود بند ہو جاتی ہے۔',
@@ -2040,6 +2093,10 @@ export const ur: CatalogStrings<typeof en> = {
     offlineHint: 'اس ڈیوائس پر محفوظ واچ پیش رفت دکھائی جا رہی ہے۔',
     watchProgressA11y: 'واچ پیش رفت',
   },
+  voiceSearch: {
+    unavailable: 'اس فون میں وائس اِن پُٹ نہیں۔ آواز سے تلاش کے لیے گوگل وائس ٹائپنگ انسٹال یا آن کریں۔',
+    commandsHint: 'کوئی سائٹ یا تلاش بولیں',
+  },
   queueBackup: {
     section: 'قطار کا بیک اپ',
     sectionDescription: 'نامکمل ڈاؤن لوڈز فائل میں محفوظ کریں اور بعد میں واپس لائیں',
@@ -2049,6 +2106,9 @@ export const ur: CatalogStrings<typeof en> = {
     exportTitle: 'VidoraX ڈاؤن لوڈ قطار',
     exportSaved: 'قطار محفوظ ہو گئی',
     exportShared: 'قطار شیئر ہو گئی',
+    send: 'دوسرے فون پر بھیجیں',
+    sendHint: 'قطار Quick Share، بلوٹوتھ یا کسی چیٹ سے بھیجیں۔ دوسرے فون پر اسے "قطار امپورٹ کریں" سے کھولیں۔',
+    sendShared: 'قطار بھیجنے کے لیے تیار',
     import: 'قطار امپورٹ کریں',
     importHint: 'محفوظ کی گئی قطار بحال کریں۔ ہر ویڈیو کا صفحہ براؤزر میں کھلتا ہے تاکہ آپ اسے دوبارہ ڈاؤن لوڈ کر سکیں۔',
     restoredTitle: 'بحال شدہ صفحات ({count})',
@@ -2393,8 +2453,8 @@ export const ur: CatalogStrings<typeof en> = {
       themeSettings: {
         question: 'تھیم کیسے تبدیل کروں؟',
         answer:
-          'سیٹنگز → ظاہری شکل → تھیم کھولیں اور سسٹم، ریڈ یا ڈارک منتخب کریں۔ ریڈ، یعنی VidoraX کے اپنے رنگ، پہلے سے منتخب ہوتا ہے؛ سسٹم سادہ روشن انداز ہے اور ڈارک گہرا۔ تھیم مدد اور سپورٹ سمیت پوری ایپ پر لاگو ہوتا ہے۔',
-        keywords: 'تھیم، ریڈ، ڈارک، لائٹ، ظاہری شکل، سسٹم',
+          'سیٹنگز → ظاہری شکل → تھیم کھولیں اور لائٹ، ڈارک، ریڈ، کریم، مڈنائٹ یا بلش منتخب کریں۔ لائٹ پہلے سے منتخب ہوتا ہے؛ ڈارک اور مڈنائٹ گہرے انداز ہیں، ریڈ ہیڈر اور نیچے کی بار پر VidoraX کا سرخ رنگ لاتا ہے، کریم اور بلش گرم روشن انداز ہیں۔ تھیم مدد اور سپورٹ سمیت پوری ایپ پر لاگو ہوتا ہے۔',
+        keywords: 'تھیم، لائٹ، ڈارک، ریڈ، کریم، مڈنائٹ، بلش، ظاہری شکل',
       },
       storageSettings: {
         question: 'اسٹوریج کیسے منظم کروں؟',
@@ -2500,6 +2560,7 @@ export const ur: CatalogStrings<typeof en> = {
         p1: 'VidoraX کو VidoraX اکاؤنٹ کی ضرورت نہیں، اور یہ عام طور پر ڈاؤن لوڈز، فولڈرز، فیوریٹس، ہسٹری، بُک مارکس، پلے بیک، یا سیٹنگز کا کلاؤڈ سنک نہیں کرتا۔ وہ ریکارڈز اس ڈیوائس پر رہتے ہیں۔ عام استعمال کے لیے VidoraX کو اپنے API سرور کی ضرورت نہیں۔',
         p2: 'جب آپ کوئی ویب سائٹ براؤز کرتے ہیں، میڈیا لنک کا تجزیہ کرتے ہیں، یا فائل ڈاؤن لوڈ کرتے ہیں تو VidoraX اس تیسری پارٹی ماخذ کو عام نیٹ ورک درخواستیں بھیجتا ہے۔ پلے بیک پیش رفت مقامی طور پر محفوظ ہوتی ہے اور VidoraX اکاؤنٹ پر اپلوڈ نہیں ہوتی۔',
         p3: 'ڈاؤن لوڈ شدہ میڈیا فائلیں خود آپ کی ڈیوائس پر رہتی ہیں جب تک آپ انہیں اپنے ڈیوائس ٹولز سے شیئر یا منتقل نہ کریں۔ اگر آپ ای میل سے سپورٹ سے رابطہ کریں تو اس پیغام کا مواد صرف اس لیے بھیجا جاتا ہے کہ آپ نے بھیجنے کا انتخاب کیا۔',
+        p4: 'کچھ فیچرز آپ کے لیے عوامی ویب صفحات پڑھتے ہیں: نظر میں رکھے لنک اور فیڈز تقریباً ہر گھنٹے چیک ہوتے ہیں، "سائٹ محفوظ کریں" آپ کی چنی سائٹ کے زیادہ سے زیادہ 50 صفحات پڑھتا ہے، اور "تبصرے محفوظ کریں" ویڈیو کے صفحے کے دیے گئے تبصرے پڑھتا ہے۔ یہ درخواستیں صرف آپ کے چنے ہوئے پتوں پر جاتی ہیں، آپ کی کوکیز یا سائن اِن کے بغیر، اور جو ملتا ہے وہ اسی ڈیوائس پر رہتا ہے۔ کاپی محفوظ کرنا، فولڈر سے امپورٹ اور محفوظ کرنے کی جگہ آپ کے چنے فولڈرز اور کلاؤڈ ایپس استعمال کرتے ہیں: VidoraX فائلیں صرف وہیں لکھتا ہے، اور کوئی بھی اپ لوڈ وہ ایپ اپنی پالیسی کے تحت کرتی ہے۔',
       },
       thirdParties: {
         heading: '۵۔ تیسری پارٹی اور سروس فراہم کنندگان',
@@ -2820,10 +2881,65 @@ export const ur: CatalogStrings<typeof en> = {
   detection: detectionUr,
   videoPlayer: videoPlayerUr,
   browserTabs: browserTabsUr,
+  lightHome: lightHomeUr,
+  lightSearch: lightSearchUr,
+  lightUtilities: lightUtilitiesUr,
+  lightTabs: lightTabsUr,
+  lightPageTools: lightPageToolsUr,
+  lightDisplay: lightDisplayUr,
+  lightFocus: lightFocusUr,
+  lightBookmarks: lightBookmarksUr,
+  lightHistory: lightHistoryUr,
+  lightPrivacy: lightPrivacyUr,
+  lightIncognito: lightIncognitoUr,
+  lightPasswords: lightPasswordsUr,
+  lightDeveloper: lightDeveloperUr,
+  lightBrowserSettings: lightBrowserSettingsUr,
+  lightDownloads: lightDownloadsUr,
+  lightAddDownload: lightAddDownloadUr,
+  lightVideoSheet: lightVideoSheetUr,
+  lightPlaylist: lightPlaylistUr,
+  lightDetails: lightDetailsUr,
+  lightQueues: lightQueuesUr,
+  lightTorrent: lightTorrentUr,
+  lightStatistics: lightStatisticsUr,
+  lightDownloadSettings: lightDownloadSettingsUr,
+  lightAlerts: lightAlertsUr,
+  lightLiveConvert: lightLiveConvertUr,
+  lightOrganize: lightOrganizeUr,
+  lightLinkGrabber: lightLinkGrabberUr,
+  lightNetwork: lightNetworkUr,
+  lightFileActions: lightFileActionsUr,
+  lightFailed: lightFailedUr,
+  lightNotifications: lightNotificationsUr,
+  filesTab: {
+    title: 'فائلیں',
+    subtitle: 'اندرونی اسٹوریج',
+    searchA11y: 'فائلیں تلاش کریں',
+    internal: 'اندرونی',
+    sdCard: 'ایس ڈی کارڈ',
+    foldersAdded: 'میرے شامل کردہ فولڈر',
+    videos: 'ویڈیوز',
+    audio: 'آڈیو',
+    images: 'تصاویر',
+    docs: 'دستاویزات',
+    archives: 'آرکائیوز',
+    apks: 'اے پی کے',
+    privateFolder: 'نجی فولڈر',
+    privateFolderHint: 'پن یا فنگر پرنٹ',
+    folders: 'فولڈر',
+    movies: 'Movies',
+    moviesPath: 'Internal/Movies',
+    download: 'Download',
+    downloadPath: 'Internal/Download',
+    vidoraxPath: 'Movies/VidoraX',
+    notAvailableYet: 'ابھی دستیاب نہیں',
+  },
   browserSettings: browserSettingsUr,
   browserAddress: browserAddressUr,
   browserNav: browserNavUr,
   browserProfiles: browserProfilesUr,
+  remoteControl: remoteControlUr,
   browserPrivacy: browserPrivacyUr,
   // B8 (Hamza)
   browserSelection: browserSelectionUr,
@@ -2833,6 +2949,11 @@ export const ur: CatalogStrings<typeof en> = {
   browserStartup: browserStartupUr,
   // B7 (Hamza)
   browserFind: browserFindUr,
+  downloadTuning: downloadTuningUr,
+  bulkAdd: bulkAddUr,
+  watchedLinks: watchedLinksUr,
+  siteGrabber: siteGrabberUr,
+  cloud: cloudUr,
   // B3 (Hamza)
   browserTabSound: browserTabSoundUr,
   // B13 (Hamza)
@@ -2853,4 +2974,11 @@ export const ur: CatalogStrings<typeof en> = {
   browserUrdu: browserUrduUr,
   browserCapture: browserCaptureUr,
   browserTabGroups: browserTabGroupsUr,
+  // P2 Sources: FTP, mirrors, Wi-Fi + mobile data
+  downloadSources: downloadSourcesUr,
+  // P8 (safety + modes)
+  fileSafety: fileSafetyUr,
+  sourceCheck: sourceCheckUr,
+  archiveImport: archiveImportUr,
+  settingsView: settingsViewUr,
 };

@@ -1,39 +1,21 @@
 import { Tabs } from 'expo-router';
 import { useMemo } from 'react';
-import { type ColorValue } from 'react-native';
 
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
-import { TabBarIcon } from '@/navigation/components';
-import { createTabBarScreenOptions, createTabBarStyle, tabItems } from '@/navigation/config';
+import { createTabBarScreenOptions, createTabBarStyle } from '@/navigation/config';
 import { tabRouteNames } from '@/navigation/constants';
 import { useTabExitBackHandler } from '@/navigation/hooks';
 import { PasteLinkRequestHandler } from '@/screens/paste-link/PasteLinkRequestHandler';
 import { QualitySelectionProvider } from '@/screens/downloads/quality';
 import { renderMiniPlayerTabBar } from '@/screens/player/mini';
-import { tourTabBarButton } from '@/tour';
 
-/** The tabs the first-launch tour points at (`src/tour`): the real buttons, measured where they are. */
-const tourTabButtons = {
-  downloads: tourTabBarButton('downloadsTab'),
-  library: tourTabBarButton('playerTab'),
-  settings: tourTabBarButton('settingsTab'),
-};
-
-function createTabIcon(icon: string, iconFocused: string) {
-  return function TabIcon({
-    color,
-    size,
-    focused,
-  }: {
-    color: ColorValue;
-    size: number;
-    focused: boolean;
-  }) {
-    return <TabBarIcon name={focused ? iconFocused : icon} color={color} size={size} />;
-  };
-}
-
+/**
+ * The five tabs of the design: Browser · Downloads · Player · Files · Settings. The bar itself is `DsTabBar` (drawn
+ * by the mini-player dock), which also registers the tour targets. Browser and Downloads are nested stacks, so their
+ * own screens (tabs, bookmarks, add download, details…) open inside the tab, with the bar still showing, as in the
+ * design.
+ */
 export default function TabsLayout() {
   const theme = useTheme();
   const { t, language } = useTranslation();
@@ -48,16 +30,6 @@ export default function TabsLayout() {
     [theme, language],
   );
 
-  const tabIcons = useMemo(
-    () => ({
-      browser: createTabIcon(tabItems.browser.icon, tabItems.browser.iconFocused),
-      downloads: createTabIcon(tabItems.downloads.icon, tabItems.downloads.iconFocused),
-      library: createTabIcon(tabItems.library.icon, tabItems.library.iconFocused),
-      settings: createTabIcon(tabItems.settings.icon, tabItems.settings.iconFocused),
-    }),
-    [],
-  );
-
   return (
     <QualitySelectionProvider>
       {/* The app shortcut / widget "Paste link" runs the Paste link button's own action (H7). */}
@@ -67,53 +39,13 @@ export default function TabsLayout() {
         screenOptions={screenOptions}
         // The mini player docks on top of the tab bar (above the tabs, never over a screen's content).
         tabBar={renderMiniPlayerTabBar}>
-        {/* Visible tabs — Browser first (default landing). */}
-        <Tabs.Screen
-          name={tabRouteNames.browser}
-          options={{
-            title: t('nav.browser'),
-            tabBarLabel: t('nav.browser'),
-            tabBarAccessibilityLabel: t('nav.browserTab'),
-            tabBarIcon: tabIcons.browser,
-          }}
-        />
-        <Tabs.Screen
-          name={tabRouteNames.downloads}
-          options={{
-            title: t('nav.downloads'),
-            tabBarLabel: t('nav.downloads'),
-            tabBarAccessibilityLabel: t('nav.downloadsTab'),
-            tabBarIcon: tabIcons.downloads,
-            tabBarButton: tourTabButtons.downloads,
-          }}
-        />
-        <Tabs.Screen
-          name={tabRouteNames.library}
-          options={{
-            title: t('nav.library'),
-            tabBarLabel: t('nav.library'),
-            tabBarAccessibilityLabel: t('nav.libraryTab'),
-            tabBarIcon: tabIcons.library,
-            tabBarButton: tourTabButtons.library,
-          }}
-        />
-        <Tabs.Screen
-          name={tabRouteNames.settings}
-          options={{
-            title: t('nav.settings'),
-            tabBarLabel: t('nav.settings'),
-            tabBarAccessibilityLabel: t('nav.settingsTab'),
-            tabBarIcon: tabIcons.settings,
-            tabBarButton: tourTabButtons.settings,
-          }}
-        />
+        <Tabs.Screen name={tabRouteNames.browser} options={{ title: t('nav.browser') }} />
+        <Tabs.Screen name={tabRouteNames.downloads} options={{ title: t('nav.downloads') }} />
+        <Tabs.Screen name={tabRouteNames.library} options={{ title: t('nav.library') }} />
+        <Tabs.Screen name={tabRouteNames.files} options={{ title: t('nav.files') }} />
+        <Tabs.Screen name={tabRouteNames.settings} options={{ title: t('nav.settings') }} />
         {/* Legacy Home route — hidden; index.tsx redirects to Browser. */}
-        <Tabs.Screen
-          name={tabRouteNames.home}
-          options={{
-            href: null,
-          }}
-        />
+        <Tabs.Screen name={tabRouteNames.home} options={{ href: null }} />
       </Tabs>
     </QualitySelectionProvider>
   );

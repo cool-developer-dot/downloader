@@ -220,6 +220,7 @@ export async function enqueueVerifiedBrowserVariant(
               requestContext: gateInput.requestContext,
               verifiedAtMs: gateInput.verifiedAtMs,
               transport: 'PROGRESSIVE',
+              transportStreamFile: String(sourceOption.container).toLowerCase() === 'ts',
             }),
     },
   );

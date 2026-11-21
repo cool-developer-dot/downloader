@@ -85,7 +85,7 @@ export function directCandidateMedia(
   extraction: PageMediaExtraction | null,
 ): DetectedMedia | null {
   const stream = candidate.kind === 'hls' ? 'HLS' : candidate.kind === 'dash' ? 'DASH' : undefined;
-  return extractDetectedMedia({
+  const media = extractDetectedMedia({
     url: candidate.url,
     pageUrl,
     mimeType:
@@ -103,6 +103,8 @@ export function directCandidateMedia(
     ...(stream ? { streamType: stream, streamProtocol: stream === 'HLS' ? 'hls' : 'dash' } : {}),
     confidenceHint: candidate.evidence === 'declared' || candidate.evidence === 'direct' ? 0.9 : 0.8,
   });
+  // The pasted or shared link is the file itself: exactly what the user asked for, as a WebView download is.
+  return media && candidate.evidence === 'direct' ? { ...media, userRequested: true } : media;
 }
 
 function outcomeOfReasons(reasons: string[]): { outcome: Exclude<DirectAnalysisStatus, 'SUPPORTED' | 'STALE'>; reason: string } {

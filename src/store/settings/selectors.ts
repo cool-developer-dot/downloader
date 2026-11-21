@@ -13,6 +13,8 @@ export const selectBackgroundPlayback = (state: SettingsStore) => state.backgrou
 export const selectDownloadSpeedLimit = (state: SettingsStore) => state.downloadSpeedLimit;
 export const selectTapToToggle = (state: SettingsStore) => state.tapToToggle;
 export const selectAutoResume = (state: SettingsStore) => state.autoResume;
+/** #446 "use Wi-Fi and mobile data together". */
+export const selectMultiNetwork = (state: SettingsStore) => state.multiNetwork;
 export const selectDebugLogs = (state: SettingsStore) => state.debugLogs;
 export const selectNotifications = (state: SettingsStore) => state.notifications;
 export const selectNotificationSound = (state: SettingsStore) => state.notificationSound;
@@ -30,3 +32,4 @@ export const selectLiveRecording = (state: SettingsStore) => state.liveRecording
 export const selectLiveRecordingMaxMinutes = (state: SettingsStore) => state.liveRecordingMaxMinutes;
 export const selectDataLimitDailyMb = (state: SettingsStore) => state.dataLimitDailyMb;
 export const selectDataLimitMonthlyMb = (state: SettingsStore) => state.dataLimitMonthlyMb;
+export const selectSettingsView = (state: SettingsStore) => state.settingsView;

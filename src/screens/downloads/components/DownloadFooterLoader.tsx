@@ -1,8 +1,7 @@
 import { memo } from 'react';
-import { ActivityIndicator } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Text } from '@/components/base/Text';
+import { DsText } from '@/design';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 
@@ -27,21 +26,18 @@ export const DownloadFooterLoader = memo(function DownloadFooterLoader({
   }
 
   return (
-    <Box
+    <View
       testID={testID}
-      center
-      py={20}
       accessibilityLiveRegion="polite"
-      accessibilityLabel={
-        loading ? t('downloads.loadingAnnouncement') : t('downloads.endOfList')
-      }>
+      accessibilityLabel={loading ? t('downloads.loadingAnnouncement') : t('downloads.endOfList')}
+      style={{ alignItems: 'center', justifyContent: 'center', paddingVertical: 20 }}>
       {loading ? (
         <ActivityIndicator color={theme.colors.primary} />
       ) : !hasMore ? (
-        <Text variant="caption" color="textSecondary">
+        <DsText variant="rowSub" align="center">
           {t('downloads.endOfList')}
-        </Text>
+        </DsText>
       ) : null}
-    </Box>
+    </View>
   );
 });

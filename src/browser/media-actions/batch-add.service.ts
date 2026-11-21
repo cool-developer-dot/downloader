@@ -5,6 +5,7 @@
  * (`enqueueBrowserMediaDownload` → handoff → the engine's atomic duplicate check). Nothing is published to a tab.
  */
 
+import { sizeAllowed, type LinkRules } from '@/downloads/bulk/link-rules';
 import type { PageFetchRequest } from '@modules/vidorax-media/src/VidoraMedia.types';
 
 import { buildBrowserUserAgent } from '@/browser/constants/user-agent';
@@ -16,6 +17,8 @@ import {
   type BatchOutcome,
 } from '@/browser/services/link-intake';
 import { getV2Engine } from '@/downloads/v2/engine-port';
+import { startFtpDownload, type FtpStartOutcome } from '@/downloads/v2/ftp-download';
+import { ftpLinkWithoutCredentials, isFtpLink } from '@/downloads/v2/sources';
 import { directOfferIdentity } from '@/media-detection/direct-analyzer/direct-offer-policy';
 import {
   defaultDirectVerifierDeps,
@@ -41,11 +44,76 @@ export type BatchLinkResult = {
   downloadId: string | null;
 };
 
-export async function addLinkFromBatch(url: string, signal: AbortSignal): Promise<BatchLinkResult> {
+/** What a bulk source adds to a run: #505 rules (the size rule is checked here, once the source's size is known). */
+export type BatchLinkOptions = {
+  rules?: LinkRules | null;
+  /** The name the source gave the video (a feed item's or a playlist entry's title); it beats a bare file name. */
+  title?: string | null;
+  /** #347: other links to the same file, given on the link's line; saved with the download it starts. */
+  mirrors?: readonly string[];
+};
+
+export async function addLinkFromBatch(url: string, signal: AbortSignal, options: BatchLinkOptions = {}): Promise<BatchLinkResult> {
+  const mirrors = options.mirrors ?? [];
   const verdict = classifyIntakeLink(url);
   if (verdict !== 'ok') {
     return { url, outcome: 'refused', detail: verdict.toUpperCase(), title: null, downloadId: null };
   }
+  // #304: an FTP file goes straight to the engine (its bytes decide), never through a page.
+  if (isFtpLink(url)) {
+    const ftp = await startFtpDownload(getV2Engine(), url);
+    return ftpBatchResult(url, ftp);
+  }
+  const result = await addPageLink(url, signal, options);
+  if (result.downloadId && result.outcome === 'added' && mirrors.length > 0) {
+    await saveMirrors(result.downloadId, mirrors);
+  }
+  return result;
+}
+
+/** #347: mirrors for a download Batch Add just started (the engine checks each before using it). */
+async function saveMirrors(downloadId: string, mirrors: readonly string[]): Promise<void> {
+  const engine = getV2Engine();
+  if (!engine?.setDownloadMirrors) {
+    return;
+  }
+  const valid = mirrors.filter((mirror) => classifyIntakeLink(mirror) === 'ok' && !isFtpLink(mirror));
+  if (valid.length === 0) {
+    return;
+  }
+  try {
+    await engine.setDownloadMirrors(downloadId, valid);
+  } catch {
+    // A download that is not a single file (a stream) has no mirrors; it is still added.
+  }
+}
+
+function ftpBatchResult(url: string, ftp: FtpStartOutcome): BatchLinkResult {
+  const display = ftpLinkWithoutCredentials(url);
+  switch (ftp.kind) {
+    case 'started':
+      return { url: display, outcome: 'added', detail: 'ENQUEUED', title: ftp.title, downloadId: ftp.downloadId };
+    case 'duplicate':
+      return {
+        url: display,
+        outcome: 'duplicate',
+        detail: ftp.already === 'downloading' ? 'ALREADY_DOWNLOADING' : 'ALREADY_DOWNLOADED',
+        title: null,
+        downloadId: ftp.downloadId,
+      };
+    default:
+      return {
+        url: display,
+        outcome: ftp.reason === 'network' ? 'needs-review' : 'refused',
+        detail: `FTP_${ftp.reason.toUpperCase().replace(/-/g, '_')}`,
+        title: null,
+        downloadId: null,
+      };
+  }
+}
+
+async function addPageLink(url: string, signal: AbortSignal, options: BatchLinkOptions): Promise<BatchLinkResult> {
+  const verdict = classifyIntakeLink(url);
   const engine = getV2Engine();
   if (!engine?.fetchPage) {
     return { url, outcome: 'needs-review', detail: 'UNAVAILABLE', title: null, downloadId: null };
@@ -103,9 +171,16 @@ export async function addLinkFromBatch(url: string, signal: AbortSignal): Promis
     };
   }
 
+  // #505: a size rule refuses a video whose size the check found outside it (an unknown size passes).
+  const sizeBytes = Number(result.offer.analysis.fileSize ?? NaN);
+  if (options.rules && !sizeAllowed(Number.isFinite(sizeBytes) ? sizeBytes : null, options.rules)) {
+    return { url, outcome: 'refused', detail: 'SIZE_RULE', title, downloadId: null };
+  }
+
   const pageUrl = result.finalUrl ?? url;
+  const sourceTitle = options.title?.trim().slice(0, 300) || null;
   const enqueue = await enqueueBrowserMediaDownload({
-    analysis: result.offer.analysis,
+    analysis: sourceTitle ? { ...result.offer.analysis, title: sourceTitle } : result.offer.analysis,
     requestContext: result.offer.requestContext,
     fingerprint: result.offer.variantIdentity,
     pageUrl,

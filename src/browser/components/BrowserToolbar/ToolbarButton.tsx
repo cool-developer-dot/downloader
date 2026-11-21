@@ -1,12 +1,11 @@
 import { memo } from 'react';
 
-import { Icon, type IconName } from '@/components/base/Icon';
 import { Pressable } from '@/components/base/Pressable';
+import { DsIcon, ds, type DsIconName } from '@/design';
 import { useTheme } from '@/hooks/use-theme';
-import { icons, spacing } from '@/theme';
 
 export type ToolbarButtonProps = {
-  icon: IconName;
+  icon: DsIconName;
   accessibilityLabel: string;
   onPress: () => void;
   /** B6 #44: Back lists the tab's earlier pages on a long press (and as an accessibility action). */
@@ -17,8 +16,9 @@ export type ToolbarButtonProps = {
 };
 
 /**
- * Browser chrome control: transparent default, semantic nav icon colors,
- * pressed uses bottomNavPressed (not a solid surface square / whole-control fade).
+ * Browser chrome control in the light design: a 44 dp hit area with a Lucide stroke in the text colour (the
+ * switch-off grey when disabled — colour encodes the state, so the control never fades). Pressed = the soft
+ * pressed surface.
  */
 export const ToolbarButton = memo(function ToolbarButton({
   icon,
@@ -55,17 +55,12 @@ export const ToolbarButton = memo(function ToolbarButton({
       style={({ pressed }) => ({
         width: size,
         height: size,
-        borderRadius: spacing[12],
+        borderRadius: ds.radius.button,
         alignItems: 'center',
         justifyContent: 'center',
-        backgroundColor:
-          pressed && !disabled ? theme.colors.bottomNavPressed : 'transparent',
+        backgroundColor: pressed && !disabled ? theme.colors.surfacePressed : 'transparent',
       })}>
-      <Icon
-        name={icon}
-        size={icons.md}
-        color={disabled ? 'bottomNavInactive' : 'bottomNavActive'}
-      />
+      <DsIcon name={icon} size={ds.size.tabIcon + 2} color={disabled ? 'switchOff' : 'textPrimary'} strokeWidth={ds.stroke.tabBar} />
     </Pressable>
   );
 });

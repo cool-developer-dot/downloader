@@ -185,7 +185,7 @@ describe('copier', () => {
     });
     h.copier.enqueue('a');
     await h.copier.idle();
-    assert.deepEqual(h.records.a, { status: 'failed', reason: 'storage', at: 777 });
+    assert.deepEqual(h.records.a, { status: 'failed', reason: 'storage', at: 777, attempts: 1 });
     assert.equal(h.events.includes('failed:a'), true);
     assert.equal(h.copier.enqueue('a'), false);
   });
