@@ -112,6 +112,8 @@ export const routePaths = {
   pdfViewer: '/pdf-viewer',
   /** Videos already on the device, played in VidoraX. */
   deviceVideos: '/device-videos',
+  /** P7 #617 / #618: the user's playlists of local videos (Playlist Download is `downloadsPlaylist`). */
+  playlists: '/playlists',
 } as const;
 
 export type RoutePath = (typeof routePaths)[keyof typeof routePaths];
@@ -127,4 +129,9 @@ export type PlayerRoute = `/player/${string}`;
 /** App-stack path for internal Player handoff. */
 export function playerPath(id: string): PlayerRoute {
   return `/player/${encodeURIComponent(id)}`;
+}
+
+/** P7 #618: app-stack path of one playlist. */
+export function playlistPath(id: string): `/playlists/${string}` {
+  return `/playlists/${encodeURIComponent(id)}`;
 }

@@ -34,6 +34,9 @@ export const appStackRouteNames = {
   appLockRotateRecovery: 'app-lock-rotate-recovery',
   storage: 'storage',
   player: 'player/[id]',
+  // P7 (Hamza): the user's playlists and one playlist.
+  playlists: 'playlists/index',
+  playlist: 'playlists/[id]',
 } as const;
 
 /** @deprecated Use tabRouteNames or appStackRouteNames */

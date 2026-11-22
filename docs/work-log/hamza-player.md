@@ -597,3 +597,212 @@ Checklist #733 says only "to move quickly through episodes", so the timing is mi
    before the end and counts down; Play now; Cancel (the video stops at its end); pause and seek back (it hides).
    No card for "Holiday.mp4" → "Work.mp4". Check it's clear of the controls on the card and in full screen.
 8. Auto Play Next in picture-in-picture and with background play on and the screen off: the next video plays.
+
+## P7 — Playlists (#617, #618, #629)
+
+Built on `hamza/player` after P5 (`ff07f45`), on the local branch `wip/P7-playlists`, to be cherry-picked on top of P6
+(`hamza/P6-queue`). **Its PR depends on P6:** a playlist plays through the play queue P6 extends, and P6 switches
+Shuffle on (see Playing). **P7 bumps the SQLite schema once, 8 → 9** (see Schema).
+
+### What the user sees
+
+| # | Feature | Where | How (evidence) |
+| --- | --- | --- | --- |
+| #617 | Create Playlist | Library: long-press a video → **Add to playlist** or **Select**. Library header → Playlists → **New playlist**. Player: ⋮ → Tools → **Add to playlist** | **The add sheet** lists the playlists, most recently changed first, each with its number of videos and a ✓ when it already has the video. It also offers **New playlist**: a name dialog, suggested "Playlist 1", up to 80 characters, Urdu allowed. The new playlist is made with the videos already in it. **Select** starts a selection mode with that video. Tapping a video selects it (a ✓ mark over the thumbnail; TalkBack says "selected"). A bar shows "3 selected", **Add to playlist** and **Cancel**, and Back leaves the mode. **Adding** puts the videos at the end, in the order the Library shows them. A video already in the playlist stays where it is, and the message says so ("2 added to “Mix”, 1 already there"). **The Player** adds the video playing: a library video or a video on this phone, never a file another app opened or a stream. Evidence: `src/screens/playlists/components/AddToPlaylistSheet.tsx`, `PlaylistNameModal.tsx`, `src/screens/library/hooks/useLibraryPlaylists.ts`, `components/LibrarySelectionBar.tsx`, `LibrarySelectMark.tsx`, `src/player/options/p7-playlists.ts`, `src/screens/player/page/use-player-playlist-add.ts`, `src/storage/repositories/playlists.queries.ts` (`addPlaylistItems`). |
+| #618 | Edit Playlist | Library header → Playlists (the icon next to "Videos on this device") → a playlist | **The Playlists screen** lists each playlist's name and number of videos. **A playlist:** **Play** and **Shuffle**; tap a video to play from it. ↑ / ↓ move a video one place (the first video's ↑ and the last's ↓ are faded and do nothing), and ✕ takes it out of the playlist. ⋮ has **Rename**, **Export M3U8** and **Delete playlist**. Delete asks first: "Only the playlist is deleted. Its videos stay in your library and on your phone." **Removing or deleting never touches a video file:** the queries delete playlist rows only. **A missing video** is greyed with "Missing: the video was deleted or moved", and playing skips it. Evidence: `src/screens/playlists/PlaylistsScreen.tsx`, `PlaylistScreen.tsx`, `components/PlaylistEntryRow.tsx`, `src/playlists/use-playlists.ts`, `playlist-entries.ts`, `play-plan.ts`, `play-playlist.ts`, `playlists-service.ts`. |
+| #629 | Playlist Import/Export | Playlists → **Import M3U**; a playlist → ⋮ → **Export M3U8** | **Export** writes an M3U8 file named after the playlist (Urdu kept): UTF-8, `#EXTM3U`, then `#EXTINF:<seconds or -1>,<title>` and the file name for each video. It saves through the app's save flow: a folder picker, or the share sheet. **Import** reads M3U or M3U8 from the system picker, which offers every file type because phones label playlist files inconsistently. The text can be UTF-8, UTF-16 or a Windows code page. Playlists are local only: web links are skipped and counted. Each line is matched to a library video by path, then by file name. The new playlist takes the file's name, made unique if needed ("Mix (2)"). A summary shows how many videos were added, the lines that weren't found, and the web links skipped. Evidence: `src/playlists/m3u.ts`, `import-match.ts`, `playlist-names.ts`, `playlists-service.ts` (`exportPlaylist`, `importPlaylistFile`), `src/screens/playlists/components/ImportResultModal.tsx`. |
+
+### Schema (DATABASE_VERSION 8 → 9)
+
+There is one bump, in `src/storage/constants/database.ts`: `DATABASE_VERSION = 9`, a v9 line in the comment above it,
+and `TABLE_NAMES.playlists` / `TABLE_NAMES.playlistItems`. The DDL is in `src/storage/sqlite/playlist-schema.ts`
+(`applyPlaylistTables`):
+
+```sql
+CREATE TABLE IF NOT EXISTS playlists (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_playlists_updated_at ON playlists(updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS playlist_items (
+  playlist_id TEXT NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
+  media_id TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  file_name TEXT NOT NULL DEFAULT '',
+  duration REAL,
+  added_at TEXT NOT NULL,
+  PRIMARY KEY (playlist_id, media_id)
+);
+CREATE INDEX IF NOT EXISTS idx_playlist_items_position ON playlist_items(playlist_id, position);
+CREATE INDEX IF NOT EXISTS idx_playlist_items_media ON playlist_items(media_id);
+```
+
+**How it runs**
+- Upgrade: `migrateDatabase` has `if (currentVersion < 9) { await applyPlaylistTables(db); PRAGMA user_version = 9 }`.
+- Fresh install: `applySchema` calls `applyPlaylistTables` before it sets the version.
+- Both only create new tables (`IF NOT EXISTS`). No existing table is altered and no row is touched, so running it
+  twice changes nothing.
+
+**Why the app database (`vidorax.db`)**
+- The videos in a playlist are library videos, and the library (downloads catalog, media folders) is in the app
+  database for every browser profile.
+- `applyBrowserTables` also runs on every browser-profile database (`browser-database.ts`), so P7 is kept out of it.
+- `BROWSER_PROFILE_DATABASE_VERSION` is unchanged.
+
+**The columns**
+- `media_id` is plain text: a download id, or `device:<MediaStore id>` for a video on the phone. Library videos are not
+  SQLite rows, so it can't be a foreign key. An entry whose video is gone stays, and shows as missing.
+- The only foreign key is item → playlist, with `ON DELETE CASCADE` (`PRAGMA foreign_keys = ON` is set on open).
+  `deletePlaylist` also deletes the items itself, in the same transaction.
+- `title`, `file_name` and `duration` are what was known when the video was added. They name a missing entry and fill
+  in the export.
+- `PRIMARY KEY (playlist_id, media_id)` means a video is in a playlist only once. The play queue finds the playing video
+  with `indexOf`, so a second copy would send Next back to the first one.
+- Positions are 0, 1, 2… and are rewritten after a removal or a move. There is no UNIQUE on position, so swapping two
+  needs no temporary value.
+
+**Code:** `playlists.repository.ts` uses `getDatabase()`, the app database, like `media-folder.repository.ts`. The SQL
+is in `playlists.queries.ts`, over a minimal database type.
+
+### Playing
+
+`playPlaylist(entries, { startId?, shuffle? })` in `src/playlists/play-playlist.ts` is the only place a playlist
+starts playing.
+- It calls `openPlayer(firstId, ids)`, which sets `play-queue.ts`'s list. So Previous / Next, P5's Repeat all and P6's
+  Auto Play Next all work on the playlist. There is no second queue.
+- Entries that can't play are left out of `ids`, and each id appears once. `planPlaylistPlay` (`play-plan.ts`, pure)
+  picks the first video and the list.
+- **Shuffle** starts at a random video and switches on P6's queue shuffle (#542) around it. The rest play in a random
+  order, and Shuffle off in the queue sheet gives the playlist's order back. (Wired when P7 was put on top of P6:
+  `playPlaylist` calls `openPlayer`, then `setPlayQueueCurrent(start)` and `setPlayQueueShuffle(true)`.)
+
+`resolvePlaylistEntries` (`playlist-entries.ts`) decides what can play:
+- **A library video** plays when the library still lists it and its file isn't missing. This is `canAttemptPlayback`,
+  as on the Library's cards, so "unverified" may play.
+- **A video the library no longer has** is missing: deleted in VidoraX, or removed by `reconcileV2Library`.
+- **A video on this phone** (`device:` id) plays only once VidoraX has listed it in this run (`knownDeviceVideo`). The
+  Player finds the file from that list.
+  - When a playlist has phone videos VidoraX doesn't know yet, the playlist screen lists the first 500 phone videos
+    itself. This never asks for permission; without access the list is just empty.
+  - A phone video that is still not listed shows the title it had when added, with "A video on this phone: open “Videos
+    on this device” in the Library to play it".
+
+### M3U / M3U8
+
+**Export: one line format**
+- `#EXTM3U`, then for each video `#EXTINF:<whole seconds, or -1>,<title>` and the video's **file name** as the path
+  line. That is a path relative to the playlist file. Lines end in LF; UTF-8, no BOM.
+- Why the file name:
+  - Library files are private to VidoraX: other apps can't open those paths, and `MediaLibraryItem` has no path on
+    purpose.
+  - The files are not in one shared folder.
+  - So the file name is what another player can resolve. Save the playlist next to the videos, or next to copies of
+    them (Movies/VidoraX after "Save to device"), and it plays there.
+- Missing videos are exported too, under the names they had.
+- Line breaks in names become spaces, and a name that starts with `#` is written `./#…`.
+- MIME type: `application/vnd.apple.mpegurl`, the type registered for .m3u8.
+- File name: the playlist's name with `\ / : * ? " < > |` and control characters removed (Urdu kept), plus `.m3u8`.
+  `exportFileName` would have turned an Urdu name into `vidorax-export-<date>`.
+
+**Reading**
+- A BOM is dropped. Lines may end in CRLF, CR or LF, mixed in one file.
+- Blank lines and `#` comments are skipped.
+- The `#EXTINF` title is everything after the first comma outside double quotes, so titles with commas work, and so do
+  attributes like `tvg-name="a, b"`.
+- `file://` URIs are percent-decoded; a stray `%` is kept. Plain Windows and POSIX paths are kept as written.
+  `content://` document URIs are reduced to the document's path.
+- `http://`, `https://` and other network addresses (`rtsp://`, `ftp://`) are skipped and counted.
+- The file is decoded with P3's subtitle decoder: UTF-8, UTF-16, or Windows-1256 / 1252 for an old .m3u with Urdu
+  names. Files up to 4 MB.
+
+**Matching** (`matchImportEntries`), in this order:
+1. **By path.** The line's last folders and file name must equal the end of where VidoraX plays the video from
+   (`getInternalPlaybackUri`: its file, or the document in a folder the user picked), at least two segments long (a
+   folder and the name). Missing videos have no such path, so they match by name only.
+2. **By file name**, extension included: `clip.mp4` does not match `clip.mkv`.
+
+Both ignore case and Unicode composition.
+- When two videos share a name, a playable one is taken first.
+- Videos on the phone are candidates by their MediaStore title, when VidoraX may read them.
+- A video named twice is added once, and the summary says "Listed more than once: 2".
+- The lines that match nothing are listed after the import. If nothing matched, no playlist is made.
+
+### Decisions
+
+- **New names, because "playlist" was taken** by Playlist Download (`/downloads/playlist`, `lightPlaylist`).
+  - Strings: a new `playlists` namespace (`catalogs/playlists.en.ts` / `.ur.ts`). The Player row's label is
+    `playlists.addToPlaylist`, so `videoPlayer.*` is untouched.
+  - Routes: `/playlists` and `/playlists/[id]`.
+- **A playlist holds each video once.** Adding it again is counted, never inserted.
+- **Names don't have to be unique.** Only an imported playlist gets a suffix when its name is taken.
+- **The Player's command is one optional context field**, `PlayerOptionContext.playlists` (`canAdd`, `openAddSheet`),
+  instead of a `ui` command plus a context flag. That is one line in `PlayerScreen.tsx`'s options context.
+- **Missing videos can't be selected in the Library**, because their cards can't be tapped (as before). "Select" from a
+  missing video's menu starts with nothing selected.
+- **The add sheet is P3's `PlayerSheetFrame`:** a bottom sheet that scrolls, so a long list of playlists fits. The
+  Library uses it too.
+- **The Library's long-press menu is getting long.** It now has up to 10 rows, 12 with P6's two. It is `ActionSheetModal`:
+  no scroll, at most 70 % of the screen. On a short phone Delete and Cancel may fall below the edge. The shared
+  component isn't changed here (device check 3); the fix is to make it scroll.
+- **The playlist screen draws every entry in one scroll view** (`DsRowGroup`). That is fine for hundreds; a FlatList
+  is the next step for thousands.
+
+### Files
+
+- Logic (unit-tested): `src/playlists/m3u.ts`, `import-match.ts`, `playlist-names.ts`, `playlist-entries.ts`,
+  `play-plan.ts`; `src/storage/repositories/playlists.queries.ts`; `src/storage/sqlite/playlist-schema.ts`.
+- Storage: `src/storage/constants/database.ts` (v9, table names), `sqlite/schema.ts` (`applySchema`),
+  `sqlite/migrations.ts` (the v9 block), `repositories/playlists.repository.ts`.
+- Runtime: `src/playlists/play-playlist.ts`, `playlists-service.ts`, `playlist-library.ts`, `playlist-changes.ts`,
+  `use-playlists.ts`.
+- Screens: `src/screens/playlists/` (`PlaylistsScreen`, `PlaylistScreen`, `components/AddToPlaylistSheet`,
+  `PlaylistNameModal`, `PlaylistEntryRow`, `ImportResultModal`). Routes: `src/app/(app)/playlists/index.tsx` and
+  `[id].tsx`, `route-names.ts` (`playlists`, `playlist`), `route-paths.ts` (`playlists`, `playlistPath`),
+  `route-access.ts`, `src/app/(app)/_layout.tsx` (two `Stack.Screen`s).
+- Library: `LibraryScreen.tsx` (header button, one spread line in the menu, the bar, the sheet, tap / long press while
+  selecting), `hooks/useLibraryPlaylists.ts`, `components/LibrarySelectionBar.tsx`, `LibrarySelectMark.tsx`, and the
+  optional `selected` / `selectedIds` props in `LibraryCard.tsx`, `LibraryGridTile.tsx`, `LibraryList.tsx`.
+- Player: `src/player/options/p7-playlists.ts` (+ one import in `index.ts`), `player-options.ts` (the optional
+  `playlists` field), `src/screens/player/page/use-player-playlist-add.ts`. In `PlayerScreen.tsx`, the fenced
+  `// ── P7 Playlists ──` block, plus one token in `anyModalOpen`, one context line and the sheet.
+- Strings: 59 new `playlists.*` keys (English and Urdu), in a new catalog wired into `en.ts` / `ur.ts`.
+
+### Gate
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | 0 errors |
+| Unit tests | 2194 / 2194 (36 new: `playlists.queries.test.ts` 14 — fresh install, v8 upgrade with rows in six tables, idempotent, the operations, delete touching nothing else; `m3u.test.ts` 9; `playlists.test.ts` 10; `options/p7-playlists.test.ts` 3) |
+| `npm run lint` | 0 errors; 91 warnings, none new (`LibraryList.tsx`'s `columnWrapperStyle` warning is older; its line moved) |
+| Against the base | none of Faran's files; `play-queue.ts` untouched; `package.json` / lockfile, `android/`, `modules/`, manifests, `app.json` unchanged; no new dependency or permission |
+| Schema | `DATABASE_VERSION` 8 → 9, once; `BROWSER_PROFILE_DATABASE_VERSION` unchanged |
+| Media3 | `1.9.0`, unchanged |
+
+### Device checks for Faran (release build; not possible here)
+
+1. **Upgrade.** Install the previous build (database v8) and add downloads, folders, bookmarks, notes and a saved page.
+   Then install this build: everything is still there and Playlists opens empty. Check a fresh install too.
+2. **Library.** Long-press → Add to playlist → New playlist with an Urdu name: the playlist shows 1 video. Add the same
+   video again: "Already in". Select, tap several videos: the bar counts them, and Add to playlist adds them in the
+   Library's order. Back leaves the selection; Back on another tab doesn't.
+3. **The long-press menu on a small phone.** It now has up to 10 rows: Delete and Cancel must still be reachable.
+4. **Player.** ⋮ → Tools → Add to playlist, for a library video and for a phone video. The row is hidden for a file
+   opened from another app and for a stream.
+5. **Playing.** Play, and tap a video to play from it. Previous / Next step through the playlist in order, and P5's
+   Repeat all wraps inside it. Shuffle plays in order until P6.
+6. **Editing.** ↑ / ↓ with TalkBack ("Move “x” up"), remove, rename, delete with the confirm. Afterwards the video files
+   are still in the Library.
+7. **Missing.** Delete a video in the Library, or delete its file outside VidoraX and pull to refresh. The entry is
+   greyed with "Missing…", doesn't play, and Next skips it.
+8. **Phone videos.** Add one, close the app, reopen the playlist: it plays if VidoraX has access, because the playlist
+   lists phone videos itself. Without access, the message shows.
+9. **Export.** The saved file's name is `<name>.m3u8` (not `.m3u8.m3u` or `.txt`), and its content is right. Open it in
+   VLC next to the video files. Try Urdu names.
+10. **Import.** Import VidoraX's own export. Then an M3U from VLC or a PC: Windows paths, `file://` URIs, CRLF, and a
+    Windows-1256 .m3u with Urdu names. Web links are counted, and the not-found list shows.
+11. **Themes and Urdu.** All six themes, and Urdu (right to left): Playlists, a playlist, the add sheet, the selection
+    bar, the import summary.

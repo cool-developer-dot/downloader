@@ -32,6 +32,10 @@ import { usePrivateMoveSheet } from '@/screens/library/hooks/usePrivateMoveSheet
 import { useQueueSheetActions } from '@/screens/library/hooks/useQueueSheetActions';
 import { PrivateHeaderButton } from '@/screens/private/PrivateHeaderButton';
 import { PrivateMoveDialog } from '@/screens/private/PrivateMoveDialog';
+// P7 Playlists: the item menu's Add to playlist / Select, the selection mode, the add sheet.
+import { AddToPlaylistSheet } from '@/screens/playlists/components/AddToPlaylistSheet';
+import { LibrarySelectionBar } from './components/LibrarySelectionBar';
+import { useLibraryPlaylists } from './hooks/useLibraryPlaylists';
 
 export const LibraryScreen = memo(function LibraryScreen() {
   const theme = useTheme();
@@ -96,6 +100,8 @@ export const LibraryScreen = memo(function LibraryScreen() {
   const queueActionsFor = useQueueSheetActions();
   const folderOrderedIds = useFoldersStore((s) => s.orderedIds);
   const { privateMoveActionsFor, privateMove } = usePrivateMoveSheet();
+  const playlists = useLibraryPlaylists(visibleItems);
+  const playlistActionsFor = playlists.actionsFor;
 
   const completedActions = useMemo<ActionSheetItem[]>(() => {
     if (!actionItemId) {
@@ -117,6 +123,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
         closeItemActions,
       ),
       ...tagActionsFor(id, closeItemActions),
+      ...playlistActionsFor(id, closeItemActions),
       {
         id: 'share',
         label: t('library.share'),
@@ -149,6 +156,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
     closeItemActions,
     showInFolderActionsFor,
     openItemExternal,
+    playlistActionsFor,
     privateMoveActionsFor,
     queueActionsFor,
     requestDeleteItem,
@@ -226,6 +234,15 @@ export const LibraryScreen = memo(function LibraryScreen() {
             style={{ padding: 8 }}>
             <Icon name="cellphone-play" size="md" color="headerIcon" />
           </Pressable>
+          <Pressable
+            testID="library-playlists"
+            accessibilityRole="button"
+            accessibilityLabel={t('playlists.open')}
+            onPress={() => navigation.push(routePaths.playlists)}
+            hitSlop={8}
+            style={{ padding: 8 }}>
+            <Icon name="playlist-play" size="md" color="headerIcon" />
+          </Pressable>
           <PrivateHeaderButton />
           </>
         }
@@ -258,6 +275,9 @@ export const LibraryScreen = memo(function LibraryScreen() {
           onReset={onReset}
         />
       </Box>
+      {playlists.selecting ? (
+        <LibrarySelectionBar count={playlists.selectedCount} onAdd={playlists.addSelected} onCancel={playlists.cancel} />
+      ) : null}
 
       <ActionSheetModal
         visible={folderSelectionSheetVisible}
@@ -292,6 +312,7 @@ export const LibraryScreen = memo(function LibraryScreen() {
         testID="library-delete-dialog"
       />
       <PrivateMoveDialog controller={privateMove} testID="library-private-move" />
+      <AddToPlaylistSheet inputs={playlists.sheetInputs} onClose={playlists.closeSheet} onAdded={playlists.onAdded} />
 
       {status === 'loading' ? (
         <LibrarySkeleton />
@@ -353,8 +374,9 @@ export const LibraryScreen = memo(function LibraryScreen() {
             viewMode={viewMode}
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            onPressItem={openPlayer}
-            onLongPressItem={openItemActions}
+            onPressItem={playlists.selecting ? playlists.toggle : openPlayer}
+            onLongPressItem={playlists.selecting ? playlists.toggle : openItemActions}
+            selectedIds={playlists.selectedIds}
           />
         </Box>
       )}

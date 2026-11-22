@@ -19,6 +19,7 @@ export const protectedRoutes = [
   routePaths.terms,
   routePaths.history,
   routePaths.watchHistory,
+  routePaths.playlists,
   routePaths.bookmarks,
   routePaths.favorites,
 ] as const;

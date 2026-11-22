@@ -144,6 +144,9 @@ import { useContinueAfterAutoAdvance, usePlayerRepeat } from './page/use-repeat'
 import { NextEpisodeCard } from './page/NextEpisodeCard';
 import { QueueSheet } from './page/QueueSheet';
 import { usePlayerQueueContext } from './page/use-queue';
+// P7 Playlists: ⋮ → Tools → Add to playlist.
+import { AddToPlaylistSheet } from '@/screens/playlists/components/AddToPlaylistSheet';
+import { usePlayerPlaylistAdd } from './page/use-player-playlist-add';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -702,6 +705,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
     [bumpControls, setPlaybackRate],
   );
 
+  // ── P7 Playlists ───────────────────────────────────────────────────────────────────────────────────────────────
+  // ⋮ → Tools → Add to playlist: the playing video into one of the user's playlists (src/playlists).
+  const p7Playlists = usePlayerPlaylistAdd({ mediaId: activeMediaId, title: session.displayName, endLongPress });
+  // ── end P7 ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
   const anyModalOpen =
     speedSheetOpen ||
     orientationSheetOpen ||
@@ -712,7 +720,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
     subtitleSheet != null ||
     repeatSheet != null ||
     loopNaming != null ||
-    queueSheetOpen;
+    queueSheetOpen ||
+    p7Playlists.sheetOpen;
 
   const onSingleTap = useCallback(() => {
     if (anyModalOpen || session.isSeeking) {
@@ -1357,6 +1366,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       autoPlayNext: queueCtx.autoPlayNext,
       nextEpisodePrompt: queueCtx.nextEpisodePrompt,
     },
+    playlists: p7Playlists.option,
     ui: optionsUi,
   };
 
@@ -1937,6 +1947,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
         }}
         onClose={() => setQueueSheetOpen(false)}
       />
+      {/* P7: Add to playlist (the playing video). */}
+      <AddToPlaylistSheet inputs={p7Playlists.inputs} onClose={p7Playlists.closeSheet} testID="player-add-to-playlist" />
     </SafeAreaScreen>
   );
 });

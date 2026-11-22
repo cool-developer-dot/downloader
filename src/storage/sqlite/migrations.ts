@@ -9,6 +9,7 @@ import {
   applySchema,
   configureDatabasePragmas,
 } from './schema';
+import { applyPlaylistTables } from './playlist-schema';
 
 export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   try {
@@ -69,6 +70,12 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
       // B17: the saved-pages table (a new table only, IF NOT EXISTS; safe to run twice).
       await applyBrowserTables(db);
       await db.execAsync('PRAGMA user_version = 8');
+    }
+
+    if (currentVersion < 9) {
+      // P7: playlists and their videos (new tables only, IF NOT EXISTS; safe to run twice). App database only.
+      await applyPlaylistTables(db);
+      await db.execAsync('PRAGMA user_version = 9');
     }
   } catch (error) {
     throw toStorageError(error, 'Failed to migrate local database', 'DATABASE_INIT_FAILED');

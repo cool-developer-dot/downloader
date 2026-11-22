@@ -8,6 +8,7 @@ import { applyNotesTables } from './notes-schema';
 import { applyUserScriptsTables } from './user-scripts-schema';
 import { applyAnnotateTables } from './annotate-schema';
 import { applySavedPagesTables } from './saved-pages-schema';
+import { applyPlaylistTables } from './playlist-schema';
 
 /**
  * Apply pragmas outside any transaction.
@@ -22,6 +23,8 @@ export async function configureDatabasePragmas(db: SQLiteDatabase): Promise<void
 export async function applySchema(db: SQLiteDatabase): Promise<void> {
   await applyBrowserTables(db);
   await applyCatalogSchema(db);
+  // P7: playlists (app database only; playlist-schema.ts).
+  await applyPlaylistTables(db);
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 

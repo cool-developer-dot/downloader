@@ -9,8 +9,10 @@ export const DATABASE_NAME = 'vidorax.db';
  * v6 (B19): user scripts (`applyBrowserTables` → user-scripts-schema; a new table only).
  * v7 (B23): highlights and watched pages (`applyBrowserTables` → annotate-schema; new tables only).
  * v8 (B17): saved (offline) pages (`applyBrowserTables` → saved-pages-schema; a new table only).
+ * v9 (P7): playlists and their videos (`applyPlaylistTables` → playlist-schema; new tables only, app database only —
+ * not part of `applyBrowserTables`, so browser-profile databases never get them).
  */
-export const DATABASE_VERSION = 8;
+export const DATABASE_VERSION = 9;
 
 export const TABLE_NAMES = {
   browserHistory: 'browser_history',
@@ -38,6 +40,9 @@ export const TABLE_NAMES = {
   pageWatches: 'page_watches',
   // B17 (Hamza)
   savedPages: 'saved_pages',
+  // P7 (Hamza)
+  playlists: 'playlists',
+  playlistItems: 'playlist_items',
 } as const;
 
 export const RECENT_SEARCH_LIMIT = 50;
