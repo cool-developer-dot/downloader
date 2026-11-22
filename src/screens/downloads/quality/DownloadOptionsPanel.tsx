@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { ToastAndroid, View } from 'react-native';
 
 import { browserMediaActionService } from '@/browser/media-actions/browser-media-action.service';
+import { previewBrowserDownloadTitle } from '@/browser/media-actions/browser-media-download.service';
 import { directMediaFileTitle } from '@/browser/media-actions/download-title';
 import { DsChip, DsChipRow, DsRow, DsRowGroup, DsSearchField, DsText, ds } from '@/design';
 import { resolveDisplayTitle, type AnalyzedMediaSelection, type DownloadQualityOption } from '@/downloads/quality';
@@ -28,6 +29,24 @@ const WIFI_CHOICES: { value: WifiChoice; label: TranslationKey }[] = [
   { value: 'on', label: 'downloadOptions.wifiOnlyOn' },
   { value: 'off', label: 'downloadOptions.wifiOnlyOff' },
 ];
+
+/**
+ * The name the download will get: on a browser offer exactly what the handoff names it (the page's title from its
+ * tab, or a directly opened file's name), else the analysed title. Never a stream's manifest name ("x36xhzz.m3u8").
+ * A pasted link is not the browser's page: the browser's (possibly older) page never names it.
+ */
+function previewTitle(
+  selection: AnalyzedMediaSelection,
+  option: DownloadQualityOption | null | undefined,
+  browserOffer: boolean,
+): string {
+  if (!browserOffer) {
+    return resolveDisplayTitle(selection);
+  }
+  const pageUrl = browserMediaActionService.getState().pageUrl;
+  const browserTitle = option ? previewBrowserDownloadTitle(selection, option, pageUrl) : null;
+  return browserTitle ?? directMediaFileTitle(pageUrl) ?? resolveDisplayTitle(selection);
+}
 
 /**
  * Quality sheet → the design's second card (design 33): Rename (#296), Save to (#155) and the Trim · Subtitle ·
@@ -61,14 +80,14 @@ export const DownloadOptionsPanel = memo(function DownloadOptionsPanel({
       sanitizeFileName(
         applyFilenameTemplate({
           template,
-          title: directMediaFileTitle(browserMediaActionService.getState().pageUrl) ?? resolveDisplayTitle(selection) ?? '',
-          pageUrl: browserMediaActionService.getState().pageUrl,
+          title: previewTitle(selection, selectedOption, browserOffer),
+          pageUrl: browserOffer ? browserMediaActionService.getState().pageUrl : selection.sourceUrl,
           site: null,
           qualityLabel: selectedOption?.label ?? null,
           now: new Date(),
         }),
       ),
-    [selection, selectedOption?.label, template],
+    [selection, selectedOption, template, browserOffer],
   );
 
   // Another quality picked after setting options: they follow it.

@@ -17,6 +17,7 @@ export const bulkAddUr: CatalogStrings<typeof bulkAddEn> = {
   rules: 'اصول',
   rulesActive: 'آپ کے اصول ان میں سے {count} لنک چھوڑ دیتے ہیں۔',
   skippedBySize: 'چھوڑا گیا: سائز کے اصول سے باہر',
+  notFound: 'نہیں ملا: یہ لنک موجود نہیں (404)',
   rulesTitle: 'ڈاؤن لوڈ کے اصول',
   rulesHint: 'منتخب کریں کہ ایک ساتھ شامل کرنے میں کون سے لنک لیے جائیں: بیچ ایڈ، پلے لسٹس، فیڈز اور سائٹ محفوظ کرنا۔ سب کی اجازت کے لیے خانہ خالی چھوڑ دیں۔',
   includeTypes: 'صرف یہ فائل اقسام',

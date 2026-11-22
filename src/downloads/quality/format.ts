@@ -228,7 +228,11 @@ export function resolveDisplayTitle(selection: AnalyzedMediaSelection): string {
   try {
     const path = new URL(selection.finalUrl).pathname.split('/').filter(Boolean).pop();
     if (path) {
-      return decodeURIComponent(path);
+      // A stream's manifest is not the video's name: "x36xhzz.m3u8" reads as "x36xhzz".
+      const name = decodeURIComponent(path).replace(MANIFEST_EXTENSION, '');
+      if (name) {
+        return name;
+      }
     }
   } catch {
     // fall through
@@ -236,6 +240,9 @@ export function resolveDisplayTitle(selection: AnalyzedMediaSelection): string {
 
   return 'Media';
 }
+
+/** HLS and DASH playlist / manifest file extensions (the name the user sees never ends in one). */
+const MANIFEST_EXTENSION = /\.(m3u8|m3u|mpd|ism|isml)$/i;
 
 export function resolveDisplayHost(selection: AnalyzedMediaSelection): string | null {
   try {

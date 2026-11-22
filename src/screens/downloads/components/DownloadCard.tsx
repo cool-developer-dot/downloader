@@ -70,18 +70,20 @@ export function formatEtaClock(etaSeconds: number | null | undefined): string | 
   return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
-/** A grey tappable word of the finished row ("Play", "Share", "Show in folder"). */
+/** A tappable word of the row: grey on a finished row ("Play", "Share"), the accent for a failed row's "Try again". */
 const InlineAction = memo(function InlineAction({
   label,
   onPress,
   disabled,
   accessibilityLabel,
+  tone = 'plain',
   testID,
 }: {
   label: string;
   onPress: () => void;
   disabled?: boolean;
   accessibilityLabel: string;
+  tone?: 'plain' | 'accent';
   testID?: string;
 }) {
   return (
@@ -93,7 +95,7 @@ const InlineAction = memo(function InlineAction({
       hitSlop={{ top: 14, bottom: 14, left: 4, right: 4 }}
       testID={testID}
       style={{ minHeight: 20, justifyContent: 'center' }}>
-      <DsText variant="rowSub" numberOfLines={1}>
+      <DsText variant={tone === 'accent' ? 'rowValue' : 'rowSub'} color={tone === 'accent' ? 'primary' : undefined} numberOfLines={1}>
         {label}
       </DsText>
     </Pressable>
@@ -131,6 +133,7 @@ export const DownloadCard = memo(function DownloadCard({
   const handleLongPress = useCallback(() => onLongPress?.(id), [id, onLongPress]);
   const handleOpen = useCallback(() => onOpen(id), [id, onOpen]);
   const handleShare = useCallback(() => onShare(id), [id, onShare]);
+  const handleRetry = useCallback(() => onRetry(id), [id, onRetry]);
   const handleShowInFolder = useCallback(() => {
     void showItemInFolder(id);
   }, [id]);
@@ -192,6 +195,7 @@ export const DownloadCard = memo(function DownloadCard({
   const title = item.title?.trim() || item.fileName?.trim() || t('downloads.untitled');
   const metaLine = buildMetaLine(item, { hideSize: recording != null });
   const completed = item.status === 'COMPLETED';
+  const canRetry = item.status === 'FAILED' && actions.includes('retry');
   const progressValue = Math.max(transfer?.progress ?? 0, item.progress ?? 0);
   const hasKnownTotal =
     (transfer?.totalBytes != null && transfer.totalBytes > 0) || Number(item.fileSize) > 0;
@@ -273,7 +277,17 @@ export const DownloadCard = memo(function DownloadCard({
               <DsText variant="rowSub" numberOfLines={1} style={{ flex: 1 }} testID={testID ? `${testID}-status` : undefined}>
                 {progressLine}
               </DsText>
-              {trailingLine ? (
+              {canRetry ? (
+                // Design 46: a failed download is retried right from its card (also in the ⋮ menu).
+                <InlineAction
+                  label={t(ACTION_LABEL_KEYS.retry.label)}
+                  accessibilityLabel={t(ACTION_LABEL_KEYS.retry.a11y)}
+                  onPress={handleRetry}
+                  disabled={mutating}
+                  tone="accent"
+                  testID={testID ? `${testID}-retry` : undefined}
+                />
+              ) : trailingLine ? (
                 <DsText variant="rowSub" numberOfLines={1} importantForAccessibility="no" accessibilityElementsHidden>
                   {trailingLine}
                 </DsText>

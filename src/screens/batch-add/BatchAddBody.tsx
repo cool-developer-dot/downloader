@@ -22,6 +22,7 @@ export function batchRowLabel(row: BatchRow, t: (key: TranslationKey) => string)
   if (row.status === 'pending') return t('linkIntake.statusWaiting');
   if (row.status === 'running') return t('linkIntake.statusChecking');
   if (row.result?.detail === 'SIZE_RULE') return t('bulkAdd.skippedBySize');
+  if (row.result?.detail === 'NOT_FOUND') return t('bulkAdd.notFound');
   return row.result ? t(OUTCOME_LABEL[row.result.outcome] ?? 'linkIntake.outcomeReview') : '';
 }
 

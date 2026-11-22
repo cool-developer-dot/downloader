@@ -2561,12 +2561,27 @@ A full test pass using `docs/testing/VidoraX-1.2.0-Deep-Test-Prompt.md`. The rep
 - **Nested stacks**: `unstable_settings = { anchor: 'index' }` (expo-router 57 reads `anchor`, then
   `initialRouteName`) in `(tabs)/browser/_layout.tsx` and `(tabs)/downloads/_layout.tsx`. A `vidorax://` link to a
   module screen keeps the list or start page under it.
-- **Open (Low):**
-  - failed card without an inline Retry
-  - DNS-failure downloads not auto-retried
-  - HLS default name ".m3u8"
-  - 404 shown as "Needs review" in Batch Add
-  - the system-styled disguised-file dialog
+- **The Low findings, fixed in a second commit:**
+  - **Failed card** (BUG-005): `DownloadCard` shows an accent "Try again" in the status row when the card is
+    FAILED and its actions include `retry`; the ⋮ menu keeps it too.
+  - **No working internet** (BUG-006): `NetworkGate.hasWorkingInternet()` / `awaitWorkingInternet()` (default true /
+    no wait), backed in `AndroidNetworkGate` by `NET_CAPABILITY_VALIDATED`. In `transferWithRecovery`, a
+    `MediaNetworkException` while the network is not validated holds the download in WAITING_NETWORK for up to
+    `INTERNET_RECHECK_MS` (30 s, or until validated) and tries again without counting a failure, at most
+    `MAX_INTERNET_WAITS` (30) times; then errors count as before. Tested in `DownloadEngineNoInternetTest`.
+  - **HLS name** (BUG-008): the video sheet prefills the title the download will really get
+    (`previewBrowserDownloadTitle`), and `resolveDisplayTitle`'s URL fallback drops `.m3u8/.m3u/.mpd/.ism/.isml`.
+    A pasted link (no browser offer, `isSelectionLocked()` false) is named from its own selection, never from the
+    browser's last `pageUrl` (that was showing the previous page's name).
+  - **Batch Add 404** (BUG-009): an UNRESOLVED page link with `HTTP_404` / `HTTP_410` is refused with detail
+    `NOT_FOUND` and shows "Not found: the link is gone (404)" (en + ur).
+  - **Disguised-file dialog** (BUG-010): `showAppDialog` (`components/modals/app-dialog.ts`) is a promise-based
+    themed dialog rendered by `AppDialogHost` (in `app-provider.tsx`) through `ConfirmModal` (new `hideCancel`).
+    `file-safety-dialog.ts` and `dangerous-download-dialog.ts` use it, with `Alert` as the fallback when no host is
+    mounted.
+  - Device-checked on the release build (SHA-256 `f33ba26c…`), except BUG-006 (unit tests only; the AVD's DNS
+    can't be broken on demand). Test trick: fill `/sdcard` with `dd` to make a download fail with NO_SPACE; free
+    the space before `adb install` (install fails on a full device).
 
 ## 5. How to resume
 

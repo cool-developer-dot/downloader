@@ -1,6 +1,6 @@
 # VidoraX 1.2.0 (design build): device test report, Browser and Downloader
 
-## 0. Update 22 November 2026: the four main bugs are fixed and verified
+## 0. Update 22 November 2026: the four main bugs and the Low findings are fixed and verified
 
 The fixes are in a new build of the same APK, `VidoraX-1.2.0-vc5-design.apk`: SHA-256 `49bf6763…62db7fd5`, the same
 upload-key certificate, and the same 38 permissions. Each fix was checked on the emulator against the original repro:
@@ -14,7 +14,23 @@ upload-key certificate, and the same 38 permissions. Each fix was checked on the
 
 Checks after the fixes: tsc (app + tests) clean, JS tests 2024 / 2024 (one new), eslint 0 errors.
 
-**Still open:** the Low findings BUG-005 to BUG-010, and everything listed under "Blocked" and "Not tested" (section 6).
+### The Low findings, fixed the same day
+
+Build: `VidoraX-1.2.0-vc5-design.apk` replaced again, SHA-256 `f33ba26c…2aa25164`, same certificate
+(`36b9c622…`), same 38 permissions.
+
+| Bug | Fix | Check |
+|---|---|---|
+| BUG-005 failed card without Retry | `DownloadCard`: a failed card that can be retried shows an accent **Try again** in its status row (still in ⋮ too) | Storage filled so a 470 MB HLS download failed with "Not enough storage." → the card shows Try again → space freed, tapped → the download ran. **FIXED** (V5-failed-card.png, V5-state.png) |
+| BUG-006 DNS errors while "connected" fail for good | Engine: a network error while Android says the network has no working internet (not `VALIDATED`) holds the download in "Waiting for network" and tries again when the internet is back (or every 30 s), without using up the retries; after about 15 minutes errors count as before | Unit tests `DownloadEngineNoInternetTest` (waits then completes; a network that never works still fails; a working network retries as before). Not reproduced on the AVD: its DNS can't be broken on demand. **FIXED (unit-tested)** |
+| BUG-008 HLS name "x36xhzz.m3u8" | The sheet's Rename row shows the name the download really gets; playlist extensions (.m3u8/.mpd/…) are never part of a name. Found while checking: a pasted link's sheet showed the browser's last page name — it now uses its own link | HLS sheet → "x36xhzz", and the download is named "x36xhzz"; a pasted httpbin link → "response-headers". **FIXED** (V8-hls-rename.png, L5-pasted-rename.png) |
+| BUG-009 404 shown as "Needs review" | Batch Add: a page link that answers 404 / 410 is "Not found: the link is gone (404)" (English and Urdu) | Pattern `[1-3]` with three 404 links → three "Not found" rows. **FIXED** (L9-batch-404.png) |
+| BUG-010 system-styled disguised-file dialog | New themed app dialog (`showAppDialog` + `AppDialogHost`, built on `ConfirmModal`); the disguised-file and dangerous-file warnings use it | `holiday.mp4` (an APK) → Open with… → themed "This file isn't what its name says" with Cancel / Open anyway; Cancel closes it and it opens again. **FIXED** (V10-disguised-dialog.png) |
+
+Checks: tsc (app + tests) clean, JS tests 2026 / 2026, eslint 0 errors, vidorax-media native tests 1137 / 1137
+(3 new).
+
+**Still open:** BUG-007 (an observation, not reproduced), and everything under "Blocked" and "Not tested" (section 6).
 **Observation:** during a fast series of links (5 in about 2 minutes), the address bar once showed a different page
 than the one on screen. It didn't come back after a restart and a single share; I'll watch for it.
 

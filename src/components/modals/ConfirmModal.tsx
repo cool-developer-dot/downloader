@@ -19,6 +19,8 @@ export type ConfirmModalProps = {
   onConfirm?: () => void;
   onCancel?: () => void;
   loading?: boolean;
+  /** One button only (a notice): the confirm button, full width. */
+  hideCancel?: boolean;
   testID?: string;
 };
 
@@ -42,6 +44,7 @@ export const ConfirmModal = memo(function ConfirmModal({
   onConfirm,
   onCancel,
   loading = false,
+  hideCancel = false,
   testID,
 }: ConfirmModalProps) {
   const config = useMemo(() => variantConfig[variant], [variant]);
@@ -61,9 +64,11 @@ export const ConfirmModal = memo(function ConfirmModal({
           ) : null}
         </Box>
         <Box row gap={12} style={{ alignSelf: 'stretch' }}>
-          <Box flex={1}>
-            <Button title={cancelLabel} variant="outline" onPress={onCancel} fullWidth />
-          </Box>
+          {hideCancel ? null : (
+            <Box flex={1}>
+              <Button title={cancelLabel} variant="outline" onPress={onCancel} fullWidth />
+            </Box>
+          )}
           <Box flex={1}>
             <Button
               title={confirmLabel}

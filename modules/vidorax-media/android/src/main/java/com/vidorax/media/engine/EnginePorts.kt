@@ -413,6 +413,15 @@ internal interface NetworkGate {
    */
   suspend fun awaitUnusable(wifiOnly: Boolean)
 
+  /**
+   * False when the network Android reports has no working internet behind it — it failed Android's own check (a
+   * captive portal, a DNS that answers nothing). Hosts without that information say true.
+   */
+  fun hasWorkingInternet(): Boolean = true
+
+  /** Suspends until [hasWorkingInternet] holds; returns at once when it already does. */
+  suspend fun awaitWorkingInternet() = Unit
+
   companion object {
     /** No connectivity information (unit tests, and any host that does not provide one): never blocks. */
     val ALWAYS_USABLE = object : NetworkGate {

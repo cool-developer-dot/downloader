@@ -9,8 +9,16 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 
 /** What the engine needs to know about the device's connection. */
-internal data class NetworkStatus(val connected: Boolean, val unmetered: Boolean) {
+internal data class NetworkStatus(
+  val connected: Boolean,
+  val unmetered: Boolean,
+  /** Android checked that this network really reaches the internet (NET_CAPABILITY_VALIDATED). */
+  val validated: Boolean = connected,
+) {
   fun usable(wifiOnly: Boolean): Boolean = connected && (!wifiOnly || unmetered)
+
+  /** Connected, and Android's own check found the internet behind it. */
+  val workingInternet: Boolean get() = connected && validated
 
   companion object {
     /** The platform gave no answer (no ConnectivityManager, a failing query): let the transfer report the truth. */
@@ -22,6 +30,7 @@ internal data class NetworkStatus(val connected: Boolean, val unmetered: Boolean
     fun of(capabilities: NetworkCapabilities): NetworkStatus = NetworkStatus(
       connected = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET),
       unmetered = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED),
+      validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
     )
   }
 }
@@ -65,6 +74,12 @@ internal class AndroidNetworkGate(context: Context) : NetworkGate {
 
   override suspend fun awaitUnusable(wifiOnly: Boolean) {
     status.first { !it.usable(wifiOnly) }
+  }
+
+  override fun hasWorkingInternet(): Boolean = status.value.workingInternet
+
+  override suspend fun awaitWorkingInternet() {
+    status.first { it.workingInternet }
   }
 
   internal companion object {

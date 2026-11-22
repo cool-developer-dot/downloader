@@ -161,6 +161,10 @@ async function addPageLink(url: string, signal: AbortSignal, options: BatchLinkO
   }
 
   const title = result.offer?.analysis.title ?? null;
+  // The server says the link is gone (404 / 410): nothing to review in the browser, so it is not offered there.
+  if (!signal.aborted && result.status === 'UNRESOLVED' && (result.reason === 'HTTP_404' || result.reason === 'HTTP_410')) {
+    return { url, outcome: 'refused', detail: 'NOT_FOUND', title, downloadId: null };
+  }
   if (result.status !== 'SUPPORTED' || !result.offer || signal.aborted) {
     return {
       url,

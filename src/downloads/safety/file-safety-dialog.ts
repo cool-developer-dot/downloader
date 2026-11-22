@@ -3,6 +3,7 @@
 import * as ReactNative from 'react-native';
 
 import { getVidoraMedia, isVidoraMediaAvailable } from '@modules/vidorax-media';
+import { hasAppDialogHost, showAppDialog } from '@/components/modals/app-dialog';
 import { displayFileName } from '@/media-detection/adapters/dangerous-download';
 import { translate } from '@/localization/translate';
 
@@ -15,8 +16,25 @@ import {
 } from './file-safety';
 import { onDisguisedProbe } from './probe-observations';
 
-/** "Open anyway" (or Share / Extract / Save) and Cancel. Dismissing the dialog is Cancel. */
+/**
+ * "Open anyway" (or Share / Extract / Save) and Cancel, in the app's themed dialog (the system one only before the
+ * app's providers are up). Dismissing the dialog is Cancel.
+ */
 function confirmWarning(warning: FileSafetyWarning, fileName: string | null): Promise<boolean> {
+  const title = translate(warning.titleKey);
+  const message = translate(warning.messageKey, {
+    fileName: displayFileName(fileName ?? '') || translate('dangerousFile.unnamed'),
+    kind: warning.kindKey ? translate(warning.kindKey) : '',
+  });
+  if (hasAppDialogHost()) {
+    return showAppDialog({
+      title,
+      message,
+      confirmLabel: translate(warning.proceedKey),
+      cancelLabel: translate('common.cancel'),
+      variant: 'error',
+    });
+  }
   return new Promise((resolve) => {
     let settled = false;
     const settle = (value: boolean) => {
@@ -26,11 +44,8 @@ function confirmWarning(warning: FileSafetyWarning, fileName: string | null): Pr
       }
     };
     ReactNative.Alert.alert(
-      translate(warning.titleKey),
-      translate(warning.messageKey, {
-        fileName: displayFileName(fileName ?? '') || translate('dangerousFile.unnamed'),
-        kind: warning.kindKey ? translate(warning.kindKey) : '',
-      }),
+      title,
+      message,
       [
         { text: translate('common.cancel'), style: 'cancel', onPress: () => settle(false) },
         { text: translate(warning.proceedKey), style: 'destructive', onPress: () => settle(true) },
@@ -75,11 +90,13 @@ function showDisguisedSource(kind: keyof typeof CONTENT_KIND_KEYS, url: string):
   } catch {
     host = '';
   }
-  ReactNative.Alert.alert(
-    translate('fileSafety.disguisedDownloadTitle'),
-    translate('fileSafety.disguisedSourceMessage', { kind: translate(CONTENT_KIND_KEYS[kind]), host: host || url.slice(0, 60) }),
-    [{ text: translate('common.ok') }],
-  );
+  const title = translate('fileSafety.disguisedDownloadTitle');
+  const message = translate('fileSafety.disguisedSourceMessage', { kind: translate(CONTENT_KIND_KEYS[kind]), host: host || url.slice(0, 60) });
+  if (hasAppDialogHost()) {
+    void showAppDialog({ title, message, confirmLabel: translate('common.ok'), cancelLabel: null, variant: 'error' });
+    return;
+  }
+  ReactNative.Alert.alert(title, message, [{ text: translate('common.ok') }]);
 }
 
 let attached = false;

@@ -129,6 +129,36 @@ export function lookupLiveBrowserSource(input: {
  * engine receives, and a link that died between the offer and the tap is refused with a useful message instead
  * of being handed over to fail.
  */
+/**
+ * The name a browser download gets. Detection may have built the offer before the page's title arrived, so the tab
+ * showing the page names it; a video file opened directly is named by its file (its tab may still carry the previous
+ * page's title).
+ */
+function titleForBrowserDownload(resolvedTitle: string, sourceUrl: string, pageUrl: string | null): string {
+  const liveTitle = lookupLiveMediaTitle({ pageUrl, sourceUrl });
+  return (
+    directMediaFileTitle(pageUrl) ??
+    pickDownloadTitle({
+      resolved: liveTitle ? resolveDownloadTitle({ title: liveTitle, pageTitle: resolvedTitle }) : resolvedTitle,
+      pageUrl,
+      tabs: useBrowserStore.getState().tabs,
+    })
+  );
+}
+
+/**
+ * The quality sheet's Rename row shows the name the download will really get (not the stream's file name, e.g.
+ * "x36xhzz.m3u8" for a download that is then called "hls.js demo"). Null when the option cannot be downloaded.
+ */
+export function previewBrowserDownloadTitle(
+  selection: AnalyzedMediaSelection,
+  option: DownloadQualityOption,
+  pageUrl: string | null,
+): string | null {
+  const payload = toCreateDownloadInput(selection, option);
+  return payload ? titleForBrowserDownload(payload.title, option.sourceUrl, pageUrl) : null;
+}
+
 export async function enqueueVerifiedBrowserVariant(
   input: BrowserVariantHandoffInput,
 ): Promise<BrowserDownloadResult> {
@@ -233,16 +263,7 @@ export async function enqueueVerifiedBrowserVariant(
       ? sourceOption
       : { ...sourceOption, sourceUrl: fresh.url };
 
-  // Detection may have built the offer before the page's title arrived; the tab showing the page knows it.
-  const liveTitle = lookupLiveMediaTitle({ pageUrl, sourceUrl: input.option.sourceUrl });
-  // A video file opened directly is named by its file: its tab may still carry the previous page's title.
-  const title =
-    directMediaFileTitle(pageUrl) ??
-    pickDownloadTitle({
-      resolved: liveTitle ? resolveDownloadTitle({ title: liveTitle, pageTitle: payload.title }) : payload.title,
-      pageUrl,
-      tabs: useBrowserStore.getState().tabs,
-    });
+  const title = titleForBrowserDownload(payload.title, input.option.sourceUrl, pageUrl);
 
   const result = await handOffVerifiedVariant(
     {

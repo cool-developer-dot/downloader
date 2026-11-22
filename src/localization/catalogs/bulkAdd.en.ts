@@ -15,6 +15,7 @@ export const bulkAddEn = {
   rules: 'Rules',
   rulesActive: 'Your rules skip {count} of these links.',
   skippedBySize: 'Skipped: outside your size rule',
+  notFound: 'Not found: the link is gone (404)',
   rulesTitle: 'Download rules',
   rulesHint: 'Choose which links bulk adding takes: Batch Add, playlists, feeds and site saving. Leave a field empty to allow everything.',
   includeTypes: 'Only these file types',

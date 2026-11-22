@@ -14,6 +14,7 @@ import { AppInitializerProvider, useAppInitializerState } from '@/providers/app-
 import { AppPaperProvider } from '@/providers/paper-provider';
 import { NavigationThemeProvider } from '@/providers/navigation-theme-provider';
 import { QueryProvider } from '@/providers/query-provider';
+import { AppDialogHost } from '@/components/modals/AppDialogHost';
 import { AppStatusBar } from '@/providers/status-bar';
 import { resolveStartupBackground } from '@/theme';
 
@@ -64,6 +65,8 @@ export function AppProvider({ children }: PropsWithChildren) {
                         <BottomSheetModalProvider>
                           <AppStatusBar />
                           {children}
+                          {/* Safety warnings and other questions asked from code, in the app's themed dialog. */}
+                          <AppDialogHost />
                         </BottomSheetModalProvider>
                       </NavigationThemeProvider>
                     </AppPaperProvider>
