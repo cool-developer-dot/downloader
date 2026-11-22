@@ -120,7 +120,7 @@ import { SeekIntervalSheet } from './page/SeekIntervalSheet';
 import { announcePlayer, usePlayerNotYet } from './page/use-player-not-yet';
 import { qualityLabel, useVideoTrackInfo } from './page/use-video-track-info';
 import { AspectRatioSheet, MirrorFlipSheet } from './page/VideoDisplaySheets';
-import { VideoInfoOverlay } from './page/VideoInfoOverlay';
+import { VideoInfoLine, VideoInfoOverlay } from './page/VideoInfoOverlay';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -984,6 +984,20 @@ const PlayerSessionView = memo(function PlayerSessionView({
     [insets.bottom, insets.left, insets.right, insets.top, isFullscreen, pipActive],
   );
   const pictureInsets = display.fillCutout ? null : cutoutInsets;
+  // #721: what the info overlay shows (the box, the dock line and the page line read the same values).
+  const videoInfo = useMemo(
+    () => ({
+      mimeType: trackInfo.mimeType,
+      width: trackInfo.width,
+      height: trackInfo.height,
+      frameRate: trackInfo.frameRate,
+      averageBitrate: trackInfo.averageBitrate,
+      peakBitrate: trackInfo.peakBitrate,
+      videoRange: trackInfo.videoRange,
+      playbackRate: session.playbackRate,
+    }),
+    [session.playbackRate, trackInfo],
+  );
 
   /** The page's tab bar: leave the Player (it carries on in the mini player) for that tab, like Back does. */
   const onPressTab = useCallback(
@@ -1007,6 +1021,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
   // Edit after download: the artist VidoraX keeps for this item (app-level tag), shown next to the title.
   const artist = useMediaArtist(activeMediaId);
   const showError = session.phase === 'error' && session.error != null;
+  // #721: shown wherever the Player shows the video (not over an error, not in the small PiP window).
+  const showInfo = display.infoOverlay && !showError && !pipActive;
   const overlayVisible = !locked && (controlsVisible || session.isSeeking || speedSheetOpen);
   const orientationIcon = resolveOrientationIcon(orientationMode);
   const playerSurfaceBg = theme.colors.black;
@@ -1219,18 +1235,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
         </View>
         {/* The feedback, the info overlay and the lock pill, clear of the camera cutout in full screen (P2 #576). */}
         <View style={[StyleSheet.absoluteFill, cutoutInsets, styles.overlayLayer]} pointerEvents="box-none">
+          {/* #721, full screen with the controls hidden (with them showing it is a line in the dock). */}
           <VideoInfoOverlay
-            visible={display.infoOverlay && !overlayVisible && !startupCoverVisible && !showError && !pipActive}
-            info={{
-              mimeType: trackInfo.mimeType,
-              width: trackInfo.width,
-              height: trackInfo.height,
-              frameRate: trackInfo.frameRate,
-              averageBitrate: trackInfo.averageBitrate,
-              peakBitrate: trackInfo.peakBitrate,
-              videoRange: trackInfo.videoRange,
-              playbackRate: session.playbackRate,
-            }}
+            visible={showInfo && !pageLayout && !overlayVisible && !session.isSeeking && !startupCoverVisible}
+            info={videoInfo}
           />
           <SeekFeedbackOverlay
             previewSeconds={seekPreviewSeconds}
@@ -1243,6 +1251,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
         </View>
       </View>
 
+      {/* #721 on the page: one line under the video card, whether the card's controls show or not. */}
+      {pageLayout && showInfo ? (
+        <VideoInfoLine info={videoInfo} tone="onPage" style={styles.pageInfoLine} testID="player-info-line" />
+      ) : null}
       {pageLayout ? (
         <PlayerPageBody
           playbackRate={session.playbackRate}
@@ -1282,6 +1294,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
                 disabled={Boolean(session.error)}
                 onPress={onToggleMute}
               />
+              {showInfo ? (
+                // #721 with the controls showing: between the volume button and the speed chip, never over them.
+                <VideoInfoLine info={videoInfo} tone="onVideo" style={styles.dockInfoLine} testID="player-info-dock" />
+              ) : null}
               <Pressable
                 onPress={onOpenSpeed}
                 disabled={Boolean(session.error)}
@@ -1528,6 +1544,14 @@ const styles = StyleSheet.create({
   dockActions: {
     alignItems: 'center',
     justifyContent: 'space-between',
+  },
+  dockInfoLine: {
+    flex: 1,
+    paddingHorizontal: 8,
+  },
+  pageInfoLine: {
+    paddingHorizontal: ds.space.screenX,
+    paddingTop: ds.space.grid,
   },
   speedChip: {
     minWidth: 44,

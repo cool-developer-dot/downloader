@@ -167,12 +167,12 @@ Built on `hamza/player` after P1 (PR #40) was merged into it; branch `hamza/P2-v
 
 | # | Feature | Where | How |
 | --- | --- | --- | --- |
-| #564 | Aspect Ratio | "Aspect ratio" tile; Options → Video → Aspect ratio | A sheet: Fit to screen · Crop to fill · Stretch · Ratio 16:9 · Ratio 4:3 · Ratio 21:9 (toast + TalkBack name the choice). **Remembered per video** (MMKV `vidorax.mmkv.player.videoFits.v1`, the last 500 videos; choosing Fit forgets the video). A forced ratio is the largest box of that shape, centred, with the picture stretched into it: expo-video's `contentFit` is only contain / cover / fill. |
+| #564 | Aspect Ratio | "Aspect ratio" tile; Options → Video → Aspect ratio | A sheet: Fit to screen · Crop to fill · Stretch · Ratio 16:9 · Ratio 4:3 · Ratio 21:9 · Ratio 1:1 (toast + TalkBack name the choice). Checklist #564 names "16:9 or 4:3 etc."; 21:9 and 1:1 (square, asked for by Hamza) are the others. **Remembered per video** (MMKV `vidorax.mmkv.player.videoFits.v1`, the last 500 videos; choosing Fit forgets the video). A forced ratio is the largest box of that shape, centred, with the picture stretched into it: expo-video's `contentFit` is only contain / cover / fill. |
 | #565 | Crop to Fill | the same sheet | `cover`: no black bars, the edges that stick out are cut off. Pinch-zoom works as on Fit; panning stays inside the visible picture, so no black edge ever shows. |
 | #566 | Stretch | the same sheet | `fill`: the whole surface, the picture's shape not kept. |
 | #573 | Mirror/Flip | "Mirror / Flip" tile (in Filters' place); Options → Video | Normal · Mirror (left ↔ right) · Flip (upside down) · Mirror and flip. For the video playing now; another video starts normal. A view transform on the picture's frame inside the zoom layer (the surface is a TextureView), so pinch and pan still follow the fingers. |
 | #576 | Notch/Cutout Support | Options → Video → "Use the notch area" (a switch; off by default; remembered) | The app draws edge to edge (React Native sets the cutout mode to ALWAYS), and full screen uses no safe-area edges, so before P2 the top bar, the lock button, the timeline and the 2× pill could sit under the camera. Now in full screen all the controls and overlays keep clear of the cutout (safe-area insets, which include it). The picture keeps clear too, centred (the larger inset on both sides), unless the switch is on; then it fills the whole screen. Not applied in picture-in-picture. |
-| #721 | Info Overlay | Options → Video → "Info overlay" (a switch; off by default; remembered) | A small box in the top corner at the end side (right in English, left in Urdu; the lock pill is at the start) while the controls are hidden: Codec (H.264, H.265, VP9, AV1 …), Size, Frame rate, Bit rate (average, else peak), Range (SDR, HDR PQ / HLG) and Speed. A value the player doesn't know is left out; expo-video gives no audio codec, so none is shown. TalkBack reads it as one label. |
+| #721 | Info Overlay | Options → Video → "Info overlay" (a switch; off by default; remembered) | Codec (H.264, H.265, VP9, AV1 …), Size, Frame rate, Bit rate (average, else peak), Range (SDR, HDR PQ / HLG) and Speed; a value the player doesn't know is left out (expo-video gives no audio codec). **Always shown while on, never over a control:** on the page, one line under the video card; in full screen with the controls showing, the same line in the timeline dock's bottom row between the volume button and the speed chip (a flex slot, so it cannot overlap them); with the controls hidden, a box in the top corner at the end side (right in English, left in Urdu) level with the lock button, which is at the start, and below the 2× pill. TalkBack reads it as one label. |
 
 ### Options sheet
 
@@ -222,7 +222,7 @@ sheet. P1's rows are unchanged; Playback and Audio are untouched for Faran.
 
 ### Device checks for Faran (release build; not possible here)
 
-1. Aspect ratio from the tile and from Options → Video: all six on a 16:9, a 4:3, a portrait and a 2.39:1 file, on the
+1. Aspect ratio from the tile and from Options → Video: all seven on a 16:9, a 4:3, a portrait and a 2.39:1 file, on the
    card and in full screen. Close and reopen the same video: same fit. Another video: Fit.
 2. Crop to fill, then pinch-zoom and pan to each edge: no black edge shows (the pan stops at the visible picture).
 3. Mirror / Flip, each mode, also while zoomed: pinch and pan follow the fingers. Next / Previous: back to Normal.
@@ -230,8 +230,10 @@ sheet. P1's rows are unchanged; Playback and Audio are untouched for Faran.
    and in portrait (orientation lock Portrait, then Rotate). The top bar, lock, timeline, frame panel and 2× pill stay
    clear of it; the picture stays clear by default and fills it with "Use the notch area" on. Also with 3-button
    navigation.
-5. Info overlay on: an H.264 file, an H.265 or VP9 file, an HDR file and a stream. The values are sensible; the box
-   hides while the controls show; in Urdu it is on the left; TalkBack reads it.
+5. Info overlay on: an H.264 file, an H.265 or VP9 file, an HDR file and a stream. The values are sensible. On the
+   page: a line under the card, controls showing or not. Full screen: the line in the dock while the controls show
+   (it shortens with "…" on a narrow screen, never covering volume or speed), the box at the top end when they hide,
+   clear of the lock pill when locked. In Urdu the box is on the left. TalkBack reads it.
 6. Picture-in-picture after choosing Crop, 4:3 and a mirror: the window shows the whole picture, mirrored.
 7. All six themes and Urdu: both sheets, the switch rows in the options sheet, the "Mirror / Flip" tile label.
 8. Changing the fit or the mirror never blacks out or restarts the picture (the view is laid out again, not remounted).

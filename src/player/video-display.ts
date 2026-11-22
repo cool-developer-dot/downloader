@@ -1,7 +1,7 @@
 /**
  * P2 Video fit & display: how the picture is drawn in the Player's surface. Pure, no React, no native code.
  *
- * - #564 Aspect ratio: force 16:9, 4:3 or 21:9 (the picture is stretched into a box of that shape, centred).
+ * - #564 Aspect ratio: force 16:9, 4:3, 21:9 or 1:1 (the picture is stretched into a box of that shape, centred).
  * - #565 Crop to fill: cover the whole area, cutting off what sticks out (no black bars).
  * - #566 Stretch: fill the whole area, the picture's shape not kept.
  * - #573 Mirror / Flip: left ↔ right, upside down, or both (a view transform; the surface is a TextureView).
@@ -16,8 +16,11 @@ import { fittedContentSize, type Size } from './zoom-math';
 
 // ── Fit (#564, #565, #566) ───────────────────────────────────────────────────────────────────────────────────────
 
-/** In the Aspect ratio sheet's order. `fit` is the default: the whole picture, its own shape. */
-export const VIDEO_FITS = ['fit', 'crop', 'stretch', '16:9', '4:3', '21:9'] as const;
+/**
+ * In the Aspect ratio sheet's order. `fit` is the default: the whole picture, its own shape. Checklist #564 names
+ * "16:9 or 4:3 etc."; 21:9 (cinema) and 1:1 (square) are the others offered.
+ */
+export const VIDEO_FITS = ['fit', 'crop', 'stretch', '16:9', '4:3', '21:9', '1:1'] as const;
 export type VideoFit = (typeof VIDEO_FITS)[number];
 export type VideoRatioFit = Extract<VideoFit, `${number}:${number}`>;
 export const DEFAULT_VIDEO_FIT: VideoFit = 'fit';
@@ -282,6 +285,11 @@ export type VideoInfoInput = {
 export const VIDEO_INFO_ROWS = ['codec', 'resolution', 'frameRate', 'bitrate', 'range', 'speed'] as const;
 export type VideoInfoRowKey = (typeof VIDEO_INFO_ROWS)[number];
 export type VideoInfoRow = { key: VideoInfoRowKey; value: string };
+
+/** The rows as one line, values only: "H.264 · 1920 × 1080 · 29.97 fps · 4.2 Mb/s · SDR · 1.0×". */
+export function videoInfoSummary(rows: readonly VideoInfoRow[]): string {
+  return rows.map((row) => row.value).join(' · ');
+}
 
 /** The overlay's rows, in order; a value the player does not know is left out. The speed is always shown. */
 export function videoInfoRows(input: VideoInfoInput): VideoInfoRow[] {

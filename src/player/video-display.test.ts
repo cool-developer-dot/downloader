@@ -25,6 +25,7 @@ import {
   videoCodecName,
   videoFitLayout,
   videoInfoRows,
+  videoInfoSummary,
   videoRangeLabel,
   type VideoInfoInput,
 } from './video-display.ts';
@@ -33,8 +34,10 @@ const SCREEN = { width: 800, height: 360 }; // a 20:9 phone in landscape, in dp
 const HD = { width: 1920, height: 1080 };
 
 describe('video fit', () => {
-  it('offers fit, crop, stretch and three forced ratios, fit first and by default', () => {
-    assert.deepEqual([...VIDEO_FITS], ['fit', 'crop', 'stretch', '16:9', '4:3', '21:9']);
+  it('offers fit, crop, stretch and four forced ratios (#564: 16:9, 4:3, and 21:9, 1:1), fit first and by default', () => {
+    assert.deepEqual([...VIDEO_FITS], ['fit', 'crop', 'stretch', '16:9', '4:3', '21:9', '1:1']);
+    assert.equal(fitRatio('1:1'), 1);
+    assert.deepEqual(videoFitLayout(SCREEN, HD, '1:1').frame, { x: 220, y: 0, width: 360, height: 360 });
     assert.equal(DEFAULT_VIDEO_FIT, 'fit');
     assert.equal(normalizeVideoFit('4:3'), '4:3');
     assert.equal(normalizeVideoFit('zoom'), 'fit');
@@ -222,7 +225,8 @@ describe('#721 info overlay', () => {
     assert.equal(videoRangeLabel(undefined), null);
   });
 
-  it('lists codec, size, frame rate, bit rate, range and speed, in that order', () => {
+  it('lists codec, size, frame rate, bit rate, range and speed, in that order (also as one line)', () => {
+    assert.equal(videoInfoSummary(videoInfoRows(input())), 'H.264 · 1920 × 1080 · 29.97 fps · 4.2 Mb/s · SDR · 1.0×');
     assert.deepEqual(videoInfoRows(input({ playbackRate: 1.5 })), [
       { key: 'codec', value: 'H.264' },
       { key: 'resolution', value: '1920 × 1080' },
