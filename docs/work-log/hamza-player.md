@@ -333,3 +333,75 @@ Load subtitle 20, Auto-detect 30 (switch), Sync 40, Encoding 50 (files only), Su
 8. Previous / Next with subtitles on: the next video starts with its own choice. A video with a track inside it, set
    to Off, then Next to a video whose subtitle track is flagged default: that track shows. Previous / Next onto an MKV:
    its tracks are in the list.
+
+## P4 — Subtitle style (#592, #593, #594, #595, #596, #599, #600)
+
+Built on `hamza/player` after P3; branch `hamza/P4-subtitle-style`. Its PR depends on P3. Everything here styles
+**subtitle files** (VidoraX's overlay). Tracks inside the video are drawn by the player and follow Android's caption
+settings (see P3), which the style sheet says.
+
+### What the user sees
+
+| # | Feature | Where | How (evidence) |
+| --- | --- | --- | --- |
+| #592 | Subtitle Size | Subtitles → Style | Small, Medium, Large, Extra large: 0.8×, 1×, 1.25×, 1.5× the base, which is about 5.5 % of the picture's height (12–30 dp), so text is smaller on the card and larger in full screen. `subtitle-style.ts`, `page/SubtitleOverlay.tsx` (`subtitleFontSize`). |
+| #593 | Subtitle Color | Style | The design's swatches first (screen 21: black #000000, white, yellow #FFD60A, red #D92D20), then green and cyan. Black text gets a light box / outline so it still reads. |
+| #594 | Subtitle Font | Style | Only fonts the app already has: System (Roboto), Inter (the app's font), Nastaliq (Noto Nastaliq Urdu, bundled for the reader and loaded when first needed), and Android's Serif, Monospace and Condensed. Nastaliq applies to Urdu / Arabic lines; Latin lines in the same subtitle keep the system font. Its lines get twice the font size as line height so its tall letters aren't clipped. Until it has loaded, the system font is used. No font file added. |
+| #595 | Subtitle Background/Outline | Style | Box (60 % dark), Outline, Shadow, None. React Native on Android has no text stroke, so Outline is a tight shadow all round. Device check below. |
+| #596 | Subtitle Position | Style | Bottom or Top, then "Away from the edge" / "Toward the edge" in 2 % steps (0–40 % of the picture), shown as "4% from the edge". Subtitles keep clear of what is over the picture: the card's timeline and top row, the full-screen top bar while the controls show, and P2's info box. |
+| #599 | Dual Subtitles | Subtitles → Second subtitle; Style → Second subtitle | A second subtitle file shown with the first, remembered per video (in P3's record, no new key). **Checklist #599 says only "show two languages together", so the layout is VidoraX's:** "Next to the first" (one block; the second on the side away from the edge, above a bottom subtitle) or "Top of the picture". When the first is a track inside the video, the player draws it where VidoraX can't measure, so the second goes to the top. Only files can be second (the sheet says why); the first is not offered as the second. `subtitle-layout.ts` (`planSubtitleBlocks`). |
+| #600 | RTL Subtitles | automatic | Each line's direction comes from its letters: more right-to-left letters than left-to-right means RTL (so "WiFi کا پاس ورڈ 1234 ہے" is RTL and "Hello دوست" LTR). Ties go by the first letter; a line of only numbers is LTR. Each line is checked on its own, because dual-language cues mix lines. An RTL line starts with a right-to-left mark, so Android lays it out right to left with the English word and the number in their places (`writingDirection` is iOS-only), and it is aligned right. LTR lines are centred. `subtitle-layout.ts` (`lineDirection`, `subtitleLines`). |
+
+**Live preview:** the Style sheet shows a sample, plus the second one when a second subtitle is on. It sits on a fixed
+dark picture, so colours look the same in all six themes, and every change applies at once. Reset style restores the
+defaults: white, medium, system font, box, bottom 4 %. The style is app-wide and remembered (MMKV
+`vidorax.mmkv.player.subtitleStyle.v1`; a damaged field falls back alone). The sheet itself uses theme colours: chips,
+swatch rings, buttons.
+
+### Decisions
+
+- **Screen 21's "RTL support" switch is not built:** right-to-left is detected per line, and turning it off would only
+  draw Urdu wrongly.
+- **One sync offset for both subtitles** (P3's, per video). A second file from another source may need its own offset;
+  that would be a second value in the same record.
+- **The six colours** are the design's four plus green and cyan.
+- **Fonts:** nothing new bundled.
+
+### Files
+
+- Logic (unit-tested): `src/player/subtitles/subtitle-style.ts`, `subtitle-layout.ts`; `subtitle-record.ts`
+  (`secondary`, optional, read back from old records as absent).
+- Runtime: `subtitle-style-preference.ts`; `use-player-subtitles.ts` (the second subtitle; file reading and timing
+  moved into `useSubtitleFileLines`, used for both).
+- Screen: `page/SubtitleOverlay.tsx` (styled, per-line direction, dual blocks), `page/SubtitleStyleSheet.tsx`,
+  `page/SubtitleSheets.tsx` (files only, excluded keys), `PlayerScreen.tsx`.
+- Options: `src/player/options/p4-subtitle-style.ts` (+ one import), `player-options.ts` (`secondLabel`, two `ui`
+  commands). MMKV key: `playerSubtitleStyle`. Strings: 44 new `videoPlayer.*` keys (English and Urdu).
+
+### Gate
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | 0 errors |
+| Unit tests | 2133 / 2133 (15 new: `subtitles/subtitle-style.test.ts` 13, `options/p4-subtitle-style.test.ts` 2) |
+| `npm run lint` | 0 errors; 91 warnings, none in a file P4 changed |
+| Against the base | none of Faran's files; `package.json` / lockfile, `android/`, `modules/`, manifests, `app.json` unchanged |
+| Media3 | `1.9.0`, unchanged |
+
+### Device checks for Faran (release build; not possible here)
+
+1. Style sheet in all six themes and in Urdu: the chips, the colour rings (black visible on Dark / Midnight), the
+   buttons; the preview looks the same in every theme.
+2. Each size and colour on the card and in full screen; Outline and Shadow read on a bright scene. Outline is a shadow
+   on Android, so check it really outlines.
+3. Nastaliq with an Urdu SRT: the letters aren't clipped (line height), Latin lines stay in the system font, the
+   first subtitle after choosing it may show in the system font for a moment while the font loads.
+4. RTL: an Urdu SRT with lines like "WiFi کا پاس ورڈ 1234 ہے" and "ٹرین 7:45 پر Lahore سے چلے گی". The words read
+   right to left, the English word and the numbers stay in order, the line is right-aligned, and punctuation sits at
+   the left end. An English line in the same file stays centred.
+5. Position: Top and Bottom, Away / Toward the edge; with the controls showing (card and full screen) the subtitle
+   stays clear of the timeline / top bar; with the info overlay on in full screen, a top subtitle sits below its box.
+6. Dual: an English and an Urdu file. "Next to the first" (both at the bottom, Urdu above or below as chosen first /
+   second), "Top of the picture"; a track inside the video as the first with a file as the second (the second at the
+   top, no overlap).
+7. Reset style; close and reopen the app: the style is kept; another video keeps its own second subtitle.

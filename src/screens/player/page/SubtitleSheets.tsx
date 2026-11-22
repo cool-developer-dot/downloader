@@ -23,6 +23,9 @@ export type SubtitleTrackSheetProps = {
   onClose: () => void;
   /** P4's second track: tracks inside the video can't be shown as a second one. */
   filesOnly?: boolean;
+  /** Keys left out (P4: the first subtitle is not offered as the second). */
+  exclude?: readonly string[];
+  subtitle?: string;
   testID?: string;
 };
 
@@ -35,6 +38,8 @@ export const SubtitleTrackSheet = memo(function SubtitleTrackSheet({
   onSelect,
   onClose,
   filesOnly = false,
+  exclude,
+  subtitle,
   testID = 'player-subtitle-track-sheet',
 }: SubtitleTrackSheetProps) {
   const { t } = useTranslation();
@@ -47,7 +52,7 @@ export const SubtitleTrackSheet = memo(function SubtitleTrackSheet({
         onPress: () => onSelect({ kind: 'off' }),
       },
       ...options
-        .filter((option) => !filesOnly || option.kind === 'file')
+        .filter((option) => (!filesOnly || option.kind === 'file') && !exclude?.includes(option.key))
         .map((option) => ({
           id: `subtitle-track-${option.key}`,
           label: option.label,
@@ -55,9 +60,11 @@ export const SubtitleTrackSheet = memo(function SubtitleTrackSheet({
           onPress: () => onSelect(option.source),
         })),
     ],
-    [filesOnly, onSelect, options, selectedKey, t],
+    [exclude, filesOnly, onSelect, options, selectedKey, t],
   );
-  return <ActionSheetModal visible={visible} title={title} actions={actions} onClose={onClose} testID={testID} />;
+  return (
+    <ActionSheetModal visible={visible} title={title} subtitle={subtitle} actions={actions} onClose={onClose} testID={testID} />
+  );
 });
 
 export type SubtitleEncodingSheetProps = {

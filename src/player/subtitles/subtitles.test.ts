@@ -321,7 +321,7 @@ describe('remembered per video', () => {
 
   it('reads stored data defensively and ignores fields it does not know (a later package may add some)', () => {
     const raw = [
-      ['v1', { primary: { kind: 'embedded', id: '3', language: 'en', label: 'English' }, files: [], offsetMs: 349, secondary: { kind: 'off' } }],
+      ['v1', { primary: { kind: 'embedded', id: '3', language: 'en', label: 'English' }, files: [], offsetMs: 349, laterField: { anything: 1 } }],
       ['v2', { primary: { kind: 'file', fileId: 'gone' }, files: [{ id: 'x' }], offsetMs: 'no' }],
       ['v3', 'junk'],
       ['v4', { primary: { kind: 'file', fileId: 'a' }, files: [file('a'), file('a')], offsetMs: 0, encoding: 'x' }],

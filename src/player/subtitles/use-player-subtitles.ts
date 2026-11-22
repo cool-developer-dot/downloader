@@ -64,6 +64,12 @@ export type PlayerSubtitles = {
   offsetMs: number;
   /** The text showing now (one entry per cue; a cue may hold several lines). */
   lines: string[];
+  /** P4 #599: the second subtitle (a file, or 'off'), its label, file and text now. */
+  secondaryKey: string;
+  secondaryLabel: string | null;
+  secondaryFile: SubtitleFileRef | null;
+  secondaryLines: string[];
+  selectSecondary: (source: SubtitleSource) => void;
   autoDetect: boolean;
   /** The system file picker is open (the Player keeps picture-in-picture from starting meanwhile). */
   picking: boolean;
@@ -133,6 +139,78 @@ function applyNativeTrack(player: VideoPlayer, track: SubtitleTrack | null): voi
 
 function embeddedSource(track: SubtitleTrack): SubtitleSource {
   return { kind: 'embedded', id: trackId(track), language: track.language ?? null, label: track.label ?? null };
+}
+
+/**
+ * A subtitle file read, decoded, parsed and indexed (again when its encoding changes), and the cues showing now —
+ * `player.currentTime` read ten times a second, shifted by the sync offset; state changes only when the cues do.
+ */
+function useSubtitleFileLines(
+  player: VideoPlayer,
+  file: SubtitleFileRef | null,
+  offsetMs: number,
+): { loaded: LoadedSubtitle | null; lines: string[] } {
+  const fileUri = file?.uri ?? null;
+  const fileEncoding = file?.encoding ?? 'auto';
+  const fileFormat = file?.format ?? 'srt';
+  const fileKey = fileUri ? `${fileUri}|${fileEncoding}|${fileFormat}` : null;
+  const [loaded, setLoaded] = useState<LoadedSubtitle | null>(null);
+  useEffect(() => {
+    if (!fileUri || !fileKey) {
+      return;
+    }
+    let live = true;
+    readSubtitleBytes(fileUri)
+      .then((bytes) => {
+        const decoded = decodeSubtitleBytes(bytes, fileEncoding);
+        const parsed = parseSubtitles(decoded.text, fileFormat);
+        if (live) {
+          setLoaded({
+            key: fileKey,
+            index: createCueIndex(parsed.cues),
+            encoding: decoded.encoding,
+            unsupported: parsed.unsupported,
+            failed: false,
+          });
+        }
+      })
+      .catch(() => {
+        if (live) {
+          setLoaded({ key: fileKey, index: null, encoding: null, unsupported: [], failed: true });
+        }
+      });
+    return () => {
+      live = false;
+    };
+  }, [fileEncoding, fileFormat, fileKey, fileUri]);
+
+  const current = loaded && loaded.key === fileKey ? loaded : null;
+  const index = current?.index ?? null;
+  const [shown, setShown] = useState<{ index: CueIndex | null; lines: string[] }>({ index: null, lines: [] });
+  useEffect(() => {
+    if (!index) {
+      return;
+    }
+    let last = '';
+    const tick = () => {
+      let seconds: number;
+      try {
+        seconds = player.currentTime;
+      } catch {
+        return;
+      }
+      const cues = activeCuesAt(index, subtitleTimeMs(seconds, offsetMs));
+      const key = cues.map((cue) => `${cue.startMs}:${cue.text}`).join('|');
+      if (key !== last) {
+        last = key;
+        setShown({ index, lines: cues.map((cue) => cue.text) });
+      }
+    };
+    const timer = setInterval(tick, 100);
+    return () => clearInterval(timer);
+  }, [index, offsetMs, player]);
+
+  return { loaded: current, lines: index && shown.index === index ? shown.lines : NO_LINES };
 }
 
 export function usePlayerSubtitles(player: VideoPlayer, mediaId: string | null): PlayerSubtitles {
@@ -237,67 +315,22 @@ export function usePlayerSubtitles(player: VideoPlayer, mediaId: string | null):
     }
   }, [player, waitingForTrack, wantedEmbedded, nativeTrack]);
 
-  // ── The file showing: read, decoded, parsed, indexed ────────────────────────────────────────────────────────────
-  const fileUri = currentFile?.uri ?? null;
-  const fileEncoding = currentFile?.encoding ?? 'auto';
-  const fileFormat = currentFile?.format ?? 'srt';
-  const fileKey = fileUri ? `${fileUri}|${fileEncoding}|${fileFormat}` : null;
-  const [loaded, setLoaded] = useState<LoadedSubtitle | null>(null);
-  useEffect(() => {
-    if (!fileUri || !fileKey) {
-      return;
-    }
-    let live = true;
-    readSubtitleBytes(fileUri)
-      .then((bytes) => {
-        const decoded = decodeSubtitleBytes(bytes, fileEncoding);
-        const parsed = parseSubtitles(decoded.text, fileFormat);
-        if (live) {
-          setLoaded({
-            key: fileKey,
-            index: createCueIndex(parsed.cues),
-            encoding: decoded.encoding,
-            unsupported: parsed.unsupported,
-            failed: false,
-          });
-        }
-      })
-      .catch(() => {
-        if (live) {
-          setLoaded({ key: fileKey, index: null, encoding: null, unsupported: [], failed: true });
-        }
-      });
-    return () => {
-      live = false;
-    };
-  }, [fileEncoding, fileFormat, fileKey, fileUri]);
-
-  // ── The lines showing now ───────────────────────────────────────────────────────────────────────────────────────
+  // ── The file showing: read, decoded, parsed, indexed, and its lines now ────────────────────────────────────────
   const offsetMs = record.offsetMs;
-  const index = loaded && loaded.key === fileKey ? loaded.index : null;
-  const [shown, setShown] = useState<{ index: CueIndex | null; lines: string[] }>({ index: null, lines: [] });
-  useEffect(() => {
-    if (!index) {
-      return;
+  const primaryFile = useSubtitleFileLines(player, currentFile, offsetMs);
+
+  // ── P4 #599: the second subtitle (a file; tracks inside the video can't be a second one) ───────────────────────
+  const secondary: SubtitleSource = useMemo(() => {
+    const chosen = record.secondary;
+    if (chosen?.kind !== 'file' || !files.some((file) => file.id === chosen.fileId)) {
+      return { kind: 'off' };
     }
-    let last = '';
-    const tick = () => {
-      let seconds: number;
-      try {
-        seconds = player.currentTime;
-      } catch {
-        return;
-      }
-      const cues = activeCuesAt(index, subtitleTimeMs(seconds, offsetMs));
-      const key = cues.map((cue) => `${cue.startMs}:${cue.text}`).join('|');
-      if (key !== last) {
-        last = key;
-        setShown({ index, lines: cues.map((cue) => cue.text) });
-      }
-    };
-    const timer = setInterval(tick, 100);
-    return () => clearInterval(timer);
-  }, [index, offsetMs, player]);
+    // The same file as the first is shown once.
+    return current.kind === 'file' && current.fileId === chosen.fileId ? { kind: 'off' } : chosen;
+  }, [current, files, record.secondary]);
+  const secondaryKey = sourceKey(secondary);
+  const secondaryFile = secondary.kind === 'file' ? (files.find((file) => file.id === secondary.fileId) ?? null) : null;
+  const secondaryLines = useSubtitleFileLines(player, secondaryFile, offsetMs);
 
   // ── Options ─────────────────────────────────────────────────────────────────────────────────────────────────────
   const options = useMemo<SubtitleOption[]>(
@@ -393,15 +426,37 @@ export function usePlayerSubtitles(player: VideoPlayer, mediaId: string | null):
     [currentFile, mediaId],
   );
 
+  const selectSecondary = useCallback(
+    (source: SubtitleSource) => {
+      const previous = getVideoSubtitleRecord(mediaId);
+      if (source.kind !== 'file') {
+        updateVideoSubtitleRecord(mediaId, () => ({ ...previous, secondary: { kind: 'off' } }));
+        return;
+      }
+      const file = files.find((candidate) => candidate.id === source.fileId);
+      const added =
+        file && !previous.files.some((existing) => existing.id === file.id)
+          ? addSubtitleFile(previous, file)
+          : { record: previous, dropped: [] };
+      updateVideoSubtitleRecord(mediaId, () => ({ ...added.record, secondary: source }), added.dropped);
+    },
+    [files, mediaId],
+  );
+
   return {
     options,
     current,
     currentKey,
     currentLabel,
     currentFile,
-    loaded: loaded && loaded.key === fileKey ? loaded : null,
+    loaded: primaryFile.loaded,
     offsetMs,
-    lines: index && shown.index === index ? shown.lines : NO_LINES,
+    lines: primaryFile.lines,
+    secondaryKey,
+    secondaryLabel: secondaryFile ? subtitleFileLabel(t, secondaryFile) : null,
+    secondaryFile,
+    secondaryLines: secondaryLines.lines,
+    selectSecondary,
     autoDetect,
     picking,
     select,

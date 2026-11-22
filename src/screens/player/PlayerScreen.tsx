@@ -47,6 +47,7 @@ import type { MirrorMode, VideoFit } from '@/player/video-display';
 import { MAX_SUBTITLE_BYTES, usePlayerSubtitles } from '@/player/subtitles/use-player-subtitles';
 import { subtitleEncodingLabel } from '@/player/subtitles/subtitle-labels';
 import type { SubtitleSource } from '@/player/subtitles/subtitle-record';
+import { resetSubtitleStyle, setSubtitleStyle, useSubtitleStyle } from '@/player/subtitles/subtitle-style-preference';
 import { mirrorModeLabel, videoFitLabel } from '@/player/video-display-labels';
 import {
   setFillCutout,
@@ -126,6 +127,7 @@ import { AspectRatioSheet, MirrorFlipSheet } from './page/VideoDisplaySheets';
 import { VideoInfoLine, VideoInfoOverlay } from './page/VideoInfoOverlay';
 import { SubtitleOverlay } from './page/SubtitleOverlay';
 import { SubtitleEncodingSheet, SubtitleSyncSheet, SubtitleTrackSheet } from './page/SubtitleSheets';
+import { SubtitleStyleSheet } from './page/SubtitleStyleSheet';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -263,7 +265,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const display = useVideoDisplay(activeMediaId);
   // P3: the subtitles of this video (tracks, the file showing, its lines now) and which subtitle sheet is open.
   const subtitles = usePlayerSubtitles(player, activeMediaId);
-  const [subtitleSheet, setSubtitleSheet] = useState<'subtitles' | 'tracks' | 'sync' | 'encoding' | null>(null);
+  // P4: the subtitle style (app-wide).
+  const subtitleStyle = useSubtitleStyle();
+  const [subtitleSheet, setSubtitleSheet] = useState<
+    'subtitles' | 'tracks' | 'sync' | 'encoding' | 'style' | 'second' | null
+  >(null);
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const notYet = usePlayerNotYet();
@@ -848,7 +854,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
 
   // ── P3 Subtitles ───────────────────────────────────────────────────────────────────────────────────────────────
   const openSubtitleSheet = useCallback(
-    (sheet: 'subtitles' | 'tracks' | 'sync' | 'encoding') => {
+    (sheet: 'subtitles' | 'tracks' | 'sync' | 'encoding' | 'style' | 'second') => {
       endLongPress();
       showControls();
       setSubtitleSheet(sheet);
@@ -1059,6 +1065,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
       openSubtitleSync: () => openSubtitleSheet('sync'),
       openSubtitleEncoding: () => openSubtitleSheet('encoding'),
       subtitlesOff: () => onSelectSubtitle({ kind: 'off' }),
+      openSubtitleStyle: () => openSubtitleSheet('style'),
+      openSubtitleSecond: () => openSubtitleSheet('second'),
     }),
     [
       endLongPress,
@@ -1136,6 +1144,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
   // The video surface sits at the same place in the tree in both, so switching never remounts the player's view.
   // In picture-in-picture the window is the small PiP window: the picture alone, never the page around it.
   const pageLayout = !isFullscreen && !pipActive && window.height >= window.width && !showError;
+  // #721's box: full screen, controls hidden. A top subtitle (P4) keeps below it.
+  const infoBoxVisible = showInfo && !pageLayout && !overlayVisible && !session.isSeeking && !startupCoverVisible;
   // Locked on the page: the controls under the lock overlay are hidden from TalkBack too, not only from touch.
   const pageA11yHidden = locked && pageLayout;
   const pageBg = theme.colors.background;
@@ -1171,6 +1181,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
         ? subtitleEncodingLabel(t, subtitles.currentFile.encoding, subtitles.loaded?.encoding ?? null)
         : null,
       autoDetect: subtitles.autoDetect,
+      secondLabel: subtitles.secondaryLabel,
     },
     ui: optionsUi,
   };
@@ -1347,19 +1358,35 @@ const PlayerSessionView = memo(function PlayerSessionView({
         </View>
         {/* The feedback, the info overlay and the lock pill, clear of the camera cutout in full screen (P2 #576). */}
         <View style={[StyleSheet.absoluteFill, cutoutInsets, styles.overlayLayer]} pointerEvents="box-none">
-          {/* P3: a subtitle file's lines (above the card's timeline while it shows). */}
+          {/*
+            P3 / P4: subtitle files in the user's style. Clear of what shows over the picture: the card's timeline and
+            top row, the full-screen top bar, and the info box at the top end.
+          */}
           {!showError && !startupCoverVisible ? (
             <SubtitleOverlay
-              lines={subtitles.lines}
+              primaryCues={subtitles.lines}
+              secondaryCues={subtitles.secondaryLines}
+              primaryFile={subtitles.currentFile != null}
+              primaryNative={subtitles.current.kind === 'embedded'}
+              secondaryOn={subtitles.secondaryKey !== 'off'}
+              style={subtitleStyle}
               areaHeight={surfaceHeight}
-              bottom={pageLayout && overlayVisible ? 48 : 10}
+              insetBottom={pageLayout && overlayVisible ? 48 : 0}
+              insetTop={
+                pageLayout
+                  ? overlayVisible
+                    ? 44
+                    : 0
+                  : overlayVisible
+                    ? 64
+                    : infoBoxVisible
+                      ? INFO_BOX_CLEARANCE
+                      : 0
+              }
             />
           ) : null}
           {/* #721, full screen with the controls hidden (with them showing it is a line in the dock). */}
-          <VideoInfoOverlay
-            visible={showInfo && !pageLayout && !overlayVisible && !session.isSeeking && !startupCoverVisible}
-            info={videoInfo}
-          />
+          <VideoInfoOverlay visible={infoBoxVisible} info={videoInfo} />
           <SeekFeedbackOverlay
             previewSeconds={seekPreviewSeconds}
             durationSeconds={session.durationSeconds}
@@ -1618,6 +1645,30 @@ const PlayerSessionView = memo(function PlayerSessionView({
         onReset={subtitles.resetOffset}
         onClose={() => setSubtitleSheet(null)}
       />
+      <SubtitleStyleSheet
+        visible={subtitleSheet === 'style'}
+        style={subtitleStyle}
+        showSecond={subtitles.secondaryKey !== 'off'}
+        onChange={setSubtitleStyle}
+        onReset={resetSubtitleStyle}
+        onClose={() => setSubtitleSheet(null)}
+      />
+      <SubtitleTrackSheet
+        visible={subtitleSheet === 'second'}
+        title={t('videoPlayer.subtitleSecond')}
+        subtitle={t('videoPlayer.subtitleSecondSheetHint')}
+        options={subtitles.options}
+        selectedKey={subtitles.secondaryKey}
+        filesOnly
+        exclude={[subtitles.currentKey]}
+        onSelect={(source) => {
+          setSubtitleSheet(null);
+          subtitles.selectSecondary(source);
+          bumpControls();
+        }}
+        onClose={() => setSubtitleSheet(null)}
+        testID="player-subtitle-second-sheet"
+      />
       <SubtitleEncodingSheet
         visible={subtitleSheet === 'encoding'}
         selected={subtitles.currentFile?.encoding ?? 'auto'}
@@ -1631,6 +1682,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
     </SafeAreaScreen>
   );
 });
+
+/** P4: a top subtitle keeps below P2's info box (at 64 dp, up to six rows tall) while it shows. */
+const INFO_BOX_CLEARANCE = 64 + 116;
 
 const SAVE_OUTCOME_MESSAGE: Record<SaveIncomingOutcome['kind'], TranslationKey> = {
   saved: 'player.savedToLibrary',

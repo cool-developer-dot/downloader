@@ -140,6 +140,8 @@ describe('P1 rows in the options sheet', () => {
     openSubtitleSync: () => calls.push('subtitleSync'),
     openSubtitleEncoding: () => calls.push('subtitleEncoding'),
     subtitlesOff: () => calls.push('subtitlesOff'),
+    openSubtitleStyle: () => calls.push('subtitleStyle'),
+    openSubtitleSecond: () => calls.push('subtitleSecond'),
   };
   const context = (overrides: Partial<PlayerOptionContext> = {}): PlayerOptionContext => ({
     t: ((key: string, params?: Record<string, string | number>) =>
@@ -152,7 +154,7 @@ describe('P1 rows in the options sheet', () => {
     orientationMode: 'auto',
     incoming: null,
     display: { fit: 'fit', mirror: 'none', fillCutout: false, infoOverlay: false },
-    subtitles: { label: null, isFile: false, offsetMs: 0, encodingLabel: null, autoDetect: true },
+    subtitles: { label: null, isFile: false, offsetMs: 0, encodingLabel: null, autoDetect: true, secondLabel: null },
     ui,
     ...overrides,
   });

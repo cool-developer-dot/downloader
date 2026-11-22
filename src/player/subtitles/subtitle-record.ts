@@ -35,6 +35,11 @@ export type VideoSubtitleRecord = {
   primary: SubtitleSource | null;
   files: SubtitleFileRef[];
   offsetMs: number;
+  /**
+   * P4 #599: the second subtitle shown with the first — a file, or Off (tracks inside the video are drawn by the
+   * player and can't be a second one). Absent in records written before P4 and when never chosen.
+   */
+  secondary?: Extract<SubtitleSource, { kind: 'off' } | { kind: 'file' }> | null;
 };
 
 export const EMPTY_SUBTITLE_RECORD: VideoSubtitleRecord = { primary: null, files: [], offsetMs: 0 };
@@ -103,16 +108,25 @@ export function readSubtitleRecord(raw: unknown): VideoSubtitleRecord {
       }
     }
   }
+  const kept = files.slice(-MAX_SUBTITLE_FILES);
   let primary = readSubtitleSource(value.primary);
-  if (primary?.kind === 'file' && !files.some((file) => file.id === (primary as { fileId: string }).fileId)) {
+  if (primary?.kind === 'file' && !kept.some((file) => file.id === (primary as { fileId: string }).fileId)) {
     primary = null;
   }
-  return { primary, files: files.slice(-MAX_SUBTITLE_FILES), offsetMs: normalizeSubtitleOffset(value.offsetMs) };
+  const record: VideoSubtitleRecord = { primary, files: kept, offsetMs: normalizeSubtitleOffset(value.offsetMs) };
+  const secondary = readSubtitleSource(value.secondary);
+  if (
+    secondary?.kind === 'off' ||
+    (secondary?.kind === 'file' && kept.some((file) => file.id === (secondary as { fileId: string }).fileId))
+  ) {
+    record.secondary = secondary as VideoSubtitleRecord['secondary'];
+  }
+  return record;
 }
 
 /** Nothing chosen, no files, no offset: no need to keep it. */
 export function isEmptySubtitleRecord(record: VideoSubtitleRecord): boolean {
-  return record.primary == null && record.files.length === 0 && record.offsetMs === 0;
+  return record.primary == null && record.files.length === 0 && record.offsetMs === 0 && record.secondary == null;
 }
 
 export type SubtitleRecords = readonly (readonly [string, VideoSubtitleRecord])[];
@@ -185,11 +199,13 @@ export function addSubtitleFile(
     const oldest = files.findIndex((existing) => existing.id !== file.id);
     dropped.push(...files.splice(oldest, 1));
   }
-  const primary =
-    record.primary?.kind === 'file' && dropped.some((gone) => gone.id === (record.primary as { fileId: string }).fileId)
-      ? null
-      : record.primary;
-  return { record: { ...record, primary, files }, dropped };
+  const isDropped = (source: SubtitleSource | null | undefined) =>
+    source?.kind === 'file' && dropped.some((gone) => gone.id === source.fileId);
+  const next: VideoSubtitleRecord = { ...record, primary: isDropped(record.primary) ? null : record.primary, files };
+  if (isDropped(record.secondary)) {
+    next.secondary = null;
+  }
+  return { record: next, dropped };
 }
 
 /** Loaded copies a record owns (a detected file belongs to the library and is never deleted from here). */

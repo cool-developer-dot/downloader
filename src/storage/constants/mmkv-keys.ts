@@ -28,6 +28,8 @@ export const mmkvKeys = {
   playerSubtitles: 'vidorax.mmkv.player.subtitles.v1',
   /** P3 #590: look for subtitle files named like the video next to it (default on). */
   playerSubtitleAutoDetect: 'vidorax.mmkv.player.subtitleAutoDetect.v1',
+  /** P4 #592–#596, #599: the subtitle style (size, colour, font, edge, position, second subtitle's place), app-wide. */
+  playerSubtitleStyle: 'vidorax.mmkv.player.subtitleStyle.v1',
   firstLaunch: 'vidorax.mmkv.flags.firstLaunch',
   onboardingComplete: 'vidorax.mmkv.flags.onboardingComplete',
   analyticsEnabled: 'vidorax.mmkv.flags.analyticsEnabled',
