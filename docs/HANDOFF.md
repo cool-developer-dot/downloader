@@ -2546,6 +2546,28 @@ build. Status sheet: `~/Downloads/VidoraX-Client-APK/VidoraX-Design-Check-1.2.0.
   Browser and Downloads screen opens; six themes switch live; voice search opens Google's voice input; `5 km in mi`
   → `= 3.10686 mi`; w3schools: 5 blocked on the page = 5 this week.
 
+### 4.41 Device test of the design build and four fixes (branch `claude/design-65-screens`, 2026-11-22)
+
+A full test pass using `docs/testing/VidoraX-1.2.0-Deep-Test-Prompt.md`. The report is
+`docs/testing/VidoraX-1.2.0-Test-Report.md` (37 pass, 5 fail, 4 blocked). Its screenshots are local only, in
+`docs/testing/report-shots/` (not committed). Fixed and checked on the AVD:
+
+- **Shared / opened links** now bring the Browser forward (`incoming-link.service.ts`, `open(text, bringForward)` →
+  `navigation.navigate(routePaths.browser)`). This dated back to 1.0.
+- **Total speed graph**: `'use no memo'` in `useTotalSpeedGraph` and `useDownloadProgressDetails`. The React Compiler
+  cached the first read of the stats map (the same pattern as DeveloperSettingsSection).
+- **Tour step 1**: a new `startSearch` target (BrowserHomeView); TourOverlay falls back to it while
+  `addressBarVisibility.isHidden()` or the bar isn't `isMostlyOnScreen` (tour-layout, tested).
+- **Nested stacks**: `unstable_settings = { anchor: 'index' }` (expo-router 57 reads `anchor`, then
+  `initialRouteName`) in `(tabs)/browser/_layout.tsx` and `(tabs)/downloads/_layout.tsx`. A `vidorax://` link to a
+  module screen keeps the list or start page under it.
+- **Open (Low):**
+  - failed card without an inline Retry
+  - DNS-failure downloads not auto-retried
+  - HLS default name ".m3u8"
+  - 404 shown as "Needs review" in Batch Add
+  - the system-styled disguised-file dialog
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

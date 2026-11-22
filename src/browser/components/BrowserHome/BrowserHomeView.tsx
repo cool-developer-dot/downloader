@@ -48,6 +48,8 @@ export const BrowserHomeView = memo(function BrowserHomeView({
   const { t } = useTranslation();
   const { openUrl, pasteAndGo } = useBrowserHome();
   const quickAccessRef = useTourTargetRef('startPage');
+  // The tour's "Address bar" step points here while the start page hides the browser's own address bar.
+  const startSearchRef = useTourTargetRef('startSearch');
   // B21 #245: a colour, gradient or photo behind the page (dark layer + dark palette); the theme by default.
   const background = useStartPageBackground();
   const custom = background.kind !== 'theme';
@@ -91,16 +93,18 @@ export const BrowserHomeView = memo(function BrowserHomeView({
           testID: 'browser-home-menu',
         }}
       />
-      <DsSearchField
-        testID="browser-home-search"
-        placeholder={t('lightHome.searchPlaceholder')}
-        accessibilityLabel={t('lightHome.searchA11y')}
-        onPress={openSearch}
-        actions={[
-          { icon: 'mic', accessibilityLabel: t('lightHome.micA11y'), onPress: voiceSearch, testID: 'browser-home-mic' },
-          { icon: 'camera', accessibilityLabel: t('lightHome.cameraA11y'), onPress: scan, testID: 'browser-home-scan' },
-        ]}
-      />
+      <View ref={startSearchRef} collapsable={false}>
+        <DsSearchField
+          testID="browser-home-search"
+          placeholder={t('lightHome.searchPlaceholder')}
+          accessibilityLabel={t('lightHome.searchA11y')}
+          onPress={openSearch}
+          actions={[
+            { icon: 'mic', accessibilityLabel: t('lightHome.micA11y'), onPress: voiceSearch, testID: 'browser-home-mic' },
+            { icon: 'camera', accessibilityLabel: t('lightHome.cameraA11y'), onPress: scan, testID: 'browser-home-scan' },
+          ]}
+        />
+      </View>
       <DsCard testID="browser-home-paste-card">
         <DsText variant="cardTitle" accessibilityRole="header">
           {t('lightHome.pasteCardTitle')}

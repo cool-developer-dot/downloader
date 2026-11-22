@@ -9,6 +9,12 @@ import { appStackScreenOptions, createContentStyleOptions } from '@/navigation';
  * schedule, torrent, statistics, settings, alerts and the rest of the design's download screens. They open over the
  * list with the bottom tab bar still showing. `/downloads/:id` keeps its path (notifications deep-link to it).
  */
+/**
+ * The module's own page stays under every screen of the stack, also when one is opened by a link (`vidorax://…`, a
+ * notification, a widget) from another tab: Back then returns to the list, and the tab never loses it.
+ */
+export const unstable_settings = { anchor: 'index' };
+
 export default function DownloadsStackLayout() {
   const theme = useTheme();
   const screenOptions = useMemo(

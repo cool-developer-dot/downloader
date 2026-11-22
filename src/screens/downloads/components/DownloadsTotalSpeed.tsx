@@ -65,10 +65,11 @@ function selectRunningEngineIds(state: ReturnType<typeof useDownloadsStore.getSt
 
 /** The last 12 seconds of the running downloads' combined speed, re-read at most once a second. */
 function useTotalSpeedGraph(): { points: number[]; maxBps: number } | null {
+  'use no memo'; // Reads the stats map outside React (re-read on `revision`): compiled, the React Compiler kept the first null and the bars never drew.
   const runningIds = useDownloadsStore(selectRunningEngineIds);
   const revision = useProgressStatsRevision((state) => state.revision);
   return useMemo(() => {
-    void revision;
+    void revision; // Only a re-read signal: the samples themselves live in the stats map.
     const lists: SpeedSample[][] = [];
     let newestAt: number | null = null;
     for (const id of runningIds ? runningIds.split('\n') : []) {
