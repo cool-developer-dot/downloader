@@ -76,6 +76,10 @@ export const mmkvKeys = {
   inAppReview: 'vidorax.mmkv.review.inApp.v1',
   /** One-time move of legacy page/v1 favorites onto library items' own favorites. */
   favoritesPerItemMigratedV1: 'vidorax.mmkv.flags.favoritesPerItemMigrated.v1',
+  /** P8 #586 / #587: the Player's gesture settings (master switch, one switch per gesture, sensitivity), app-wide. */
+  playerGestures: 'vidorax.mmkv.player.gestures.v1',
+  /** P8 #692: the Player's customized controls, `{ [group]: { order, hidden } }`, app-wide. */
+  playerControlsLayout: 'vidorax.mmkv.player.controlsLayout.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

@@ -25,6 +25,7 @@ const context = (subtitles: Partial<PlayerOptionContext['subtitles']> = {}): Pla
   incoming: null,
   display: { fit: 'fit', mirror: 'none', fillCutout: false, infoOverlay: false },
   subtitles: { label: 'Urdu · a.ur.srt', isFile: true, offsetMs: 0, encodingLabel: 'UTF-8', autoDetect: true, secondLabel: null, ...subtitles },
+  gestures: { enabled: true, sensitivity: 'normal', onCount: 7, total: 7 },
   ui,
 });
 

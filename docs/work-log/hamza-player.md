@@ -813,3 +813,153 @@ Both ignore case and Unicode composition.
 12. **The long-press menu scrolls.** On a short phone, with a video open in the mini player (P6 adds Play next and Add
     to queue, so about 12 rows), long-press a Library video: the rows scroll, and Delete and Cancel can be reached. A
     short menu elsewhere (e.g. Downloads) looks as before.
+
+## P8 Gestures & custom controls (#582, #585, #586, #587, #692)
+
+Built from `hamza/player` at P4 (`d2796bc`) in its own worktree, on local `wip/P8-gestures`, while P5–P7 were built in
+parallel; it is meant to be cherry-picked on top of P7 as `hamza/P8-gestures`. Its PR depends on P7
+(`hamza/P7-playlists`). Every gesture that existed before P8 keeps its numbers and its behaviour; the new options only
+add to them.
+
+### What the user sees
+
+| # | Feature | Where | How (evidence) |
+| --- | --- | --- | --- |
+| #582 | Horizontal Swipe Seek | On the video (card and full screen); ⋮ → Playback → Gestures → "Swipe sideways to seek" | One finger moved sideways anywhere on the fitted picture shows a pill with the target and the change, "12:34 (+0:45)". The video seeks **once, when the finger lifts**, through the session's exact seek (the timeline's path). A second finger, a lock or a sheet opening cancels the swipe and nothing seeks. Normal: the picture's width is 90 s (half the width = 45 s), in whole seconds, rounded the same way both directions, kept inside 0 … the video's length. Right is forward in every language, as for the double tap and the timeline (neither is mirrored in Urdu). Off while zoomed (one finger moves the picture then), before the video is ready, and for a stream with no length. The start is read from the player's own clock. `src/player/swipe-seek.ts` (`swipeSeekTarget`, `formatSeekDelta`, `formatSwipeSeekLabel`, the pill's store), `use-swipe-seek.ts`, `gesture-zones.ts` (thresholds, `resolveSwipeAxis`), `screens/player/components/PlayerVideoSurface.tsx` (`swipeSeek` pan), `components/SwipeSeekHud.tsx`. |
+| #585 | Two Finger Tap | On the video; Gestures → "Two-finger tap: play / pause" | **The checklist row says only "to run a specific function" (مخصوص فنکشن چلانے کے لیے), so it plays / pauses** (screen 20 says "Two-finger tap: pause"). Two fingers down and up within 300 ms, moving less than 12 dp. It does what the play button does (and keeps the controls' timer fresh). It is recognised when the fingers lift, before the single tap can be (the single tap waits for the double tap to fail), so the controls don't also toggle. `PlayerVideoSurface.tsx` (`twoFingerTapGesture`), `PlayerScreen.tsx` (`onTwoFingerTap={onPlayPause}`). |
+| #586 | Gesture Sensitivity | ⋮ → Playback → Gesture sensitivity (a sheet); the Gestures sheet (chips) | Low / Normal / High multiply how far a swipe moves the time, the brightness and the volume by **×0.5 / ×1 / ×2**. **Normal is today's mapping exactly:** brightness and volume change by the swipe's distance ÷ the picture's height (`brightnessFromSwipe`, `levelFromSwipeDelta`: a swipe the full height goes from 0 to 100 %), and Normal multiplies the distance by 1, so every number is the same bit for bit. The test checks strict equality (`Object.is`) over 784 start / distance / height combinations, including 0, negative and NaN heights, ±0 and infinite distances. When a swipe starts (10 dp / 16 dp, below) never changes. `gesture-settings.ts` (`GESTURE_SENSITIVITY_FACTORS`, `scaleSwipeDistance`), `use-player-side-gestures.ts` (`sensitivity`), `swipe-seek.ts`. |
+| #587 | Disable Gestures | ⋮ → Playback → "Gesture controls" (a switch); ⋮ → Playback → Gestures (a sheet) | A master switch, "Gesture controls" (screen 20), and one switch each for swipe seek, brightness, volume, double tap, long-press 2× (#545), two-finger tap and pinch zoom. A switched-off gesture's recogniser is off on the video. **The single tap is never switched off:** it shows the controls, which are the way back to the switch in full screen. Turning pinch zoom off returns a zoomed picture to fitted. With the double tap off, a double tap on a zoomed picture still resets the zoom (that belongs to pinch zoom) but never seeks or pauses. The master switch keeps each gesture's own choice (greyed in the sheet). **No new lock:** the checklist row says only "to avoid accidental touches" (غلطی سے چھونے سے بچنے کے لیے) and asks for no lock-screen-controls option, and the Player already has a controls lock (the Lock chip and button, `locked` in `PlayerScreen.tsx`), which P8 leaves as it is. `gesture-settings.ts` (`surfaceGestureFlags`), `gesture-settings-preference.ts`, `page/GestureSheets.tsx`. |
+| #692 | Customize Controls | ⋮ → Tools → Customize controls | Each control has a switch (show / hide) and, where its group has an order, ↑ / ↓ (move). The groups: **Page: chips** (1.0× · Subs · Audio · Rotate · Lock), **Page: tiles** (10 s, Custom seek, Frame by frame, A–B repeat, Aspect ratio, Mirror / Flip), **Page: cards** (Up next), **Full screen: top bar** (rotation lock, full screen), **Full screen: on the video** (⏪ ⏩, ⏮ ⏭, the lock button) and **Full screen: bottom bar** (volume, 1.0× speed). "On the video" and "cards" only show / hide: their places are fixed. Reset to default puts everything back. Play / pause, Back, ⋮, the title, the timeline, "Save to VidoraX" and the locked screen's unlock pill are never listed. ⋮ is the way back to this sheet and its Reset. Changes apply at once and are remembered app-wide. Faran's 1.0× chip (P16) can be shown, hidden or moved and does what it did. The A–B repeat tile and the Up next card keep their ids (`abRepeat`, `upNext`), so P5 / P6 need nothing here. `src/player/controls-layout.ts`, `controls-layout-preference.ts`, `screens/player/page/player-controls-customize.ts`, `page/CustomizeControlsSheet.tsx`, `PlayerPageBody.tsx`, `components/PlayerControls.tsx`, `components/PlayerTopBar.tsx`, `PlayerScreen.tsx` (the dock). |
+
+### The axis lock (#582)
+
+The brightness (left quarter) and volume (right quarter) swipes have always started after **10 dp** up or down and
+given up after **16 dp** sideways first. Swipe seek uses the same two numbers the other way round, over the whole
+picture: it starts after **16 dp** sideways and gives up after **10 dp** up or down. So, for one finger, the first
+clear movement decides:
+
+- 10 dp up / down before 16 dp sideways: vertical. Brightness or volume at the edges, exactly as before; nothing in the
+  middle, as before.
+- 16 dp sideways before 10 dp up / down: horizontal, swipe seek.
+- both in the same movement (a fast diagonal flick): neither. The edge swipes already ignored that.
+
+Swipe seek never starts sooner than 16 dp, because a lower number would turn a slightly diagonal edge swipe that changes
+the brightness today into a seek. The other gestures keep their touches:
+
+- **Long-press 2×** gives up after 12 dp, so it has failed before swipe seek can start. Once 2× has started it owns the
+  touch.
+- **Pinch zoom:** both swipes are one-finger only, and a second finger cancels a running swipe seek without seeking.
+- **Double tap and the single tap** never move far enough to start a swipe.
+
+The thresholds are named constants in `gesture-zones.ts`, used by the edge swipes (same values as before) and by swipe
+seek. `resolveSwipeAxis` / `lockSwipeAxis` follow the gesture handler's order (a recogniser checks "give up?" before
+"start?") and are tested with real paths.
+
+### Customize Controls: the rules
+
+- A group draws its **available** controls: the code's default order minus those switched off by a flag. The Audio chip
+  is unavailable while `PAGE_CHIP_FLAGS.audio` is false: it isn't drawn and isn't listed in the sheet.
+- The saved order is applied on top. A saved id that is not available (one that no longer exists, a flagged-off chip, a
+  duplicate, a non-string) is skipped. An available id that the saved order doesn't have (a control added later, or a
+  flag turned on later) goes to its **default place**: right after the nearest control before it in the default
+  order; at the front if there is none.
+- So when Faran's P17 sets `audio: true`, the Audio chip appears after Subs, wherever the user put Subs, and is listed
+  in the sheet. Nothing else needs to change (tested with an order saved while it was hidden).
+- Nothing saved (or Reset) is exactly today's page and full screen: `shownPageChips()`, `PAGE_TILES`, Up next, rotation
+  lock and full screen, ⏪ ⏩ ⏮ ⏭, the lock button, volume then speed (tested). What is saved covers only the controls
+  the user could see.
+- On the page, the chips and tiles now come from this list. In full screen the top bar maps its two buttons in order,
+  the controls hide ⏪ ⏩ / ⏮ ⏭ on request, and the dock draws its buttons in order with the info line (#721) after the
+  first, which is today's place between volume and speed.
+
+### Options sheet
+
+- **Playback:** Gestures 100 (value "All on" / "5 of 7 on" / "Off"; opens the Gestures sheet), Gesture controls 110 (the
+  master switch), Gesture sensitivity 120 (value Low / Normal / High; opens its sheet). P1 has 10–40; P5 / P6 use 50–90.
+- **Tools:** Customize controls 80.
+- `PlayerOptionContext` gained `gestures` (`enabled`, `sensitivity`, `onCount`, `total`). `PlayerOptionUi` gained
+  `openGestures`, `setGesturesEnabled`, `openGestureSensitivity` and `openCustomizeControls`. The four existing test
+  helpers build the new field.
+
+### Decisions
+
+- **Swipe seek and the two-finger tap are on by default** (screen 20 shows them as part of the gestures). Two touches
+  that used to toggle the controls now do something else: a two-finger tap (now play / pause), and a quick sideways
+  flick of more than 16 dp under 250 ms (now a swipe seek). Switching either off gives exactly the old behaviour.
+- **Swipe seek's scale:** 90 s for the picture's width at Normal, the same feel on the card and in full screen,
+  whatever the video's length (the timeline is there for big jumps). Low 45 s, High 180 s.
+- **Sensitivity factors:** Low ×0.5, High ×2. They scale how far the value moves, not when a swipe starts. Zoom is not
+  scaled.
+- **"Normal", not the design's "Medium":** screen 20's Sensitivity row reads "Medium", and the plan says Low / Normal /
+  High. One string (`gestureSensitivityNormal`) if it should read "Medium".
+- **Customize controls is under Tools:** screen 25 ("Player settings") doesn't show where it goes (its DISPLAY section
+  is cut off in the PDF).
+- **Full screen:** a button moves only inside its own bar. ⏪ ⏩ sit either side of play / pause, and ⏮ ⏭ and the lock
+  have fixed places, so those only show or hide.
+- **Icons** are existing design-kit names (gauge, sliders, layout grid…). Screen 20's hand icon would need an edit to
+  the shared `DsIcon` map.
+- **Two new MMKV keys** (`playerGestures`, `playerControlsLayout`, both `.v1`, app-wide) are added at the end of
+  `mmkvKeys`, so they don't collide with keys P5–P7 add next to the other Player keys.
+- **TalkBack:** the video's hint gains a sentence for swipe seek and one for the two-finger tap while they're on. With
+  the master switch off it says "Tap to show controls. Gestures are off in Video options." A gesture switched off one by
+  one is still named in the older part of the hint.
+- **Android's edge Back gesture is not avoided.** Swipe seek covers the whole width, so a sideways swipe that starts
+  right at a screen edge may be taken by gesture navigation's Back, which closes the Player into the mini player in the
+  landscape stage. In immersive full screen the first edge swipe usually brings the system bars back instead. Android
+  takes that touch before the app, as it did before P8. If it turns out to matter, swipe seek can refuse to start
+  inside the system gesture insets.
+- **Hiding every chip or every tile** leaves an empty row and one extra 10 dp gap on the page; the Up next card is left
+  out completely when hidden.
+
+### Files
+
+- Logic (unit-tested): `src/player/gesture-zones.ts` (thresholds, axis lock), `gesture-settings.ts` (settings,
+  sensitivity, recogniser flags), `swipe-seek.ts`, `controls-layout.ts`,
+  `src/screens/player/page/player-controls-customize.ts` (groups, what each part draws).
+- Stores (zustand + MMKV): `gesture-settings-preference.ts`, `controls-layout-preference.ts`; labels:
+  `gesture-settings-labels.ts`.
+- Runtime: `use-swipe-seek.ts`; `use-player-side-gestures.ts` (optional `sensitivity`).
+- Screen: `components/PlayerVideoSurface.tsx` (flags, swipe seek, two-finger tap, constants, zoom reset, hint),
+  `components/SwipeSeekHud.tsx`, `components/PlayerControls.tsx` / `PlayerTopBar.tsx` (optional props, defaults as
+  before), `page/PlayerPageBody.tsx` (optional `layout`), `page/GestureSheets.tsx`, `page/CustomizeControlsSheet.tsx`,
+  `PlayerScreen.tsx` (one P8 section, the sheet state in the five sheet lists, the dock).
+- Options: `src/player/options/p8-gestures.ts` (+ one import line), `player-options.ts`. MMKV keys: `playerGestures`,
+  `playerControlsLayout`. Strings: 55 new `videoPlayer.*` keys (English and Urdu), at the end of both catalogs.
+
+### Gate
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | 0 errors |
+| Unit tests | 2194 / 2194 (61 new: `gesture-zones.test.ts` 11, `gesture-settings.test.ts` 12, `swipe-seek.test.ts` 9, `controls-layout.test.ts` 13, `page/player-controls-customize.test.ts` 11, `options/p8-gestures.test.ts` 5) |
+| `npm run lint` | 0 errors; 91 warnings, none in a file P8 changed |
+| Against `d2796bc` | `git diff --check` clean; none of Faran's files; `package.json` / lockfile, `android/`, `modules/`, manifests, `app.json` unchanged; no new dependency or permission; no SQLite change |
+| Media3 | `1.9.0`, unchanged |
+
+### Device checks for Faran (release build; not possible here)
+
+1. **Nothing changed with P8's switches off.** Turn off swipe seek and the two-finger tap. Edge swipes (brightness,
+   volume), the double tap (thirds; reset while zoomed), long-press 2×, pinch zoom and pan, and the single tap behave
+   exactly as on P4.
+2. **Axis lock on the left and right edges:** slightly diagonal up / down swipes still change brightness / volume (no
+   seek). Mostly sideways swipes seek. A fast diagonal flick does neither.
+3. **Swipe seek** on the card and in full screen: the pill shows "12:34 (+0:45)" and follows the finger. The video only
+   moves when the finger lifts. Swipe to either end: the target stops at 0:00 / the length. A second finger during the
+   swipe cancels it (no seek). Opening a sheet or locking mid-swipe: no seek, the pill goes.
+4. **The timelines** still scrub on a horizontal drag (the card's and full screen's) and don't swipe-seek.
+5. **Long-press 2×** then moving the finger sideways: stays at 2×, no seek. **Pinch** started with one finger moving
+   first: zooms or swipe-seeks, never both. While zoomed, one finger pans the picture (no seek).
+6. **Two-finger tap** pauses and plays, and doesn't also toggle the controls. A pinch is never taken for a two-finger
+   tap. With the switch off, a two-finger tap toggles the controls as before.
+7. **Sensitivity:** Low / Normal / High for seek, brightness and volume (Normal identical to P4).
+8. **Gesture controls off:** no gesture works except the tap that shows the controls. Each gesture's own switch.
+   Pinch zoom off while zoomed: the picture returns to fitted.
+9. **Customize controls:** hide, show and move chips and tiles on the page (the 1.0× chip too), the Up next card,
+   the top bar's two buttons, ⏪ ⏩ / ⏮ ⏭ / the lock button, the dock's volume / speed (with the info overlay on, its
+   line stays between them / after the first). Reset to default. Close and reopen the app: everything is kept.
+10. **The Gestures, Gesture sensitivity and Customize controls sheets** in all six themes and in Urdu (switches, chips,
+    ↑ / ↓, the screen 20 card). Back and a tap outside close them. TalkBack reads the ↑ / ↓ names and the new position
+    after a move.
+11. **Edge swipes with gesture navigation:** a sideways swipe starting within about 24 dp of the left or right edge.
+    Check it in the landscape stage (system bars showing: does Back close the Player instead of seeking?) and in
+    immersive full screen (the system bars come back). Then check a swipe starting a little further in: it seeks.

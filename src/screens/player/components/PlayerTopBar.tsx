@@ -23,7 +23,13 @@ export type PlayerTopBarProps = {
     state: 'idle' | 'saving' | 'saved';
     onPress: () => void;
   } | null;
+  /** P8 #692: the rotation-lock and full-screen buttons to show, in this order. Default: both, rotation lock first. */
+  buttons?: readonly PlayerTopBarButton[];
 };
+
+export type PlayerTopBarButton = 'orientation' | 'fullscreen';
+
+const DEFAULT_BUTTONS: readonly PlayerTopBarButton[] = ['orientation', 'fullscreen'];
 
 export const PlayerTopBar = memo(function PlayerTopBar({
   title,
@@ -36,6 +42,7 @@ export const PlayerTopBar = memo(function PlayerTopBar({
   onToggleFullscreen,
   onOpenOptions,
   save = null,
+  buttons = DEFAULT_BUTTONS,
 }: PlayerTopBarProps) {
   const { t, rtl } = useTranslation();
   if (!visible) {
@@ -86,24 +93,31 @@ export const PlayerTopBar = memo(function PlayerTopBar({
             testID="player-save-to-library"
           />
         ) : null}
-        <IconButton
-          icon={orientationIcon}
-          size="medium"
-          variant="ghost"
-          color="inverse"
-          accessibilityLabel={t('player.orientationTitle')}
-          onPress={onOpenOrientation}
-        />
-        <IconButton
-          icon={isFullscreen ? 'fullscreen-exit' : 'fullscreen'}
-          size="medium"
-          variant="ghost"
-          color="inverse"
-          accessibilityLabel={
-            isFullscreen ? t('player.exitFullscreen') : t('player.enterFullscreen')
-          }
-          onPress={onToggleFullscreen}
-        />
+        {buttons.map((button) =>
+          button === 'orientation' ? (
+            <IconButton
+              key={button}
+              icon={orientationIcon}
+              size="medium"
+              variant="ghost"
+              color="inverse"
+              accessibilityLabel={t('player.orientationTitle')}
+              onPress={onOpenOrientation}
+            />
+          ) : (
+            <IconButton
+              key={button}
+              icon={isFullscreen ? 'fullscreen-exit' : 'fullscreen'}
+              size="medium"
+              variant="ghost"
+              color="inverse"
+              accessibilityLabel={
+                isFullscreen ? t('player.exitFullscreen') : t('player.enterFullscreen')
+              }
+              onPress={onToggleFullscreen}
+            />
+          ),
+        )}
         {onOpenOptions ? (
           <IconButton
             icon="dots-vertical"

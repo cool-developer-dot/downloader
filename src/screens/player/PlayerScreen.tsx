@@ -4,7 +4,7 @@
  * leaving this screen keeps the same player (and position) going in the in-app mini player.
  */
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AccessibilityInfo,
   BackHandler,
@@ -90,6 +90,16 @@ import {
   type SaveIncomingOutcome,
 } from '@/player/incoming-media.runtime';
 import { parseResolution } from '@/player/zoom-math';
+import { resetControlsLayout, setControlsLayout, useControlsLayout } from '@/player/controls-layout-preference';
+import { SWITCHABLE_GESTURES, gesturesOnCount } from '@/player/gesture-settings';
+import {
+  resetGestureSettings,
+  setGestureOn,
+  setGestureSensitivity,
+  setGesturesEnabled,
+  useGestureSettings,
+} from '@/player/gesture-settings-preference';
+import { useSwipeSeek } from '@/player/use-swipe-seek';
 import { useDownloadsStore } from '@/store/downloads';
 import { resolveOrientationIcon, resolveVolumeIcon } from '@/player/volume-icons';
 import {
@@ -147,6 +157,10 @@ import { usePlayerQueueContext } from './page/use-queue';
 // P7 Playlists: ⋮ → Tools → Add to playlist.
 import { AddToPlaylistSheet } from '@/screens/playlists/components/AddToPlaylistSheet';
 import { usePlayerPlaylistAdd } from './page/use-player-playlist-add';
+import { SwipeSeekHud } from './components/SwipeSeekHud';
+import { CustomizeControlsSheet } from './page/CustomizeControlsSheet';
+import { GestureSensitivitySheet, GesturesSheet } from './page/GestureSheets';
+import { fullscreenDockButtons, fullscreenTopButtons, fullscreenVideoButtons } from './page/player-controls-customize';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -294,6 +308,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const [loopNaming, setLoopNaming] = useState<{ mode: 'save' } | { mode: 'rename'; loop: SavedLoop } | null>(null);
   // P6: the queue sheet ("Up next").
   const [queueSheetOpen, setQueueSheetOpen] = useState(false);
+  // P8: the Gestures, Gesture sensitivity or Customize controls sheet.
+  const [p8Sheet, setP8Sheet] = useState<'gestures' | 'sensitivity' | 'customize' | null>(null);
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const notYet = usePlayerNotYet();
@@ -372,10 +388,14 @@ const PlayerSessionView = memo(function PlayerSessionView({
 
   const getVolume = useCallback(() => session.volume, [session.volume]);
 
+  // P8: the gesture settings (app-wide): which gestures work, and how far a swipe moves (#586).
+  const gestureSettings = useGestureSettings();
+
   const sideGestures = usePlayerSideGestures({
     surfaceHeight,
     brightness,
     volume,
+    sensitivity: gestureSettings.sensitivity,
     volumeFallback: volume.available
       ? undefined
       : {
@@ -500,7 +520,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
       jumpOpen ||
       frameMode ||
       displaySheet != null ||
-      subtitleSheet != null,
+      subtitleSheet != null ||
+      p8Sheet != null,
     isOrientationSheetOpen: orientationSheetOpen,
     isLoading: session.isLoading || startupCoverVisible,
     hasError: Boolean(session.error),
@@ -529,12 +550,13 @@ const PlayerSessionView = memo(function PlayerSessionView({
   }, [restorePresentation, router, sessionFailed, sessionKey]);
 
   const onChromeBack = useCallback(() => {
-    if (jumpOpen || seekIntervalOpen || optionsOpen || displaySheet || subtitleSheet) {
+    if (jumpOpen || seekIntervalOpen || optionsOpen || displaySheet || subtitleSheet || p8Sheet) {
       setJumpOpen(false);
       setSeekIntervalOpen(false);
       setOptionsOpen(false);
       setDisplaySheet(null);
       setSubtitleSheet(null);
+      setP8Sheet(null);
       return;
     }
     if (speedSheetOpen) {
@@ -563,6 +585,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     leavePlayer,
     optionsOpen,
     orientationSheetOpen,
+    p8Sheet,
     seekIntervalOpen,
     speedSheetOpen,
     subtitleSheet,
@@ -574,12 +597,13 @@ const PlayerSessionView = memo(function PlayerSessionView({
         // A locked screen ignores Back too (pocket / child presses); the lock pill unlocks.
         return true;
       }
-      if (jumpOpen || seekIntervalOpen || optionsOpen || displaySheet || subtitleSheet) {
+      if (jumpOpen || seekIntervalOpen || optionsOpen || displaySheet || subtitleSheet || p8Sheet) {
         setJumpOpen(false);
         setSeekIntervalOpen(false);
         setOptionsOpen(false);
         setDisplaySheet(null);
         setSubtitleSheet(null);
+        setP8Sheet(null);
         return true;
       }
       if (speedSheetOpen) {
@@ -611,6 +635,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     locked,
     optionsOpen,
     orientationSheetOpen,
+    p8Sheet,
     seekIntervalOpen,
     speedSheetOpen,
     subtitleSheet,
@@ -721,7 +746,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
     repeatSheet != null ||
     loopNaming != null ||
     queueSheetOpen ||
-    p7Playlists.sheetOpen;
+    p7Playlists.sheetOpen ||
+    p8Sheet != null;
 
   const onSingleTap = useCallback(() => {
     if (anyModalOpen || session.isSeeking) {
@@ -800,6 +826,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     setRepeatSheet(null);
     setLoopNaming(null);
     setQueueSheetOpen(false);
+    setP8Sheet(null);
     setFrameMode(false);
     setLocked(true);
   }, [hud, endLongPress, setLocked]);
@@ -1114,6 +1141,46 @@ const PlayerSessionView = memo(function PlayerSessionView({
     bumpControls();
   }, [bumpControls]);
 
+  // ── P8 Gestures & custom controls ──────────────────────────────────────────────────────────────────────────────
+  const controlsLayout = useControlsLayout();
+  const openP8Sheet = useCallback(
+    (sheet: 'gestures' | 'sensitivity' | 'customize') => {
+      endLongPress();
+      showControls();
+      setP8Sheet(sheet);
+    },
+    [endLongPress, showControls],
+  );
+  const closeP8Sheet = useCallback(() => {
+    setP8Sheet(null);
+    bumpControls();
+  }, [bumpControls]);
+
+  /** #586: from the sensitivity sheet (the Gestures sheet sets it in place). */
+  const onSelectGestureSensitivity = useCallback(
+    (sensitivity: Parameters<typeof setGestureSensitivity>[0]) => {
+      setGestureSensitivity(sensitivity);
+      closeP8Sheet();
+    },
+    [closeP8Sheet],
+  );
+
+  /** #582: a sideways swipe shows the target and seeks (through the session's exact seek) when the finger lifts. */
+  const hideAdjustmentHud = useCallback(() => hud.hideNow(), [hud]);
+  const swipeSeek = useSwipeSeek({
+    durationSeconds: session.durationSeconds,
+    sensitivity: gestureSettings.sensitivity,
+    readPositionSeconds: readPlayerTime,
+    seekTo: seekExact,
+    onBegin: hideAdjustmentHud,
+  });
+  const swipeSeekAvailable = canCommand && session.durationSeconds != null && session.durationSeconds > 0;
+
+  // #692: the full-screen buttons the user chose (nothing saved: all of them, in today's places).
+  const topBarButtons = useMemo(() => fullscreenTopButtons(controlsLayout), [controlsLayout]);
+  const videoButtons = useMemo(() => fullscreenVideoButtons(controlsLayout), [controlsLayout]);
+  const dockButtons = useMemo(() => fullscreenDockButtons(controlsLayout), [controlsLayout]);
+
   const openOptions = useCallback(() => {
     endLongPress();
     showControls();
@@ -1240,6 +1307,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
       setShuffle: onShuffle,
       setAutoPlayNext: onAutoPlayNext,
       setNextEpisodePrompt,
+      openGestures: () => openP8Sheet('gestures'),
+      setGesturesEnabled,
+      openGestureSensitivity: () => openP8Sheet('sensitivity'),
+      openCustomizeControls: () => openP8Sheet('customize'),
     }),
     [
       onAutoPlayNext,
@@ -1254,6 +1325,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       onStop,
       openDisplaySheet,
       openFrameMode,
+      openP8Sheet,
       openSubtitleSheet,
       seekExact,
       subtitles.setAutoDetect,
@@ -1367,8 +1439,20 @@ const PlayerSessionView = memo(function PlayerSessionView({
       nextEpisodePrompt: queueCtx.nextEpisodePrompt,
     },
     playlists: p7Playlists.option,
+    gestures: {
+      enabled: gestureSettings.enabled,
+      sensitivity: gestureSettings.sensitivity,
+      onCount: gesturesOnCount(gestureSettings),
+      total: SWITCHABLE_GESTURES.length,
+    },
     ui: optionsUi,
   };
+
+  // #721 with the controls showing: between the volume button and the speed chip (P8: after the first dock button),
+  // never over them.
+  const dockInfoLine = (
+    <VideoInfoLine info={videoInfo} tone="onVideo" style={styles.dockInfoLine} testID="player-info-dock" />
+  );
 
   const body = (
     <View
@@ -1437,6 +1521,12 @@ const PlayerSessionView = memo(function PlayerSessionView({
           surfaceAttached={surface.attached}
           onPictureInPictureStart={handlePictureInPictureStart}
           onPictureInPictureStop={handlePictureInPictureStop}
+          gestureSettings={gestureSettings}
+          swipeSeekAvailable={swipeSeekAvailable}
+          onSwipeSeekStart={swipeSeek.onStart}
+          onSwipeSeekUpdate={swipeSeek.onUpdate}
+          onSwipeSeekFinalize={swipeSeek.onFinalize}
+          onTwoFingerTap={onPlayPause}
         />
         {/*
           Instant opaque cover (no FadeOut). FadeOut over a SurfaceView that
@@ -1458,6 +1548,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           </View>
         ) : null}
         <PlayerAdjustmentHud hud={sideGestures.hud} />
+        <SwipeSeekHud hud={swipeSeek.hud} />
         {/* Single chrome container — avoids cover→controls remount swap shimmer. Clear of the cutout (P2 #576). */}
         <View style={[StyleSheet.absoluteFill, cutoutInsets]} pointerEvents="box-none">
           {pageLayout ? (
@@ -1505,6 +1596,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
                     void toggleFullscreen();
                   }}
                   onOpenOptions={openOptions}
+                  buttons={topBarButtons}
                   save={
                     incomingToken
                       ? {
@@ -1534,9 +1626,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
                   onForward={onForward}
                   onReplay={onReplay}
                   seekStepSeconds={seekStepSeconds}
+                  showSkipButtons={videoButtons.skipButtons}
+                  showPreviousNext={videoButtons.previousNext}
                 />
               ) : null}
-              {overlayVisible && !startupCoverVisible && !showError ? (
+              {overlayVisible && !startupCoverVisible && !showError && videoButtons.lock ? (
                 <PlayerLockButton onLock={onLock} />
               ) : null}
             </>
@@ -1608,6 +1702,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           enabled={!session.error}
           accessibilityHidden={pageA11yHidden}
           onAction={onPageAction}
+          layout={controlsLayout}
         />
       ) : (overlayVisible || session.isSeeking) && !startupCoverVisible ? (
         <Box
@@ -1633,32 +1728,38 @@ const PlayerSessionView = memo(function PlayerSessionView({
           />
           {session.isSeeking ? null : (
             <Box row style={styles.dockActions}>
-              <IconButton
-                icon={resolveVolumeIcon(volumeLevel, isMuted)}
-                size="small"
-                variant="ghost"
-                color={session.error ? 'disabled' : 'inverse'}
-                accessibilityLabel={isMuted ? t('player.unmute') : t('player.mute')}
-                disabled={Boolean(session.error)}
-                onPress={onToggleMute}
-              />
-              {showInfo ? (
-                // #721 with the controls showing: between the volume button and the speed chip, never over them.
-                <VideoInfoLine info={videoInfo} tone="onVideo" style={styles.dockInfoLine} testID="player-info-dock" />
-              ) : null}
-              <Pressable
-                onPress={onOpenSpeed}
-                disabled={Boolean(session.error)}
-                accessibilityRole="button"
-                accessibilityLabel={t('player.playbackSpeedSelected', {
-                  rate: formatPlaybackRateLabel(session.playbackRate),
-                })}
-                hitSlop={8}
-                style={styles.speedChip}>
-                <Text variant="caption" color="white">
-                  {formatPlaybackRateLabel(session.playbackRate)}
-                </Text>
-              </Pressable>
+              {/* P8 #692: the user's buttons in their order (nothing saved: volume, then speed), the info line after the first. */}
+              {dockButtons.map((button, index) => (
+                <Fragment key={button}>
+                  {button === 'mute' ? (
+                    <IconButton
+                      icon={resolveVolumeIcon(volumeLevel, isMuted)}
+                      size="small"
+                      variant="ghost"
+                      color={session.error ? 'disabled' : 'inverse'}
+                      accessibilityLabel={isMuted ? t('player.unmute') : t('player.mute')}
+                      disabled={Boolean(session.error)}
+                      onPress={onToggleMute}
+                    />
+                  ) : (
+                    <Pressable
+                      onPress={onOpenSpeed}
+                      disabled={Boolean(session.error)}
+                      accessibilityRole="button"
+                      accessibilityLabel={t('player.playbackSpeedSelected', {
+                        rate: formatPlaybackRateLabel(session.playbackRate),
+                      })}
+                      hitSlop={8}
+                      style={styles.speedChip}>
+                      <Text variant="caption" color="white">
+                        {formatPlaybackRateLabel(session.playbackRate)}
+                      </Text>
+                    </Pressable>
+                  )}
+                  {index === 0 && showInfo ? dockInfoLine : null}
+                </Fragment>
+              ))}
+              {dockButtons.length === 0 && showInfo ? dockInfoLine : null}
             </Box>
           )}
         </Box>
@@ -1949,6 +2050,30 @@ const PlayerSessionView = memo(function PlayerSessionView({
       />
       {/* P7: Add to playlist (the playing video). */}
       <AddToPlaylistSheet inputs={p7Playlists.inputs} onClose={p7Playlists.closeSheet} testID="player-add-to-playlist" />
+      {/* P8: Gestures (#582–#587), Gesture sensitivity (#586), Customize controls (#692). */}
+      <GesturesSheet
+        visible={p8Sheet === 'gestures'}
+        settings={gestureSettings}
+        onSetEnabled={setGesturesEnabled}
+        onSetGesture={setGestureOn}
+        onSetSensitivity={setGestureSensitivity}
+        onReset={resetGestureSettings}
+        onClose={closeP8Sheet}
+      />
+      <GestureSensitivitySheet
+        visible={p8Sheet === 'sensitivity'}
+        selected={gestureSettings.sensitivity}
+        onSelect={onSelectGestureSensitivity}
+        onClose={closeP8Sheet}
+      />
+      <CustomizeControlsSheet
+        visible={p8Sheet === 'customize'}
+        layout={controlsLayout}
+        seekStepSeconds={seekStepSeconds}
+        onChange={setControlsLayout}
+        onReset={resetControlsLayout}
+        onClose={closeP8Sheet}
+      />
     </SafeAreaScreen>
   );
 });

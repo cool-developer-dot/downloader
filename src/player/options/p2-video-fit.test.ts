@@ -33,6 +33,10 @@ const ui: PlayerOptionUi = {
   subtitlesOff: () => calls.push('subtitlesOff'),
   openSubtitleStyle: () => calls.push('subtitleStyle'),
   openSubtitleSecond: () => calls.push('subtitleSecond'),
+  openGestures: () => calls.push('gestures'),
+  setGesturesEnabled: (on) => calls.push(`gesturesEnabled:${on}`),
+  openGestureSensitivity: () => calls.push('gestureSensitivity'),
+  openCustomizeControls: () => calls.push('customizeControls'),
 };
 
 const context = (display: Partial<PlayerOptionContext['display']> = {}): PlayerOptionContext => ({
@@ -47,6 +51,7 @@ const context = (display: Partial<PlayerOptionContext['display']> = {}): PlayerO
   incoming: null,
   display: { fit: 'fit', mirror: 'none', fillCutout: false, infoOverlay: false, ...display },
   subtitles: { label: null, isFile: false, offsetMs: 0, encodingLabel: null, autoDetect: true, secondLabel: null },
+  gestures: { enabled: true, sensitivity: 'normal', onCount: 7, total: 7 },
   ui,
 });
 
