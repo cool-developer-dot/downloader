@@ -4,6 +4,8 @@
  *
  * Before P5 there was no choice: the video stopped on its last frame with a Replay button. That stays the default
  * ("Stop"). P5 adds two choices: Repeat one (#539) and Repeat all (#540). An A-B loop (#541) comes before all of them.
+ * P6 adds Auto Play Next (#534, off by default) between Repeat all and the End of Playback Action, and the Next
+ * Episode Prompt's Cancel (#733).
  */
 
 import type { AbLoop } from './ab-repeat';
@@ -29,6 +31,12 @@ export type EndOfPlaybackInput = {
   /** The play queue in play order (`play-queue.ts` `ids`), and the video that just ended. */
   queue: readonly string[];
   mediaId: string | null;
+  /** P6 #534: Auto Play Next is on (off by default). */
+  autoPlayNext?: boolean;
+  /** P6 #534: the next video in this one's folder, for Auto Play Next when the video has no queue. */
+  folderNextId?: string | null;
+  /** P6 #733: the user cancelled the "Next: …" card for this video: it ends without moving on. */
+  advanceCancelled?: boolean;
 };
 
 export type EndOfPlaybackOutcome =
@@ -36,8 +44,11 @@ export type EndOfPlaybackOutcome =
   | { kind: 'loop'; seekSeconds: number }
   /** #539 (or #540 with a list of one): the same video again from the start. */
   | { kind: 'replay'; reason: 'repeatOne' | 'repeatAll' }
-  /** #540: the next video of the queue; after the last one, the first. */
-  | { kind: 'next'; mediaId: string; reason: 'repeatAll' }
+  /**
+   * #540: the next video of the queue, after the last one the first. #534 (P6): the next of the queue (no wrap), or of
+   * the folder when there is no queue.
+   */
+  | { kind: 'next'; mediaId: string; reason: 'repeatAll' | 'autoPlayNext' | 'folder' }
   /** Today's end: stopped, with Replay. */
   | { kind: 'stop' };
 
@@ -46,9 +57,16 @@ export type EndOfPlaybackOutcome =
  * 1. an A-B loop that is on → back to A;
  * 2. Repeat one → the same video again;
  * 3. Repeat all → the next one of the queue, the first after the last (a video without a queue repeats itself);
- * 4. otherwise → stop, as before P5.
+ * 4. Auto Play Next (P6) → the next one of the queue, without wrapping; with no queue, the next in its folder;
+ * 5. otherwise → the End of Playback Action's Stop, as before P5.
+ * A "next" the user cancelled on the Next Episode card (P6) stops instead.
  */
 export function decideEndOfPlayback(input: EndOfPlaybackInput): EndOfPlaybackOutcome {
+  const outcome = decideBeforeCancel(input);
+  return outcome.kind === 'next' && input.advanceCancelled ? { kind: 'stop' } : outcome;
+}
+
+function decideBeforeCancel(input: EndOfPlaybackInput): EndOfPlaybackOutcome {
   if (input.loop) {
     return { kind: 'loop', seekSeconds: input.loop.startSeconds };
   }
@@ -60,6 +78,17 @@ export function decideEndOfPlayback(input: EndOfPlaybackInput): EndOfPlaybackOut
     return next && next !== input.mediaId
       ? { kind: 'next', mediaId: next, reason: 'repeatAll' }
       : { kind: 'replay', reason: 'repeatAll' };
+  }
+  if (input.autoPlayNext) {
+    // A "queue" of this video alone is no queue: the folder decides.
+    const index = input.mediaId && input.queue.length > 1 ? input.queue.indexOf(input.mediaId) : -1;
+    if (index >= 0) {
+      const next = input.queue[index + 1];
+      return next ? { kind: 'next', mediaId: next, reason: 'autoPlayNext' } : { kind: 'stop' };
+    }
+    if (input.folderNextId && input.folderNextId !== input.mediaId) {
+      return { kind: 'next', mediaId: input.folderNextId, reason: 'folder' };
+    }
   }
   return { kind: 'stop' };
 }

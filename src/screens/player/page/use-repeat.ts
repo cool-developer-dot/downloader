@@ -27,7 +27,7 @@ import {
   setAbPointB,
   type AbPoints,
 } from '@/player/ab-repeat';
-import { decideEndOfPlayback, type EndOfPlaybackAction } from '@/player/end-of-playback';
+import { decideEndOfPlayback, type EndOfPlaybackAction, type EndOfPlaybackOutcome } from '@/player/end-of-playback';
 import { formatPlaybackTime } from '@/player/format-time';
 import { abPointsLabel, endOfPlaybackLabel, loopSpanLabel } from '@/player/repeat-labels';
 import { setEndOfPlaybackAction, useEndOfPlaybackAction, useSavedLoops } from '@/player/repeat-preference';
@@ -70,6 +70,11 @@ export type PlayerRepeatInput = {
   queue: readonly string[];
   /** Opens another video in this Player (Previous / Next's way). */
   goToMedia: (mediaId: string) => void;
+  /** P6 #534: Auto Play Next, and the next video of the folder when there is no queue. */
+  autoPlayNext?: boolean;
+  folderNextId?: string | null;
+  /** P6 #733: the Next Episode card was cancelled for this video. */
+  advanceCancelled?: boolean;
 };
 
 export type PlayerRepeat = {
@@ -87,6 +92,8 @@ export type PlayerRepeat = {
   /** The A-B tile: set A, then B, then (a loop is on) ask for the sheet. Returns true when the sheet should open. */
   onTile: () => boolean;
   playLoop: (loop: SavedLoop) => void;
+  /** P6: what the end of this video would do now (before a Next Episode cancel), for the "Next: …" card. */
+  upcoming: EndOfPlaybackOutcome;
 };
 
 export function usePlayerRepeat(input: PlayerRepeatInput): PlayerRepeat {
@@ -122,10 +129,40 @@ export function usePlayerRepeat(input: PlayerRepeatInput): PlayerRepeat {
     return () => clearInterval(timer);
   }, [isPlaying, isSeeking, loopEnd, loopStart, player, seekExact]);
 
+  const autoPlayNext = input.autoPlayNext ?? false;
+  const folderNextId = input.folderNextId ?? null;
+  const advanceCancelled = input.advanceCancelled ?? false;
+  const upcoming = useMemo(
+    () => decideEndOfPlayback({ loop, action: endAction, queue: input.queue, mediaId, autoPlayNext, folderNextId }),
+    [autoPlayNext, endAction, folderNextId, input.queue, loop, mediaId],
+  );
+
   // What the end decides with, read when the video ends (not when this renders).
-  const latest = useRef({ loop, endAction, queue: input.queue, mediaId, goToMedia: input.goToMedia, replay, seekExact });
+  const latest = useRef({
+    loop,
+    endAction,
+    queue: input.queue,
+    mediaId,
+    autoPlayNext,
+    folderNextId,
+    advanceCancelled,
+    goToMedia: input.goToMedia,
+    replay,
+    seekExact,
+  });
   useEffect(() => {
-    latest.current = { loop, endAction, queue: input.queue, mediaId, goToMedia: input.goToMedia, replay, seekExact };
+    latest.current = {
+      loop,
+      endAction,
+      queue: input.queue,
+      mediaId,
+      autoPlayNext,
+      folderNextId,
+      advanceCancelled,
+      goToMedia: input.goToMedia,
+      replay,
+      seekExact,
+    };
   });
 
   useEventListener(player, 'playToEnd', () => {
@@ -138,6 +175,9 @@ export function usePlayerRepeat(input: PlayerRepeatInput): PlayerRepeat {
         action: now.endAction,
         queue: now.queue,
         mediaId: now.mediaId,
+        autoPlayNext: now.autoPlayNext,
+        folderNextId: now.folderNextId,
+        advanceCancelled: now.advanceCancelled,
       });
       switch (outcome.kind) {
         case 'loop':
@@ -253,11 +293,17 @@ export function usePlayerRepeat(input: PlayerRepeatInput): PlayerRepeat {
     clear,
     onTile,
     playLoop,
+    upcoming,
   };
 }
 
+/** P6: the next video, played now by the user (the Next Episode card's Play now), carrying on like an automatic move. */
+export function markAutoAdvance(mediaId: string): void {
+  pendingAutoAdvance = { mediaId, at: Date.now() };
+}
+
 /**
- * After Repeat all moved to the next video: the session's host starts a newly opened video only with the app in
+ * After Repeat all (or P6's Auto Play Next) moved to the next video: the session's host starts a newly opened video only with the app in
  * front. A video that ended in picture-in-picture or with background play on carries on into the next one.
  */
 export function useContinueAfterAutoAdvance(input: {

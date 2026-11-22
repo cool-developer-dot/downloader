@@ -7,6 +7,7 @@ import './p2-video-fit';
 import './p3-subtitles';
 import './p4-subtitle-style';
 import './p5-repeat';
+import './p6-queue';
 
 export {
   playerOptions,

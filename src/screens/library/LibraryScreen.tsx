@@ -29,6 +29,7 @@ import { useTagSheetActions } from '@/screens/downloads/hooks/useTagSheetActions
 import { useFoldersStore } from '@/store/organization/folders';
 import { EmptyState } from '@/components/common/EmptyState';
 import { usePrivateMoveSheet } from '@/screens/library/hooks/usePrivateMoveSheet';
+import { useQueueSheetActions } from '@/screens/library/hooks/useQueueSheetActions';
 import { PrivateHeaderButton } from '@/screens/private/PrivateHeaderButton';
 import { PrivateMoveDialog } from '@/screens/private/PrivateMoveDialog';
 
@@ -91,6 +92,8 @@ export const LibraryScreen = memo(function LibraryScreen() {
 
   const foldersById = useFoldersStore((s) => s.itemsById);
   const tagActionsFor = useTagSheetActions();
+  // P6 #620: Play next / Add to queue, while a video is open in the Player or the mini player.
+  const queueActionsFor = useQueueSheetActions();
   const folderOrderedIds = useFoldersStore((s) => s.orderedIds);
   const { privateMoveActionsFor, privateMove } = usePrivateMoveSheet();
 
@@ -108,6 +111,11 @@ export const LibraryScreen = memo(function LibraryScreen() {
           void openItemExternal(id);
         },
       },
+      ...queueActionsFor(
+        id,
+        visibleItems.find((item) => item.id === id)?.displayName ?? null,
+        closeItemActions,
+      ),
       ...tagActionsFor(id, closeItemActions),
       {
         id: 'share',
@@ -142,9 +150,11 @@ export const LibraryScreen = memo(function LibraryScreen() {
     showInFolderActionsFor,
     openItemExternal,
     privateMoveActionsFor,
+    queueActionsFor,
     requestDeleteItem,
     saveItemToDevice,
     tagActionsFor,
+    visibleItems,
     shareItem,
     t,
   ]);

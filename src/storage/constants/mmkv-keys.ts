@@ -34,6 +34,12 @@ export const mmkvKeys = {
   playerEndOfPlayback: 'vidorax.mmkv.player.endOfPlayback.v1',
   /** P5 #722: saved A-B loops per video, `[mediaId, loops][]`, last 300 videos, oldest first (local only). */
   playerSavedLoops: 'vidorax.mmkv.player.savedLoops.v1',
+  /** P6 #619: the play queue (ids, the order before Shuffle, the video playing), so it survives a restart. */
+  playerQueue: 'vidorax.mmkv.player.queue.v1',
+  /** P6 #534: Auto Play Next (default off). */
+  playerAutoPlayNext: 'vidorax.mmkv.player.autoPlayNext.v1',
+  /** P6 #733: the Next Episode Prompt (default on; shows only when the next episode is about to play). */
+  playerNextEpisodePrompt: 'vidorax.mmkv.player.nextEpisodePrompt.v1',
   firstLaunch: 'vidorax.mmkv.flags.firstLaunch',
   onboardingComplete: 'vidorax.mmkv.flags.onboardingComplete',
   analyticsEnabled: 'vidorax.mmkv.flags.analyticsEnabled',

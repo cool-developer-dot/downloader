@@ -60,6 +60,14 @@ export type PlayerOptionUi = {
   openEndOfPlayback?: () => void;
   /** P5 #541 / #722: the A-B repeat sheet (set A and B, clear, saved loops). */
   openAbRepeat?: () => void;
+  /** P6 #619: the queue sheet ("Up next"). */
+  openQueue?: () => void;
+  /** P6 #542: shuffle the queue (the video playing keeps playing) or put it back in order. */
+  setShuffle?: (on: boolean) => void;
+  /** P6 #534: Auto Play Next (remembered, app-wide). */
+  setAutoPlayNext?: (on: boolean) => void;
+  /** P6 #733: the Next Episode card (remembered, app-wide). */
+  setNextEpisodePrompt?: (on: boolean) => void;
 };
 
 export type PlayerOptionContext = {
@@ -97,6 +105,8 @@ export type PlayerOptionContext = {
   };
   /** P5: the End of Playback Action ("Stop", "Repeat one", "Repeat all") and the A-B loop ("Off", "A 1:23", "1:23–1:45"). */
   repeat?: { endActionLabel: string; abLabel: string };
+  /** P6: the queue ("12 videos"), its shuffle, Auto Play Next and the Next Episode card. */
+  queue?: { countLabel: string; size: number; shuffled: boolean; autoPlayNext: boolean; nextEpisodePrompt: boolean };
   ui: PlayerOptionUi;
 };
 
