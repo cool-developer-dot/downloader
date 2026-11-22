@@ -134,6 +134,12 @@ describe('P1 rows in the options sheet', () => {
     openMirrorFlip: () => calls.push('mirrorFlip'),
     setFillCutout: (on) => calls.push(`fillCutout:${on}`),
     setInfoOverlay: (on) => calls.push(`infoOverlay:${on}`),
+    openSubtitleTracks: () => calls.push('subtitleTracks'),
+    loadSubtitleFile: () => calls.push('subtitleLoad'),
+    setSubtitleAutoDetect: (on) => calls.push(`subtitleAutoDetect:${on}`),
+    openSubtitleSync: () => calls.push('subtitleSync'),
+    openSubtitleEncoding: () => calls.push('subtitleEncoding'),
+    subtitlesOff: () => calls.push('subtitlesOff'),
   };
   const context = (overrides: Partial<PlayerOptionContext> = {}): PlayerOptionContext => ({
     t: ((key: string, params?: Record<string, string | number>) =>
@@ -146,6 +152,7 @@ describe('P1 rows in the options sheet', () => {
     orientationMode: 'auto',
     incoming: null,
     display: { fit: 'fit', mirror: 'none', fillCutout: false, infoOverlay: false },
+    subtitles: { label: null, isFile: false, offsetMs: 0, encodingLabel: null, autoDetect: true },
     ui,
     ...overrides,
   });

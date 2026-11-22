@@ -21,6 +21,10 @@ export type PlayerOptionsSheetProps = {
   /** What the rows read and act on (built by the Player screen while the sheet is open). */
   context: PlayerOptionContext;
   onClose: () => void;
+  /** P3: one section alone, under its own title (the Subs chip opens Subtitles). Default: all sections. */
+  only?: PlayerOptionSection;
+  title?: string;
+  testID?: string;
 };
 
 /**
@@ -29,7 +33,14 @@ export type PlayerOptionsSheetProps = {
  * is left out. A row runs once the sheet has closed, so a sheet it opens comes up on its own; an on / off row is a
  * switch and leaves the sheet open.
  */
-export const PlayerOptionsSheet = memo(function PlayerOptionsSheet({ visible, context, onClose }: PlayerOptionsSheetProps) {
+export const PlayerOptionsSheet = memo(function PlayerOptionsSheet({
+  visible,
+  context,
+  onClose,
+  only,
+  title,
+  testID = 'player-options-sheet',
+}: PlayerOptionsSheetProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const { t } = useTranslation();
@@ -38,7 +49,7 @@ export const PlayerOptionsSheet = memo(function PlayerOptionsSheet({ visible, co
 
   if (!visible) return null;
 
-  const sections = playerOptions.sections(context);
+  const sections = playerOptions.sections(context).filter((view) => !only || view.section === only);
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
@@ -50,7 +61,7 @@ export const PlayerOptionsSheet = memo(function PlayerOptionsSheet({ visible, co
           style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${theme.opacity.overlay})` }]}
         />
         <View
-          testID="player-options-sheet"
+          testID={testID}
           style={{
             backgroundColor: theme.colors.background,
             borderTopLeftRadius: theme.radius.xl,
@@ -62,7 +73,7 @@ export const PlayerOptionsSheet = memo(function PlayerOptionsSheet({ visible, co
           <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
           <View style={styles.title}>
             <DsText variant="cardTitle" accessibilityRole="header">
-              {t('videoPlayer.optionsTitle')}
+              {title ?? t('videoPlayer.optionsTitle')}
             </DsText>
           </View>
           <ScrollView
@@ -70,9 +81,11 @@ export const PlayerOptionsSheet = memo(function PlayerOptionsSheet({ visible, co
             showsVerticalScrollIndicator={false}>
             {sections.map((view, index) => (
               <Fragment key={view.section}>
-                <DsSectionLabel first={index === 0} testID={`player-options-section-${view.section}`}>
-                  {t(SECTION_LABELS[view.section])}
-                </DsSectionLabel>
+                {only ? null : (
+                  <DsSectionLabel first={index === 0} testID={`player-options-section-${view.section}`}>
+                    {t(SECTION_LABELS[view.section])}
+                  </DsSectionLabel>
+                )}
                 <DsRowGroup>
                   {view.rows.map(({ row, enabled, value, toggle }) =>
                     toggle != null ? (
