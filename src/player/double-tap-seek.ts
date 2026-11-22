@@ -1,7 +1,7 @@
 /**
  * Double tap on the video surface. The zoom rule comes first: while zoomed, a double tap only returns the picture
  * to fitted. Otherwise the surface is split in thirds (physical left/right — never mirrored for RTL):
- * left third −10 s, middle third play/pause, right third +10 s.
+ * left third back, middle third play/pause, right third forward, by the chosen seek interval (10 s unless changed).
  */
 
 import { SEEK_STEP_SECONDS } from './types';
@@ -35,8 +35,10 @@ export function resolveDoubleTapAction(
   return 'togglePlay';
 }
 
-export function doubleTapSeekDelta(side: DoubleTapSeekSide): number {
-  return side === 'left' ? -SEEK_STEP_SECONDS : SEEK_STEP_SECONDS;
+/** `step` is the chosen seek interval (P1 #527); 10 s when none is given. */
+export function doubleTapSeekDelta(side: DoubleTapSeekSide, step: number = SEEK_STEP_SECONDS): number {
+  const seconds = Number.isFinite(step) && step > 0 ? step : SEEK_STEP_SECONDS;
+  return side === 'left' ? -seconds : seconds;
 }
 
 export const SEEK_FEEDBACK_MS = 700;

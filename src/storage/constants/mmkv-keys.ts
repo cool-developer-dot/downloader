@@ -16,6 +16,8 @@ export const mmkvKeys = {
   libraryViewMode: 'vidorax.mmkv.library.viewMode.v1',
   /** Player timeline's right label: total length or time left (local only). */
   playerDurationLabelMode: 'vidorax.mmkv.player.durationLabelMode.v1',
+  /** P1 #527: the Player's seek interval in seconds (5, 10, 15, 20, 30 or 60; local only). */
+  playerSeekStepSeconds: 'vidorax.mmkv.player.seekStepSeconds.v1',
   firstLaunch: 'vidorax.mmkv.flags.firstLaunch',
   onboardingComplete: 'vidorax.mmkv.flags.onboardingComplete',
   analyticsEnabled: 'vidorax.mmkv.flags.analyticsEnabled',

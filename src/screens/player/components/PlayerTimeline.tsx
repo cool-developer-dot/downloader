@@ -31,6 +31,11 @@ export type PlayerTimelineProps = {
   onSeekChange: (seconds: number) => void;
   onSeekCommit: () => void;
   onSeekCancel: () => void;
+  /**
+   * `dock`: the full-screen stage's bar (4 dp track, round thumb). `card`: the Video player page's card (screen 19):
+   * a 6 dp white bar with no thumb until it is dragged, and the times under it.
+   */
+  variant?: 'dock' | 'card';
 };
 
 function ratioToSeconds(
@@ -55,7 +60,9 @@ export const PlayerTimeline = memo(function PlayerTimeline({
   onSeekChange,
   onSeekCommit,
   onSeekCancel,
+  variant = 'dock',
 }: PlayerTimelineProps) {
+  const card = variant === 'card';
   const theme = useTheme();
   const { t } = useTranslation();
   const [trackWidth, setTrackWidth] = useState(0);
@@ -72,7 +79,7 @@ export const PlayerTimeline = memo(function PlayerTimeline({
   // Timeline sits on a fixed dark dock over video. LIGHT primary is ink and
   // vanishes; keep progress readable in light / logo / dark.
   const progressColor =
-    theme.mode === 'light' ? theme.colors.white : theme.colors.primary;
+    card || theme.mode === 'light' ? theme.colors.white : theme.colors.primary;
 
   const displaySeconds =
     previewSeconds != null ? previewSeconds : positionSeconds;
@@ -174,7 +181,7 @@ export const PlayerTimeline = memo(function PlayerTimeline({
   const previewSize = previewFrame ? seekPreviewSize(previewFrame.width, previewFrame.height) : null;
 
   return (
-    <Box gap={8} style={styles.wrap}>
+    <Box gap={card ? 4 : 8} style={styles.wrap}>
       {previewFrame && previewSize && previewSeconds != null && trackWidth > 0 ? (
         <View
           pointerEvents="none"
@@ -202,7 +209,7 @@ export const PlayerTimeline = memo(function PlayerTimeline({
       ) : null}
       <GestureDetector gesture={gesture}>
         <View
-          style={styles.hit}
+          style={card ? styles.cardHit : styles.hit}
           onLayout={onLayout}
           accessibilityRole="adjustable"
           accessibilityLabel={t('player.seekTimelineA11y')}
@@ -214,6 +221,7 @@ export const PlayerTimeline = memo(function PlayerTimeline({
           <View
             style={[
               styles.track,
+              card ? styles.cardTrack : null,
               {
                 // Fixed light track on dark dock — readable in all themes.
                 backgroundColor: 'rgba(255,255,255,0.28)',
@@ -222,12 +230,14 @@ export const PlayerTimeline = memo(function PlayerTimeline({
             <View
               style={[
                 styles.fill,
+                card ? styles.cardFill : null,
                 {
                   width: `${progress * 100}%`,
                   backgroundColor: progressColor,
                 },
               ]}
             />
+            {card && previewSeconds == null ? null : (
             <View
               style={[
                 styles.thumb,
@@ -238,6 +248,7 @@ export const PlayerTimeline = memo(function PlayerTimeline({
                 },
               ]}
             />
+            )}
           </View>
         </View>
       </GestureDetector>
@@ -273,6 +284,17 @@ const styles = StyleSheet.create({
   hit: {
     height: 44,
     justifyContent: 'center',
+  },
+  cardHit: {
+    height: 22,
+    justifyContent: 'center',
+  },
+  cardTrack: {
+    height: 6,
+    borderRadius: 3,
+  },
+  cardFill: {
+    borderRadius: 3,
   },
   track: {
     height: 4,

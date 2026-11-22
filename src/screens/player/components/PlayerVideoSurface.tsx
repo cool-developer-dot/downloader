@@ -15,6 +15,7 @@ import { VideoView, type VideoPlayer } from 'expo-video';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import {
+  DEFAULT_SEEK_STEP_SECONDS,
   doubleTapSeekDelta,
   resolveDoubleTapAction,
   SIDE_ZONE_RATIO,
@@ -35,6 +36,7 @@ import {
 } from '@/player/zoom-math';
 
 const SETTLE = { duration: 180 };
+const LONG_PRESS_MS = 500;
 
 export type PlayerVideoSurfaceProps = {
   player: VideoPlayer;
@@ -44,6 +46,12 @@ export type PlayerVideoSurfaceProps = {
   onDoubleTapSeek?: (side: DoubleTapSeekSide, deltaSeconds: number) => void;
   /** Double tap in the middle third. */
   onDoubleTapTogglePlay?: () => void;
+  /** How far a double tap on either side jumps (P1 #527); 10 s when not given. */
+  seekStepSeconds?: number;
+  /** P1 #545: a finger held still on the picture (fast forward while held). */
+  onLongPressStart?: () => void;
+  /** Runs for every hold that began, however it ended (finger lifted, cancelled, another gesture won). */
+  onLongPressEnd?: () => void;
   onBrightnessPanStart?: () => void;
   onBrightnessPanUpdate?: (translationY: number) => void;
   onBrightnessPanFinalize?: () => void;
@@ -75,6 +83,9 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
   onSingleTap,
   onDoubleTapSeek,
   onDoubleTapTogglePlay,
+  seekStepSeconds,
+  onLongPressStart,
+  onLongPressEnd,
   onBrightnessPanStart,
   onBrightnessPanUpdate,
   onBrightnessPanFinalize,
@@ -186,11 +197,18 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
       }
       if (action === 'seekBack' || action === 'seekForward') {
         const side: DoubleTapSeekSide = action === 'seekBack' ? 'left' : 'right';
-        onDoubleTapSeek?.(side, doubleTapSeekDelta(side));
+        onDoubleTapSeek?.(side, doubleTapSeekDelta(side, seekStepSeconds));
       }
     },
-    [onDoubleTapSeek, onDoubleTapTogglePlay],
+    [onDoubleTapSeek, onDoubleTapTogglePlay, seekStepSeconds],
   );
+
+  const longPressStart = useCallback(() => {
+    onLongPressStart?.();
+  }, [onLongPressStart]);
+  const longPressEnd = useCallback(() => {
+    onLongPressEnd?.();
+  }, [onLongPressEnd]);
 
   const handleZoomChange = useCallback(
     (percent: number) => {
@@ -379,10 +397,25 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
         }
       });
 
+    // P1 #545: a finger held still for half a second plays fast until it lifts. Taps fail long before it starts, and
+    // moving first starts a swipe instead; once it has started it owns the touch. `onFinalize` runs for every touch
+    // it saw, so the end is reported even when the hold was cancelled.
+    const longPress = Gesture.LongPress()
+      .minDuration(LONG_PRESS_MS)
+      .maxDistance(12)
+      .enabled(gesturesEnabled && Boolean(onLongPressStart))
+      .onStart(() => {
+        runOnJS(longPressStart)();
+      })
+      .onFinalize(() => {
+        runOnJS(longPressEnd)();
+      });
+
     return Gesture.Race(
       Gesture.Simultaneous(pinch, zoomPan),
       brightnessPan,
       volumePan,
+      longPress,
       Gesture.Exclusive(doubleTap, singleTap),
     );
   }, [
@@ -399,6 +432,9 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
     handleZoomFinalize,
     lastZoomPercent,
     layout.width,
+    longPressEnd,
+    longPressStart,
+    onLongPressStart,
     pinching,
     scale,
     startFocalX,
@@ -453,7 +489,7 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
           style={styles.video}
           accessibilityRole="button"
           accessibilityLabel={t('player.videoSurfaceA11y')}
-          accessibilityHint={t('player.surfaceHint')}
+          accessibilityHint={t('videoPlayer.surfaceHint', { seconds: seekStepSeconds ?? DEFAULT_SEEK_STEP_SECONDS })}
         />
       </GestureDetector>
     </View>

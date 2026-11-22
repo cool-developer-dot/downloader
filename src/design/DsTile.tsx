@@ -14,6 +14,8 @@ export type DsTileProps = {
   /** Any element in the icon's place (a tab preview, a letter badge). */
   leading?: ReactNode;
   label: string;
+  /** Lines the label may wrap to (the Player's "Frame by / frame"); the row grows with it. Default 1. */
+  labelLines?: number;
   /** A small glyph after the label (the tabs screen's pin / speaker / moon). */
   badge?: DsIconName;
   onPress?: () => void;
@@ -30,6 +32,7 @@ export const DsTile = memo(function DsTile({
   icon,
   leading,
   label,
+  labelLines = 1,
   badge,
   onPress,
   onLongPress,
@@ -69,7 +72,7 @@ export const DsTile = memo(function DsTile({
       ]}>
       {leading ?? (icon ? <DsIcon name={icon} size={ds.size.tileIcon} color="primary" strokeWidth={ds.stroke.tile} /> : null)}
       <View style={{ flexDirection: rtl.rowDirection, alignItems: 'center', gap: 4 }}>
-        <DsText variant="tile" numberOfLines={1} align="center">
+        <DsText variant="tile" numberOfLines={labelLines} align="center" style={labelLines > 1 ? { flexShrink: 1 } : undefined}>
           {label}
         </DsText>
         {badge ? <DsIcon name={badge} size={13} color="textPrimary" strokeWidth={1.8} /> : null}

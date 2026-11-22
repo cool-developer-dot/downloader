@@ -4,9 +4,18 @@
  * leaving this screen keeps the same player (and position) going in the in-app mini player.
  */
 
-import { memo, useCallback, useEffect, useMemo, useState } from 'react';
-import { AccessibilityInfo, BackHandler, Platform, StyleSheet, ToastAndroid, View } from 'react-native';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  AccessibilityInfo,
+  BackHandler,
+  Platform,
+  StyleSheet,
+  ToastAndroid,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 import { router as appRouter, useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
@@ -18,15 +27,22 @@ import { localizePlayerError, useTranslation, type TranslationKey } from '@/loca
 import { completedActionErrorMessageKey } from '@/downloads/completed-file/action-errors';
 import {
   formatPlaybackRateLabel,
+  formatPlaybackTime,
+  frameAt,
+  frameStep,
+  frameStepBase,
   isRecoverablePlayerError,
+  LONG_PRESS_PLAYBACK_RATE,
+  LongPressSpeed,
   parseRouteMediaId,
   SEEK_FEEDBACK_MS,
-  SEEK_STEP_SECONDS,
   shouldArmPictureInPicture,
   shouldShowStartupCover,
   type DoubleTapSeekSide,
   type PlaybackRate,
+  type SeekStepSeconds,
 } from '@/player';
+import { setSeekStepSeconds, useSeekStepSeconds } from '@/player/seek-step-preference';
 import { useControlsVisibility } from '@/player/use-controls-visibility';
 import { useFullscreenLifecycle } from '@/player/use-fullscreen-lifecycle';
 import { usePlayQueueNeighbours } from '@/player/play-queue';
@@ -65,6 +81,9 @@ import { IconButton } from '@/components/buttons/IconButton';
 import { Pressable } from '@/components/base/Pressable';
 import { getPlayerSupportContext } from '@/support';
 import { openSupportWithContext } from '@/support/support-navigation';
+import { DsHeader, ds } from '@/design';
+import { DS_TAB_ROUTES, DsTabBarView } from '@/navigation/components/DsTabBar';
+import { routePaths, tabRouteNames } from '@/navigation/constants';
 
 import { PlayerControls } from './components/PlayerControls';
 import { PlayerLockButton, PlayerLockedOverlay } from './components/PlayerLockControl';
@@ -79,6 +98,26 @@ import {
   DoubleTapSeekFeedback,
   SeekFeedbackOverlay,
 } from './components/SeekFeedback';
+import { playerCardSize } from './page/card-size';
+import { FrameStepPanel } from './page/FrameStepPanel';
+import { JumpToTimeSheet } from './page/JumpToTimeSheet';
+import { LongPressSpeedPill } from './page/LongPressSpeedPill';
+import { PlayerCardOverlay } from './page/PlayerCardOverlay';
+import { PlayerOptionsSheet } from './page/PlayerOptionsSheet';
+import { PlayerPageBody } from './page/PlayerPageBody';
+import { NOT_YET_ACTIONS, type PlayerPageAction } from './page/player-page-actions';
+import { SeekIntervalSheet } from './page/SeekIntervalSheet';
+import { announcePlayer, usePlayerNotYet } from './page/use-player-not-yet';
+import { qualityLabel, useVideoTrackInfo } from './page/use-video-track-info';
+
+/** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
+const TAB_PATHS: Readonly<Record<string, string>> = {
+  [tabRouteNames.browser]: routePaths.browser,
+  [tabRouteNames.downloads]: routePaths.downloads,
+  [tabRouteNames.library]: routePaths.library,
+  [tabRouteNames.files]: routePaths.files,
+  [tabRouteNames.settings]: routePaths.settings,
+};
 
 export const PlayerScreen = memo(function PlayerScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
@@ -192,6 +231,18 @@ const PlayerSessionView = memo(function PlayerSessionView({
   } = fullscreen;
 
   const [speedSheetOpen, setSpeedSheetOpen] = useState(false);
+  // P1: the ⋮ Video options menu, the seek interval and jump-to-time sheets, and the (non-modal) frame panel.
+  const [optionsOpen, setOptionsOpen] = useState(false);
+  const [seekIntervalOpen, setSeekIntervalOpen] = useState(false);
+  const [jumpOpen, setJumpOpen] = useState(false);
+  const [frameMode, setFrameMode] = useState(false);
+  const [frameShown, setFrameShown] = useState<{ frameIndex: number; frameStartSeconds: number } | null>(null);
+  const lastFrameStepRef = useRef<{ target: number; at: number } | null>(null);
+  const seekStepSeconds = useSeekStepSeconds();
+  const trackInfo = useVideoTrackInfo(player);
+  const window = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const notYet = usePlayerNotYet();
   const [externalOpenError, setExternalOpenError] = useState<string | null>(null);
   const [externalOpenBusy, setExternalOpenBusy] = useState(false);
   // A file another app opened with VidoraX: no library row; it can be saved into the library.
@@ -325,12 +376,51 @@ const PlayerSessionView = memo(function PlayerSessionView({
   );
 
   const hud = sideGestures.hud;
+
+  // P1 #545: 2× while a finger holds the picture. The rate goes to the player only; every way the hold can end
+  // (finger up, lock, a sheet, PiP, frame panel, Stop, this view going away) restores the chosen speed.
+  const controllerRef = useRef(controller);
+  const chosenRateRef = useRef(session.playbackRate);
+  useEffect(() => {
+    controllerRef.current = controller;
+    chosenRateRef.current = session.playbackRate;
+  }, [controller, session.playbackRate]);
+  const [longPressActive, setLongPressActive] = useState(false);
+  // Made on the first hold (never during render: it reads the refs above).
+  const longPressRef = useRef<LongPressSpeed | null>(null);
+  const endLongPress = useCallback(() => {
+    longPressRef.current?.end();
+  }, []);
+  useEffect(
+    () => () => {
+      longPressRef.current?.end();
+    },
+    [],
+  );
+  const onLongPressStart = useCallback(() => {
+    if (!longPressRef.current) {
+      longPressRef.current = new LongPressSpeed({
+        applyRate: (rate) => controllerRef.current.setPlaybackRate(rate),
+        chosenRate: () => chosenRateRef.current,
+        onChange: setLongPressActive,
+      });
+    }
+    const started = longPressRef.current.start(session.isPlaying && session.isReady && !session.error && !locked);
+    if (started) {
+      hud.hideNow();
+      AccessibilityInfo.announceForAccessibility(
+        t('videoPlayer.longPressStarted', { rate: `${LONG_PRESS_PLAYBACK_RATE}×` }),
+      );
+    }
+  }, [hud, locked, session.error, session.isPlaying, session.isReady, t]);
+
   const handlePictureInPictureStart = useCallback(() => {
+    endLongPress();
     hud.hideNow();
     setPipActive(true);
     setPlayerSessionPictureInPicture(true);
     onPictureInPictureStart();
-  }, [hud, onPictureInPictureStart]);
+  }, [hud, endLongPress, onPictureInPictureStart]);
   const handlePictureInPictureStop = useCallback(() => {
     setPipActive(false);
     setPlayerSessionPictureInPicture(false);
@@ -345,7 +435,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
   } = useControlsVisibility({
     isPlaying: session.isPlaying,
     isSeeking: session.isSeeking,
-    isSpeedSheetOpen: speedSheetOpen,
+    // The P1 sheets and the frame panel hold the controls up like the speed sheet does.
+    isSpeedSheetOpen: speedSheetOpen || optionsOpen || seekIntervalOpen || jumpOpen || frameMode,
     isOrientationSheetOpen: orientationSheetOpen,
     isLoading: session.isLoading || startupCoverVisible,
     hasError: Boolean(session.error),
@@ -374,6 +465,12 @@ const PlayerSessionView = memo(function PlayerSessionView({
   }, [restorePresentation, router, sessionFailed, sessionKey]);
 
   const onChromeBack = useCallback(() => {
+    if (jumpOpen || seekIntervalOpen || optionsOpen) {
+      setJumpOpen(false);
+      setSeekIntervalOpen(false);
+      setOptionsOpen(false);
+      return;
+    }
     if (speedSheetOpen) {
       setSpeedSheetOpen(false);
       return;
@@ -382,17 +479,37 @@ const PlayerSessionView = memo(function PlayerSessionView({
       setOrientationSheetOpen(false);
       return;
     }
+    if (frameMode) {
+      setFrameMode(false);
+      return;
+    }
     if (isFullscreen) {
       void exitFullscreen();
       return;
     }
     void leavePlayer();
-  }, [exitFullscreen, isFullscreen, leavePlayer, orientationSheetOpen, speedSheetOpen]);
+  }, [
+    exitFullscreen,
+    frameMode,
+    isFullscreen,
+    jumpOpen,
+    leavePlayer,
+    optionsOpen,
+    orientationSheetOpen,
+    seekIntervalOpen,
+    speedSheetOpen,
+  ]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
       if (locked) {
         // A locked screen ignores Back too (pocket / child presses); the lock pill unlocks.
+        return true;
+      }
+      if (jumpOpen || seekIntervalOpen || optionsOpen) {
+        setJumpOpen(false);
+        setSeekIntervalOpen(false);
+        setOptionsOpen(false);
         return true;
       }
       if (speedSheetOpen) {
@@ -403,6 +520,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
         setOrientationSheetOpen(false);
         return true;
       }
+      if (frameMode) {
+        setFrameMode(false);
+        return true;
+      }
       const action = handleAndroidBack();
       if (action === 'exit_fullscreen') {
         return true;
@@ -411,7 +532,17 @@ const PlayerSessionView = memo(function PlayerSessionView({
       return true;
     });
     return () => sub.remove();
-  }, [handleAndroidBack, leavePlayer, locked, orientationSheetOpen, speedSheetOpen]);
+  }, [
+    frameMode,
+    handleAndroidBack,
+    jumpOpen,
+    leavePlayer,
+    locked,
+    optionsOpen,
+    orientationSheetOpen,
+    seekIntervalOpen,
+    speedSheetOpen,
+  ]);
 
   const onPlayPause = useCallback(() => {
     bumpControls();
@@ -436,16 +567,16 @@ const PlayerSessionView = memo(function PlayerSessionView({
     if (!session.isReady) {
       return;
     }
-    controller.seekBy(-SEEK_STEP_SECONDS);
-  }, [bumpControls, controller, session.isReady]);
+    controller.seekBy(-seekStepSeconds);
+  }, [bumpControls, controller, seekStepSeconds, session.isReady]);
 
   const onForward = useCallback(() => {
     bumpControls();
     if (!session.isReady) {
       return;
     }
-    controller.seekBy(SEEK_STEP_SECONDS);
-  }, [bumpControls, controller, session.isReady]);
+    controller.seekBy(seekStepSeconds);
+  }, [bumpControls, controller, seekStepSeconds, session.isReady]);
 
   const onReplay = useCallback(() => {
     bumpControls();
@@ -462,10 +593,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
   }, [bumpControls, toggleMute, volume]);
 
   const onOpenSpeed = useCallback(() => {
+    endLongPress();
     showControls();
     setOrientationSheetOpen(false);
     setSpeedSheetOpen(true);
-  }, [showControls]);
+  }, [endLongPress, showControls]);
 
   const onCloseSpeed = useCallback(() => {
     setSpeedSheetOpen(false);
@@ -473,10 +605,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
   }, [bumpControls]);
 
   const onOpenOrientation = useCallback(() => {
+    endLongPress();
     showControls();
     setSpeedSheetOpen(false);
     setOrientationSheetOpen(true);
-  }, [showControls]);
+  }, [endLongPress, showControls]);
 
   const onCloseOrientation = useCallback(() => {
     setOrientationSheetOpen(false);
@@ -500,12 +633,14 @@ const PlayerSessionView = memo(function PlayerSessionView({
     [bumpControls, setPlaybackRate],
   );
 
+  const anyModalOpen = speedSheetOpen || orientationSheetOpen || optionsOpen || seekIntervalOpen || jumpOpen;
+
   const onSingleTap = useCallback(() => {
-    if (speedSheetOpen || orientationSheetOpen || session.isSeeking) {
+    if (anyModalOpen || session.isSeeking) {
       return;
     }
     toggleControls();
-  }, [orientationSheetOpen, session.isSeeking, speedSheetOpen, toggleControls]);
+  }, [anyModalOpen, session.isSeeking, toggleControls]);
 
   const onDoubleTapSeek = useCallback(
     (side: DoubleTapSeekSide, delta: number) => {
@@ -565,15 +700,218 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const onNext = useMemo(() => (nextId ? () => goToMedia(nextId) : null), [goToMedia, nextId]);
 
   const onLock = useCallback(() => {
+    endLongPress();
     hud.hideNow();
     setSpeedSheetOpen(false);
     setOrientationSheetOpen(false);
+    setOptionsOpen(false);
+    setSeekIntervalOpen(false);
+    setJumpOpen(false);
+    setFrameMode(false);
     setLocked(true);
-  }, [hud, setLocked]);
+  }, [hud, endLongPress, setLocked]);
   const onUnlock = useCallback(() => {
     setLocked(false);
     showControls();
   }, [setLocked, showControls]);
+
+  // ── P1 Playback basics ─────────────────────────────────────────────────────────────────────────────────────────
+  // Exact seeks go through the session's own seek (the timeline's path): the position and "finished" state update at
+  // once, and nothing in the session code changes.
+  const seekExact = useCallback(
+    (seconds: number) => {
+      beginSeekPreview(seconds);
+      commitSeekPreview();
+    },
+    [beginSeekPreview, commitSeekPreview],
+  );
+  const canCommand = session.isReady && !session.error;
+
+  /** #520 Stop: pause and go back to the start. */
+  const onStop = useCallback(() => {
+    endLongPress();
+    if (!canCommand) {
+      return;
+    }
+    controller.pause();
+    seekExact(0);
+    showControls();
+    announcePlayer(t('videoPlayer.stopped'));
+  }, [canCommand, controller, endLongPress, seekExact, showControls, t]);
+
+  /** #532 Jump to time. */
+  const onJump = useCallback(
+    (seconds: number) => {
+      setJumpOpen(false);
+      if (!canCommand) {
+        return;
+      }
+      seekExact(seconds);
+      bumpControls();
+      announcePlayer(t('videoPlayer.jumpedTo', { time: formatPlaybackTime(seconds) }));
+    },
+    [bumpControls, canCommand, seekExact, t],
+  );
+
+  /** #527: the chosen seek interval (remembered; the full-screen ⏪ / ⏩, "10 s" and double taps follow it). */
+  const onSelectSeekInterval = useCallback(
+    (seconds: SeekStepSeconds) => {
+      setSeekStepSeconds(seconds);
+      setSeekIntervalOpen(false);
+      bumpControls();
+    },
+    [bumpControls],
+  );
+
+  /** The player's own clock (the session's position lags by up to a third of a second). */
+  const readPlayerTime = useCallback(() => {
+    try {
+      const value = player.currentTime;
+      return Number.isFinite(value) && value >= 0 ? value : session.positionSeconds;
+    } catch {
+      return session.positionSeconds;
+    }
+  }, [player, session.positionSeconds]);
+
+  /** #531 Frame by frame: pause, then show the panel on the frame that is showing. */
+  const openFrameMode = useCallback(() => {
+    endLongPress();
+    if (!canCommand) {
+      return;
+    }
+    if (session.isPlaying) {
+      controller.pause();
+    }
+    lastFrameStepRef.current = null;
+    setFrameShown(frameAt(readPlayerTime(), trackInfo.frameRate));
+    setFrameMode(true);
+    showControls();
+  }, [canCommand, controller, endLongPress, readPlayerTime, session.isPlaying, showControls, trackInfo.frameRate]);
+
+  const onFrameStep = useCallback(
+    (direction: -1 | 1) => {
+      if (!canCommand) {
+        return;
+      }
+      if (session.isPlaying) {
+        controller.pause();
+      }
+      const now = Date.now();
+      const step = frameStep(
+        frameStepBase(readPlayerTime(), lastFrameStepRef.current, now),
+        direction,
+        trackInfo.frameRate,
+        session.durationSeconds,
+      );
+      if (!step) {
+        return;
+      }
+      lastFrameStepRef.current = { target: step.seekSeconds, at: now };
+      seekExact(step.seekSeconds);
+      setFrameShown({ frameIndex: step.frameIndex, frameStartSeconds: step.frameStartSeconds });
+    },
+    [canCommand, controller, readPlayerTime, seekExact, session.durationSeconds, session.isPlaying, trackInfo.frameRate],
+  );
+
+  const onCloseFrameMode = useCallback(() => {
+    setFrameMode(false);
+    bumpControls();
+  }, [bumpControls]);
+
+  const openOptions = useCallback(() => {
+    endLongPress();
+    showControls();
+    setSpeedSheetOpen(false);
+    setOrientationSheetOpen(false);
+    setOptionsOpen(true);
+  }, [endLongPress, showControls]);
+
+  /** Every chip, tile, row and menu entry of the page (see page/player-page-actions.ts for which is which). */
+  const onPageAction = useCallback(
+    (action: PlayerPageAction) => {
+      if (NOT_YET_ACTIONS.has(action)) {
+        notYet();
+        return;
+      }
+      switch (action) {
+        case 'speed':
+          onOpenSpeed();
+          return;
+        case 'rotate':
+          endLongPress();
+          bumpControls();
+          void toggleFullscreen();
+          return;
+        case 'lock':
+          onLock();
+          return;
+        case 'skipBack':
+          onRewind();
+          return;
+        case 'seekInterval':
+          endLongPress();
+          setSeekIntervalOpen(true);
+          return;
+        case 'frameByFrame':
+          openFrameMode();
+          return;
+        case 'stop':
+          onStop();
+          return;
+        case 'jumpToTime':
+          endLongPress();
+          setJumpOpen(true);
+          return;
+        case 'orientation':
+          onOpenOrientation();
+          return;
+        case 'saveToLibrary':
+          void onSaveToLibrary();
+          return;
+        default:
+          notYet();
+      }
+    },
+    [
+      bumpControls,
+      endLongPress,
+      notYet,
+      onLock,
+      onOpenOrientation,
+      onOpenSpeed,
+      onRewind,
+      onSaveToLibrary,
+      onStop,
+      openFrameMode,
+      toggleFullscreen,
+    ],
+  );
+
+  // The ⋮ menu closes before its entry runs; a sheet it opens comes up on the next frame, once the menu has gone.
+  const onOptionsAction = useCallback(
+    (action: PlayerPageAction) => {
+      requestAnimationFrame(() => onPageAction(action));
+    },
+    [onPageAction],
+  );
+
+  /** The page's tab bar: leave the Player (it carries on in the mini player) for that tab, like Back does. */
+  const onPressTab = useCallback(
+    (route: string) => {
+      const path = TAB_PATHS[route];
+      if (!path) {
+        return;
+      }
+      endLongPress();
+      if (sessionFailed) {
+        closePlayerSession(sessionKey);
+      }
+      void restorePresentation().then(() => {
+        appRouter.dismissTo(path as Parameters<typeof appRouter.dismissTo>[0]);
+      });
+    },
+    [endLongPress, restorePresentation, sessionFailed, sessionKey],
+  );
 
   const title = session.displayName ?? t('player.untitled');
   // Edit after download: the artist VidoraX keeps for this item (app-level tag), shown next to the title.
@@ -584,23 +922,59 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const playerSurfaceBg = theme.colors.black;
   const screenBg = showError ? theme.colors.background : playerSurfaceBg;
 
+  // Screen 19: in portrait, out of full screen, the Player is a page — header, the video in a card, chips, tiles,
+  // Up next and the tab bar. Full screen and landscape keep the black stage (the design draws no frame for them).
+  // The video surface sits at the same place in the tree in both, so switching never remounts the player's view.
+  const pageLayout = !isFullscreen && window.height >= window.width && !showError;
+  const pageBg = theme.colors.background;
+  const pageTopBg = theme.colors.headerStyle === 'band' ? theme.colors.headerBackground : pageBg;
+  const card = playerCardSize(
+    window.width - insets.left - insets.right - ds.space.screenX * 2,
+    contentSize ?? (trackInfo.width && trackInfo.height ? { width: trackInfo.width, height: trackInfo.height } : null),
+  );
+  const quality = qualityLabel(trackInfo.width, trackInfo.height);
+  const gesturesEnabled = !locked && !anyModalOpen && !startupCoverVisible;
+
   const body = (
     <View
       style={[
         styles.body,
         isFullscreen ? styles.fullscreenBody : null,
-        { backgroundColor: playerSurfaceBg },
+        { backgroundColor: pageLayout ? pageBg : playerSurfaceBg },
       ]}>
-      <View style={[styles.stage, { backgroundColor: playerSurfaceBg }]}>
+      {pageLayout ? (
+        <View style={styles.pageHeader}>
+          <DsHeader
+            title={t('videoPlayer.title')}
+            onBack={onChromeBack}
+            action={{
+              icon: 'ellipsis-vertical',
+              accessibilityLabel: t('videoPlayer.moreOptions'),
+              accessibilityHint: t('videoPlayer.moreOptionsHint'),
+              onPress: openOptions,
+              testID: 'player-page-options',
+            }}
+            testID="player-page-header"
+          />
+        </View>
+      ) : null}
+      <View
+        style={
+          pageLayout
+            ? [styles.card, { width: card.width, height: card.height, backgroundColor: playerSurfaceBg }]
+            : [styles.stage, { backgroundColor: playerSurfaceBg }]
+        }
+        testID={pageLayout ? 'player-video-card' : 'player-stage'}>
         <PlayerVideoSurface
           player={player}
-          gesturesEnabled={
-            !locked && !speedSheetOpen && !orientationSheetOpen && !startupCoverVisible
-          }
+          gesturesEnabled={gesturesEnabled}
           brightnessGesturesEnabled={sideGestures.brightnessAvailable}
+          seekStepSeconds={seekStepSeconds}
           onSingleTap={onSingleTap}
           onDoubleTapSeek={onDoubleTapSeek}
           onDoubleTapTogglePlay={onDoubleTapTogglePlay}
+          onLongPressStart={onLongPressStart}
+          onLongPressEnd={endLongPress}
           onFirstFrameRender={markFirstFrameRendered}
           onSurfaceLayout={({ height }) => {
             if (height > 0) {
@@ -642,65 +1016,106 @@ const PlayerSessionView = memo(function PlayerSessionView({
           </View>
         ) : null}
         <PlayerAdjustmentHud hud={sideGestures.hud} />
-        {/* Single TopBar instance — avoids cover→controls remount swap shimmer. */}
+        {/* Single chrome container — avoids cover→controls remount swap shimmer. */}
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
-          {(startupCoverVisible || overlayVisible) && !showError && !locked ? (
-            <PlayerTopBar
-              title={title}
-              artist={artist}
-              isFullscreen={isFullscreen}
-              visible
-              orientationIcon={orientationIcon}
-              onBack={onChromeBack}
-              onOpenOrientation={onOpenOrientation}
-              onToggleFullscreen={() => {
-                bumpControls();
-                void toggleFullscreen();
-              }}
-              save={
-                incomingToken
-                  ? {
-                      state: saveState,
-                      onPress: () => {
-                        bumpControls();
-                        void onSaveToLibrary();
-                      },
-                    }
-                  : null
-              }
-            />
-          ) : null}
-          {overlayVisible && !startupCoverVisible ? (
-            <PlayerControls
-              isPlaying={session.isPlaying}
-              isReady={session.isReady}
-              isLoading={session.isLoading && session.hasFirstFrame}
-              isCompleted={session.isCompleted}
-              disabled={Boolean(session.error)}
-              visible
-              hasQueue={hasQueue}
-              onPrevious={onPrevious}
-              onNext={onNext}
-              onPlayPause={onPlayPause}
-              onRewind={onRewind}
-              onForward={onForward}
-              onReplay={onReplay}
-            />
-          ) : null}
-          {overlayVisible && !startupCoverVisible && !showError ? (
-            <PlayerLockButton onLock={onLock} />
-          ) : null}
+          {pageLayout ? (
+            overlayVisible && !startupCoverVisible ? (
+              <PlayerCardOverlay
+                title={title}
+                artist={artist}
+                quality={quality}
+                isPlaying={session.isPlaying}
+                isReady={session.isReady}
+                isLoading={session.isLoading && session.hasFirstFrame}
+                isCompleted={session.isCompleted}
+                disabled={Boolean(session.error)}
+                onBack={onChromeBack}
+                onOpenOptions={openOptions}
+                onPrevious={onPrevious}
+                onNext={onNext}
+                onPlayPause={onPlayPause}
+                onReplay={onReplay}
+                positionSeconds={session.positionSeconds}
+                durationSeconds={session.durationSeconds}
+                previewSeconds={seekPreviewSeconds}
+                previewFrame={seekPreview.frame}
+                onSeekStart={onSeekStart}
+                onSeekChange={updateSeekPreview}
+                onSeekCommit={onSeekCommit}
+                onSeekCancel={onSeekCancel}
+              />
+            ) : null
+          ) : (
+            <>
+              {(startupCoverVisible || overlayVisible) && !showError && !locked ? (
+                <PlayerTopBar
+                  title={title}
+                  artist={artist}
+                  isFullscreen={isFullscreen}
+                  visible
+                  orientationIcon={orientationIcon}
+                  onBack={onChromeBack}
+                  onOpenOrientation={onOpenOrientation}
+                  onToggleFullscreen={() => {
+                    bumpControls();
+                    void toggleFullscreen();
+                  }}
+                  onOpenOptions={openOptions}
+                  save={
+                    incomingToken
+                      ? {
+                          state: saveState,
+                          onPress: () => {
+                            bumpControls();
+                            void onSaveToLibrary();
+                          },
+                        }
+                      : null
+                  }
+                />
+              ) : null}
+              {overlayVisible && !startupCoverVisible ? (
+                <PlayerControls
+                  isPlaying={session.isPlaying}
+                  isReady={session.isReady}
+                  isLoading={session.isLoading && session.hasFirstFrame}
+                  isCompleted={session.isCompleted}
+                  disabled={Boolean(session.error)}
+                  visible
+                  hasQueue={hasQueue}
+                  onPrevious={onPrevious}
+                  onNext={onNext}
+                  onPlayPause={onPlayPause}
+                  onRewind={onRewind}
+                  onForward={onForward}
+                  onReplay={onReplay}
+                  seekStepSeconds={seekStepSeconds}
+                />
+              ) : null}
+              {overlayVisible && !startupCoverVisible && !showError ? (
+                <PlayerLockButton onLock={onLock} />
+              ) : null}
+            </>
+          )}
         </View>
         <SeekFeedbackOverlay
           previewSeconds={seekPreviewSeconds}
           durationSeconds={session.durationSeconds}
           visible={session.isSeeking}
         />
-        <DoubleTapSeekFeedback side={doubleTapSide} />
-        {locked && !showError ? <PlayerLockedOverlay onUnlock={onUnlock} /> : null}
+        <DoubleTapSeekFeedback side={doubleTapSide} seconds={seekStepSeconds} />
+        <LongPressSpeedPill visible={longPressActive} />
+        {locked && !showError && !pageLayout ? <PlayerLockedOverlay onUnlock={onUnlock} /> : null}
       </View>
 
-      {(overlayVisible || session.isSeeking) && !startupCoverVisible ? (
+      {pageLayout ? (
+        <PlayerPageBody
+          playbackRate={session.playbackRate}
+          seekStepSeconds={seekStepSeconds}
+          enabled={!session.error}
+          onAction={onPageAction}
+        />
+      ) : (overlayVisible || session.isSeeking) && !startupCoverVisible ? (
         <Box
           px={16}
           pb={isFullscreen ? 12 : 16}
@@ -746,15 +1161,39 @@ const PlayerSessionView = memo(function PlayerSessionView({
           )}
         </Box>
       ) : null}
+      {pageLayout ? (
+        <DsTabBarView
+          activeRoute={tabRouteNames.library}
+          routes={DS_TAB_ROUTES}
+          onPressTab={onPressTab}
+          bottomInset={insets.bottom}
+        />
+      ) : null}
+      {/* Locked on the page: everything is covered (header, chips, tabs), not only the video. */}
+      {locked && pageLayout ? <PlayerLockedOverlay onUnlock={onUnlock} /> : null}
+      {frameMode && !locked ? (
+        <FrameStepPanel
+          frameStartSeconds={frameShown?.frameStartSeconds ?? null}
+          frameIndex={frameShown?.frameIndex ?? null}
+          disabled={!canCommand}
+          onStep={onFrameStep}
+          onClose={onCloseFrameMode}
+          style={
+            pageLayout
+              ? [styles.framePanel, { bottom: ds.size.tabBar + 1 + insets.bottom + ds.space.grid }]
+              : [styles.framePanel, styles.framePanelStage]
+          }
+        />
+      ) : null}
     </View>
   );
 
   return (
     <SafeAreaScreen
       padded={false}
-      edges={isFullscreen ? [] : ['left', 'right', 'top', 'bottom']}
-      style={{ backgroundColor: screenBg }}
-      safeAreaStyle={{ backgroundColor: screenBg }}>
+      edges={isFullscreen ? [] : pageLayout ? ['left', 'right', 'top'] : ['left', 'right', 'top', 'bottom']}
+      style={{ backgroundColor: pageLayout ? pageBg : screenBg }}
+      safeAreaStyle={{ backgroundColor: pageLayout ? pageTopBg : screenBg }}>
       {showError ? (
         <Box flex={1} center p={24} gap={16}>
           <ErrorState
@@ -847,6 +1286,26 @@ const PlayerSessionView = memo(function PlayerSessionView({
         onSelect={onSelectOrientation}
         onClose={onCloseOrientation}
       />
+      <PlayerOptionsSheet
+        visible={optionsOpen}
+        save={incomingToken ? { state: saveState } : null}
+        playbackReady={canCommand}
+        onAction={onOptionsAction}
+        onClose={() => setOptionsOpen(false)}
+      />
+      <SeekIntervalSheet
+        visible={seekIntervalOpen}
+        selected={seekStepSeconds}
+        onSelect={onSelectSeekInterval}
+        onClose={() => setSeekIntervalOpen(false)}
+      />
+      <JumpToTimeSheet
+        visible={jumpOpen}
+        positionSeconds={session.positionSeconds}
+        durationSeconds={session.durationSeconds}
+        onJump={onJump}
+        onClose={() => setJumpOpen(false)}
+      />
     </SafeAreaScreen>
   );
 });
@@ -876,6 +1335,29 @@ const styles = StyleSheet.create({
   stage: {
     flex: 1,
     position: 'relative',
+  },
+  pageHeader: {
+    paddingHorizontal: ds.space.screenX,
+  },
+  // Screen 19's video card: 12 dp under the header, rounded like every card, the picture clipped to it.
+  card: {
+    alignSelf: 'center',
+    marginTop: ds.space.stack,
+    borderRadius: ds.radius.card,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  framePanel: {
+    position: 'absolute',
+    left: ds.space.screenX,
+    right: ds.space.screenX,
+    zIndex: 8,
+  },
+  // Full screen / landscape: under the top bar, centred, clear of the timeline dock.
+  framePanelStage: {
+    top: 60,
+    left: '18%',
+    right: '18%',
   },
   startupCover: {
     ...StyleSheet.absoluteFill,
