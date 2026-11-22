@@ -12,6 +12,8 @@ export type PlayerPageBodyProps = {
   seekStepSeconds: number;
   /** False while the video can't take commands (preparing, failed): the controls still show, greyed. */
   enabled: boolean;
+  /** Locked: everything here is hidden from TalkBack as well as covered. */
+  accessibilityHidden?: boolean;
   onAction: (action: PlayerPageAction) => void;
 };
 
@@ -38,6 +40,7 @@ export const PlayerPageBody = memo(function PlayerPageBody({
   playbackRate,
   seekStepSeconds,
   enabled,
+  accessibilityHidden = false,
   onAction,
 }: PlayerPageBodyProps) {
   const { t } = useTranslation();
@@ -46,6 +49,8 @@ export const PlayerPageBody = memo(function PlayerPageBody({
       style={{ flex: 1 }}
       contentContainerStyle={{ paddingHorizontal: ds.space.screenX, paddingTop: ds.space.grid, paddingBottom: 16, gap: ds.space.grid }}
       showsVerticalScrollIndicator={false}
+      importantForAccessibility={accessibilityHidden ? 'no-hide-descendants' : 'auto'}
+      accessibilityElementsHidden={accessibilityHidden}
       testID="player-page-body">
       <DsChipRow testID="player-page-chips">
         {PAGE_CHIPS.map((chip) =>

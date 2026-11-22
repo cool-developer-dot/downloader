@@ -285,9 +285,11 @@ const styles = StyleSheet.create({
     height: 44,
     justifyContent: 'center',
   },
+  // 44 dp to touch, the bar at its bottom: the extra height reaches up over the picture, the bar stays put.
   cardHit: {
-    height: 22,
-    justifyContent: 'center',
+    height: 44,
+    justifyContent: 'flex-end',
+    paddingBottom: 8,
   },
   cardTrack: {
     height: 6,

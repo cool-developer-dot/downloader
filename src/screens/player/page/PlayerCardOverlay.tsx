@@ -214,10 +214,11 @@ const styles = StyleSheet.create({
   title: {
     flexShrink: 1,
   },
-  // ⏮ ⏸ ⏭ centred 51 dp apart, their middle 74 dp below the card's top edge.
+  // ⏮ ⏸ ⏭ centred 51 dp apart, their middle 74 dp below the top of the 169 dp card (44 %; a taller card keeps the share).
   transport: {
     position: 'absolute',
-    top: 52,
+    top: '44%',
+    marginTop: -22,
     left: 0,
     right: 0,
     flexDirection: 'row',
@@ -231,7 +232,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // The bar 10.7 dp in from each side, the times under it, 9 dp from the bottom edge.
+  // The bar 10.7 dp in from each side, the times under it, 9 dp from the bottom edge (its touch area reaches up).
   timeline: {
     position: 'absolute',
     left: 10.7,

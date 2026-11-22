@@ -764,14 +764,18 @@ const PlayerSessionView = memo(function PlayerSessionView({
   );
 
   /** The player's own clock (the session's position lags by up to a third of a second). */
+  const positionRef = useRef(session.positionSeconds);
+  useEffect(() => {
+    positionRef.current = session.positionSeconds;
+  }, [session.positionSeconds]);
   const readPlayerTime = useCallback(() => {
     try {
       const value = player.currentTime;
-      return Number.isFinite(value) && value >= 0 ? value : session.positionSeconds;
+      return Number.isFinite(value) && value >= 0 ? value : positionRef.current;
     } catch {
-      return session.positionSeconds;
+      return positionRef.current;
     }
-  }, [player, session.positionSeconds]);
+  }, [player]);
 
   /** #531 Frame by frame: pause, then show the panel on the frame that is showing. */
   const openFrameMode = useCallback(() => {
@@ -925,7 +929,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
   // Screen 19: in portrait, out of full screen, the Player is a page — header, the video in a card, chips, tiles,
   // Up next and the tab bar. Full screen and landscape keep the black stage (the design draws no frame for them).
   // The video surface sits at the same place in the tree in both, so switching never remounts the player's view.
-  const pageLayout = !isFullscreen && window.height >= window.width && !showError;
+  // In picture-in-picture the window is the small PiP window: the picture alone, never the page around it.
+  const pageLayout = !isFullscreen && !pipActive && window.height >= window.width && !showError;
+  // Locked on the page: the controls under the lock overlay are hidden from TalkBack too, not only from touch.
+  const pageA11yHidden = locked && pageLayout;
   const pageBg = theme.colors.background;
   const pageTopBg = theme.colors.headerStyle === 'band' ? theme.colors.headerBackground : pageBg;
   const card = playerCardSize(
@@ -943,7 +950,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
         { backgroundColor: pageLayout ? pageBg : playerSurfaceBg },
       ]}>
       {pageLayout ? (
-        <View style={styles.pageHeader}>
+        <View
+          style={styles.pageHeader}
+          importantForAccessibility={pageA11yHidden ? 'no-hide-descendants' : 'auto'}
+          accessibilityElementsHidden={pageA11yHidden}>
           <DsHeader
             title={t('videoPlayer.title')}
             onBack={onChromeBack}
@@ -1113,6 +1123,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           playbackRate={session.playbackRate}
           seekStepSeconds={seekStepSeconds}
           enabled={!session.error}
+          accessibilityHidden={pageA11yHidden}
           onAction={onPageAction}
         />
       ) : (overlayVisible || session.isSeeking) && !startupCoverVisible ? (
@@ -1162,12 +1173,16 @@ const PlayerSessionView = memo(function PlayerSessionView({
         </Box>
       ) : null}
       {pageLayout ? (
-        <DsTabBarView
-          activeRoute={tabRouteNames.library}
-          routes={DS_TAB_ROUTES}
-          onPressTab={onPressTab}
-          bottomInset={insets.bottom}
-        />
+        <View
+          importantForAccessibility={pageA11yHidden ? 'no-hide-descendants' : 'auto'}
+          accessibilityElementsHidden={pageA11yHidden}>
+          <DsTabBarView
+            activeRoute={tabRouteNames.library}
+            routes={DS_TAB_ROUTES}
+            onPressTab={onPressTab}
+            bottomInset={insets.bottom}
+          />
+        </View>
       ) : null}
       {/* Locked on the page: everything is covered (header, chips, tabs), not only the video. */}
       {locked && pageLayout ? <PlayerLockedOverlay onUnlock={onUnlock} /> : null}

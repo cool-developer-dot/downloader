@@ -39,7 +39,7 @@ The 65-screen PDF already draws the Player (screens 18–25, 48–55); screen 19
 | #527 | Custom Seek Interval | "Custom seek" tile, ⋮ → Seek interval | 5 / 10 / 15 / 20 / 30 / 60 s, remembered (MMKV `vidorax.mmkv.player.seekStepSeconds.v1`). The "10 s" tile (skip back), the full-screen ⏪ / ⏩ (icon and label), double taps and their feedback follow it. |
 | #531 | Frame by Frame | "Frame by frame" tile, ⋮ menu | Pauses and shows a small panel (not a sheet, the picture stays visible): ◀ frame · time.ms + frame number · frame ▶ · ✕. A step is an exact seek into the middle of the neighbouring frame on the track's grid (`videoTrack.frameRate`, 30 fps when unknown); rapid taps chain from the last target. Back closes it. |
 | #532 | Jump to Time | ⋮ → Jump to time | Sheet with a field that starts at the current time; accepts `ss`, `m:ss`, `h:mm:ss`, Urdu / Arabic digits and colon look-alikes; refuses impossible times and times past the end with a reason under the field. |
-| #545 | Long Press to Fast Forward | Hold the picture (½ s) | 2× while held ("2× speed ⏩" pill, announced); the chosen speed returns when the finger lifts, and on lock, any sheet, PiP, the frame panel, Stop, leaving or switching video. Paused video: nothing. The rate goes to the player only — the 1.0× chip and the media session never see it. |
+| #545 | Long Press to Fast Forward | Hold the picture (½ s) | 2× while held ("2× speed ⏩" pill, announced); the chosen speed returns when the finger lifts, and on lock, any sheet, PiP, the frame panel, Stop, leaving or switching video. Paused video: nothing. The chosen speed and the 1.0× chip never change; the native player — and so any media session wrapping it, e.g. the now-playing notification — plays at 2× while held. |
 
 Not built yet on the page (they say "Not available yet"): Subs (P3), Aspect ratio (P2), A–B repeat (P5), Up next (P6),
 Audio (Faran's sound packages, screen 22). **Filters is in no package** — asked Faran.
@@ -53,7 +53,10 @@ Audio (Faran's sound packages, screen 22). **Filters is in no package** — aske
   style changes, so rotating or entering full screen never remounts the `VideoView` (paused frame, PiP arming kept).
 - **Rotate chip** enters full screen (landscape, immersive), like the stage's full-screen button; the orientation lock
   (Auto / Portrait / Landscape) is in the ⋮ menu and still in the stage's top bar.
-- **Lock on the page** covers the whole page (header, chips, tiles, tabs), not only the video.
+- **Lock on the page** covers the whole page (header, chips, tiles, tabs), not only the video, and hides those controls
+  from TalkBack as well (a TalkBack double tap goes to the focused view, past any overlay).
+- **Picture-in-picture** always shows the picture alone: the page layout is off while PiP is active (a portrait
+  video's PiP window would otherwise be the whole page shrunk).
 - **Back** closes, in order: the jump / interval / ⋮ sheets, speed, orientation, the frame panel, full screen; then
   leaves the Player (into the mini player).
 - **Tab bar on the page** (the design draws it): `DsTabBarView`, the bar without a navigator, drawn without tour targets
@@ -95,3 +98,8 @@ Audio (Faran's sound packages, screen 22). **Filters is in no package** — aske
 6. Jump to time with Urdu digits; Stop after the video ended, then Play.
 7. Seek interval 30 s → "30 s" tile, ⏪ / ⏩ icons in full screen, double-tap feedback, TalkBack hint.
 8. A tab on the page → the Player continues in the mini player on that tab.
+9. PiP from the page with a portrait video and with a landscape one: the window shows only the picture; back to the
+   page afterwards.
+10. ⋮ → Jump to time and ⋮ → Seek interval: the menu closes and the sheet opens (two modals in a row on Android).
+11. TalkBack while locked on the page: only the unlock pill can be reached.
+12. Scrubbing on the card: the bar answers a drag that starts a little above it (44 dp touch area).
