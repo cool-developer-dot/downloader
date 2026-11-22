@@ -42,7 +42,7 @@ internal object DownloadCredentials {
   /** What JavaScript needs to ask again: where the user signs in. No secret. */
   data class SignIn(val origin: String, val realm: String?)
 
-  private class Entry(val origin: Origin, val authorization: String) {
+  private class Entry(val origin: Origin, val authorization: String, val login: BasicCredentials) {
     override fun toString(): String = "Entry($origin, authorization=<redacted>)"
   }
 
@@ -56,11 +56,28 @@ internal object DownloadCredentials {
    * rejects such a request with ERR_INVALID_REQUEST before it gets here).
    */
   fun put(downloadId: String, downloadUrl: String, credentials: BasicCredentials, realm: String? = null): Boolean {
-    val url = downloadUrl.toHttpUrlOrNull()?.takeIf { it.isHttps } ?: return false
-    val origin = Origin.of(url)
-    entries[downloadId] = Entry(origin, header(credentials))
+    val origin = originOf(downloadUrl) ?: return false
+    entries[downloadId] = Entry(origin, header(credentials), credentials)
     flags.mark(downloadId, SignIn(origin.toString(), realm))
     return true
+  }
+
+  /**
+   * The origin sign-in may be pinned to: an https URL's, or (#304) an `ftp://`/`ftps://` link's. An FTP origin never
+   * matches an http(s) request ([authorizationFor] wants https), so an FTP password is only ever sent to its FTP server.
+   */
+  private fun originOf(raw: String): Origin? {
+    raw.toHttpUrlOrNull()?.let { return if (it.isHttps) Origin.of(it) else null }
+    val ftp = FtpUrl.parse(raw) ?: return null
+    return Origin(ftp.scheme, ftp.host, ftp.port)
+  }
+
+  /** #304: the user name and password of [authKey] for its pinned FTP origin [url] only; null in every other case. */
+  fun ftpLoginFor(authKey: String?, url: FtpUrl): BasicCredentials? {
+    if (authKey == null) return null
+    val entry = entries[authKey] ?: return null
+    val origin = entry.origin
+    return entry.login.takeIf { origin.scheme == url.scheme && origin.host == url.host && origin.port == url.port }
   }
 
   /**
@@ -69,9 +86,17 @@ internal object DownloadCredentials {
    */
   fun restore(downloadId: String, credentials: BasicCredentials): Boolean {
     val signIn = flags.get(downloadId) ?: return false
-    val url = signIn.origin.toHttpUrlOrNull()?.takeIf { it.isHttps } ?: return false
-    entries[downloadId] = Entry(Origin.of(url), header(credentials))
+    val origin = restoredOrigin(signIn.origin) ?: return false
+    entries[downloadId] = Entry(origin, header(credentials), credentials)
     return true
+  }
+
+  /** An origin as [Origin.toString] wrote it (`https://host:443`, `ftp://host:21`). */
+  private fun restoredOrigin(raw: String): Origin? {
+    raw.toHttpUrlOrNull()?.let { return if (it.isHttps) Origin.of(it) else null }
+    val match = Regex("""^(ftps?)://(\[[^\]]+]|[^:/]+):(\d+)$""").matchEntire(raw) ?: return null
+    val port = match.groupValues[3].toIntOrNull()?.takeIf { it in 1..65535 } ?: return null
+    return Origin(match.groupValues[1], match.groupValues[2].removePrefix("[").removeSuffix("]"), port)
   }
 
   fun has(downloadId: String): Boolean = entries.containsKey(downloadId)

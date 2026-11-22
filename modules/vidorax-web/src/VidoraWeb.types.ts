@@ -256,6 +256,13 @@ export interface VidoraWebModuleApi {
    * Resolves null when the user cancels. Missing on older native builds.
    */
   pickStartPageImage?(maxSize: number): Promise<StartPageImage | null>;
+  /** #31 Voice search: whether the phone has a voice input screen. Missing on older native builds. */
+  isVoiceSearchAvailable?(): boolean;
+  /**
+   * #31 Voice search: Android's own voice input screen (no microphone permission for VidoraX); resolves the words
+   * heard, or null when cancelled or nothing was heard. `language` is a BCP 47 tag, or null for the phone's default.
+   */
+  recognizeSpeech?(language: string | null): Promise<string | null>;
   /** B9 #87: whether this phone's launcher can pin shortcuts (Android 8+ and a launcher that supports it). */
   canPinShortcuts?(): boolean;
   /**
@@ -414,6 +421,8 @@ export interface VidoraWebModuleApi {
   captureFullPage?(viewTag: number, maxWidth: number): Promise<{ status: 'ok' | 'single' | 'tooLong' | 'failed'; uri?: string | null; width?: number; height?: number }>;
   /** B17 #178: saves the page as a web archive for `profile` under `id`; resolves its size in bytes (0 = failed). */
   saveOfflinePage?(viewTag: number, profile: string, id: string): Promise<number>;
+  /** #486 Site grabber: saves fetched HTML as the same web archive (`<id>.mht`); resolves its size, 0 when not saved. */
+  archiveOfflineHtml?(profile: string, id: string, url: string, html: string): Promise<number>;
   /** B17 #178: opens a saved page read-only; resolves when the viewer closes (false: couldn't open). */
   openOfflinePage?(profile: string, id: string, title: string): Promise<boolean>;
   deleteOfflinePage?(profile: string, id: string): boolean;
@@ -453,6 +462,8 @@ export interface VidoraWebModuleApi {
   setBlockingPage?(viewTag: number, url: string): Promise<boolean>;
   /** B14 #121: requests blocked on this WebView's current page (0 when the view is gone). */
   getBlockedCount?(viewTag: number): Promise<number>;
+  /** Design 5: ads and trackers blocked over the last 7 days, counted on the phone. Missing on older native builds. */
+  getBlockedThisWeek?(): number;
   /**
    * B18 #183 / #193 / #184: pictures from the network off (true) or on for the WebView with this view tag
    * (`WebSettings.setBlockNetworkImage`). Resolves false when the view is gone. Missing on older native builds.

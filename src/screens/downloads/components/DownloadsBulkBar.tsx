@@ -1,29 +1,37 @@
 import { memo, useCallback, useState } from 'react';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Text } from '@/components/base/Text';
-import { Button } from '@/components/buttons/Button';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
+import { DsButton, DsButtonRow, DsText } from '@/design';
 import { useTranslation } from '@/localization';
 
-import { useDownloadsBulkActions } from '../hooks/useDownloadsBulkActions';
-import { useDownloadsTokens } from '../theme/downloads-tokens';
+import type { useDownloadsBulkActions } from '../hooks/useDownloadsBulkActions';
+
+export type DownloadsBulkActionsModel = ReturnType<typeof useDownloadsBulkActions>;
 
 export type DownloadsBulkBarProps = {
+  /** The screen's one `useDownloadsBulkActions()` (shared with the "Cancel all" item of the Add-link sheet). */
+  bulk: DownloadsBulkActionsModel;
+  /** Set by the screen when "Cancel all" was chosen elsewhere: the confirmation opens here. */
+  cancelConfirmVisible?: boolean;
+  onCancelConfirmClosed?: () => void;
   testID?: string;
 };
 
 /**
- * Pause All (#327), Resume All (#328), Cancel All (#329) under the Downloads header. Shown only while a v2 download
- * is queued, running or paused; each button is disabled when nothing applies to it.
+ * Pause All (#327) and Resume All (#328) as the design's button pair under the speed card; Cancel All (#329) keeps
+ * its confirmation here and is reached from the "+ Add link" long-press sheet. Shown only while a v2 download is
+ * queued, running or paused; a button is disabled when nothing applies to it.
  */
 export const DownloadsBulkBar = memo(function DownloadsBulkBar({
+  bulk,
+  cancelConfirmVisible = false,
+  onCancelConfirmClosed,
   testID = 'downloads-bulk-bar',
 }: DownloadsBulkBarProps) {
-  const downloadsTokens = useDownloadsTokens();
   const { t, tp } = useTranslation();
-  const { summary, busy, error, clearError, pauseAll, resumeAll, cancelAll } = useDownloadsBulkActions();
-  const [confirm, setConfirm] = useState<'pause' | 'cancel' | null>(null);
+  const { summary, busy, error, clearError, pauseAll, resumeAll, cancelAll } = bulk;
+  const [pauseConfirm, setPauseConfirm] = useState(false);
 
   const pauseCount = summary.pausableIds.length;
   const resumeCount = summary.resumableIds.length;
@@ -33,7 +41,7 @@ export const DownloadsBulkBar = memo(function DownloadsBulkBar({
     clearError();
     // One warning for the whole batch, only when some of it cannot resume.
     if (summary.pauseRestartCount > 0) {
-      setConfirm('pause');
+      setPauseConfirm(true);
       return;
     }
     void pauseAll();
@@ -44,77 +52,62 @@ export const DownloadsBulkBar = memo(function DownloadsBulkBar({
     void resumeAll();
   }, [clearError, resumeAll]);
 
-  const handleCancelAll = useCallback(() => {
-    clearError();
-    setConfirm('cancel');
-  }, [clearError]);
-
-  const closeConfirm = useCallback(() => setConfirm(null), []);
+  const closePauseConfirm = useCallback(() => setPauseConfirm(false), []);
 
   const confirmPause = useCallback(() => {
-    setConfirm(null);
+    setPauseConfirm(false);
     void pauseAll();
   }, [pauseAll]);
 
+  const closeCancelConfirm = useCallback(() => {
+    onCancelConfirmClosed?.();
+  }, [onCancelConfirmClosed]);
+
   const confirmCancel = useCallback(() => {
-    setConfirm(null);
+    onCancelConfirmClosed?.();
+    clearError();
     void cancelAll();
-  }, [cancelAll]);
+  }, [cancelAll, clearError, onCancelConfirmClosed]);
 
   if (cancelCount === 0) {
     return null;
   }
 
   return (
-    <Box
-      px={downloadsTokens.spacing.screenX}
-      gap={6}
-      testID={testID}
-      accessibilityLabel={t('downloadBulk.barA11y')}>
-      <Box row rtlRow gap={8} style={{ flexWrap: 'wrap' }}>
-        <Button
-          title={t('downloadBulk.pauseAll')}
-          variant="outline"
-          size="small"
-          leftIcon="pause"
+    <View testID={testID} accessibilityLabel={t('downloadBulk.barA11y')} style={{ gap: 6 }}>
+      <DsButtonRow>
+        <DsButton
+          flex
+          variant="primary"
+          icon="pause"
+          label={t('downloadBulk.pauseAll')}
           onPress={handlePauseAll}
           disabled={pauseCount === 0 || busy != null}
           loading={busy === 'pauseAll'}
           accessibilityHint={t('downloadBulk.pauseAllHint')}
           testID={`${testID}-pause-all`}
         />
-        <Button
-          title={t('downloadBulk.resumeAll')}
-          variant="outline"
-          size="small"
-          leftIcon="play"
+        <DsButton
+          flex
+          variant="secondary"
+          icon="play"
+          label={t('downloadBulk.resumeAll')}
           onPress={handleResumeAll}
           disabled={resumeCount === 0 || busy != null}
           loading={busy === 'resumeAll'}
           accessibilityHint={t('downloadBulk.resumeAllHint')}
           testID={`${testID}-resume-all`}
         />
-        <Button
-          title={t('downloadBulk.cancelAll')}
-          variant="outline"
-          size="small"
-          leftIcon="close"
-          onPress={handleCancelAll}
-          disabled={busy != null}
-          loading={busy === 'cancelAll'}
-          accessibilityHint={t('downloadBulk.cancelAllHint')}
-          testID={`${testID}-cancel-all`}
-        />
-      </Box>
+      </DsButtonRow>
 
       {error ? (
-        <Text variant="caption" color="error" accessibilityLiveRegion="polite">
+        <DsText variant="rowSub" color="error" accessibilityLiveRegion="polite">
           {t(`downloadBulk.${error}`)}
-        </Text>
+        </DsText>
       ) : null}
 
       <ConfirmModal
-        visible={confirm === 'pause'}
+        visible={pauseConfirm}
         variant="warning"
         title={t('downloadBulk.pauseAllTitle')}
         message={`${t('downloads.pauseUnsupported')}\n${t('downloadBulk.pauseRestartAffected', {
@@ -123,12 +116,12 @@ export const DownloadsBulkBar = memo(function DownloadsBulkBar({
         confirmLabel={t('downloadBulk.pauseAll')}
         cancelLabel={t('common.cancel')}
         onConfirm={confirmPause}
-        onCancel={closeConfirm}
+        onCancel={closePauseConfirm}
         testID={`${testID}-pause-confirm`}
       />
 
       <ConfirmModal
-        visible={confirm === 'cancel'}
+        visible={cancelConfirmVisible}
         variant="delete"
         title={t('downloadBulk.cancelAllTitle')}
         message={t('downloadBulk.cancelAllMessage', {
@@ -137,9 +130,9 @@ export const DownloadsBulkBar = memo(function DownloadsBulkBar({
         confirmLabel={t('downloadBulk.cancelAll')}
         cancelLabel={t('downloadBulk.keepDownloading')}
         onConfirm={confirmCancel}
-        onCancel={closeConfirm}
+        onCancel={closeCancelConfirm}
         testID={`${testID}-cancel-confirm`}
       />
-    </Box>
+    </View>
   );
 });

@@ -22,6 +22,7 @@ import { Icon } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
 import { Button } from '@/components/buttons/Button';
 import { TextButton } from '@/components/buttons/TextButton';
+import { addressBarVisibility } from '@/browser/address-bar/address-bar-visibility';
 import { BROWSER_TOUCH_TARGET } from '@/browser/constants';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation, type TranslationKey } from '@/localization';
@@ -30,12 +31,14 @@ import { SUPPORT_EMAIL_ADDRESS } from '@/support/support-email';
 import { withAlpha } from '@/theme/colors';
 
 import {
+  isMostlyOnScreen,
   isUsableRect,
   placeCard,
   spotlightPath,
   spotlightRect,
   videoBarRect,
   type Rect,
+  type Size,
 } from './tour-layout';
 import { TOUR_STEP_COUNT, type TourStepId } from './tour-policy';
 import { measureTourTarget, type TourTargetId } from './tour-targets';
@@ -64,9 +67,17 @@ const STEP_TEXT: Record<TourStepId, { title: TranslationKey; body: TranslationKe
   settingsTab: { title: 'tour.settingsTitle', body: 'tour.settingsBody' },
 };
 
-/** Where the step points: the real element, or for "Video available" the bar's real position above the toolbar. */
-async function measureStep(step: TourStepId): Promise<Rect | null> {
+/**
+ * Where the step points: the real element, or for "Video available" the bar's real position above the toolbar. The
+ * start page hides the browser's address bar (it slides out of view), so "Address bar" then points at the start page's
+ * own search field, which does the same job.
+ */
+async function measureStep(step: TourStepId, screen: Size): Promise<Rect | null> {
   const rect = await measureTourTarget(STEP_TARGETS[step]);
+  // The header's own signal first (a hidden bar is clipped, yet still measures partly on screen), then the geometry.
+  if (step === 'addressBar' && (addressBarVisibility.isHidden() || !isMostlyOnScreen(rect, screen))) {
+    return (await measureTourTarget('startSearch')) ?? rect;
+  }
   if (!rect) {
     return null;
   }
@@ -98,6 +109,8 @@ export const TourOverlay = memo(function TourOverlay({
   const theme = useTheme();
   const { t, rtl } = useTranslation();
   const windowSize = useWindowDimensions();
+  const windowWidth = windowSize.width;
+  const windowHeight = windowSize.height;
   const safeInsets = useSafeAreaInsets();
   const reducedMotion = useReducedMotionPreference();
   const [target, setTarget] = useState<{ step: TourStepId; rect: Rect } | null>(null);
@@ -130,7 +143,7 @@ export const TourOverlay = memo(function TourOverlay({
       return undefined;
     }
     let cancelled = false;
-    void measureStep(step).then((measured) => {
+    void measureStep(step, { width: windowWidth, height: windowHeight }).then((measured) => {
       if (cancelled) {
         return;
       }
@@ -146,7 +159,7 @@ export const TourOverlay = memo(function TourOverlay({
     return () => {
       cancelled = true;
     };
-  }, [frame, onTargetMissing, step]);
+  }, [frame, onTargetMissing, step, windowHeight, windowWidth]);
 
   const ready = target?.step === step;
   const spot = useMemo(

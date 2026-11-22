@@ -1,36 +1,23 @@
 import { memo } from 'react';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
 import { Skeleton } from '@/components/common/Skeleton';
-import { useTranslation } from '@/localization';
-
-import { useFavoritesTokens } from '../theme/favorites-tokens';
+import { ds, DsCard } from '@/design';
+import { useRtl, useTranslation } from '@/localization';
 
 function FavoriteSkeletonRow() {
-  const favoritesTokens = useFavoritesTokens();
+  const rtl = useRtl();
   return (
-    <Box
-      row
-      px={favoritesTokens.spacing.screenX}
-      py={favoritesTokens.spacing.rowY}
-      gap={favoritesTokens.spacing.rowGap}
-      style={{ alignItems: 'center' }}>
-      <Skeleton
-        width={favoritesTokens.thumbnailSize}
-        height={favoritesTokens.thumbnailSize}
-        borderRadius={favoritesTokens.radius.thumbnail}
-      />
-      <Box flex={1} gap={8}>
-        <Skeleton width="72%" height={14} />
-        <Skeleton width="48%" height={12} />
-        <Skeleton width="36%" height={12} />
-      </Box>
-      <Skeleton
-        width={favoritesTokens.removeButtonSize}
-        height={favoritesTokens.removeButtonSize}
-        borderRadius={favoritesTokens.radius.removeButton}
-      />
-    </Box>
+    <DsCard>
+      <View style={{ flexDirection: rtl.rowDirection, alignItems: 'flex-start', gap: ds.space.rowGap }}>
+        <Skeleton width={64} height={ds.size.thumbHeight} borderRadius={ds.radius.thumb} />
+        <View style={{ flex: 1, gap: 8 }}>
+          <Skeleton width="72%" height={14} />
+          <Skeleton width="48%" height={12} />
+          <Skeleton width="36%" height={12} />
+        </View>
+      </View>
+    </DsCard>
   );
 }
 
@@ -45,15 +32,14 @@ export const FavoriteSkeleton = memo(function FavoriteSkeleton({
 }: FavoriteSkeletonProps) {
   const { t } = useTranslation();
   return (
-    <Box
+    <View
       testID={testID}
       accessibilityLabel={t('favorites.loadingAnnouncement')}
       accessibilityLiveRegion="polite"
-      gap={4}
-      pt={8}>
+      style={{ paddingHorizontal: ds.space.screenX, gap: 8 }}>
       {Array.from({ length: rows }, (_, index) => (
         <FavoriteSkeletonRow key={`favorite-skeleton-row-${index}`} />
       ))}
-    </Box>
+    </View>
   );
 });

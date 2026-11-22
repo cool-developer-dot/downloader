@@ -13,7 +13,7 @@ const HTML_MARKERS = ['<!doctype html', '<html', '<head', '{"', '{"error'];
 
 export type MediaSignatureResult = {
   ok: boolean;
-  kind: 'mp4' | 'mov' | 'avi' | 'wmv' | 'webm' | 'mkv' | 'ts' | 'mpg' | 'mp3' | 'unknown' | 'html' | 'json';
+  kind: 'mp4' | 'mov' | 'avi' | 'wmv' | 'webm' | 'mkv' | 'ts' | 'flv' | 'mpg' | 'mp3' | 'unknown' | 'html' | 'json';
   reason: string | null;
   /** Present when ISO BMFF structure was classified. */
   mp4Kind?: Mp4ContainerKind;
@@ -137,7 +137,9 @@ export function sniffMediaSignature(
   }
 
   if (bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3) {
-    return { ok: true, kind: 'webm', reason: null };
+    // The DocType follows the EBML header: "webm", or "matroska" for a generic MKV (as the native MediaSniffer reads it).
+    const head = String.fromCharCode(...bytes.subarray(0, Math.min(bytes.length, 1024)));
+    return { ok: true, kind: !head.includes('webm') && head.includes('matroska') ? 'mkv' : 'webm', reason: null };
   }
 
   // MPEG program stream (F4): an MPEG-2 ('01') or MPEG-1 ('0010') pack header. CSS-scrambled DVD titles are refused.
@@ -149,6 +151,11 @@ export function sniffMediaSignature(
 
   if (bytes[0] === 0x47) {
     return { ok: true, kind: 'ts', reason: null };
+  }
+
+  // FLV: `FLV` and header version 1.
+  if (bytes[0] === 0x46 && bytes[1] === 0x4c && bytes[2] === 0x56 && bytes[3] === 0x01) {
+    return { ok: true, kind: 'flv', reason: null };
   }
 
   if (

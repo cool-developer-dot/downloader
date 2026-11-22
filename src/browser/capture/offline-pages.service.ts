@@ -74,6 +74,31 @@ export async function saveOffline(tabId?: string | null): Promise<void> {
   notify(translate('browserCapture.savedOffline'));
 }
 
+/**
+ * #486 Site grabber: a page it read (HTML fetched without cookies) saved as the same offline copy and listed in Saved
+ * pages. False when it could not be saved; never while an incognito tab is in front.
+ */
+export async function saveFetchedPageOffline(url: string, html: string, title: string | null): Promise<boolean> {
+  const api = web();
+  if (!api?.archiveOfflineHtml || !isValidBrowserPageUrl(url)) return false;
+  const id = Crypto.randomUUID();
+  const size = await api.archiveOfflineHtml(profileKey(), id, url, html).catch(() => 0);
+  if (!size) return false;
+  try {
+    await savedPagesRepository.add({ id, url, title: title || url, size, createdAt: new Date().toISOString() });
+  } catch {
+    api.deleteOfflinePage?.(profileKey(), id);
+    return false;
+  }
+  emit();
+  return true;
+}
+
+/** Whether this build can save fetched pages (the Site grabber's "Save pages offline"). */
+export function canSaveFetchedPages(): boolean {
+  return typeof web()?.archiveOfflineHtml === 'function';
+}
+
 export function listSavedPages(): Promise<SavedPage[]> {
   return savedPagesRepository.list().catch(() => [] as SavedPage[]);
 }

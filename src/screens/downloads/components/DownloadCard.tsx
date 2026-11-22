@@ -1,28 +1,29 @@
-import { Image } from 'expo-image';
-import { memo, useCallback, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Icon } from '@/components/base/Icon';
 import { Pressable } from '@/components/base/Pressable';
-import { Text } from '@/components/base/Text';
-import { ProgressBar } from '@/components/common/ProgressBar';
-import { useTranslation } from '@/localization';
+import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
+import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
+import { ds, DsCard, DsIcon, DsIconButton, DsProgressBar, DsText, DsThumb } from '@/design';
+import { showInFolderTarget } from '@/downloads/v2/save-location';
+import { useExternalCopiesStore } from '@/downloads/v2/save-location-store';
+import { showItemInFolder } from '@/downloads/v2/show-in-folder';
+import { useRtl, useTranslation } from '@/localization';
 import type { TranslationKey } from '@/localization/types';
+import { navigation, routePaths } from '@/navigation';
 import { useDownloadsStore } from '@/store/downloads';
 
-import { useDownloadsTokens } from '../theme/downloads-tokens';
-import { DownloadCardProgressStats } from './DownloadCardProgressStats';
 import {
   buildMetaLine,
   buildProgressMeta,
+  formatTransferSpeed,
   getStatusLabel,
   getSupportedActions,
   recordingLabelFor,
-  resolveTransferRuntime,
   waitingLabelFor,
   type DownloadCardAction,
 } from '../utils/download-format';
-import { DownloadLinkMenu } from './DownloadLinkMenu';
+import { useDownloadLinkMenuItems } from './DownloadLinkMenu';
 
 export type DownloadCardProps = {
   id: string;
@@ -39,26 +40,8 @@ export type DownloadCardProps = {
   testID?: string;
 };
 
-type ActionButtonProps = {
-  action: DownloadCardAction;
-  disabled?: boolean;
-  onPress: () => void;
-  testID?: string;
-};
-
-const ACTION_ICONS: Record<
-  DownloadCardAction,
-  { icon: string; destructive?: boolean }
-> = {
-  stop: { icon: 'stop' },
-  pause: { icon: 'pause' },
-  resume: { icon: 'play' },
-  cancel: { icon: 'close', destructive: true },
-  retry: { icon: 'refresh' },
-  open: { icon: 'open-in-new' },
-  share: { icon: 'share-variant' },
-  remove: { icon: 'trash-can-outline', destructive: true },
-};
+/** The design's download thumbnail is a little wider than the recent-item one (64 × 45 in frame 10). */
+const THUMB_WIDTH = 64;
 
 const ACTION_LABEL_KEYS: Record<DownloadCardAction, { label: TranslationKey; a11y: TranslationKey }> = {
   stop: { label: 'downloads.stop', a11y: 'downloads.primaryStop' },
@@ -71,68 +54,58 @@ const ACTION_LABEL_KEYS: Record<DownloadCardAction, { label: TranslationKey; a11
   remove: { label: 'common.remove', a11y: 'downloads.primaryRemove' },
 };
 
-const ActionButton = memo(function ActionButton({
-  action,
-  disabled,
-  onPress,
-  testID,
-}: ActionButtonProps) {
-  const downloadsTokens = useDownloadsTokens();
-  const { t } = useTranslation();
-  const config = ACTION_ICONS[action];
-  const labels = ACTION_LABEL_KEYS[action];
-  const showLabel = action === 'resume' || action === 'retry' || action === 'stop';
-  const size = showLabel
-    ? Math.max(downloadsTokens.actionButtonSize, downloadsTokens.touchTarget)
-    : downloadsTokens.actionButtonSize;
+const DESTRUCTIVE: ReadonlySet<DownloadCardAction> = new Set(['cancel', 'remove']);
 
+/** The design's "ETA 01:12": minutes and seconds, hours in front when there are any. */
+export function formatEtaClock(etaSeconds: number | null | undefined): string | null {
+  if (etaSeconds == null || !Number.isFinite(etaSeconds) || etaSeconds <= 0) {
+    return null;
+  }
+  const total = Math.ceil(etaSeconds);
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = total % 60;
+  const mm = String(minutes).padStart(2, '0');
+  const ss = String(seconds).padStart(2, '0');
+  return hours > 0 ? `${hours}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+/** A tappable word of the row: grey on a finished row ("Play", "Share"), the accent for a failed row's "Try again". */
+const InlineAction = memo(function InlineAction({
+  label,
+  onPress,
+  disabled,
+  accessibilityLabel,
+  tone = 'plain',
+  testID,
+}: {
+  label: string;
+  onPress: () => void;
+  disabled?: boolean;
+  accessibilityLabel: string;
+  tone?: 'plain' | 'accent';
+  testID?: string;
+}) {
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       accessibilityRole="button"
-      accessibilityLabel={t(labels.a11y)}
-      accessibilityState={{ disabled: Boolean(disabled) }}
-      hitSlop={8}
+      accessibilityLabel={accessibilityLabel}
+      hitSlop={{ top: 14, bottom: 14, left: 4, right: 4 }}
       testID={testID}
-      style={({ pressed }) => ({
-        minWidth: size,
-        minHeight: size,
-        paddingHorizontal: showLabel ? 10 : 0,
-        borderRadius: downloadsTokens.radius.action,
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: showLabel ? 2 : 0,
-        opacity: disabled ? 0.5 : 1,
-        backgroundColor: config.destructive
-          ? pressed
-            ? downloadsTokens.destructiveButtonPressed
-            : downloadsTokens.destructiveButtonBg
-          : pressed
-            ? downloadsTokens.actionButtonPressed
-            : downloadsTokens.actionButtonBg,
-        transform: [{ scale: pressed && !disabled ? 0.94 : 1 }],
-      })}>
-      <Icon
-        name={config.icon}
-        size="sm"
-        color={config.destructive ? 'error' : 'primary'}
-      />
-      {showLabel ? (
-        <Text
-          variant="caption"
-          color="primary"
-          style={{ fontWeight: '600', fontSize: 11, lineHeight: 14 }}>
-          {t(labels.label)}
-        </Text>
-      ) : null}
+      style={{ minHeight: 20, justifyContent: 'center' }}>
+      <DsText variant={tone === 'accent' ? 'rowValue' : 'rowSub'} color={tone === 'accent' ? 'primary' : undefined} numberOfLines={1}>
+        {label}
+      </DsText>
     </Pressable>
   );
 });
 
 /**
- * Subscribes to a single download by id so progress ticks on one card
- * do not re-render sibling cards.
+ * One download as the design's white card: thumbnail · title / meta · ⋮, then the 6 dp bar with "62% · Downloading"
+ * and "ETA 01:12", or "✓ Completed" with "Play · Share · Show in folder" for a finished file. Subscribes to its own
+ * row only, so progress ticks on one card never re-render its siblings.
  */
 export const DownloadCard = memo(function DownloadCard({
   id,
@@ -147,301 +120,243 @@ export const DownloadCard = memo(function DownloadCard({
   onRemove,
   testID,
 }: DownloadCardProps) {
-  const downloadsTokens = useDownloadsTokens();
+  const rtl = useRtl();
   const { t } = useTranslation();
   const item = useDownloadsStore((state) => state.itemsById[id]);
   const transfer = useDownloadsStore((state) => state.transferById[id] ?? null);
   const mutating = useDownloadsStore((state) => Boolean(state.mutatingIds[id]));
-  const [thumbFailed, setThumbFailed] = useState(false);
+  const copyRecord = useExternalCopiesStore((state) => state.records[id]);
+  const linkItems = useDownloadLinkMenuItems(id);
+  const [menuVisible, setMenuVisible] = useState(false);
 
   const handleOpenDetails = useCallback(() => onPress?.(id), [id, onPress]);
   const handleLongPress = useCallback(() => onLongPress?.(id), [id, onLongPress]);
-  const handlePause = useCallback(() => onPause(id), [id, onPause]);
-  const handleResume = useCallback(() => onResume(id), [id, onResume]);
-  const handleCancel = useCallback(() => onCancel(id), [id, onCancel]);
-  const handleRetry = useCallback(() => onRetry(id), [id, onRetry]);
   const handleOpen = useCallback(() => onOpen(id), [id, onOpen]);
   const handleShare = useCallback(() => onShare(id), [id, onShare]);
-  const handleRemove = useCallback(() => onRemove(id), [id, onRemove]);
+  const handleRetry = useCallback(() => onRetry(id), [id, onRetry]);
+  const handleShowInFolder = useCallback(() => {
+    void showItemInFolder(id);
+  }, [id]);
+  const openMenu = useCallback(() => setMenuVisible(true), []);
+  const closeMenu = useCallback(() => setMenuVisible(false), []);
+
+  const status = item?.status;
+  const recording = status === 'DOWNLOADING' ? recordingLabelFor(transfer) : null;
+  const actions = useMemo(
+    () =>
+      item
+        ? getSupportedActions(item.status, item.sourceUrl, {
+            localUri: transfer?.localUri ?? null,
+            localState: transfer?.localState ?? null,
+            executionState: transfer?.executionState ?? null,
+            workerState: item.workerState ?? transfer?.workerState ?? null,
+            supportsResume: transfer?.supportsResume ?? null,
+            errorCode: item.errorCode ?? null,
+            recording: recording != null,
+          })
+        : [],
+    [item, recording, transfer],
+  );
+
+  const menuItems = useMemo<ActionSheetItem[]>(() => {
+    const dispatch: Record<DownloadCardAction, () => void> = {
+      stop: () => void useDownloadsStore.getState().stopRecording(id),
+      pause: () => onPause(id),
+      resume: () => onResume(id),
+      cancel: () => onCancel(id),
+      retry: () => onRetry(id),
+      open: () => onOpen(id),
+      share: () => onShare(id),
+      remove: () => onRemove(id),
+    };
+    const items: ActionSheetItem[] = actions.map((action) => ({
+      id: action,
+      label: t(ACTION_LABEL_KEYS[action].label),
+      destructive: DESTRUCTIVE.has(action),
+      onPress: dispatch[action],
+    }));
+    items.push(...linkItems);
+    // Design 45: the file actions screen for a finished file.
+    items.push({
+      id: 'file_actions',
+      label: t('lightDownloadSettings.fileActions'),
+      onPress: () => navigation.push({ pathname: routePaths.downloadsFileActions, params: { id } }),
+    });
+    if (onLongPress) {
+      items.push({ id: 'details', label: t('lightDownloads.openDetails'), onPress: () => onLongPress(id) });
+    }
+    return items;
+  }, [actions, id, linkItems, onCancel, onLongPress, onOpen, onPause, onRemove, onResume, onRetry, onShare, t]);
 
   if (!item) {
     return null;
   }
 
   const title = item.title?.trim() || item.fileName?.trim() || t('downloads.untitled');
-  // F6: a live recording reads "Recording · 12:34 · 85 MB" and has Stop instead of Pause.
-  const recordingLine = item.status === 'DOWNLOADING' ? recordingLabelFor(transfer) : null;
-  const metaLine = buildMetaLine(item, { hideSize: recordingLine != null });
-  const progressMeta = buildProgressMeta(item, transfer);
-  const statusLabel = recordingLine ? t('downloads.statusRecording') : getStatusLabel(item.status);
-  const statusColors = downloadsTokens.status[item.status];
-  const runtimeOptions = {
-    localUri: transfer?.localUri ?? null,
-    localState: transfer?.localState ?? null,
-    executionState: transfer?.executionState ?? null,
-    workerState: item.workerState ?? transfer?.workerState ?? null,
-    supportsResume: transfer?.supportsResume ?? null,
-    errorCode: item.errorCode ?? null,
-    recording: recordingLine != null,
-  };
-  const actions = getSupportedActions(item.status, item.sourceUrl, runtimeOptions);
-  const pauseBlocked =
-    !recordingLine &&
-    resolveTransferRuntime(item.status, runtimeOptions).pauseBlockedReason ===
-      'SOURCE_NOT_RESUMABLE';
-  const progressValue = Math.max(
-    transfer?.progress ?? 0,
-    item.progress ?? 0,
-  );
+  const metaLine = buildMetaLine(item, { hideSize: recording != null });
+  const completed = item.status === 'COMPLETED';
+  const canRetry = item.status === 'FAILED' && actions.includes('retry');
+  const progressValue = Math.max(transfer?.progress ?? 0, item.progress ?? 0);
   const hasKnownTotal =
-    (transfer?.totalBytes != null && transfer.totalBytes > 0) ||
-    Number(item.fileSize) > 0 ||
-    item.status === 'COMPLETED';
-  const showProgress =
-    !recordingLine &&
-    (item.status === 'DOWNLOADING' ||
-      item.status === 'PAUSED' ||
-      (item.status === 'QUEUED' && progressValue > 0));
-  const showPercentLabel = hasKnownTotal && item.status !== 'COMPLETED';
-  // F3: a held download that has no progress line yet still says why it waits.
-  const waitingLine = showProgress || recordingLine ? null : waitingLabelFor(transfer);
-  const showCompletedBadge = item.status === 'COMPLETED';
+    (transfer?.totalBytes != null && transfer.totalBytes > 0) || Number(item.fileSize) > 0;
+  const percent = Math.round(Math.min(100, Math.max(0, progressValue)));
+
+  // "62% · Downloading" — the design's word for a running row; a held one says why it waits (F3), a recording its
+  // length and size (F6).
+  const waiting = recording ? null : waitingLabelFor(transfer);
+  const stateLabel =
+    recording ??
+    waiting ??
+    (item.status === 'DOWNLOADING' ? t('lightDownloads.statusDownloading') : getStatusLabel(item.status));
+  const progressLine =
+    recording || !hasKnownTotal ? stateLabel : t('lightDownloads.progressStatus', { percent, status: stateLabel });
+  const eta = recording ? null : formatEtaClock(transfer?.etaSeconds);
+  const trailingLine = eta ? t('lightDownloads.eta', { time: eta }) : recording ? null : formatTransferSpeed(transfer?.bytesPerSecond ?? null);
+  const errorLine = item.status === 'FAILED' ? item.errorMessage?.trim() || null : null;
+
+  const canOpenFile = actions.includes('open');
+  const canShareFile = actions.includes('share');
+  const folderTarget = completed ? showInFolderTarget(copyRecord) : null;
+  const completedNote = completed && !canOpenFile ? buildProgressMeta(item, transfer) : null;
 
   const accessibilityParts = [
     title,
-    statusLabel,
-    waitingLine,
-    recordingLine,
+    completed ? getStatusLabel('COMPLETED') : progressLine,
+    completed ? null : trailingLine,
     metaLine,
-    // Progress percent lives on ProgressBar accessibilityValue — avoid
-    // re-announcing every ~250ms tick via this parent label.
-    item.status === 'COMPLETED' ? '100 percent complete' : null,
-    item.status === 'FAILED' && item.errorMessage
-      ? item.errorMessage
-      : null,
+    errorLine,
   ].filter(Boolean);
 
-  const dispatchAction = (action: DownloadCardAction) => {
-    switch (action) {
-      case 'stop':
-        void useDownloadsStore.getState().stopRecording(id);
-        break;
-      case 'pause':
-        handlePause();
-        break;
-      case 'resume':
-        handleResume();
-        break;
-      case 'cancel':
-        handleCancel();
-        break;
-      case 'retry':
-        handleRetry();
-        break;
-      case 'open':
-        handleOpen();
-        break;
-      case 'share':
-        handleShare();
-        break;
-      case 'remove':
-        handleRemove();
-        break;
-    }
-  };
+  const inlineActions: { key: string; label: string; a11y: string; onPress: () => void }[] = completed
+    ? [
+        canOpenFile ? { key: 'play', label: t('common.play'), a11y: t('downloads.primaryOpen'), onPress: handleOpen } : null,
+        canShareFile ? { key: 'share', label: t('common.share'), a11y: t('downloads.primaryShare'), onPress: handleShare } : null,
+        folderTarget
+          ? { key: 'folder', label: t('saveLocation.showInFolder'), a11y: t('saveLocation.showInFolderHint'), onPress: handleShowInFolder }
+          : null,
+      ].filter((action): action is NonNullable<typeof action> => action != null)
+    : [];
 
   return (
-    <Box
-      testID={testID}
-      row
-      px={downloadsTokens.spacing.screenX}
-      py={downloadsTokens.spacing.rowY}
-      style={{ alignItems: 'flex-start', gap: 4 }}>
+    <DsCard testID={testID} style={{ marginBottom: 8 }}>
       <Pressable
         onPress={onPress ? handleOpenDetails : undefined}
         onLongPress={onLongPress ? handleLongPress : undefined}
-        disabled={!onPress}
+        disabled={!onPress && !onLongPress}
         accessibilityRole={onPress ? 'button' : undefined}
         accessibilityLabel={accessibilityParts.join('. ')}
         accessibilityHint={onPress ? t('downloads.opensDetails') : undefined}
-        style={({ pressed }) => ({
-          flex: 1,
-          minWidth: 0,
-          borderRadius: downloadsTokens.radius.card,
-          backgroundColor:
-            pressed && onPress ? downloadsTokens.rowPressed : 'transparent',
-          paddingVertical: 2,
-        })}>
-        <Box
-          row
-          gap={12}
-          style={{
-            alignItems: 'flex-start',
-            minWidth: 0,
-          }}>
-          <Box
-            style={{
-              width: downloadsTokens.thumbnailSize,
-              height: downloadsTokens.thumbnailSize,
-              borderRadius: downloadsTokens.radius.thumbnail,
-              backgroundColor: downloadsTokens.thumbnailBg,
-              overflow: 'hidden',
-              alignItems: 'center',
-              justifyContent: 'center',
-            }}
-            accessibilityIgnoresInvertColors>
-            {item.thumbnailUrl && !thumbFailed ? (
-              <Image
-                source={{ uri: item.thumbnailUrl }}
-                style={{ width: '100%', height: '100%' }}
-                contentFit="cover"
-                recyclingKey={id}
-                cachePolicy="disk"
-                onError={() => setThumbFailed(true)}
-                accessibilityIgnoresInvertColors
-              />
-            ) : (
-              <Icon name="video-outline" size="md" color="secondary" />
-            )}
-          </Box>
-
-          <Box flex={1} gap={6} style={{ minWidth: 0 }}>
-            <Text variant="body" numberOfLines={2}>
+        style={{ margin: -ds.space.cardPad, padding: ds.space.cardPad }}>
+        <View style={{ flexDirection: rtl.rowDirection, alignItems: 'flex-start', gap: ds.space.rowGap }}>
+          <DsThumb
+            uri={item.thumbnailUrl || null}
+            kind={completed ? 'video' : 'transfer'}
+            width={THUMB_WIDTH}
+            testID={testID ? `${testID}-thumb` : undefined}
+          />
+          <View style={{ flex: 1, minWidth: 0, paddingEnd: 28 }}>
+            <DsText variant="rowTitle" numberOfLines={2}>
               {title}
-            </Text>
-
+            </DsText>
             {metaLine ? (
-              <Text variant="caption" color="textSecondary" numberOfLines={1}>
+              <DsText variant="rowSub" numberOfLines={1} style={{ marginTop: 1 }}>
                 {metaLine}
-              </Text>
+              </DsText>
             ) : null}
+          </View>
+        </View>
 
-            {item.fileName && item.fileName !== title ? (
-              <Text variant="caption" color="textSecondary" numberOfLines={1}>
-                {item.fileName}
-              </Text>
-            ) : null}
-
-            {waitingLine ? (
-              <Text
-                variant="caption"
-                color="textSecondary"
-                numberOfLines={1}
-                testID={testID ? `${testID}-wait` : undefined}>
-                {waitingLine}
-              </Text>
-            ) : null}
-
-            {recordingLine ? (
-              <Box row rtlRow gap={6} style={{ alignItems: 'center' }} testID={testID ? `${testID}-recording` : undefined}>
-                <Icon name="record-circle" size={14} color="error" />
-                <Text variant="caption" color="textSecondary" numberOfLines={1} style={{ flex: 1 }}>
-                  {recordingLine}
-                </Text>
-              </Box>
-            ) : null}
-
-            {showProgress ? (
-              <Box gap={4}>
-                <ProgressBar
-                  progress={Math.min(1, Math.max(0, progressValue / 100))}
-                  testID={testID ? `${testID}-progress` : undefined}
-                />
-                <Box row style={{ justifyContent: 'space-between', gap: 8 }}>
-                  <Box flex={1} style={{ minWidth: 0 }}>
-                    {progressMeta ? (
-                      <Text
-                        variant="caption"
-                        color="textSecondary"
-                        numberOfLines={1}>
-                        {progressMeta}
-                      </Text>
-                    ) : null}
-                  </Box>
-                  {showPercentLabel ? (
-                    <Text
-                      variant="caption"
-                      color="textSecondary"
-                      importantForAccessibility="no"
-                      accessibilityElementsHidden>
-                      {`${Math.round(progressValue)}%`}
-                    </Text>
-                  ) : null}
-                </Box>
-              </Box>
-            ) : null}
-
-            <DownloadCardProgressStats
-              id={id}
-              testID={testID ? `${testID}-progress-stats` : undefined}
+        {completed ? null : (
+          <View style={{ marginTop: 6 }}>
+            <DsProgressBar
+              progress={hasKnownTotal ? progressValue / 100 : 0}
+              accessibilityLabel={progressLine}
+              testID={testID ? `${testID}-progress` : undefined}
             />
-
-            {showCompletedBadge && progressMeta ? (
-              <Text variant="caption" color="textSecondary" numberOfLines={1}>
-                {progressMeta}
-              </Text>
+            <View style={{ flexDirection: rtl.rowDirection, alignItems: 'center', gap: 8, marginTop: 4 }}>
+              <DsText variant="rowSub" numberOfLines={1} style={{ flex: 1 }} testID={testID ? `${testID}-status` : undefined}>
+                {progressLine}
+              </DsText>
+              {canRetry ? (
+                // Design 46: a failed download is retried right from its card (also in the ⋮ menu).
+                <InlineAction
+                  label={t(ACTION_LABEL_KEYS.retry.label)}
+                  accessibilityLabel={t(ACTION_LABEL_KEYS.retry.a11y)}
+                  onPress={handleRetry}
+                  disabled={mutating}
+                  tone="accent"
+                  testID={testID ? `${testID}-retry` : undefined}
+                />
+              ) : trailingLine ? (
+                <DsText variant="rowSub" numberOfLines={1} importantForAccessibility="no" accessibilityElementsHidden>
+                  {trailingLine}
+                </DsText>
+              ) : null}
+            </View>
+            {errorLine ? (
+              <DsText variant="rowSub" color="error" numberOfLines={2} style={{ marginTop: 4 }}>
+                {errorLine}
+              </DsText>
             ) : null}
-
-            {pauseBlocked ? (
-              <Text
-                variant="caption"
-                color="textSecondary"
-                numberOfLines={2}
-                testID={testID ? `${testID}-pause-unsupported` : undefined}>
-                {t('downloads.pauseUnsupported')}
-              </Text>
-            ) : null}
-
-            {item.status === 'FAILED' && item.errorMessage ? (
-              <Text variant="caption" color="error" numberOfLines={2}>
-                {item.errorMessage}
-              </Text>
-            ) : null}
-
-            <Box
-              px={10}
-              py={4}
-              style={{
-                alignSelf: 'flex-start',
-                borderRadius: downloadsTokens.radius.badge,
-                backgroundColor: statusColors.bg,
-              }}
-              accessibilityRole="text"
-              accessibilityLabel={statusLabel}>
-              <Text
-                variant="caption"
-                style={{
-                  color: statusColors.fg,
-                  fontWeight: '600',
-                  letterSpacing: 0.3,
-                  textTransform: 'uppercase',
-                }}>
-                {statusLabel}
-              </Text>
-            </Box>
-          </Box>
-        </Box>
+          </View>
+        )}
       </Pressable>
 
-      <Box
-        gap={8}
-        style={{ alignItems: 'center', paddingTop: 4 }}
-        accessibilityLabel={t('downloads.actionsA11y')}>
-        {actions.map((action) => (
-          <ActionButton
-            key={action}
-            action={action}
-            disabled={mutating}
-            onPress={() => dispatchAction(action)}
-            testID={testID ? `${testID}-${action}` : undefined}
-          />
-        ))}
-        <DownloadLinkMenu
-          id={id}
-          disabled={mutating}
-          testID={testID ? `${testID}-link-menu` : undefined}
+      {completed ? (
+        <View
+          style={{ flexDirection: rtl.rowDirection, alignItems: 'center', gap: 6, marginTop: 2 }}
+          accessibilityLabel={t('lightDownloads.completedActionsA11y')}>
+          <DsIcon name="check" size={12} color="success" strokeWidth={2.2} />
+          <DsText variant="rowSub" color="success" numberOfLines={1} style={{ flex: 1 }}>
+            {getStatusLabel('COMPLETED')}
+          </DsText>
+          {inlineActions.length > 0 ? (
+            <View style={{ flexDirection: rtl.rowDirection, alignItems: 'center', gap: 6 }}>
+              {inlineActions.map((action, index) => (
+                <View key={action.key} style={{ flexDirection: rtl.rowDirection, alignItems: 'center', gap: 6 }}>
+                  {index > 0 ? (
+                    <DsText variant="rowSub" importantForAccessibility="no" accessibilityElementsHidden>
+                      ·
+                    </DsText>
+                  ) : null}
+                  <InlineAction
+                    label={action.label}
+                    accessibilityLabel={action.a11y}
+                    onPress={action.onPress}
+                    disabled={mutating}
+                    testID={testID ? `${testID}-${action.key}` : undefined}
+                  />
+                </View>
+              ))}
+            </View>
+          ) : completedNote ? (
+            <DsText variant="rowSub" numberOfLines={1}>
+              {completedNote}
+            </DsText>
+          ) : null}
+        </View>
+      ) : null}
+
+      <View style={{ position: 'absolute', top: 0, end: 0 }}>
+        <DsIconButton
+          variant="plain"
+          icon="ellipsis-vertical"
+          iconSize={18}
+          onPress={openMenu}
+          disabled={mutating || menuItems.length === 0}
+          accessibilityLabel={t('lightDownloads.itemMenuA11y')}
+          testID={testID ? `${testID}-menu` : undefined}
         />
-      </Box>
-    </Box>
+      </View>
+
+      <ActionSheetModal
+        visible={menuVisible}
+        onClose={closeMenu}
+        title={t('lightDownloads.itemMenuTitle')}
+        subtitle={title}
+        actions={menuItems}
+        testID={testID ? `${testID}-menu-sheet` : undefined}
+      />
+    </DsCard>
   );
 });

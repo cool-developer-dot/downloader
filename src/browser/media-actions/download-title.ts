@@ -68,7 +68,7 @@ function stemOf(segment: string): string {
  * after leaving it), so the file name wins over both.
  */
 export function directMediaFileTitle(pageUrl: string | null | undefined): string | null {
-  if (!pageUrl || classifyMediaUrl(pageUrl)?.strength !== 'strong') {
+  if (!pageUrl || (classifyMediaUrl(pageUrl)?.strength !== 'strong' && !isTransportStreamPage(pageUrl))) {
     return null;
   }
   let segments: string[];
@@ -84,4 +84,13 @@ export function directMediaFileTitle(pageUrl: string | null | undefined): string
     }
   }
   return null;
+}
+
+/** A tab whose page is a `.ts` file: the user opened that file (a player's segments are never a tab's page). */
+function isTransportStreamPage(pageUrl: string): boolean {
+  try {
+    return /\.ts$/i.test(new URL(pageUrl).pathname);
+  } catch {
+    return false;
+  }
 }

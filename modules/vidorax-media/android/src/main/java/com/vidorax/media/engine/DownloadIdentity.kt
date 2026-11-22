@@ -37,6 +37,11 @@ internal object DownloadIdentity {
 
   /** Null when [url] is not an http(s) URL: such a request has no identity and is never treated as a duplicate. */
   fun of(url: String, variant: VariantChoice?, pageUrl: String?): String? {
+    // #304: an FTP file is its server and path; the user name and password are never part of it.
+    if (com.vidorax.media.net.FtpUrl.isFtp(url)) {
+      val ftp = com.vidorax.media.net.FtpUrl.parse(url) ?: return null
+      return ContentHash.sha256(listOf(VERSION, "ftp", ftp.host, ftp.port.toString(), ftp.path).joinToString("|"))
+    }
     val resource = canonical(url.trim().toHttpUrlOrNull() ?: return null, CREDENTIAL_FIELD)
     val parts = mutableListOf(VERSION, resource.key)
     variant?.videoId?.let { id ->

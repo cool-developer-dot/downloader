@@ -1,10 +1,7 @@
-import { Image } from 'expo-image';
-import { memo, useMemo, useState } from 'react';
-import { StyleSheet } from 'react-native';
+import { memo, useMemo } from 'react';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Icon } from '@/components/base/Icon';
-import { Text } from '@/components/base/Text';
+import { DsCard, DsText, DsThumb, ds } from '@/design';
 import {
   formatContainerLabel,
   formatQualityFileSize,
@@ -13,11 +10,10 @@ import {
   type AnalyzedMediaSelection,
   type DownloadQualityOption,
 } from '@/downloads/quality';
-import { formatDuration } from '@/media-detection/utils';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import type { TranslationKey } from '@/localization/types';
-import { primaryAlphas } from '@/theme';
+import { formatDuration } from '@/media-detection/utils';
 
 export type MediaResultCardProps = {
   selection: AnalyzedMediaSelection;
@@ -54,19 +50,17 @@ function formatSizeLabel(option: DownloadQualityOption | null, t: Translate): st
   return t('mediaResult.calculating');
 }
 
+/** What the analysis found (thumbnail, title, platform) and the chosen option's format, size, duration and audio. */
 export const MediaResultCard = memo(function MediaResultCard({
   selection,
   selectedOption,
   testID = 'quality-media-result-card',
 }: MediaResultCardProps) {
   const theme = useTheme();
-  const primary = primaryAlphas(theme.colors.primary);
-  const { t } = useTranslation();
-  const [imageFailed, setImageFailed] = useState(false);
+  const { t, rtl } = useTranslation();
 
   const title = resolveDisplayTitle(selection);
-  const thumbnail = selection.thumbnailUrl?.trim();
-  const showImage = Boolean(thumbnail) && !imageFailed;
+  const thumbnail = selection.thumbnailUrl?.trim() || null;
 
   const formatLabel =
     (selectedOption && formatStreamPresentation(selectedOption)) ||
@@ -92,13 +86,6 @@ export const MediaResultCard = memo(function MediaResultCard({
     return selection.platform?.trim() || null;
   }, [selection.platform]);
 
-  const placeholderIcon =
-    selection.mediaType === 'audio'
-      ? 'music-note'
-      : selection.mediaType === 'stream'
-        ? 'broadcast'
-        : 'play-circle-outline';
-
   const rows = [
     { label: t('downloads.infoFormat'), value: formatLabel },
     { label: t('downloads.infoQuality'), value: qualityLabel },
@@ -108,88 +95,41 @@ export const MediaResultCard = memo(function MediaResultCard({
   ];
 
   return (
-    <Box
-      testID={testID}
-      gap={14}
-      p={16}
-      borderRadius="md"
-      style={{
-        backgroundColor: theme.colors.surface,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: theme.colors.border,
-      }}
-      accessibilityRole="summary"
-      accessibilityLabel={t('mediaResult.videoFoundA11y', { title })}>
-      <Box row gap={14} style={{ alignItems: 'center' }}>
-        <Box
-          style={{
-            width: 88,
-            height: 88,
-            borderRadius: theme.radius.md,
-            overflow: 'hidden',
-            backgroundColor: primary.medium,
-          }}
-          accessibilityRole="image"
-          accessibilityLabel={showImage ? t('mediaResult.thumbnailA11y') : t('mediaResult.placeholderA11y')}>
-          {showImage ? (
-            <Image
-              source={{ uri: thumbnail }}
-              style={{ width: '100%', height: '100%' }}
-              contentFit="cover"
-              transition={160}
-              onError={() => setImageFailed(true)}
-            />
-          ) : (
-            <Box flex={1} center>
-              <Icon name={placeholderIcon} size={32} color="primary" />
-            </Box>
-          )}
-        </Box>
-
-        <Box flex={1} gap={6}>
-          <Text variant="caption" color="primary">
-            {`✓ ${t('mediaResult.videoFound')}`}
-          </Text>
-          <Text variant="title" numberOfLines={2}>
+    <DsCard testID={testID} style={{ gap: ds.space.stack }}>
+      <View
+        style={{ flexDirection: rtl.rowDirection, alignItems: 'center', gap: ds.space.rowGap }}
+        accessibilityRole="summary"
+        accessibilityLabel={t('mediaResult.videoFoundA11y', { title })}>
+        <DsThumb uri={thumbnail} kind="video" icon={selection.mediaType === 'audio' ? 'music' : 'play'} />
+        <View style={{ flex: 1, gap: 1 }}>
+          <DsText variant="section">{t('mediaResult.videoFound')}</DsText>
+          <DsText variant="rowTitle" numberOfLines={2}>
             {title}
-          </Text>
+          </DsText>
           {platformLabel ? (
-            <Text variant="caption" color="textSecondary" numberOfLines={1}>
+            <DsText variant="rowSub" numberOfLines={1}>
               {platformLabel}
-            </Text>
+            </DsText>
           ) : null}
-        </Box>
-      </Box>
-
-      <Box
-        gap={0}
-        borderRadius="sm"
-        style={{
-          overflow: 'hidden',
-          borderWidth: StyleSheet.hairlineWidth,
-          borderColor: theme.colors.border,
-        }}>
+        </View>
+      </View>
+      <View style={{ gap: 0 }}>
         {rows.map((row, index) => (
-          <Box
+          <View
             key={row.label}
-            row
-            px={14}
-            py={12}
             style={{
+              flexDirection: rtl.rowDirection,
               alignItems: 'center',
               justifyContent: 'space-between',
-              backgroundColor:
-                index % 2 === 0 ? theme.colors.background : theme.colors.surface,
+              paddingVertical: 8,
+              borderTopWidth: index > 0 ? 1 : 0,
+              borderTopColor: theme.colors.divider,
             }}>
-            <Text variant="caption" color="textSecondary">
-              {row.label}
-            </Text>
-            <Text variant="bodySmall" style={{ fontWeight: '600' }}>
-              {row.value}
-            </Text>
-          </Box>
+            <DsText variant="rowSub">{row.label}</DsText>
+            <DsText variant="bodyStrong">{row.value}</DsText>
+          </View>
         ))}
-      </Box>
-    </Box>
+      </View>
+    </DsCard>
   );
 });

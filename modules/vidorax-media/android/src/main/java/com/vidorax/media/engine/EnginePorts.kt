@@ -37,6 +37,7 @@ import com.vidorax.media.transfer.LiveRecordHost
 import com.vidorax.media.transfer.LiveRecordOutcome
 import com.vidorax.media.transfer.LiveRecordSpec
 import com.vidorax.media.transfer.LiveSegmentIo
+import com.vidorax.media.transfer.FtpTransfer
 import com.vidorax.media.transfer.ProgressiveTransfer
 import com.vidorax.media.transfer.TransferOutcome
 import com.vidorax.media.transfer.Throttle
@@ -231,11 +232,16 @@ internal class RealProber(private val probe: Probe) : Prober {
   override suspend fun probeLive(request: ProbeRequest): ProbeResult = probe.probeLive(request)
 }
 
-internal class RealTransfers(private val transfer: ProgressiveTransfer) : Transfers {
+internal class RealTransfers(
+  private val transfer: ProgressiveTransfer,
+  /** #304: an `ftp://`/`ftps://` file goes over FTP, one connection; everything else over HTTP. */
+  private val ftp: FtpTransfer = FtpTransfer(),
+) : Transfers {
   override suspend fun transfer(
     spec: TransferSpec,
     onProgress: (Long, Long?) -> Unit,
-  ): TransferOutcome.Completed = transfer.transfer(spec, onProgress)
+  ): TransferOutcome.Completed =
+    if (com.vidorax.media.net.FtpUrl.isFtp(spec.url)) ftp.transfer(spec, onProgress) else transfer.transfer(spec, onProgress)
 
   override fun finalizeToFile(partFile: File, destFile: File) = transfer.finalizeToFile(partFile, destFile)
 }
@@ -374,6 +380,26 @@ internal class RealLibraryWriter(private val library: LibraryStore) : LibraryWri
  * What the engine needs to know about connectivity, so "wait for the network" and Wi-Fi-only are decisions the
  * engine makes rather than errors the user has to recover from by hand.
  */
+/**
+ * #446: a client on mobile data beside Wi-Fi (net/MultiNetwork), for "use Wi-Fi and mobile data together". [acquire]
+ * holds the mobile network until the lease is released; null when there is none to add (no mobile data, refused).
+ */
+internal fun interface SecondNetwork {
+  suspend fun acquire(): SecondNetworkLease?
+
+  companion object {
+    val NONE = SecondNetwork { null }
+  }
+}
+
+internal class SecondNetworkLease(val client: com.vidorax.media.net.HttpClient, private val onRelease: () -> Unit) {
+  private val released = java.util.concurrent.atomic.AtomicBoolean(false)
+
+  fun release() {
+    if (released.compareAndSet(false, true)) onRelease()
+  }
+}
+
 internal interface NetworkGate {
   /** True when a transfer may run right now under [wifiOnly]. */
   fun isUsable(wifiOnly: Boolean): Boolean
@@ -386,6 +412,15 @@ internal interface NetworkGate {
    * running when the phone falls back to mobile data is stopped, not left spending the user's data.
    */
   suspend fun awaitUnusable(wifiOnly: Boolean)
+
+  /**
+   * False when the network Android reports has no working internet behind it — it failed Android's own check (a
+   * captive portal, a DNS that answers nothing). Hosts without that information say true.
+   */
+  fun hasWorkingInternet(): Boolean = true
+
+  /** Suspends until [hasWorkingInternet] holds; returns at once when it already does. */
+  suspend fun awaitWorkingInternet() = Unit
 
   companion object {
     /** No connectivity information (unit tests, and any host that does not provide one): never blocks. */

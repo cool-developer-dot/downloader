@@ -70,8 +70,10 @@ export function classifyFalsePositive(input: {
   /** When true, weak .ts is allowed (parent HLS context). */
   allowWeakExtension?: boolean;
   confidenceHint?: number;
+  /** A `.ts` file the user opened (see `isUserRequestedTransportStream`): not a segment, whatever its name. */
+  transportStreamFile?: boolean;
 }): FalsePositiveReason {
-  const { url, mimeType, allowWeakExtension, confidenceHint } = input;
+  const { url, mimeType, allowWeakExtension, confidenceHint, transportStreamFile } = input;
   const lower = url.trim().toLowerCase();
 
   if (lower.startsWith('blob:')) {
@@ -122,11 +124,11 @@ export function classifyFalsePositive(input: {
     return 'non_media_extension';
   }
 
-  if (isLikelyMediaSegment(url, ext)) {
+  if (!transportStreamFile && isLikelyMediaSegment(url, ext)) {
     return 'hls_segment';
   }
 
-  if (isWeakMediaExtension(ext) && !allowWeakExtension && !mimeType) {
+  if (isWeakMediaExtension(ext) && !allowWeakExtension && !transportStreamFile && !mimeType) {
     return 'weak_extension_alone';
   }
 
@@ -147,8 +149,27 @@ export function isFalsePositive(input: {
   mimeType?: string | null;
   allowWeakExtension?: boolean;
   confidenceHint?: number;
+  transportStreamFile?: boolean;
 }): boolean {
   return classifyFalsePositive(input) != null;
+}
+
+/**
+ * A `.ts` file the user opened — a WebView download, or a pasted or shared link that is the file itself. Players fetch
+ * HLS segments, they never download them, so its name (`12.ts`, `/seg/…`) says nothing: the engine classifies it from
+ * its bytes like any progressive file (audio only, scrambled and endless live streams are refused there).
+ */
+export function isUserRequestedTransportStream(media: {
+  url: string;
+  extension?: string | null;
+  mimeType?: string | null;
+  userRequested?: boolean;
+}): boolean {
+  if (media.userRequested !== true) {
+    return false;
+  }
+  const type = media.mimeType?.split(';')[0]?.trim().toLowerCase();
+  return type === 'video/mp2t' || (media.extension ?? parseExtensionFromUrl(media.url)) === 'ts';
 }
 
 export function isLikelyMediaSegment(

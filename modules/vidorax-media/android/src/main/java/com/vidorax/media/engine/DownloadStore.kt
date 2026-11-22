@@ -120,6 +120,12 @@ internal interface DownloadStore {
 
   /** F3: sets (or with null removes) [id]'s start time. */
   suspend fun saveSchedule(id: String, startAt: Long?) {}
+
+  /** #347: [id]'s mirrors, in order; none by default. */
+  suspend fun listMirrors(id: String): List<String> = emptyList()
+
+  /** #347: replaces [id]'s mirrors (an empty list removes them). */
+  suspend fun saveMirrors(id: String, urls: List<String>) {}
 }
 
 /** The real SQLite-backed store. Request context is JSON in `request_json`, stripped of secrets on the way in. */
@@ -187,6 +193,30 @@ internal class SqliteDownloadStore(private val database: MediaDatabase) : Downlo
       db.delete(TABLE, "id = ?", arrayOf(id))
       db.delete(BANDWIDTH, "download_id = ?", arrayOf(id))
       db.delete(SCHEDULE, "download_id = ?", arrayOf(id))
+      db.delete(MIRRORS, "download_id = ?", arrayOf(id))
+    }
+  }
+
+  override suspend fun listMirrors(id: String): List<String> = database.read { db ->
+    db.rawQuery("SELECT url FROM $MIRRORS WHERE download_id = ? ORDER BY position", arrayOf(id)).use { cursor ->
+      buildList(cursor.count) { while (cursor.moveToNext()) add(cursor.getString(0)) }
+    }
+  }
+
+  override suspend fun saveMirrors(id: String, urls: List<String>) {
+    database.transaction { db ->
+      db.delete(MIRRORS, "download_id = ?", arrayOf(id))
+      urls.forEachIndexed { index, url ->
+        db.insertOrThrow(
+          MIRRORS,
+          null,
+          ContentValues().apply {
+            put("download_id", id)
+            put("position", index)
+            put("url", url)
+          },
+        )
+      }
     }
   }
 
@@ -315,6 +345,7 @@ internal class SqliteDownloadStore(private val database: MediaDatabase) : Downlo
     const val TABLE = "downloads"
     const val BANDWIDTH = "download_bandwidth"
     const val SCHEDULE = "download_schedule"
+    const val MIRRORS = "download_mirrors"
     const val COMPLETIONS = "completions"
     const val MAX_UNACKNOWLEDGED = 500
     const val COMPLETED_RETENTION_MS = 24L * 60 * 60 * 1000

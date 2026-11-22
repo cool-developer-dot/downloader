@@ -7,9 +7,9 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 
-import { Icon } from '@/components/base/Icon';
 import { Pressable } from '@/components/base/Pressable';
 import { siteInfoRequests } from '@/browser/components/SiteInfo/site-info-requests';
+import { DsIcon, type DsIconName } from '@/design';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 
@@ -23,33 +23,22 @@ export type SecurityIndicatorProps = {
   testID?: string;
 };
 
-function resolveSecurityPresentation(level: BrowserSecurityLevel) {
+function resolveSecurityPresentation(level: BrowserSecurityLevel): {
+  icon: DsIconName;
+  labelKey: 'browserAddress.security.secure' | 'browserAddress.security.insecure' | 'browserAddress.security.unknown' | 'browserAddress.security.home';
+  colorToken: 'success' | 'warning' | 'textSecondary';
+} {
   switch (level) {
     case 'secure':
-      return {
-        icon: 'lock' as const,
-        labelKey: 'browserAddress.security.secure' as const,
-        colorToken: 'success' as const,
-      };
+      return { icon: 'lock', labelKey: 'browserAddress.security.secure', colorToken: 'success' };
     case 'insecure':
-      return {
-        icon: 'lock-open-variant' as const,
-        labelKey: 'browserAddress.security.insecure' as const,
-        colorToken: 'secondary' as const,
-      };
+      // Lucide's LockOpen is not in the kit yet: an info glyph stands in for "not secure".
+      return { icon: 'info', labelKey: 'browserAddress.security.insecure', colorToken: 'textSecondary' };
     case 'warning':
-      return {
-        icon: 'shield-alert-outline' as const,
-        labelKey: 'browserAddress.security.unknown' as const,
-        colorToken: 'warning' as const,
-      };
+      return { icon: 'shield', labelKey: 'browserAddress.security.unknown', colorToken: 'warning' };
     case 'neutral':
     default:
-      return {
-        icon: 'earth' as const,
-        labelKey: 'browserAddress.security.home' as const,
-        colorToken: 'secondary' as const,
-      };
+      return { icon: 'globe', labelKey: 'browserAddress.security.home', colorToken: 'textSecondary' };
   }
 }
 
@@ -87,7 +76,7 @@ export const SecurityIndicator = memo(function SecurityIndicator({
   }));
 
   const glowStyle = useAnimatedStyle(() => ({
-    opacity: progress.value * 0.35,
+    opacity: progress.value * 0.18,
     backgroundColor: interpolateColor(
       progress.value,
       [0, 1],
@@ -120,7 +109,7 @@ export const SecurityIndicator = memo(function SecurityIndicator({
           glowStyle,
         ]}
       />
-      <Icon name={presentation.icon} size="sm" color={presentation.colorToken} />
+      <DsIcon name={presentation.icon} size={17} color={presentation.colorToken} strokeWidth={1.9} />
     </Animated.View>
   );
 

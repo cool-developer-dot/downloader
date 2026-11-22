@@ -8,7 +8,15 @@ import type { Rect } from './tour-layout';
  * window coordinates when its step comes up. A target that is not mounted (e.g. the start page while a site is open)
  * measures as null and its step is skipped.
  */
-export type TourTargetId = 'addressBar' | 'startPage' | 'pageArea' | 'downloadsTab' | 'playerTab' | 'settingsTab';
+export type TourTargetId =
+  | 'addressBar'
+  /** The start page's own search field: the address bar's stand-in while the start page hides the browser chrome. */
+  | 'startSearch'
+  | 'startPage'
+  | 'pageArea'
+  | 'downloadsTab'
+  | 'playerTab'
+  | 'settingsTab';
 
 const targets = new Map<TourTargetId, View>();
 

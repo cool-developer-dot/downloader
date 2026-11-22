@@ -1,8 +1,9 @@
 import { memo } from 'react';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Button } from '@/components/buttons/Button';
-import { EmptyState } from '@/components/common/EmptyState';
+import { DsButton, DsCard, DsIcon, DsText, ds } from '@/design';
+import { useTheme } from '@/hooks/use-theme';
+import { useTranslation } from '@/localization';
 
 export type AnalyzeFallbackStateProps = {
   title: string;
@@ -12,6 +13,7 @@ export type AnalyzeFallbackStateProps = {
   testID?: string;
 };
 
+/** The sheet when the page must play the video once first: the reason, Open Video, Try again. */
 export const AnalyzeFallbackState = memo(function AnalyzeFallbackState({
   title,
   description,
@@ -19,24 +21,40 @@ export const AnalyzeFallbackState = memo(function AnalyzeFallbackState({
   onRetry,
   testID = 'quality-analyze-fallback',
 }: AnalyzeFallbackStateProps) {
+  const theme = useTheme();
+  const { t } = useTranslation();
   return (
-    <Box gap={12} testID={testID}>
-      <EmptyState icon="play-circle-outline" title={title} description={description} />
-      <Button
-        title="Open Video"
+    <View style={{ gap: ds.space.stack }} testID={testID}>
+      <DsCard>
+        <View style={{ alignItems: 'center', gap: 8, paddingVertical: 8 }}>
+          <View
+            style={{
+              width: 48,
+              height: 48,
+              borderRadius: 14,
+              backgroundColor: theme.colors.accentSoft,
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}>
+            <DsIcon name="circle-play" size={24} color="primary" strokeWidth={1.8} />
+          </View>
+          <DsText variant="cardTitle" align="center">
+            {title}
+          </DsText>
+          <DsText variant="body" align="center">
+            {description}
+          </DsText>
+        </View>
+      </DsCard>
+      <DsButton
+        label={t('lightVideoSheet.openVideo')}
+        icon="globe"
+        fullWidth
         onPress={onOpenVideo}
-        fullWidth
-        leftIcon="web"
+        accessibilityHint={t('lightVideoSheet.openVideoHint')}
         testID="quality-open-video"
-        accessibilityHint="Opens the video in Browser so playback can be detected"
       />
-      <Button
-        title="Retry"
-        variant="outline"
-        onPress={onRetry}
-        fullWidth
-        testID="quality-analyze-retry"
-      />
-    </Box>
+      <DsButton label={t('common.retry')} variant="secondary" fullWidth onPress={onRetry} testID="quality-analyze-retry" />
+    </View>
   );
 });

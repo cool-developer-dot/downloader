@@ -16,7 +16,11 @@ class RiskyDownloadsTest {
 
   @Test fun everyListedExtensionIsRiskyByTheUrl() {
     assertEquals(
-      setOf("apk", "apks", "xapk", "exe", "msi", "bat", "cmd", "scr", "jar", "vbs", "sh", "dex"),
+      setOf(
+        "apk", "apks", "xapk", "exe", "msi", "bat", "cmd", "scr", "jar", "vbs", "sh", "dex",
+        // P8 #461
+        "com", "pif", "ps1", "hta", "wsf", "cpl", "lnk",
+      ),
       RiskyDownloads.EXTENSIONS,
     )
     for (ext in RiskyDownloads.EXTENSIONS) {
@@ -82,5 +86,32 @@ class RiskyDownloadsTest {
     assertEquals("sh", RiskyDownloads.extensionOf("archive.tar.SH"))
     assertNull(RiskyDownloads.extensionOf(".bashrc"))
     assertTrue(RiskyDownloads.isRisky("https://x.example/dl", null, "attachment; filename=\"a.pdf\"; filename*=UTF-8''a.apk"))
+  }
+
+  // P8 #461 Malware Warning
+  @Test fun aVideoLookingNameSentAsAnAppGoesToTheWarningFirst() {
+    assertEquals(
+      WebDownloadRoute.Warn,
+      WebDownloadRoute.of("https://example.com/get?id=1", "application/vnd.android.package-archive", "attachment; filename=\"holiday.mp4\""),
+    )
+    assertTrue(RiskyDownloads.isDisguised("https://example.com/clip.mp4", "application/x-msdownload", null))
+  }
+
+  @Test fun doubleExtensionsAreDisguised() {
+    assertEquals(WebDownloadRoute.Warn, route("https://example.com/clip.mp4.exe", "application/octet-stream"))
+    assertTrue(RiskyDownloads.hasDoubleExtension("Photo.JPG.scr"))
+    assertFalse(RiskyDownloads.hasDoubleExtension("setup.exe"))
+    assertFalse(RiskyDownloads.hasDoubleExtension("archive.tar.sh"))
+  }
+
+  @Test fun theNewProgramTypesAreRisky() {
+    for (ext in listOf("com", "pif", "ps1", "hta", "wsf", "cpl", "lnk")) {
+      assertEquals(ext, WebDownloadRoute.Warn, route("https://example.com/tool.$ext", "application/octet-stream"))
+    }
+  }
+
+  @Test fun aVideoMimeTypeIsStillNeverDisguised() {
+    assertFalse(RiskyDownloads.isDisguised("https://cdn.example.com/seg.mp4.exe", "video/mp4", null))
+    assertFalse(RiskyDownloads.isDisguised("https://cdn.example.com/p.m3u8", "application/vnd.apple.mpegurl", null))
   }
 }

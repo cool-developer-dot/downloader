@@ -7,6 +7,7 @@ export type BlockingNativeDriver = {
   setContentBlocking?(ads: boolean, trackers: boolean, allowedSites: string[]): void;
   setBlockingPage?(viewTag: number, url: string): Promise<boolean>;
   getBlockedCount?(viewTag: number): Promise<number>;
+  getBlockedThisWeek?(): number;
 };
 
 const MAX_TRACKED_VIEWS = 8;
@@ -55,6 +56,15 @@ export function createBlockingNative(driver: () => BlockingNativeDriver | null) 
         return typeof count === 'number' && Number.isFinite(count) && count > 0 ? Math.floor(count) : 0;
       } catch {
         return 0;
+      }
+    },
+    /** Design 5: blocked over the last 7 days; null when this native build can't say. */
+    blockedThisWeek(): number | null {
+      try {
+        const count = driver()?.getBlockedThisWeek?.();
+        return typeof count === 'number' && Number.isFinite(count) && count >= 0 ? Math.floor(count) : null;
+      } catch {
+        return null;
       }
     },
     forget(viewTag: number): void {

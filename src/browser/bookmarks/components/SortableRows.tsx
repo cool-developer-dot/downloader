@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import type { LayoutChangeEvent } from 'react-native';
+import { View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from 'react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, {
   runOnJS,
@@ -58,7 +58,13 @@ export type SortableRowsProps<T extends { id: string }> = {
   onMove: (id: string, toIndex: number) => void;
   onHold: (id: string) => void;
   header?: ReactNode;
+  /** Measured from `header` when not given (the design's header + chips + breadcrumb above the card). */
   headerHeight?: number;
+  /** Drawn under the rows (the design's MANAGE section). */
+  footer?: ReactNode;
+  /** The rows' container (the design's white card: the rows are absolutely placed inside it). */
+  listStyle?: StyleProp<ViewStyle>;
+  contentContainerStyle?: StyleProp<ViewStyle>;
   testID?: string;
 };
 
@@ -71,10 +77,15 @@ function SortableRowsBase<T extends { id: string }>({
   onMove,
   onHold,
   header,
-  headerHeight = 0,
+  headerHeight: givenHeaderHeight,
+  footer,
+  listStyle,
+  contentContainerStyle,
   testID,
 }: SortableRowsProps<T>) {
   const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  const [measuredHeader, setMeasuredHeader] = useState(0);
+  const headerHeight = givenHeaderHeight ?? measuredHeader;
   const ids = useMemo(() => items.map((item) => item.id), [items]);
   const positions = useSharedValue<Positions>(indexMap(ids));
   const scrollY = useSharedValue(0);
@@ -109,6 +120,10 @@ function SortableRowsBase<T extends { id: string }>({
     [viewportHeight],
   );
 
+  const handleHeaderLayout = useCallback((event: LayoutChangeEvent) => {
+    setMeasuredHeader(Math.round(event.nativeEvent.layout.height));
+  }, []);
+
   return (
     <Animated.ScrollView
       ref={scrollRef}
@@ -119,9 +134,12 @@ function SortableRowsBase<T extends { id: string }>({
       scrollEnabled={!dragging}
       onLayout={handleLayout}
       keyboardShouldPersistTaps="handled"
-      contentContainerStyle={{ paddingBottom: 24 }}>
-      {header}
-      <Animated.View style={{ height: items.length * rowHeight }}>
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={[{ paddingBottom: 24 }, contentContainerStyle]}>
+      {header ? (
+        givenHeaderHeight == null ? <View onLayout={handleHeaderLayout}>{header}</View> : header
+      ) : null}
+      <Animated.View style={[{ height: items.length * rowHeight }, listStyle]}>
         {items.map((item, index) => (
           <SortableRow
             key={item.id}
@@ -142,6 +160,7 @@ function SortableRowsBase<T extends { id: string }>({
           </SortableRow>
         ))}
       </Animated.View>
+      {footer}
     </Animated.ScrollView>
   );
 }

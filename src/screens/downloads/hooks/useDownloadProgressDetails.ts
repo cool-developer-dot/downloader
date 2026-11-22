@@ -39,6 +39,7 @@ const NONE: DownloadProgressDetails = {
  * queued, running or paused. Every value is null when it is unknown; v1 rows and finished rows get nothing.
  */
 export function useDownloadProgressDetails(id: string | null | undefined): DownloadProgressDetails {
+  'use no memo'; // Reads the stats map outside React (re-read on `revision`): compiled, the React Compiler can keep the first read.
   const status = useDownloadsStore((state) => (id ? state.itemsById[id]?.status : undefined));
   const engineOwned = useDownloadsStore((state) => (id ? isEngineOwned(state, id) : false));
   const live = Boolean(id && engineOwned && status && LIVE_STATUSES.has(status));

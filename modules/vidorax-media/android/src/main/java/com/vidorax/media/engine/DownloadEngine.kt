@@ -141,21 +141,37 @@ internal class DownloadEngine(
   private val queueOrder: QueueOrderBook = QueueOrderBook(),
   /** Backoff sleeps; injectable so tests do not wait in real time. */
   private val retryDelay: suspend (Long) -> Unit = { kotlinx.coroutines.delay(it) },
+  /** How long one wait for working internet lasts before the transfer is tried again ([INTERNET_RECHECK_MS]). */
+  private val internetRecheckMs: Long = INTERNET_RECHECK_MS,
   /** #332 Retry limit ([RetryLimit]): null is Automatic, today's [MAX_NETWORK_ATTEMPTS]. Read at each failure. */
   private val retryLimit: () -> Int? = { null },
   private val now: () -> Long = System::currentTimeMillis,
   /** H20 Repair (#412): asks the server about a failed download's partial files; none = never changes anything. */
   private val partialChecks: PartialChecks = PartialChecks.NONE,
+  /** #446: mobile data beside Wi-Fi for multi-connection downloads ([DownloadSettings.multiNetwork]); none by default. */
+  private val secondNetwork: SecondNetwork = SecondNetwork.NONE,
+  /** #347/#446: what a multi-connection run's mirrors and networks did (diagnostics; counts only, never a URL). */
+  private val onRoutes: (id: String, report: com.vidorax.media.transfer.RouteReport) -> Unit = { _, _ -> },
   private val idFactory: () -> String = { UUID.randomUUID().toString() },
+  /** #348: whether "Automatic" low memory mode applies ([android.app.ActivityManager.isLowRamDevice]). */
+  private val lowRamDevice: Boolean = false,
 ) : DownloadEngineApi {
   private val progressFlow = sharedFlow<DownloadProgress>()
   private val stateFlow = sharedFlow<DownloadRecord>()
   override val progress = progressFlow
   override val stateChanges = stateFlow
 
-  @Volatile private var settings: DownloadSettings = initialSettings
+  /** What the engine runs with: the saved settings as low memory mode adjusts them ([DownloadSettings.effective]). */
+  @Volatile private var settings: DownloadSettings = initialSettings.effective(lowRamDevice)
 
-  private val slots = Slots(initialSettings.maxConcurrent)
+  init {
+    com.vidorax.media.transfer.TransferTuning.apply(settings)
+  }
+
+  private val slots = Slots(settings.maxConcurrent)
+
+  /** #506: when each site's last download ended, for the cooldown before its next one. */
+  private val cooldown = Cooldown(now)
 
   /** Speed limits (F2): the global limit from the settings, per-download limits and Priority from `download_bandwidth`. */
   private val bandwidth = BandwidthLimiter().apply { setGlobalLimit(initialSettings.speedLimitBytesPerSecond) }
@@ -554,9 +570,39 @@ internal class DownloadEngine(
       audioUrl = request.audioUrl.takeIf { request.kind == SourceKind.SPLIT },
     )
     store.create(row)
-    // #299: the sign-in the server asked for, held in memory for this download only (pinned to its https origin).
+    // #347: the other links to this file, kept with the download (checked before any part uses one).
+    if (request.kind == SourceKind.PROGRESSIVE) {
+      cleanMirrors(request.mirrors, request.url).takeIf { it.isNotEmpty() }?.let { store.saveMirrors(id, it) }
+    }
+    // #299: the sign-in the server asked for, held in memory for this download only (pinned to its https origin, or
+    // #304 its FTP server).
     request.credentials?.let { DownloadCredentials.put(id, request.url, it) }
     return row
+  }
+
+  private fun cleanMirrors(urls: List<String>, mainUrl: String): List<String> =
+    urls.map { it.trim() }.filter { it.isNotEmpty() && it != mainUrl }.distinct().take(MAX_MIRRORS)
+
+  override suspend fun downloadMirrors(id: String): List<String> {
+    store.find(id) ?: throw NotFoundException("Unknown download $id")
+    return store.listMirrors(id)
+  }
+
+  override suspend fun setDownloadMirrors(id: String, urls: List<String>): List<String> {
+    val (kept, running) = mutex.withLock {
+      val row = store.find(id) ?: throw NotFoundException("Unknown download $id")
+      if (row.kind != SourceKind.PROGRESSIVE) throw InvalidRequestException("Mirrors are only for a single file download")
+      if (row.state == DownloadState.COMPLETED || row.state == DownloadState.CANCELLED) {
+        throw InvalidStateException("Cannot add mirrors to a ${row.state.wire} download")
+      }
+      val clean = cleanMirrors(urls, row.url)
+      store.saveMirrors(id, clean)
+      clean to (row.state == DownloadState.DOWNLOADING && activeJobs.containsKey(id))
+    }
+    // A transfer already running restarts from its bytes on disk, so the mirrors are checked and used now; a download
+    // that has not reached its transfer yet reads them when it does.
+    if (running) launchWorker(id)
+    return kept
   }
 
   private fun SourceKind?.isStream(): Boolean = this == SourceKind.HLS || this == SourceKind.DASH || this == SourceKind.LIVE
@@ -722,9 +768,12 @@ internal class DownloadEngine(
   }
 
   override suspend fun setDownloadSettings(settings: DownloadSettings) {
-    this.settings = settings
-    slots.setLimit(settings.maxConcurrent)
-    bandwidth.setGlobalLimit(settings.speedLimitBytesPerSecond)
+    val effective = settings.effective(lowRamDevice)
+    this.settings = effective
+    slots.setLimit(effective.maxConcurrent)
+    bandwidth.setGlobalLimit(effective.speedLimitBytesPerSecond)
+    com.vidorax.media.transfer.TransferTuning.apply(effective)
+    // The saved copy keeps what the user chose; low memory mode only changes what runs.
     runCatching { onSettingsChanged(settings) }
     // F3: a changed rule applies at once to waiting and running downloads.
     policyVersion.update { it + 1 }
@@ -823,9 +872,13 @@ internal class DownloadEngine(
     if (!awaitAllowed(id, gen)) return
     // Beyond the configured limit the download simply stays QUEUED until a slot frees.
     slots.acquire(id)
+    val site = Cooldown.siteOf(start.url)
     try {
+      // #506: a site's next download waits out the cooldown after its previous one (still QUEUED meanwhile).
+      cooldown.await(site, settings.cooldownSeconds)
       runTransfer(id, gen, start)
     } finally {
+      cooldown.ended(site)
       slots.release()
     }
   }
@@ -886,7 +939,8 @@ internal class DownloadEngine(
         val again = setState(id, gen, DownloadState.PROBING)?.let { reprobe() }
         when {
           again == null -> false
-          again.kind != SourceKind.PROGRESSIVE -> {
+          // #304: an FTP file stays an FTP file; an http(s) one a progressive file.
+          again.kind != probe.kind -> {
             fail(id, gen, DownloadErrorCode.UNSUPPORTED_FORMAT, "The source changed format")
             false
           }
@@ -899,14 +953,32 @@ internal class DownloadEngine(
     ) {
       // The transfer resumes against the validator it recorded beside the `.part`, so If-Range also holds after a
       // process death, a reboot or a renewed (re-signed) link.
-      val spec = TransferSpec(
-        url = probe.finalUrl,
-        context = currentRequest(id, start),
-        partFile = partFile,
-        connections = connectionsFor(probe.sizeBytes),
-        throttle = bandwidth.throttleFor(id),
-      )
-      streamWithProgress(id, gen) { onProgress -> transfers.transfer(spec, onProgress) }.also { TrackDone.mark(partFile) }
+      val connections = connectionsFor(probe.sizeBytes)
+      val ftp = probe.kind == SourceKind.FTP
+      // #347: mirrors belong to the download's own file (never a DASH representation, never FTP).
+      val mirrors = if (!ftp && start.kind == SourceKind.PROGRESSIVE) store.listMirrors(id) else emptyList()
+      // #446: some parts over mobile data too, while on Wi-Fi and only for a download that may use mobile data.
+      val wifiOnly = NetworkChoices.effective(networkChoices.wifiOnly(id), settings.wifiOnly)
+      val lease = if (!ftp && com.vidorax.media.net.MultiNetworkPolicy.wants(settings.multiNetwork, wifiOnly, connections, network.isUsable(true))) {
+        secondNetwork.acquire()
+      } else {
+        null
+      }
+      try {
+        val spec = TransferSpec(
+          url = probe.finalUrl,
+          context = currentRequest(id, start),
+          partFile = partFile,
+          connections = connections,
+          throttle = bandwidth.throttleFor(id),
+          mirrors = mirrors,
+          secondNetwork = lease?.client,
+          onRoutes = { report -> onRoutes(id, report) },
+        )
+        streamWithProgress(id, gen) { onProgress -> transfers.transfer(spec, onProgress) }.also { TrackDone.mark(partFile) }
+      } finally {
+        lease?.release()
+      }
     } ?: return
 
     persistProgress(id, gen, outcome.bytesWritten, outcome.totalBytes)
@@ -1590,6 +1662,8 @@ internal class DownloadEngine(
    *   blips it survived, while one that keeps failing at the same byte still ends;
    * - a 403/410 re-resolves the source once through [refresh] and continues from the bytes on disk;
    * - the network becoming one this download may not use (Wi-Fi-only) waits without counting as a failure;
+   * - a network error while Android says the network has no working internet waits for it (WAITING_NETWORK) and
+   *   tries again without counting as a failure, for at most [MAX_INTERNET_WAITS] waits;
    * - a refusal, a 404 or a storage error fails at once with its own code.
    * Returns null when the download failed or was superseded (the row already says so).
    */
@@ -1606,6 +1680,7 @@ internal class DownloadEngine(
     var failures = 0
     var highWater = progressBytes()
     var refreshed = false
+    var internetWaits = 0
     while (true) {
       val transientCode: DownloadErrorCode
       val transientMessage: String
@@ -1638,6 +1713,16 @@ internal class DownloadEngine(
         if (setState(id, gen, DownloadState.DOWNLOADING) == null) return null
         continue
       } catch (e: MediaNetworkException) {
+        // Android reports a network, but it has no working internet behind it (a captive portal, a DNS that answers
+        // nothing): wait for it, as for no network at all, instead of spending the retries and failing. Each wait
+        // ends when the internet is back or after [internetRecheckMs], then the transfer is tried again — a network
+        // that works but never passes Android's check is not held up for long. After [MAX_INTERNET_WAITS] waits
+        // (about 15 minutes) errors count as before.
+        if (!network.hasWorkingInternet() && internetWaits < MAX_INTERNET_WAITS) {
+          internetWaits += 1
+          if (awaitWorkingInternet(id, gen) == null) return null
+          continue
+        }
         transientCode = DownloadErrorCode.NETWORK
         transientMessage = "Network error during download" // the `.part` is kept for resume
       } catch (e: IOException) {
@@ -1782,6 +1867,19 @@ internal class DownloadEngine(
     val metadata = runCatching { inspector.inspect(file) }.getOrNull()
     val audioOnly = metadata != null && !metadata.hasVideo && metadata.hasAudio
     return PreferredExtensions.resolve(preferred, container, audioOnly)
+  }
+
+  /**
+   * Holds the download in WAITING_NETWORK until the network has working internet, or [internetRecheckMs] passed.
+   * True when it has, false after the wait ran out, null when the user superseded the download meanwhile.
+   */
+  private suspend fun awaitWorkingInternet(id: String, gen: Long): Boolean? {
+    if (setState(id, gen, DownloadState.WAITING_NETWORK) == null) return null
+    val working = withTimeoutOrNull(internetRecheckMs) { network.awaitWorkingInternet() } != null
+    val live = store.find(id)?.let { generations[id] == gen && !it.state.isTerminal } ?: false
+    if (!live) return null
+    if (setState(id, gen, DownloadState.DOWNLOADING) == null) return null
+    return working
   }
 
   /**
@@ -2311,6 +2409,9 @@ internal class DownloadEngine(
      * Pausable: anything not yet verifying. Waiting states included — the notification offers Pause there, and a
      * download waiting for a network or a retry is exactly one a user may want to hold.
      */
+    /** #347: mirrors one download keeps. */
+    const val MAX_MIRRORS = 4
+
     val PAUSABLE = setOf(
       DownloadState.QUEUED,
       DownloadState.PROBING,
@@ -2334,6 +2435,10 @@ internal class DownloadEngine(
 
     /** How often a transient failure is waited out, without progress in between, before the download fails. */
     const val MAX_NETWORK_ATTEMPTS = 5
+
+    /** A network without working internet is waited for this long at a time, at most [MAX_INTERNET_WAITS] times. */
+    const val INTERNET_RECHECK_MS = 30_000L
+    const val MAX_INTERNET_WAITS = 30
     const val RETRY_BACKOFF_MS = 250L
     const val MAX_RETRY_BACKOFF_MS = 2_000L
 

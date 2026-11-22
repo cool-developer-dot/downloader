@@ -1,9 +1,10 @@
-import type { PlatformPageKind } from '@/media-detection/platform/types';
+import type { DsIconName } from '@/design';
 import type { AnalyzePhase } from '@/downloads/analyze/analyze-state-machine';
+import type { PlatformPageKind } from '@/media-detection/platform/types';
 
 export type PlatformDisplay = {
   label: string;
-  icon: 'music-note' | 'camera-outline' | 'web' | 'play-circle-outline';
+  icon: DsIconName;
 };
 
 export function resolvePlatformDisplay(
@@ -11,11 +12,11 @@ export function resolvePlatformDisplay(
 ): PlatformDisplay {
   switch (platform) {
     case 'tiktok':
-      return { label: 'TikTok', icon: 'music-note' };
+      return { label: 'TikTok', icon: 'music' };
     case 'instagram':
-      return { label: 'Instagram', icon: 'camera-outline' };
+      return { label: 'Instagram', icon: 'camera' };
     default:
-      return { label: 'Video', icon: 'web' };
+      return { label: 'Video', icon: 'globe' };
   }
 }
 

@@ -5,6 +5,7 @@
 
 import { getVidoraWeb, isVidoraWebAvailable } from '@modules/vidorax-web';
 
+import { navigation, routePaths } from '@/navigation';
 import { noteTourLinkOpened } from '@/tour/tour-store';
 
 import { urlFromSharedText } from './incoming-link';
@@ -29,7 +30,12 @@ export function resetIncomingLinksForTests(): void {
   attached = false;
 }
 
-function open(text: string | null): boolean {
+/**
+ * @param bringForward A link that arrives while VidoraX runs (a share, a web link while another tab or a pushed screen
+ *   is in front) shows the Browser tab at its page: without it the link loaded unseen and nothing seemed to happen.
+ *   The launch link needs nothing — the app starts on the browser anyway, before navigation is ready.
+ */
+function open(text: string | null, bringForward = false): boolean {
   const url = urlFromSharedText(text);
   // A shared or opened YouTube link is refused before the tab loads or fetches anything.
   if (url && isYouTubeLink(url)) {
@@ -41,6 +47,10 @@ function open(text: string | null): boolean {
     noteTourLinkOpened();
     // A shared link is a pasted link: the direct analyzer reads its page, then the active tab loads it.
     openPastedLink(url, { source: 'share' });
+    if (bringForward) {
+      // The Browser tab, popped to its page (the module's other screens close): where the link is loading.
+      navigation.navigate(routePaths.browser);
+    }
     return true;
   }
   return false;
@@ -63,7 +73,7 @@ export function ensureIncomingLinkHandling(): void {
   }
   try {
     const subscription = web.addListener('onSharedText', ({ text }) => {
-      open(text);
+      open(text, true);
     });
     detach = () => subscription.remove();
   } catch {

@@ -5,6 +5,7 @@ import {
   CARD_GAP,
   CARD_MAX_WIDTH,
   CARD_SCREEN_MARGIN,
+  isMostlyOnScreen,
   isUsableRect,
   MIN_CARD_SPACE,
   placeCard,
@@ -16,6 +17,16 @@ import {
 const PIXEL_8 = { width: 412, height: 915 };
 const SMALL = { width: 360, height: 640 };
 const INSETS = { top: 24, bottom: 24 };
+
+test('a bar slid out of view is not mostly on screen', () => {
+  // The start page hides the address bar: it keeps its size, translated up above the window.
+  assert.equal(isMostlyOnScreen({ x: 0, y: -40, width: 412, height: 56 }, PIXEL_8), false);
+  // …or down below it (address bar at the bottom).
+  assert.equal(isMostlyOnScreen({ x: 0, y: 900, width: 412, height: 56 }, PIXEL_8), false);
+  assert.equal(isMostlyOnScreen({ x: 0, y: 24, width: 412, height: 56 }, PIXEL_8), true);
+  assert.equal(isMostlyOnScreen({ x: 0, y: -20, width: 412, height: 56 }, PIXEL_8), true);
+  assert.equal(isMostlyOnScreen(null, PIXEL_8), false);
+});
 
 test('missing or off-screen targets are not usable', () => {
   assert.equal(isUsableRect(null, PIXEL_8), false);

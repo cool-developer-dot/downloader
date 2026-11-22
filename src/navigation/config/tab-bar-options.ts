@@ -4,7 +4,8 @@ import type { TabScreenOptions } from '../types/navigation';
 
 /**
  * Bottom-tab metadata.
- * Phase 1 visible order: Browser → Downloads → Library → Settings.
+ * Design order (VidoraX · Light theme UI): Browser → Downloads → Player → Files → Settings. The bar itself is
+ * `DsTabBar`; these entries keep the route metadata and the deep-link names.
  * `home` remains for legacy route-file metadata only (hidden via `href: null`).
  */
 export const tabItems = {
@@ -30,6 +31,13 @@ export const tabItems = {
     icon: 'play-circle-outline',
     iconFocused: 'play-circle',
     accessibilityLabel: 'Player tab',
+  },
+  files: {
+    routeName: 'files',
+    title: 'Files',
+    icon: 'folder-outline',
+    iconFocused: 'folder',
+    accessibilityLabel: 'Files tab',
   },
   settings: {
     routeName: 'settings',
@@ -63,6 +71,7 @@ export const visibleTabItemKeys = [
   'browser',
   'downloads',
   'library',
+  'files',
   'settings',
 ] as const satisfies readonly TabItemKey[];
 

@@ -3,7 +3,7 @@
  * Date fields are ISO-8601 strings.
  */
 
-export type ThemeMode = 'SYSTEM' | 'LIGHT' | 'LOGO' | 'DARK';
+export type ThemeMode = 'SYSTEM' | 'LIGHT' | 'LOGO' | 'DARK' | 'RED' | 'CREAM' | 'MIDNIGHT' | 'BLUSH';
 
 export interface Settings {
   theme: ThemeMode;
@@ -278,6 +278,9 @@ export type MediaAnalysisContainer =
   | 'avi'
   | 'wmv'
   | 'mpg'
+  | 'mkv'
+  | 'flv'
+  | 'ts'
   | 'mp3'
   | 'm4a'
   | 'aac'

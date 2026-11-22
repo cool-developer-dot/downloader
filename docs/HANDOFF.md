@@ -2246,6 +2246,343 @@ only. Hamza's unfinished B8 start is parked on `hamza/b8-wip`.
   decided (viewer kept, new defaults kept, detectability accepted). Coverage and what wasn't checked:
   `docs/work-log/faran-browser.md`, "Integration".
 
+### 4.36 MKV, FLV and `.ts` links (branch `claude/downloader-finalized-formats-4a36f8`, 2026-11-17)
+
+On top of `integration/browser` (`794fd31`). The engine used to refuse these three as links although the processor
+already handled them; now they download (ARCHITECTURE §1).
+
+- **Engine.** `MediaSniffer`: Matroska DocType → `MKV` (kept byte for byte; encrypted → protected); FLV v1 → `FLV`
+  (H.264/AAC remuxed to MP4, Sorenson/VP6 kept as `.flv` for "Open with"); MPEG-TS always classified (the
+  `allowTransportStream` flag is gone), scrambled packets → protected (`plan/TransportStream`, also checked over the
+  finished file's first 4 MB by the Verifier). Sound only — from the FLV header flags, the TS program map or the
+  Matroska track list — is "Audio only". `Probe`: a `.ts` with no length, or an `.flv` with no length whose
+  `onMetaData` states no duration, is a live channel (`LIVE_UNSUPPORTED`).
+- **Browser.** VidoraWeb `NetworkMediaClassifier.classifyDownload` claims `video/mp2t` and `.ts` downloads for
+  detection (players fetch segments, they never download them). JS: `isUserRequestedTransportStream` exempts a `.ts`
+  the user opened (WebView download, or a pasted/shared link — `directCandidateMedia` now marks the direct link
+  `userRequested`) from every segment rule on the way: correlation, `verifyGeneralSourceCandidate`,
+  `classifyFalsePositive`/`verifyMediaCandidate`, the social byte check; a verified `ts` offer passes the CTA's and
+  quality sheet's `.ts` URL checks (`isTransportStreamFileOffer`) and the pre-download gate (`transportStreamFile`).
+  `sniffMediaSignature` knows FLV and tells MKV from WebM; `resolveVideoResource` hands MKV/TS/FLV bytes to the
+  engine's verdict (`ENGINE_FILE_CONTAINER`); `MediaAnalysisContainer` has `mkv`/`flv`/`ts`; a `.ts` page is named by
+  its file (`directMediaFileTitle`). Network-observed `.ts` requests are still segments.
+- **Device (2026-11-17, VidoraX_Browser_F, upload-key release + trace build), live sites:** Apple
+  `bipbop_4x3/gear1/fileSequence0.ts` (H.264/AAC) → offer, download, MP4 279 KB; learningcontainer
+  `sample-mkv-file.mkv` → kept `.mkv` 4.7 MB, plays; filesamples `sample_640x360.flv` (Sorenson, no length, metadata
+  13.3 s) → kept `.flv`, "Unsupported format / Open with"; filesamples `sample_640x360.ts` (no length) → refused as
+  live. H.264/AAC FLV → MP4 covered by `FlvMatroskaProcessingTest` only (no public one found). Test videos deleted.
+- **Not supported:** `.m2ts` (192-byte packets), a `.ts` served without a length (indistinguishable from IPTV live);
+  that refusal shows the generic "This video can't be downloaded".
+
+### 4.37 Downloader 1.2.0 packages (client "add all", plan `kind-spinning-dijkstra`)
+
+#### P1, P3, P4, P5, P7 — engine tuning, watched links, bulk adding, site grabber, cloud (2026-11-19/20)
+
+The client approved every optional downloader feature plus live recording and the widget (plan: P1–P8). P2 (FTP,
+mirrors, multi-network), P6 (Web UI, remote, CLI, automation, extension) and P8 (malware warning, source check, zip,
+Simple/Advanced) run in their own sessions/worktrees and merge here afterwards. Everything stays on the phone.
+
+- **Approvals (`56d5ab7`).** Live recording on by default; existing installs switched on once
+  (`liveRecordingMigration`, flag `liveRecordingApproved`, excluded from backups). The widget needed nothing.
+- **P1 engine tuning.** `DownloadSettings` gains `bufferKb` (32–512, 64), `writeCacheKb` (0/1/4/8 MB, off),
+  `lowMemoryMode` (auto/on/off: on a low-RAM phone 1 download, 1 connection, 32 KB buffer, no cache),
+  `cooldownSeconds` (per site, between starts — `engine/Cooldown`), `exitWhenDone` (`runner/ExitWhenDone`: closes the
+  app's tasks when the queue empties and VidoraX is in the background). `transfer/TransferTuning` + `WriteCache`
+  batch writes; progress is now counted when bytes reach the disk (Progressive, Ranged, HLS). Settings →
+  "Performance" (`DownloadPerformanceSection`).
+- **P3 watched links / P4 RSS (#362, #504, #363).** Native `watch/`: `WatchStore` (prefs `vidorax_watches`, ≤ 100),
+  `LinkChecker` (file: `bytes=0-0` validator + length; page: its video links, signed queries ignored; feed: item ids),
+  `FeedParser` (RSS/Media RSS/Atom video enclosures, audio skipped), `WatchRunner` (first check only records; a
+  change notifies; auto-download re-queues a changed file or a feed's new videos, ≤ 10 a run, through
+  `enqueueUnique` and the #505 rules mirrored in `BulkRules`), `Watches` + `WatchJobService` (JobScheduler id 0x5650,
+  hourly, persisted, any network; cancelled when no link is watched). Bridge `watchList/Add/Update/Remove/Check`,
+  `setBulkRules` (pushed from `ensure-bridge`). JS: `src/downloads/watch/`, screen `/watched-links` (also the
+  notification's `vidorax://watched-links`), Download details "Watch for updates" (weekly, the source page).
+- **P4 bulk adding (#485, #505, #368/#369).** `src/downloads/bulk/`: URL patterns (`[001-100]`, `[a-c]`, `[1-9:2]`,
+  `{a,b}`, ≤ 500), link rules (types, words, regex, size — the size once the probe knows it, `SIZE_RULE`), playlists
+  M3U/PLS/XSPF and now RSS/Atom feeds ("Open playlist" in Batch Add), a checkbox choice list. Rules screen
+  `/download-rules`.
+- **P5 site grabber (#486).** `src/browser/site-grabber/`: robots.txt (VidoraX group, else `*`; longest rule wins),
+  same-site page links (no files, account/cart pages, nofollow), video links, breadth first, depth 2, ≤ 50 pages,
+  1 request/s, no cookies (`fetchPage`). Each page is archived by VidoraWeb `archiveOfflineHtml` (`HtmlArchiver`:
+  the fetched HTML in an off-screen WebView of the active profile, JavaScript off, no navigation, then
+  `saveWebArchive`) into Saved pages. Screen `/site-grabber` (browser menu "Save site offline", Download settings);
+  found videos are added through `addLinkFromBatch` with the rules.
+- **P5 comments (#380).** `src/downloads/comments/`: schema.org JSON-LD `Comment` trees and Reddit's public `.json`;
+  ≤ 500, saved as `<documents>/comments/<id>.json`, shown in Download details, deleted with the download.
+- **P7 cloud via the user's apps.** #512 "Save a copy to…" (native `SaveCopyAs`: `ACTION_CREATE_DOCUMENT`, request
+  0x564A, then an offer to remove the video from the phone); #507 "Import videos from a folder" (native
+  `FolderImport`: a picked tree, ≤ 500 videos, 3 levels, through `IncomingImport`, duplicates skipped; Google Drive
+  can't share trees — said in the app); #513 auto upload = Save Location into a cloud app's folder + new "Only on
+  Wi-Fi" + retries (failed copies retried after 15 and 30 min, 3 tries in all); #510 "Send to another phone" in
+  Queue backup (native `shareQueueFile`, a `.json` through the share sheet; imported there with Import queue).
+- **Tests.** JS: all 1 923 pass, both type checks clean (also fixed a pre-existing test-config type error in
+  `split-track-files.test.ts`). Native: new `WatchTest`, `WriteCacheTest`, `CooldownTest`, tuning record and cache
+  transfer tests — see the run noted below.
+- **Device (2026-11-20, VidoraX_Browser_F, upload-key release build, live sites):** Watched links — TWiT video feed
+  (`feeds.twit.tv/twit_video_hd.xml`) recognised as a feed, 20 latest videos listed, one downloaded (97 MB MP4,
+  1080p); the hourly job is scheduled (JobScheduler 22096, periodic 1 h, persisted); a malformed and an unreachable
+  link give their messages. Download details — "Save a copy to…" wrote `Download/2.mp4` (101 761 823 bytes, the
+  feed's length) and offered removal; "Watch for updates" added a weekly File watch. Save a site — test-videos.co.uk:
+  14 pages read and saved, 195 videos found, Stop works; a saved page opens offline with its styles and pictures.
+  Import from a folder — Movies: 16 videos, 8 imported, 8 skipped as already saved. Batch Add — `[1-2]` pattern →
+  2 links with the choice list, added. Fixed on the way: Watched links reloaded in a loop (port object per render),
+  double-encoded feed titles (`&amp;#039;`), feed/playlist titles now name the download, Save a site starts with
+  nothing chosen above 20 videos (Select all/none), "Save comments" hidden for a direct-file source, `.xml` feeds
+  offered in "Open playlist". Comments: Reddit returns 403/an interstitial to unsigned clients from this network and
+  big video sites publish no JSON-LD comments, so only unit tests cover the parsers. Emulator pitfalls this time:
+  host load froze System UI; a campus network refused public DNS (the emulator had none until it was restarted).
+
+#### P2 Sources — FTP, mirrors, Wi-Fi + mobile data (branch `claude/kind-pasteur-9d2dc3`, 2026-11-20)
+
+On top of `claude/downloader-finalized-formats-4a36f8` (`56d5ab7`). ARCHITECTURE §1 (Sources), §3.1, §3.2, §3.4.
+
+- **#304 FTP/FTPS.** `SourceKind.FTP` (`'ftp'`); Commons Net 3.13.0. `net/FtpSession` (link parsing, TLS, the
+  private-network rule, reply → HTTP status), `plan/FtpProbe` (SIZE + first 64 KiB through `MediaSniffer`; trailing
+  `moov` read with REST), `transfer/FtpTransfer` (one connection, REST resume against `ftp <size> <mdtm>`). Routed by
+  `Probe.probeBlocking` (an ftp link with no kind is FTP) and `RealTransfers` (by scheme); the engine runs it through
+  `runProgressive` (verify/process/finalize unchanged), FTP identity in `DownloadIdentity`, play-while-downloading
+  allowed. Sign-in: the link's `user:pass@` is moved by `EnqueueRequestRecord` into `DownloadCredentials` (memory,
+  pinned to the ftp origin; `ftpLoginFor`), the row keeps the link without it; `Redact.url` strips it. JS:
+  `downloads/v2/sources.ts` + `ftp-download.ts`, `browser/services/ftp-link.service.ts`; the address bar, pasted and
+  shared links (`openPastedLink`), the clipboard offer and Batch Add send FTP links to the engine (`ftp:` stays a
+  blocked WebView scheme). Android 8+ only (Commons Net's `java.time` fields) — refused below with
+  `UNSUPPORTED_FORMAT` ("FTP downloads need Android 8 or later").
+- **#347 Mirrors.** `download_mirrors` (schema **v7**, new table only — renumber if another package also takes v7),
+  `setDownloadMirrors`/`getDownloadMirrors` (a running download restarts its transfer from disk), `EnqueueRequest.
+  mirrors`. `transfer/MirrorCheck` (same total + SHA-256 of the first 64 KiB, at every start), `PartRoute`s in
+  `RangedDownload` (a mirror that fails or answers other bytes is dropped, its part handed back). UI: Download
+  details → "Mirrors" (`DownloadMirrorsSection`, file downloads only), Batch Add lines `link | mirror | mirror`.
+- **#446 Wi-Fi + mobile data.** `DownloadSettings.multiNetwork` (bridge/prefs/JS `multiNetwork`, off by default,
+  forced off with Wi-Fi only), `net/MultiNetwork` (`requestNetwork(TRANSPORT_CELLULAR)`, `HttpClient.boundTo`),
+  engine `SecondNetwork` lease per transfer; parts on both networks via the same routes. `CHANGE_NETWORK_STATE`
+  (normal) in the media module manifest and PLAY_SUBMISSION §C. Data limit (H6): mobile bytes are download progress,
+  counted like every byte.
+- **Tests.** Kotlin: `FtpSourceTest` (in-process Apache FtpServer; its throwaway TLS certificate is made by the JDK's keytool at run time — `*.p12` stays git-ignored),
+  `SourcesTransferTest` (mirrors accepted/rejected/failed/wrong bytes, two clients, lost network),
+  `DownloadEngineSourcesTest`, DB upgrade v6→v7. JS: `downloads/v2/sources.test.ts`; link-intake/clipboard tests
+  updated (FTP file links are links now).
+- **Device check (2026-11-20, new AVD `VidoraX_Test2`, upload-key release build, API 35):**
+  - FTP (`pyftpdlib` on the Mac via `adb reverse`, host `fx.127.0.0.1.nip.io` — the guard does no DNS): a shared
+    `ftp://…/clip.mp4` → toast "Downloading clip" → 18.3 MB, gallery copy md5-identical; the app tried AUTH TLS
+    first and reconnected plain when the server had none. `ftp://tester:pa%20ss%3Aword@…/sub/My%20Clip%20%C3%BC.mp4`
+    (sign-in, space/colon in the password, non-ASCII path) → paused at 44 %, resumed: the server sent only the
+    remaining 18,219,157 of 35,586,197 bytes (REST), file md5-identical. Audio-only `song.m4a` → "This file is not
+    a video". Explicit-TLS server with a self-signed certificate → handshake refused by the phone, plain FTP used,
+    file md5-identical. (Through `adb reverse` the host side keeps accepting a cut probe read for a few seconds, so
+    the server log shows ~3 MB "sent" for a 64 KiB probe — an adb artefact.)
+  - Mirrors: Batch Add line `dn801201.us.archive.org/…/big_buck_bunny_720p_surround.mp4 | dn710604.ca.archive.org/…
+    .mp4 | …surround.ogv` → "+2 mirrors"; Details shows both under "Mirrors". Engine log: `mirrors accepted=1
+    rejected=1 bytes={main=42804304, mirror1=19074305} dropped=[]` (the `.ogv`, another length, rejected; parts split
+    across both servers, sum = the 61,878,609-byte file); md5 = archive.org's published `aa031fc2…`. A mirror that
+    dies or answers other bytes mid-download is covered by `SourcesTransferTest` (no public server to break).
+  - Multi-network (setting on, Wi-Fi default and mobile data both validated): Batch Add
+    `dn600306.us.archive.org/…/ElephantsDream/ed_1024_512kb.mp4` (47,065,346 bytes, 3 connections) → while it ran
+    the app held `REQUEST … Transports: CELLULAR … Uid: <app>`, registered 12:41:43 and released 30 ms after the
+    transfer ended; engine log `bytes={main=31376898, main+mobile=15688448} dropped=[]` (sum = the file); kernel
+    counters agree: the mobile interface (`eth0` on the emulator) received ~16.4 MB, `wlan0` ~33 MB. The lost-mobile-
+    network drop is covered by `SourcesTransferTest`. (A Wikimedia `…480p.vp9.webm` link in Batch Add ended "Needs
+    review" in the direct analyzer, before the engine — not a P2 path; the AVD's Wi-Fi also dropped twice under the
+    Mac's load, and the Mac lost internet for a while.)
+  - Test files deleted afterwards (app data cleared, `Movies/VidoraX` removed on the AVD).
+
+#### P8 Safety and modes (branch `claude/exciting-shaw-90cf77`, 2026-11-20)
+
+On top of `claude/downloader-finalized-formats-4a36f8` (`56d5ab7`). Package P8 of the approved plan; the design is in
+ARCHITECTURE §6.1.
+
+- **Malware Warning #461:** `safety/ContentSniff` (first bytes vs name), probe `disguisedAs`, `ERR_UNSAFE_FILE` on
+  Save to VidoraX, warning before Open with / Share / Extract and in Download Details, H17 double extensions and
+  disguised MIME types in JS and `RiskyDownloads`.
+- **Source check #514:** quality-sheet badge from local signals only; `ProbeResult.redirects` is new in the bridge.
+- **Extract archive #407:** zip `VIEW`/`SEND` filters, `/archive-import` screen, `ZipArchive` guards (slip, >1000
+  entries, >4 GB, ratio >100, encrypted, APK), videos + `.srt`/`.vtt` into the library, RAR/7z "not supported".
+- **Simple/Advanced #516/#517:** `settingsView` (Simple new, Advanced existing), `advanced` flag for rows/sections
+  that other packages can set.
+- **Strings:** `fileSafety`, `sourceCheck`, `archiveImport`, `settingsView` catalogs (English + Urdu).
+- **Tests:** JS 1939/1939, `tsc` clean, vidorax-media 1018 and vidorax-web 171 unit tests green (new: ContentSniffTest,
+  ZipArchiveTest, SrtToVttTest, ProbeTest disguised/redirects, IncomingMediaIntentsTest archives, RiskyDownloadsTest).
+- **Device (2026-11-20, new AVD `Pixel_8`, upload-key release build):**
+  - Fresh install starts in Simple ("Download Settings · Simple" on the main Settings row); Simple hides Connections per
+    file, Download hours, Advanced network, File naming and the Advanced section; Advanced shows them; both checked in
+    English and Urdu.
+  - A zip of two videos + `.srt` + `setup.exe` opened from Files → "Open with" VidoraX: listing, programs warning,
+    "Extract anyway" → 2 videos in the library with thumbnails, 1 subtitle saved; opening it again → "0 added, 2
+    already there". A zip-slip archive → refused with the harmful-archive message (all in Urdu).
+  - An APK renamed `holiday.mp4` opened from Files: the Player says unreadable, Save to VidoraX → "Not saved: this file
+    is not a video and may be harmful" (`ERR_UNSAFE_FILE`), Open with → "This file isn't what its name says … really an
+    Android app (APK)" with Open anyway / Cancel.
+  - Local host page (test-only release build with cleartext allowed, `http://10.0.2.2:8097`): an APK named
+    `holiday-app.mp4` sent as an APK type → "This file is disguised" before anything is downloaded.
+  - **Not device-checked:** the Source check badge on live http/https links and a disguised file on a public page —
+    the Mac had no internet during the run (host `curl`/ping/DNS all failed), and local pages are private-network
+    hosts that detection ignores by design. Covered by `source-check.test.ts`, `probe-observations.test.ts` (the
+    verifier's disguised refusal) and ProbeTest.
+- **Known limits:** an APK sent as `video/mp4` from a page detection does not take (a private-network page, or no tab
+  owner) still goes to Android's own downloader without the warning, as H17 trusts a video MIME type; opening that file
+  with VidoraX is then caught by the content check. Simple view hides rows but keeps their values (a download-hours
+  schedule set in Advanced still applies).
+
+#### P6 Remote control and integrations (branch `claude/focused-goodall-8b843b`, 2026-11-20)
+
+On top of `claude/downloader-finalized-formats-4a36f8` (`56d5ab7`). Package P6 of the client-approved 1.2.0 plan:
+#439 Web UI, #438 Remote, #501 CLI, #499 Automation API, #500 browser extension, #511 Send to device. Design in
+ARCHITECTURE §3.9; API in `docs/REMOTE_API.md`; intents in `docs/AUTOMATION.md`.
+
+- **Native:** `modules/vidorax-media/.../remote/` (NanoHTTPD 2.3.1) and a second Expo module `VidoraRemote`. Off by
+  default; started from Settings → Downloads → Remote control. Binds the Wi-Fi IPv4 address (+ loopback for USB
+  `adb forward`), random port kept in prefs `vidorax_remote`; stops after 30 min idle, on Wi-Fi loss, or a minute in
+  the background with nothing downloading. No service and no permission added. PIN pairing with lockout, hashed
+  tokens, Host/Origin/JSON checks (DNS rebinding and cross-site requests refused).
+- **JS:** `src/remote/` (store, `link-intake-queue.ts` → `addLinkFromBatch`), `src/screens/remote-control/`,
+  `RemoteControlSettingsSection`, "Send to computer" in the link long-press menu, the download card menu and
+  Download Details. Strings in `remoteControl.{en,ur}.ts`; privacy policy section "Remote control and other apps".
+- **Automation:** exported `AutomationReceiver` (`com.vidorax.action.ADD_DOWNLOAD` / `PAUSE_ALL` / `RESUME_ALL`) and the
+  `DOWNLOAD_COMPLETE` broadcast (id + title), all behind "Allow other apps to control downloads" (off).
+- **Outside the app:** `extensions/cli/vidorax-cli` (sh + curl), `extensions/vidorax-bridge/` (MV3, Chrome/Edge/Firefox;
+  store publishing is the owner's step — `extensions/vidorax-bridge/README.md`, `package.sh`).
+- **Tests:** Kotlin `remote/*Test` (56: auth/lockout, routing/security, real-socket server, stop policy, inbox,
+  automation); Node `src/remote/*.test.ts`, `modules/vidorax-media/remote-web.test.ts`.
+- **Device (2026-11-20, new AVD `VidoraX_Browser_H`, upload-key release build):** server listens only on the Wi-Fi
+  address and 127.0.0.1 (netstat); over `adb forward` wrong `Host` → 421, foreign `Origin` → 403, no token → 401, form
+  post → 415. Web UI from the host: paired with the phone's PIN, added `Big_Buck_Bunny_360_10s_1MB.mp4` (checked by
+  Batch Add, downloaded), re-adding it answered "already downloaded" (gallery copy); a 5 MB sibling paused and resumed
+  from the Web UI. "Send to computer" on the finished download → "Sent from phone" list → the computer downloaded the
+  991,017-byte MP4 through its ticket (Range 206); after the video was deleted in the app the ticket answered 404.
+  `vidorax-cli` (run with dash): unpaired error, wrong PIN, pair (config mode 600), add, list, pause, resume, unknown
+  id, live progress. Automation: with the switch off all three intents logged "ignored"; on, ADD_DOWNLOAD added the
+  link, PAUSE_ALL/RESUME_ALL paused/resumed it, and `DOWNLOAD_COMPLETE` was sent once (`dumpsys activity
+  broadcast-stats`). Stops: Home with nothing downloading → stopped after ~68 s ("background"); the emulator's Wi-Fi
+  dropped twice under host load → stopped within 6 s ("wifi_lost"), the screen said why; pairings and the port
+  survived a restart. Extension: loaded unpacked in Firefox 159 (temporary add-on), its popup paired through the real
+  form — "VidoraX Bridge (Firefox)" listed on the phone; extension-origin preflight/add got CORS + Private-Network
+  headers, a web page's preflight 403. Not automated: the context-menu click, Chrome/Edge loading (Chrome 157 ignores
+  `--load-extension`), and the 30-minute idle stop (unit-tested). Not cleanly device-checked: "keeps running in the background while a
+  download runs" (unit-tested; the one device run survived 85 s in the background with a download going but ended in
+  a Wi-Fi drop, and the Mac's internet then went away). Found on device and fixed: queue rows rebuilt every poll
+  swallowed clicks; `type="url"` rejected bare links; a 30 MB file's link check took ~65–100 s on the loaded AVD, so
+  the per-link cap is now 3 minutes and a check that ignores its abort can no longer stall the queue. Test videos and
+  the app's data on the AVD were deleted afterwards.
+- **P7 hook:** pairing and transport are reusable — `RemoteAuth` tokens + `/api/v1` routes; a queue push to another
+  VidoraX can be a new authenticated route on `RemoteRouter` plus a client that pairs with the other phone's PIN.
+
+#### Merged and released as 1.2.0 (versionCode 5), 2026-11-20
+
+- **Merges** on `claude/downloader-finalized-formats-4a36f8`: P1/P3/P4/P5/P7 `52f1e02`, then P2 `02aab55`, P8 `050f44b`,
+  P6 `6358c86`. Joins: the settings records carry the P1 and P2 fields together; the ranged write cache also counts each
+  route's bytes; FTP reads use the tunable buffer; Batch Add takes `{ rules, title, mirrors }` and a `link | mirror`
+  line works beside patterns and playlists (`batchLinksFromText`). Only P2 changes the database (v7). Simple view hides
+  multi-network, the Performance section, Download rules and "Allow other apps to control downloads". The P6 extension
+  test now type-checks under `tsconfig.test.json`.
+- **Fix found by the merged run:** parallel progress could step back by one write when two parts reported out of order
+  (`RangedDownload.report`, `00bf104`).
+- **Fix found on the device (upgrade test):** an install from 1.1.0 whose settings were never changed has no saved
+  settings (zustand 5 writes only on a change, not after hydration), so P8 took it for a new install and showed
+  Simple. `settingsViewToSave` now decides once at startup (`app-initializer`, after the settings rehydrate): a saved
+  view is kept; otherwise saved settings or a finished intro mean Advanced, else Simple, and the choice is saved.
+  Device: production 1.1.0 (vc4) fresh → intro skipped → 1.2.0 installed over it → Advanced; 1.2.0 fresh → intro →
+  restart → still Simple. Batch Add, Watched links, Remote control, Extract archive and Download rules open on the
+  merged build without a crash.
+- **Tests after the merges:** JS 2 003/2 003, both type checks clean; native vidorax-media 1 134, vidorax-web 171.
+- **Version:** 1.2.0 / versionCode 5 in `android/app/build.gradle` and `app.json`; Play release notes and the zip
+  intent-filter row in `docs/play-console/PLAY_SUBMISSION.md`. Play upload stays the owner's step.
+
+### 4.38 Light theme — the CEO's design (branch `hamza/light-theme`, 2026-11-17)
+
+The Browser and Downloads modules rebuilt to `VidoraX-6-Themes-65-Screens.pdf` (light theme, screens 1–17, 33–47):
+design tokens measured from the PDF vectors (`docs/design/light-theme-kit.md`, `src/design/*`), light as the
+default theme, Inter only, a five-tab bar (Browser · Downloads · Player · Files · Settings), Browser and Downloads
+as nested stacks inside their tabs (`src/app/(app)/(tabs)/browser/*`, `(tabs)/downloads/*`), every design screen
+as a route. Work log: `docs/work-log/hamza-browser.md` → "Light theme". Player and Files are not done.
+
+### 4.39 The six themes (branch `hamza/light-theme`, 2026-11-17)
+
+Dark, Red, Cream, Midnight and Blush join Light: `src/theme/colors.ts` builds every theme's tokens from one measured
+palette (`designPalettes` / `designTheme`, pinned by `src/theme/colors.test.ts`); `ThemePreference` is the six names
+in the PDF's order (a stored `logo` reads as `red`); `isDarkThemeMode` (Dark, Midnight) drives night mode, the dark
+navigation / Paper bases and force-dark pages; the Red theme's accent header band and bottom bar come from
+`theme.colors.headerStyle === 'band'` in `DsHeader`, `DsIconButton`, `DsScreen` and `DsTabBar`; Settings →
+Appearance shows six swatches. Palette table and chrome rules: `docs/design/light-theme-kit.md` → "The six themes".
+Work log: `docs/work-log/hamza-browser.md` → "The other five themes". Gate at the time: typecheck clean, 1881 / 1881
+unit tests, lint 0 errors. No device pass yet (checklist in the work log).
+
+### 4.40 Hamza's design merged onto 1.2.0, checked against the PDF (branch `claude/design-65-screens`, 2026-11-21)
+
+`origin/hamza/light-theme` (§4.38, §4.39) merged onto the 1.2.0 branch (`abc5c26`); every Hamza browser package
+(B2–B24) was already in 1.2.0 (only work-log and `.gitignore` leftovers differ). Checked screen by screen against
+`VidoraX-6-Themes-65-Screens.pdf` (Browser 1–9, 34–39; Downloads 10–17, 33, 40–47; all six themes) on the release
+build. Status sheet: `~/Downloads/VidoraX-Client-APK/VidoraX-Design-Check-1.2.0.xlsx`.
+
+- **Merge.** Batch Add body = Hamza's design + #485/#347/#368/#369/#505; Video sheet keeps the #514 Source check;
+  Download details rows open mirrors / cloud / watch / comments panels, the #461 warning and Send to computer;
+  Download settings = the design's sections + performance, low memory, multi-network, rules, watched links, site
+  grabber, cloud, remote control and the Simple / Advanced view (advanced rows hidden in Simple). `DsCheckTile` moved
+  into the kit. Hamza's pattern expander now calls the shared #485 `expandUrlPattern` (descending, letters, steps).
+- **"Not available yet" rows wired to 1.2.0:** Network (multi-network, remote control, extension bridge, automation
+  toggle; SSL and IPv6 say "always on"), Link grabber (RSS → watched links, site grabber), Alerts & sync (queue to
+  another phone, send to computer, cloud sheet, Android's battery-optimization list, Beginner / Advanced =
+  `settingsView`), Queues (exit when done), File actions (send to computer, save to cloud), Organize (size filter →
+  download rules), Add download (headers & referer), Statistics (API · CLI · bridge, send queue), Incognito
+  (per-script user scripts), Focus (quiet downloads = `notificationSilent`), Privacy (Safe Browsing on). Passwords
+  and Torrent now say plainly why there is no feature. The five 1.2.0 screens (watched links, download rules, remote
+  control, save a site, extract archive) use `DsScreen` / `DsHeader`, so they follow the six themes.
+- **Release blocker fixed: Quick Access.** The Play fix of 1.0.3 (`release/1.0` de1cf91 / e212d0a: login-free tiles)
+  had never reached main, so 1.1.0-browser and the first 1.2.0 APK promoted Instagram, TikTok, Facebook again. Now:
+  Vimeo, TED Talks, Wikimedia, Mixkit, NASA, ESA (NASA and ESA checked logged out in the app; Coverr rejected — sales
+  pop-up; Pexels / Pixabay / Videezy — Cloudflare).
+- **New:** #31 voice search (mic on the start page and in Search, Utilities → Voice commands) through Android's own
+  voice input (`VoiceSearchContract`, `<queries>` for RECOGNIZE_SPEECH, no microphone permission); #267 unit
+  converter in the address bar (`unit-converter.ts`: length, weight, volume, temperature, speed, data, time; no
+  currency); design 5's weekly total (`BlockedTally`, day buckets in prefs `vidorax_blocked_tally`, written at most
+  every 30 s off the network path).
+- **Red theme chrome:** the browser's top inset, the progress strip and the toolbar gap take the band colour (no
+  page-colour lines); the status-bar icons are re-applied after a theme change (Android put dark icons back on the band).
+- **Not in the design build:** OCR (copy text from image), anti-fingerprinting, performance profiler, password
+  manager (phone's own), torrent, proxy / SOCKS, floating widget, ask where to save, compress / metadata tagging,
+  tags manager, server limit detection, audio-only. Player, Files, Private folder and App settings screens (18–32,
+  48–65) are not redesigned yet (they follow the theme colours).
+- **Checks:** tsc (app + tests) clean, JS 2023 / 2023, eslint 0 errors, vidorax-web unit tests 177 (new
+  `VoiceSearchTest`, `BlockedTallyTest`). Device (VidoraX_Browser_F, release build installed over 1.2.0): every
+  Browser and Downloads screen opens; six themes switch live; voice search opens Google's voice input; `5 km in mi`
+  → `= 3.10686 mi`; w3schools: 5 blocked on the page = 5 this week.
+
+### 4.41 Device test of the design build and four fixes (branch `claude/design-65-screens`, 2026-11-22)
+
+A full test pass using `docs/testing/VidoraX-1.2.0-Deep-Test-Prompt.md`. The report is
+`docs/testing/VidoraX-1.2.0-Test-Report.md` (37 pass, 5 fail, 4 blocked). Its screenshots are local only, in
+`docs/testing/report-shots/` (not committed). Fixed and checked on the AVD:
+
+- **Shared / opened links** now bring the Browser forward (`incoming-link.service.ts`, `open(text, bringForward)` →
+  `navigation.navigate(routePaths.browser)`). This dated back to 1.0.
+- **Total speed graph**: `'use no memo'` in `useTotalSpeedGraph` and `useDownloadProgressDetails`. The React Compiler
+  cached the first read of the stats map (the same pattern as DeveloperSettingsSection).
+- **Tour step 1**: a new `startSearch` target (BrowserHomeView); TourOverlay falls back to it while
+  `addressBarVisibility.isHidden()` or the bar isn't `isMostlyOnScreen` (tour-layout, tested).
+- **Nested stacks**: `unstable_settings = { anchor: 'index' }` (expo-router 57 reads `anchor`, then
+  `initialRouteName`) in `(tabs)/browser/_layout.tsx` and `(tabs)/downloads/_layout.tsx`. A `vidorax://` link to a
+  module screen keeps the list or start page under it.
+- **The Low findings, fixed in a second commit:**
+  - **Failed card** (BUG-005): `DownloadCard` shows an accent "Try again" in the status row when the card is
+    FAILED and its actions include `retry`; the ⋮ menu keeps it too.
+  - **No working internet** (BUG-006): `NetworkGate.hasWorkingInternet()` / `awaitWorkingInternet()` (default true /
+    no wait), backed in `AndroidNetworkGate` by `NET_CAPABILITY_VALIDATED`. In `transferWithRecovery`, a
+    `MediaNetworkException` while the network is not validated holds the download in WAITING_NETWORK for up to
+    `INTERNET_RECHECK_MS` (30 s, or until validated) and tries again without counting a failure, at most
+    `MAX_INTERNET_WAITS` (30) times; then errors count as before. Tested in `DownloadEngineNoInternetTest`.
+  - **HLS name** (BUG-008): the video sheet prefills the title the download will really get
+    (`previewBrowserDownloadTitle`), and `resolveDisplayTitle`'s URL fallback drops `.m3u8/.m3u/.mpd/.ism/.isml`.
+    A pasted link (no browser offer, `isSelectionLocked()` false) is named from its own selection, never from the
+    browser's last `pageUrl` (that was showing the previous page's name).
+  - **Batch Add 404** (BUG-009): an UNRESOLVED page link with `HTTP_404` / `HTTP_410` is refused with detail
+    `NOT_FOUND` and shows "Not found: the link is gone (404)" (en + ur).
+  - **Disguised-file dialog** (BUG-010): `showAppDialog` (`components/modals/app-dialog.ts`) is a promise-based
+    themed dialog rendered by `AppDialogHost` (in `app-provider.tsx`) through `ConfirmModal` (new `hideCancel`).
+    `file-safety-dialog.ts` and `dangerous-download-dialog.ts` use it, with `Alert` as the fallback when no host is
+    mounted.
+  - Device-checked on the release build (SHA-256 `f33ba26c…`), except BUG-006 (unit tests only; the AVD's DNS
+    can't be broken on demand). Test trick: fill `/sdcard` with `dd` to make a download fail with NO_SPACE; free
+    the space before `adb install` (install fails on a full device).
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

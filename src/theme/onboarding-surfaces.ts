@@ -1,14 +1,13 @@
 /**
  * Onboarding / intro decorative surface colors.
  *
- * Continuity policy — matches selected theme through startup:
- * - LIGHT → white/neutral + dark-neutral accents
- * - LOGO → white/neutral + brand-red accents
- * - DARK → neutral black/charcoal + white/gray (NO olive/sage)
+ * Continuity policy — matches the selected theme through startup: the light themes (Light, Red, Cream, Blush)
+ * build glass and chips over their own ink and accent; the dark themes (Dark, Midnight) over their own surfaces.
  */
 
-import { brandPalette, colors, withAlpha, type ThemeMode } from './colors';
+import { colors, withAlpha, type ColorTokens, type ThemeMode } from './colors';
 import { resolveIntroColors, type IntroColors } from './intro-palette';
+import { isDarkThemeMode } from './theme-preference';
 
 export type OnboardingSurfaces = IntroColors & {
   title: string;
@@ -57,9 +56,10 @@ export const DARK_ONBOARDING_ALLOWLIST = {
   titleAccent: colors.dark.primary,
 } as const;
 
-function buildLightSurfaces(accent: string, intro: IntroColors): OnboardingSurfaces {
-  const ink = colors.light.textPrimary;
-  const muted = colors.light.textSecondary;
+function buildLightSurfaces(c: ColorTokens, intro: IntroColors): OnboardingSurfaces {
+  const accent = c.primary;
+  const ink = c.textPrimary;
+  const muted = c.textSecondary;
   return {
     ...intro,
     title: ink,
@@ -67,7 +67,7 @@ function buildLightSurfaces(accent: string, intro: IntroColors): OnboardingSurfa
     subtitle: withAlpha(ink, 0.62),
     logoGlow: withAlpha(accent, 0.14),
     radialGlow: withAlpha(accent, 0.1),
-    glassBg: withAlpha(colors.light.white, 0.96),
+    glassBg: withAlpha(c.card, 0.96),
     glassBorder: withAlpha(ink, 0.1),
     glassBorderActive: withAlpha(accent, 0.35),
     chipBg: withAlpha(ink, 0.04),
@@ -82,7 +82,7 @@ function buildLightSurfaces(accent: string, intro: IntroColors): OnboardingSurfa
     libraryBg: withAlpha(ink, 0.04),
     libraryLabel: withAlpha(ink, 0.5),
     libraryLabelActive: withAlpha(ink, 0.82),
-    searchBg: colors.light.white,
+    searchBg: c.card,
     searchBorder: withAlpha(ink, 0.1),
     searchPlaceholder: muted,
     searchText: ink,
@@ -90,21 +90,21 @@ function buildLightSurfaces(accent: string, intro: IntroColors): OnboardingSurfa
     waveform: withAlpha(accent, 0.85),
     heroEnergy: withAlpha(accent, 0.88),
     heroBeam: withAlpha(accent, 0.22),
-    heroGlassBg: withAlpha(colors.light.white, 0.92),
+    heroGlassBg: withAlpha(c.card, 0.92),
     footerMuted: muted,
     footerActive: ink,
   };
 }
 
-function buildDarkSurfaces(intro: IntroColors): OnboardingSurfaces {
-  const ink = colors.dark.textPrimary;
-  const muted = colors.dark.textSecondary;
-  const accent = colors.dark.primary;
-  const surface = colors.dark.surface;
+function buildDarkSurfaces(c: ColorTokens, intro: IntroColors): OnboardingSurfaces {
+  const ink = c.textPrimary;
+  const muted = c.textSecondary;
+  const accent = c.primary;
+  const surface = c.surface;
   return {
     ...intro,
-    title: DARK_ONBOARDING_ALLOWLIST.title,
-    titleAccent: DARK_ONBOARDING_ALLOWLIST.titleAccent,
+    title: ink,
+    titleAccent: accent,
     subtitle: withAlpha(ink, 0.72),
     logoGlow: withAlpha(accent, 0.14),
     radialGlow: withAlpha(accent, 0.1),
@@ -123,7 +123,7 @@ function buildDarkSurfaces(intro: IntroColors): OnboardingSurfaces {
     libraryBg: withAlpha(ink, 0.05),
     libraryLabel: withAlpha(muted, 0.7),
     libraryLabelActive: withAlpha(ink, 0.88),
-    searchBg: colors.dark.surfaceElevated,
+    searchBg: c.surfaceElevated,
     searchBorder: withAlpha(ink, 0.1),
     searchPlaceholder: muted,
     searchText: ink,
@@ -139,11 +139,6 @@ function buildDarkSurfaces(intro: IntroColors): OnboardingSurfaces {
 
 export function resolveOnboardingSurfaces(mode: ThemeMode): OnboardingSurfaces {
   const intro = resolveIntroColors(mode);
-  if (mode === 'dark') {
-    return buildDarkSurfaces(intro);
-  }
-  if (mode === 'logo') {
-    return buildLightSurfaces(brandPalette.brandRed, intro);
-  }
-  return buildLightSurfaces(colors.light.primary, intro);
+  const c = colors[mode] ?? colors.light;
+  return isDarkThemeMode(mode) ? buildDarkSurfaces(c, intro) : buildLightSurfaces(c, intro);
 }

@@ -136,6 +136,8 @@ export async function verifySocialSourceCandidate(
     pageUrl: string;
     requestContext: MediaRequestContext;
     signal?: AbortSignal;
+    /** A `.ts` file the user opened: MPEG-TS bytes are that file, not an HLS segment (the engine decides the rest). */
+    transportStreamFile?: boolean;
   },
 ): Promise<
   | { ok: true; verification: CandidateVerification; signatureKind: string | null; usedRangeProbe: boolean }
@@ -160,7 +162,11 @@ export async function verifySocialSourceCandidate(
     };
   }
 
-  if (isLikelyMediaSegment(url, media.extension) || isFalsePositive({ url, mimeType: media.mimeType })) {
+  const transportStreamFile = input.transportStreamFile === true;
+  if (
+    (!transportStreamFile && isLikelyMediaSegment(url, media.extension)) ||
+    isFalsePositive({ url, mimeType: media.mimeType, transportStreamFile })
+  ) {
     return {
       ok: false,
       reason: 'SEGMENT_RESOURCE',
@@ -199,6 +205,7 @@ export async function verifySocialSourceCandidate(
   const verification = await verifyMediaCandidate(url, {
     requestContext: input.requestContext,
     signal: input.signal,
+    transportStreamFile: input.transportStreamFile,
   });
 
   if (!verification.ok) {
@@ -266,7 +273,7 @@ export async function verifySocialSourceCandidate(
         });
         return { ok: false, reason: 'MEDIA_FRAGMENT', verification };
       }
-      if (sig.kind === 'ts') {
+      if (sig.kind === 'ts' && !input.transportStreamFile) {
         return { ok: false, reason: 'SEGMENT_RESOURCE', verification };
       }
       if (sig.reason === 'drm_protected') return { ok: false, reason: 'DRM_UNSUPPORTED', verification };
@@ -282,7 +289,7 @@ export async function verifySocialSourceCandidate(
       verification.finalUrl = sig.finalUrl ?? verification.finalUrl;
       verification.mimeType = sig.mimeType ?? verification.mimeType;
       verification.contentLength = sig.totalBytes ?? verification.contentLength;
-      if (sig.kind === 'ts') {
+      if (sig.kind === 'ts' && !input.transportStreamFile) {
         return { ok: false, reason: 'SEGMENT_RESOURCE', verification };
       }
       if (sig.mp4Kind === 'PROGRESSIVE_OR_COMPLETE' || sig.mp4Kind === 'FRAGMENTED_COMPLETE') {

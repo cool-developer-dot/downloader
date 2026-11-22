@@ -6,7 +6,7 @@ import { navigation } from '@/navigation';
 import { SettingsRow } from '@/screens/settings/components/SettingsRow';
 
 /** The route of the Download history & logs screen (`src/app/(app)/download-history.tsx`). */
-export const DOWNLOAD_HISTORY_ROUTE = '/download-history';
+export const DOWNLOAD_HISTORY_ROUTE = '/downloads/history';
 
 /** Settings → Downloads → "Download history & logs" (not the browsing History). */
 export const DownloadHistoryLinkRow = memo(function DownloadHistoryLinkRow({ testID }: { testID?: string }) {

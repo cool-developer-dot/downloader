@@ -1,0 +1,42 @@
+import type { CatalogStrings } from '../types';
+import type { downloadSourcesEn } from './downloadSources.en';
+
+export const downloadSourcesUr: CatalogStrings<typeof downloadSourcesEn> = {
+  multiNetwork: 'تجرباتی: وائی فائی اور موبائل ڈیٹا ایک ساتھ استعمال کریں',
+  multiNetworkHint:
+    'وائی فائی پر بڑی ڈاؤن لوڈز کے کچھ حصے زیادہ رفتار کے لیے موبائل ڈیٹا سے بھی آتے ہیں۔ اس میں آپ کا موبائل ڈیٹا خرچ ہوتا ہے اور یہ آپ کی ڈیٹا حد میں شمار ہوتا ہے۔',
+  multiNetworkWifiOnly: 'اسے استعمال کرنے کے لیے ”صرف وائی فائی“ بند کریں',
+  ftpChecking: 'FTP فائل چیک ہو رہی ہے…',
+  ftpStarted: '{title} ڈاؤن لوڈ ہو رہی ہے',
+  ftpAlreadyDownloading: 'یہ فائل پہلے سے ڈاؤن لوڈ ہو رہی ہے',
+  ftpAlreadyDownloaded: 'یہ فائل پہلے سے ڈاؤن لوڈ ہو چکی ہے',
+  ftpInvalid: 'یہ FTP لنک کسی فائل کا نہیں ہے',
+  ftpPrivate: 'نجی نیٹ ورک کے پتوں والے لنکس کی اجازت نہیں',
+  ftpUnavailable: 'FTP ڈاؤن لوڈ کے لیے ایپ کا نیا ورژن درکار ہے',
+  ftpNotVideo: 'یہ فائل ویڈیو نہیں ہے',
+  ftpProtected: 'یہ ویڈیو محفوظ (پروٹیکٹڈ) ہے',
+  ftpLive: 'یہ لائیو اسٹریم ہے، فائل نہیں',
+  ftpSignIn: 'FTP سرور نے یوزر نیم یا پاس ورڈ قبول نہیں کیا',
+  ftpNotFound: 'FTP سرور پر فائل نہیں ملی',
+  ftpNetwork: 'FTP سرور تک رسائی نہیں ہو سکی',
+  ftpServer: 'FTP سرور یہ فائل نہیں بھیج سکا',
+  ftpOldAndroid: 'FTP ڈاؤن لوڈ کے لیے اینڈرائیڈ 8 یا اس سے نیا ورژن درکار ہے',
+  mirrorsTitle: 'مررز',
+  mirrorsHint:
+    'اسی فائل کے دوسرے لنکس۔ ہر لنک پہلے چیک ہوتا ہے (وہی سائز اور وہی ابتدائی بائٹس)، پھر سب سے حصے ڈاؤن لوڈ ہوتے ہیں۔',
+  mirrorAdd: 'مرر شامل کریں',
+  mirrorPlaceholder: 'https://…',
+  mirrorSave: 'شامل کریں',
+  mirrorCancel: 'منسوخ',
+  mirrorRemove: 'ہٹائیں',
+  mirrorRemoveA11y: 'مرر {host} ہٹائیں',
+  mirrorInvalid: 'http یا https لنک درج کریں',
+  mirrorPrivate: 'نجی نیٹ ورک کے پتوں والے لنکس کی اجازت نہیں',
+  mirrorSame: 'یہ اسی ڈاؤن لوڈ کا اپنا لنک ہے',
+  mirrorDuplicate: 'یہ مرر پہلے سے شامل ہے',
+  mirrorLimit: 'زیادہ سے زیادہ {count} مررز',
+  mirrorFailed: 'مررز محفوظ نہیں ہو سکے',
+  mirrorsNone: 'کوئی مرر نہیں',
+  batchMirrorsHint: 'مررز شامل کرنے کے لیے انہیں اسی لائن میں لنک کے بعد | لگا کر لکھیں',
+  batchMirrorsAdded: '+{count} مررز',
+};

@@ -17,6 +17,7 @@ import {
 import { getV2Engine, isEngineOwned } from '@/downloads/v2';
 import { useDownloadsStore } from '@/store/downloads';
 import { removeDownloadCatalogItem } from '@/storage/services/catalog-persist';
+import { deleteSavedComments } from '@/downloads/comments/comments-store';
 
 import { CompletedFileExportError } from '../export/errors';
 import { clearExportReceipt } from '../export/receipt-store';
@@ -162,6 +163,8 @@ export async function deleteCompletedFileFromVidoraX(
 
       // Forget export receipt only (public MediaStore copy remains).
       clearExportReceipt(id);
+      // #380: the comments saved beside the video go with it.
+      deleteSavedComments(id);
 
       if (plan.dismissNotification) {
         await dismissTerminalNotifications(id);

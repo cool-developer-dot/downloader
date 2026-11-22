@@ -67,6 +67,52 @@ export function groupHistoryByDay(
   }));
 }
 
+export type HistoryDaySection = {
+  /** `today`, `yesterday`, or the local day as `YYYY-MM-DD`. */
+  key: string;
+  kind: 'today' | 'yesterday' | 'date';
+  /** The local day's start. */
+  date: Date;
+  data: BrowserHistoryEntry[];
+};
+
+function localDayKey(day: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+}
+
+/**
+ * Design 36: one section per local day (TODAY, YESTERDAY, then each date), in the order the entries come (newest
+ * first). An entry with an unreadable time joins the last section.
+ */
+export function groupHistoryByDate(items: BrowserHistoryEntry[], now = new Date()): HistoryDaySection[] {
+  const today = startOfDay(now);
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const sections: HistoryDaySection[] = [];
+  const byKey = new Map<string, HistoryDaySection>();
+  for (const item of items) {
+    const visited = new Date(item.visitedAt);
+    const day = Number.isNaN(visited.getTime()) ? null : startOfDay(visited);
+    let section: HistoryDaySection | undefined;
+    if (day == null) {
+      section = sections[sections.length - 1];
+      if (!section) continue;
+    } else {
+      const time = day.getTime();
+      const key = time === today.getTime() ? 'today' : time === yesterday.getTime() ? 'yesterday' : localDayKey(day);
+      section = byKey.get(key);
+      if (!section) {
+        section = { key, kind: key === 'today' ? 'today' : key === 'yesterday' ? 'yesterday' : 'date', date: day, data: [] };
+        byKey.set(key, section);
+        sections.push(section);
+      }
+    }
+    section.data.push(item);
+  }
+  return sections;
+}
+
 /**
  * Relative timestamp for history rows.
  * Keeps copy short and scannable for dense lists.

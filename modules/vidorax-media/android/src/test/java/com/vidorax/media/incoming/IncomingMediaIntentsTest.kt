@@ -88,4 +88,26 @@ class IncomingMediaIntentsTest {
     assertNull(registry.get("t1"))
     assertEquals("content://x/3", registry.get("t3")!!.uri.toString())
   }
+
+  // P8 #407 Extract Archive
+  @Test fun `a zip opened or shared from another app is an archive`() {
+    val viewed = IncomingMediaIntents.parse(Intent.ACTION_VIEW, content, "application/zip", null, "clips.zip")!!
+    assertEquals(IncomingMedia.Kind.ARCHIVE, viewed.kind)
+    assertEquals("application/zip", viewed.mimeType)
+    val shared = IncomingMediaIntents.parse(Intent.ACTION_SEND, content, "application/x-zip-compressed", null, null)!!
+    assertEquals(IncomingMedia.Kind.ARCHIVE, shared.kind)
+    val byName = IncomingMediaIntents.parse(Intent.ACTION_VIEW, content, "application/octet-stream", null, "Clips.ZIP")!!
+    assertEquals(IncomingMedia.Kind.ARCHIVE, byName.kind)
+    assertEquals("application/zip", byName.mimeType)
+  }
+
+  @Test fun `RAR and 7z arrive as archives so VidoraX can say they are not supported`() {
+    assertEquals(IncomingMedia.Kind.ARCHIVE, IncomingMediaIntents.parse(Intent.ACTION_VIEW, content, "application/vnd.rar", null, null)!!.kind)
+    assertEquals("application/x-7z-compressed", IncomingMediaIntents.parse(Intent.ACTION_VIEW, content, null, null, "a.7z")!!.mimeType)
+  }
+
+  @Test fun `a shared video or web link is still not an incoming file`() {
+    assertNull(IncomingMediaIntents.parse(Intent.ACTION_SEND, content, "video/mp4", null, "clip.mp4"))
+    assertNull(IncomingMediaIntents.parse(Intent.ACTION_VIEW, Uri.parse("https://example.com/a.zip"), "application/zip", null, null))
+  }
 }

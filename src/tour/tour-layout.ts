@@ -31,6 +31,20 @@ export function isUsableRect(rect: Rect | null | undefined, screen: Size): rect 
   return x < screen.width && y < screen.height && x + width > 0 && y + height > 0;
 }
 
+/**
+ * At least half of the target's height is on screen. A bar slid out of view (the browser's address bar, which the
+ * start page hides) still measures with its real size, just above or below the window: usable, but pointing at it
+ * would highlight an empty strip.
+ */
+export function isMostlyOnScreen(rect: Rect | null | undefined, screen: Size): rect is Rect {
+  if (!isUsableRect(rect, screen)) {
+    return false;
+  }
+  const visibleTop = Math.max(rect.y, 0);
+  const visibleBottom = Math.min(rect.y + rect.height, screen.height);
+  return visibleBottom - visibleTop >= rect.height / 2;
+}
+
 /** The target grown by [padding] and clipped to the screen. */
 export function spotlightRect(target: Rect, screen: Size, padding: number = SPOTLIGHT_PADDING): Rect {
   const left = Math.max(0, target.x - padding);

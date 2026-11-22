@@ -22,7 +22,8 @@ data class IncomingMedia(
   val sizeBytes: Long?,
   val kind: Kind,
 ) {
-  enum class Kind(val wire: String) { VIDEO("video"), AUDIO("audio") }
+  /** P8 #407: ARCHIVE is a `.zip` (or a RAR/7z, only to say it is not supported) — listed, never played. */
+  enum class Kind(val wire: String) { VIDEO("video"), AUDIO("audio"), ARCHIVE("archive") }
 }
 
 /** What an intent asks to open, before the resolver is asked for the name and size. */
@@ -37,13 +38,17 @@ internal object IncomingMediaIntents {
    * Web links (the browser's), intents without data and anything that is not audio/video give null.
    */
   fun parse(action: String?, data: Uri?, type: String?, resolvedType: String?, displayName: String?): IncomingCandidate? {
-    if (action != Intent.ACTION_VIEW || data == null) return null
+    if (data == null) return null
+    // P8 #407: a shared (`SEND`) file is accepted only when it is an archive; videos keep arriving by `VIEW`.
+    if (action == Intent.ACTION_SEND) return parseArchive(data, type, resolvedType, displayName)
+    if (action != Intent.ACTION_VIEW) return null
     val scheme = data.scheme?.lowercase()
     if (scheme != ContentResolver.SCHEME_CONTENT && scheme != ContentResolver.SCHEME_FILE) return null
     for (mime in listOf(type, resolvedType)) {
       val clean = mime?.substringBefore(';')?.trim()?.lowercase()?.takeIf { it.isNotEmpty() } ?: continue
       kindOfMime(clean)?.let { return IncomingCandidate(data, clean, it) }
     }
+    parseArchive(data, type, resolvedType, displayName)?.let { return it }
     for (name in listOf(displayName, data.lastPathSegment)) {
       val byName = name?.let(MediaTypes::forFileName) ?: continue
       val kind = if (byName.isAudioOnly) IncomingMedia.Kind.AUDIO else IncomingMedia.Kind.VIDEO
@@ -51,6 +56,38 @@ internal object IncomingMediaIntents {
     }
     return null
   }
+
+  /** An archive by its MIME type, else by its name's extension; null for anything else. */
+  private fun parseArchive(data: Uri, type: String?, resolvedType: String?, displayName: String?): IncomingCandidate? {
+    val scheme = data.scheme?.lowercase()
+    if (scheme != ContentResolver.SCHEME_CONTENT && scheme != ContentResolver.SCHEME_FILE) return null
+    for (mime in listOf(type, resolvedType)) {
+      val clean = mime?.substringBefore(';')?.trim()?.lowercase() ?: continue
+      if (clean in ARCHIVE_MIME_TYPES) return IncomingCandidate(data, clean, IncomingMedia.Kind.ARCHIVE)
+    }
+    for (name in listOf(displayName, data.lastPathSegment)) {
+      val extension = name?.substringAfterLast('.', "")?.lowercase() ?: continue
+      ARCHIVE_EXTENSIONS[extension]?.let { return IncomingCandidate(data, it, IncomingMedia.Kind.ARCHIVE) }
+    }
+    return null
+  }
+
+  val ARCHIVE_MIME_TYPES = setOf(
+    "application/zip",
+    "application/x-zip-compressed",
+    "application/x-zip",
+    "multipart/x-zip",
+    "application/vnd.rar",
+    "application/x-rar-compressed",
+    "application/x-rar",
+    "application/x-7z-compressed",
+  )
+
+  private val ARCHIVE_EXTENSIONS = mapOf(
+    "zip" to "application/zip",
+    "rar" to "application/vnd.rar",
+    "7z" to "application/x-7z-compressed",
+  )
 
   /** Stable for a URI, so the same file opened twice keeps its resume position; reveals nothing of the URI. */
   fun tokenFor(uri: Uri): String = ContentHash.sha256("incoming:$uri").take(TOKEN_HEX_CHARS)
@@ -87,8 +124,11 @@ class IncomingMediaRegistry(private val capacity: Int = DEFAULT_CAPACITY) {
 class IncomingMediaReader(private val resolver: ContentResolver) {
   fun take(intent: Intent?): IncomingMedia? {
     if (intent == null || intent.getBooleanExtra(CONSUMED_EXTRA, false)) return null
-    val data = intent.data ?: return null
-    if (intent.action != Intent.ACTION_VIEW) return null
+    val data = when (intent.action) {
+      Intent.ACTION_VIEW -> intent.data
+      Intent.ACTION_SEND -> streamOf(intent)
+      else -> null
+    } ?: return null
     val details = details(data)
     val resolvedType = if (intent.type == null) runCatching { resolver.getType(data) }.getOrNull() else null
     val candidate = IncomingMediaIntents.parse(intent.action, data, intent.type, resolvedType, details.name) ?: return null
@@ -109,6 +149,15 @@ class IncomingMediaReader(private val resolver: ContentResolver) {
       kind = candidate.kind,
     )
   }
+
+  @Suppress("DEPRECATION")
+  private fun streamOf(intent: Intent): Uri? = runCatching {
+    if (android.os.Build.VERSION.SDK_INT >= 33) {
+      intent.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java)
+    } else {
+      intent.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+    }
+  }.getOrNull() ?: intent.clipData?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.uri
 
   private data class Details(val name: String?, val size: Long?)
 

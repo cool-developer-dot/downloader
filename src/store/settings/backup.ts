@@ -17,7 +17,7 @@ export const SETTINGS_BACKUP_FORMAT = 'vidorax.settings';
 export const SETTINGS_BACKUP_VERSION = 1;
 
 /** Never exported or imported: a file path is only meaningful on the device it came from. */
-export const EXCLUDED_KEYS: readonly string[] = ['downloadDirectory'];
+export const EXCLUDED_KEYS: readonly string[] = ['downloadDirectory', 'liveRecordingApproved'];
 
 /** Inclusive ranges numbers are clamped to. */
 export const NUMBER_RANGES: Readonly<Record<string, readonly [number, number]>> = {
@@ -29,6 +29,7 @@ const MAX_STRING_CHARS = 500;
 /** String settings that are a fixed choice: any other value in a file is ignored, never applied. */
 export const STRING_CHOICES: Readonly<Record<string, readonly string[]>> = {
   ...BROWSER_SETTING_CHOICES,
+  settingsView: ['simple', 'advanced'],
 };
 
 type Primitive = string | number | boolean;

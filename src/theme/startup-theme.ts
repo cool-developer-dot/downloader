@@ -1,6 +1,6 @@
 /**
  * Synchronous startup theme resolution for first React-owned frames.
- * Reads MMKV (falls back to DEFAULT_THEME_PREFERENCE = LOGO) — does not create a second theme store.
+ * Reads MMKV (falls back to DEFAULT_THEME_PREFERENCE = LIGHT) — does not create a second theme store.
  */
 
 import { getThemeMode } from '@/storage/mmkv/theme';

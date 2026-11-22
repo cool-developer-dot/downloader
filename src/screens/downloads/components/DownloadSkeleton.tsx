@@ -1,32 +1,26 @@
 import { memo } from 'react';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
 import { Skeleton } from '@/components/common/Skeleton';
-import { useTranslation } from '@/localization';
-
-import { useDownloadsTokens } from '../theme/downloads-tokens';
+import { ds, DsCard } from '@/design';
+import { useRtl, useTranslation } from '@/localization';
 
 function DownloadSkeletonCard() {
-  const downloadsTokens = useDownloadsTokens();
+  const rtl = useRtl();
   return (
-    <Box
-      px={downloadsTokens.spacing.screenX}
-      py={downloadsTokens.spacing.rowY}
-      gap={downloadsTokens.spacing.cardGap}>
-      <Box row gap={12} style={{ alignItems: 'flex-start' }}>
-        <Skeleton
-          width={downloadsTokens.thumbnailSize}
-          height={downloadsTokens.thumbnailSize}
-          borderRadius={downloadsTokens.radius.thumbnail}
-        />
-        <Box flex={1} gap={8}>
+    <DsCard>
+      <View style={{ flexDirection: rtl.rowDirection, gap: ds.space.rowGap, alignItems: 'flex-start' }}>
+        <Skeleton width={ds.size.thumbWidth} height={ds.size.thumbHeight} borderRadius={ds.radius.thumb} />
+        <View style={{ flex: 1, gap: 8 }}>
           <Skeleton width="78%" height={14} />
           <Skeleton width="52%" height={12} />
-          <Skeleton width="100%" height={8} borderRadius={downloadsTokens.radius.badge} />
-          <Skeleton width="40%" height={12} />
-        </Box>
-      </Box>
-    </Box>
+        </View>
+      </View>
+      <View style={{ marginTop: 14, gap: 8 }}>
+        <Skeleton width="100%" height={ds.size.progress} borderRadius={ds.size.progress / 2} />
+        <Skeleton width="40%" height={12} />
+      </View>
+    </DsCard>
   );
 }
 
@@ -41,15 +35,14 @@ export const DownloadSkeleton = memo(function DownloadSkeleton({
 }: DownloadSkeletonProps) {
   const { t } = useTranslation();
   return (
-    <Box
+    <View
       testID={testID}
       accessibilityLabel={t('downloads.loadingA11y')}
       accessibilityLiveRegion="polite"
-      gap={4}
-      pt={8}>
+      style={{ paddingHorizontal: ds.space.screenX, gap: 8 }}>
       {Array.from({ length: rows }, (_, index) => (
         <DownloadSkeletonCard key={`download-skeleton-${index}`} />
       ))}
-    </Box>
+    </View>
   );
 });

@@ -108,7 +108,8 @@ export const FavoritesList = memo(function FavoritesList({
           visible={orderedIds.length > 0}
         />
       }
-      contentContainerStyle={{ flexGrow: 1, paddingBottom: 24 }}
+      contentContainerStyle={{ flexGrow: 1, paddingHorizontal: 16, paddingBottom: 24 }}
+      showsVerticalScrollIndicator={false}
       accessibilityRole="list"
     />
   );

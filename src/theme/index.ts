@@ -2,11 +2,14 @@ import { animations } from './animations';
 import {
   brandPalette,
   colors,
+  designPalettes,
+  designTheme,
   errorAlphas,
   primaryAlphas,
   withAlpha,
   type ColorTokenKey,
   type ColorTokens,
+  type DesignPalette,
   type ThemeMode,
 } from './colors';
 import { elevation } from './elevation';
@@ -27,22 +30,18 @@ const sharedTokens = {
   opacity,
 } as const;
 
+function buildTheme<M extends ThemeMode>(mode: M) {
+  return { colors: colors[mode], mode, ...sharedTokens } as const;
+}
+
+/** One theme object per design theme (the PDF's order). */
 export const themes = {
-  light: {
-    colors: colors.light,
-    mode: 'light' as const,
-    ...sharedTokens,
-  },
-  logo: {
-    colors: colors.logo,
-    mode: 'logo' as const,
-    ...sharedTokens,
-  },
-  dark: {
-    colors: colors.dark,
-    mode: 'dark' as const,
-    ...sharedTokens,
-  },
+  light: buildTheme('light'),
+  dark: buildTheme('dark'),
+  red: buildTheme('red'),
+  cream: buildTheme('cream'),
+  midnight: buildTheme('midnight'),
+  blush: buildTheme('blush'),
 } as const;
 
 export type Theme = {
@@ -62,6 +61,8 @@ export {
   animations,
   brandPalette,
   colors,
+  designPalettes,
+  designTheme,
   elevation,
   errorAlphas,
   iconColors,
@@ -76,9 +77,11 @@ export {
 
 export { applyNativeColorScheme } from './apply-native-color-scheme';
 export {
+  isDarkThemeMode,
   normalizeThemePreference,
   resolveThemeMode,
   THEME_PREFERENCES,
+  type ThemePreference,
 } from './theme-preference';
 export { resolveIntroColors, type IntroColors } from './intro-palette';
 export {
@@ -93,4 +96,4 @@ export {
 } from './startup-theme';
 export { contrastRatio, relativeLuminance, roundContrast } from './contrast';
 
-export type { ColorTokenKey, ColorTokens, ThemeMode };
+export type { ColorTokenKey, ColorTokens, DesignPalette, ThemeMode };

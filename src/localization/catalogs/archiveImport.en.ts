@@ -1,0 +1,27 @@
+/** P8 #407 Extract Archive: the screen a `.zip` opened with VidoraX shows. `archiveImport.ur.ts` mirrors these keys. */
+export const archiveImportEn = {
+  title: 'Extract archive',
+  untitled: 'Archive',
+  reading: 'Reading the archive…',
+  extracting: 'Adding videos to your library…',
+  summary: '{entries} files: {videos} videos and {subtitles} subtitles ({size} in all).',
+  extractOne: 'Add 1 video to library',
+  extractOther: 'Add {count} videos to library',
+  noVideos: 'There are no videos in this archive.',
+  done: 'Added {imported} videos to your library. {duplicates} were already there. {subtitles} subtitles saved.',
+  someFailed: '{count} files could not be added.',
+  openLibrary: 'Open Library',
+  refusedNotZip: 'This file is not a ZIP archive.',
+  refusedRarSevenZip: 'RAR and 7z archives are not supported. Only ZIP files can be opened.',
+  refusedEncrypted: "This archive is password-protected. VidoraX can't open encrypted archives.",
+  refusedPathEscape: "This archive tries to put files outside its folder. It may be harmful, so VidoraX won't open it.",
+  refusedTooManyEntries: "This archive holds more than 1000 files. VidoraX won't open it.",
+  refusedTooLarge: "This archive would unpack to more than 4 GB. VidoraX won't open it.",
+  refusedCompressionRatio:
+    "This archive unpacks to far more than its own size (a \"zip bomb\"). It may be harmful, so VidoraX won't open it.",
+  refusedDamaged: "This archive is damaged and can't be read.",
+  refusedAndroidApp: "This \"archive\" is really an Android app (APK). It may be harmful, so VidoraX won't open it.",
+  failed: 'The archive could not be read.',
+  failedNoSpace: 'Not enough storage for this archive.',
+  failedGone: 'The archive is no longer available. Open it again from the other app.',
+};

@@ -27,8 +27,9 @@ describe('linkFromClipboardText', () => {
     );
   });
 
-  it('returns null when there is no http(s) link', () => {
-    for (const text of ['', '   ', 'cats', 'v1.2', 'file.txt', 'example.com/watch', 'ftp://files.example/x', 'mailto:a@b.c', 'javascript:alert(1)', 'https://', 'https:///nohost']) {
+  it('returns null when there is no http(s) or ftp(s) file link', () => {
+    // #304: `ftp://files.example/x` is a file link now; an FTP link with no file path is not.
+    for (const text of ['', '   ', 'cats', 'v1.2', 'file.txt', 'example.com/watch', 'ftp://files.example', 'mailto:a@b.c', 'javascript:alert(1)', 'https://', 'https:///nohost']) {
       assert.equal(linkFromClipboardText(text), null, JSON.stringify(text));
     }
     assert.equal(linkFromClipboardText(null), null);

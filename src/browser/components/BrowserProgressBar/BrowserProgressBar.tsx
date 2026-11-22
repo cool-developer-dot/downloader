@@ -1,5 +1,5 @@
 import { memo, useEffect } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   Easing,
   cancelAnimation,
@@ -119,6 +119,9 @@ export const BrowserProgressBar = memo(function BrowserProgressBar({
   const percent = Math.round(Math.min(progress, 1) * 20) * 5;
 
   return (
+    // The strip the bar runs in takes the chrome's colour, so no line of page colour shows between the address bar
+    // (or the Red theme's band) and the page while the bar is faded out.
+    <View style={{ height: BROWSER_PROGRESS_HEIGHT, backgroundColor: theme.colors.headerBackground }}>
     <Animated.View
       testID={testID}
       pointerEvents="none"
@@ -144,6 +147,7 @@ export const BrowserProgressBar = memo(function BrowserProgressBar({
         ]}
       />
     </Animated.View>
+    </View>
   );
 });
 

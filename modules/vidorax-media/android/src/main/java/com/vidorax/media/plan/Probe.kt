@@ -10,10 +10,12 @@ import com.vidorax.media.model.RequestContext
 import com.vidorax.media.model.SourceKind
 import com.vidorax.media.model.VariantChoice
 import com.vidorax.media.net.BasicChallenge
+import com.vidorax.media.net.FtpUrl
 import com.vidorax.media.net.HttpClient
 import com.vidorax.media.net.MediaNetworkException
 import com.vidorax.media.net.MediaRefusedException
 import com.vidorax.media.net.MediaRequest
+import com.vidorax.media.safety.ContentSniff
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
@@ -66,6 +68,8 @@ internal class Probe(
   private val http: HttpClient,
   private val hls: HlsPlanner = HlsPlanner(http),
   private val dash: DashPlanner = DashPlanner(http),
+  /** #304: `ftp://` / `ftps://` files, classified from the same first bytes. */
+  private val ftp: FtpProbe = FtpProbe(),
 ) {
   suspend fun probe(request: ProbeRequest): ProbeResult =
     withContext(Dispatchers.IO) { withAuthChallenge(probeBlocking(request, request.variant), request) }
@@ -92,6 +96,13 @@ internal class Probe(
     }
     if (isPolicyBlockedHost(request.url)) {
       return failure(ProbeFailure.POLICY_BLOCKED, null, "This source is not supported")
+    }
+    // #304: an FTP link is one file whatever the request called it (a download re-probes with no kind).
+    if (request.kind == SourceKind.FTP || FtpUrl.isFtp(request.url)) {
+      if (request.kind != null && request.kind != SourceKind.FTP) {
+        return failure(ProbeFailure.UNSUPPORTED_FORMAT, null, "FTP links are single files")
+      }
+      return ftp.probe(request.url, request.request)
     }
     return when (request.kind) {
       SourceKind.HLS -> planHls(request.url, request.request, choice)
@@ -128,6 +139,7 @@ internal class Probe(
     val totalSize: Long?,
     val resumable: Boolean,
     val prefix: ByteArray,
+    val redirects: Int,
   )
 
   /** The first [PROBE_BYTES] of [url] with what the response said about the whole file, or why there are none. */
@@ -169,6 +181,7 @@ internal class Probe(
         totalSize = range?.total ?: if (it.status == 200) it.contentLength else null,
         resumable = it.supportsRanges,
         prefix = prefix,
+        redirects = it.redirects,
       )
     }
   }
@@ -189,6 +202,15 @@ internal class Probe(
     if (verdict is SniffResult.Supported && MediaSniffer.isAudioOnly(prefix)) {
       return FileProbe.Classified(failure(ProbeFailure.UNSUPPORTED_FORMAT, null, "Audio only: the file has no video track"))
     }
+    // MPEG-TS and FLV are also how live channels are sent (IPTV `.ts`, HTTP-FLV): a response with no length is a stream
+    // that never ends — unless an FLV's own metadata states a length. Live recording covers HLS only.
+    if (verdict is SniffResult.Supported && first.totalSize == null && (
+        verdict.container == Container.TS ||
+          (verdict.container == Container.FLV && (MediaSniffer.flvMetadataDurationSeconds(prefix) ?: 0.0) <= 0.0)
+        )
+    ) {
+      return FileProbe.Classified(failure(ProbeFailure.LIVE_UNSUPPORTED, null, "Live stream: the server gives no length"))
+    }
     if (verdict is SniffResult.Supported && (verdict.container == Container.MP4 || verdict.container == Container.MOV)) {
       trailingMoovVerdict(first.finalUrl, context, prefix, first.totalSize, first.status)?.let { refusal ->
         return FileProbe.Classified(failure(refusal.reason, null, refusal.detail))
@@ -206,8 +228,12 @@ internal class Probe(
           variants = emptyList(),
           audioTracks = emptyList(),
           durationMs = null,
+          redirects = first.redirects,
         )
-        is SniffResult.Unsupported -> failure(verdict.reason, null, verdict.detail)
+        // P8 #461: a "video" whose bytes are a program or an archive is not media at all, and says what it is.
+        is SniffResult.Unsupported -> ContentSniff.kindOf(prefix)
+          ?.let { kind -> failure(ProbeFailure.NOT_MEDIA, null, "Not a video: ${kind.wire}").copy(disguisedAs = kind.wire) }
+          ?: failure(verdict.reason, null, verdict.detail)
       },
     )
   }

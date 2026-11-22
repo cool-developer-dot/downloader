@@ -2,7 +2,7 @@ import { memo } from 'react';
 import { ActivityIndicator } from 'react-native';
 
 import { Pressable } from '@/components/base/Pressable';
-import { Icon } from '@/components/base/Icon';
+import { DsIcon, ds } from '@/design';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 
@@ -16,7 +16,7 @@ export type OmniboxTrailingProps = {
 };
 
 /**
- * Trailing omnibox controls: clear while editing, subtle spinner while loading.
+ * Trailing omnibox controls: the design's grey ✕ while editing, a subtle spinner while loading.
  */
 export const OmniboxTrailing = memo(function OmniboxTrailing({
   showClear,
@@ -41,7 +41,7 @@ export const OmniboxTrailing = memo(function OmniboxTrailing({
           alignItems: 'center',
           justifyContent: 'center',
         }}>
-        <Icon name="close-circle" size="sm" color="secondary" />
+        <DsIcon name="x" size={ds.size.fieldIcon} color="textSecondary" strokeWidth={1.7} />
       </Pressable>
     );
   }

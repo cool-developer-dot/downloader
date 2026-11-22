@@ -124,6 +124,15 @@ interface DownloadEngineApi {
    * Downloads that reached COMPLETED with their verified library item and that JavaScript has not acknowledged yet —
    * including completions that happened while no JavaScript was running. Oldest first.
    */
+  /** #347: [id]'s mirrors (other links to the same file), in order. */
+  suspend fun downloadMirrors(id: String): List<String> = emptyList()
+
+  /**
+   * #347: replaces [id]'s mirrors (a progressive download that has not finished). A running download restarts its
+   * transfer from the bytes on disk, so the new mirrors are checked and used at once. Returns the mirrors kept.
+   */
+  suspend fun setDownloadMirrors(id: String, urls: List<String>): List<String> = emptyList()
+
   suspend fun listCompletions(): List<CompletionRecord>
 
   /** Marks completions as counted, so each is reported once. */

@@ -1,5 +1,8 @@
 import { memo, useCallback } from 'react';
 
+import { DOWNLOAD_RULES_ROUTE } from '@/screens/download-rules/route';
+import { WATCHED_LINKS_ROUTE } from '@/screens/watched-links/route';
+import { SITE_GRABBER_ROUTE } from '@/screens/site-grabber/route';
 import { Switch } from '@/components/inputs/Switch';
 import { useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
@@ -8,7 +11,7 @@ import { selectClipboardMonitor, useSettingsStore } from '@/store/settings';
 import { SettingsRow, SettingsSection, SettingsStaggerItem } from '../components';
 
 /** The route of the Batch Add screen (`src/app/(app)/batch-add.tsx`). */
-export const BATCH_ADD_ROUTE = '/batch-add';
+export const BATCH_ADD_ROUTE = '/downloads/batch-add';
 
 /** Download Settings → Adding links: Clipboard Monitor (#291, off by default) and Batch Add (#292). */
 export const LinkIntakeSettingsSection = memo(function LinkIntakeSettingsSection({
@@ -21,6 +24,9 @@ export const LinkIntakeSettingsSection = memo(function LinkIntakeSettingsSection
   const { t } = useTranslation();
   const clipboardMonitor = useSettingsStore(selectClipboardMonitor);
   const openBatch = useCallback(() => navigation.push(BATCH_ADD_ROUTE), []);
+  const openRules = useCallback(() => navigation.push(DOWNLOAD_RULES_ROUTE), []);
+  const openWatched = useCallback(() => navigation.push(WATCHED_LINKS_ROUTE), []);
+  const openSiteGrabber = useCallback(() => navigation.push(SITE_GRABBER_ROUTE), []);
 
   return (
     <SettingsStaggerItem index={index}>
@@ -50,8 +56,30 @@ export const LinkIntakeSettingsSection = memo(function LinkIntakeSettingsSection
           description={t('linkIntake.batchRowHint')}
           icon="playlist-plus"
           onPress={openBatch}
-          showDivider={false}
           testID="download-settings-batch-add"
+        />
+        <SettingsRow
+          advanced
+          title={t('bulkAdd.rulesRow')}
+          description={t('bulkAdd.rulesRowHint')}
+          icon="filter-variant"
+          onPress={openRules}
+          testID="download-settings-download-rules"
+        />
+        <SettingsRow
+          title={t('watchedLinks.row')}
+          description={t('watchedLinks.rowHint')}
+          icon="eye-refresh-outline"
+          onPress={openWatched}
+          testID="download-settings-watched-links"
+        />
+        <SettingsRow
+          title={t('siteGrabber.row')}
+          description={t('siteGrabber.rowHint')}
+          icon="web-sync"
+          onPress={openSiteGrabber}
+          showDivider={false}
+          testID="download-settings-site-grabber"
         />
       </SettingsSection>
     </SettingsStaggerItem>

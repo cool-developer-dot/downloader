@@ -15,7 +15,8 @@ export function isBrowserWebLink(url: string | null | undefined): boolean {
   return WEB_LINK_SCHEMES.some((scheme) => trimmed.startsWith(scheme));
 }
 
-const URL_IN_TEXT = /\bhttps?:\/\/[^\s<>"']+/i;
+// #304: a shared ftp(s) link is a file the engine downloads directly.
+const URL_IN_TEXT = /\b(?:https?|ftps?):\/\/[^\s<>"']+/i;
 const BARE_HOST = /^[\w-]+(\.[\w-]+)+(\/\S*)?$/;
 
 export function urlFromSharedText(text: string | null | undefined): string | null {

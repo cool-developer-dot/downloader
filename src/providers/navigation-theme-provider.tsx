@@ -2,11 +2,11 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { type PropsWithChildren, useMemo } from 'react';
 
 import { useTheme } from '@/hooks/use-theme';
-import type { ThemeMode } from '@/theme';
+import { isDarkThemeMode, type ThemeMode } from '@/theme';
 
 function createNavigationTheme(mode: ThemeMode, palette: ReturnType<typeof useTheme>['colors']) {
-  // Logo uses light navigation content colors; chrome (header/tab) comes from screen options.
-  const base = mode === 'dark' ? DarkTheme : DefaultTheme;
+  // Dark and Midnight take the dark navigation base; chrome (header/tab) comes from screen options.
+  const base = isDarkThemeMode(mode) ? DarkTheme : DefaultTheme;
 
   return {
     ...base,

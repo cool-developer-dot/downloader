@@ -52,7 +52,8 @@ export function isStandaloneDownloadableQuality(
     if (!isSafeMediaUrl(sourceUrl) || !isSafeMediaUrl(audioSourceUrl)) {
       return false;
     }
-  } else {
+  } else if (String(option.container).toLowerCase() !== 'ts') {
+    // A verified `ts` row is a `.ts` file the user opened (see `isTransportStreamFileOffer`), never a segment.
     if (isRejectedDownloadTarget(sourceUrl)) {
       return false;
     }

@@ -1,6 +1,10 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  xmlns:tools="http://schemas.android.com/tools">
   <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+  <!-- #446 "use Wi-Fi and mobile data together": ConnectivityManager.requestNetwork(TRANSPORT_CELLULAR). A normal
+       (install-time) permission; recorded in docs/play-console/PLAY_SUBMISSION.md. -->
+  <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
   <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
@@ -43,6 +47,11 @@
       android:name="com.vidorax.media.runner.DownloadBootJobService"
       android:exported="false"
       android:permission="android.permission.BIND_JOB_SERVICE" />
+    <!-- #362/#504/#363: the hourly check of watched links and feeds (JobScheduler, persisted). -->
+    <service
+      android:name="com.vidorax.media.watch.WatchJobService"
+      android:exported="false"
+      android:permission="android.permission.BIND_JOB_SERVICE" />
 
     <!-- Pause / Resume / Retry / Cancel from the notification; internal only. -->
     <receiver
@@ -58,6 +67,19 @@
         <action android:name="android.intent.action.BOOT_COMPLETED" />
         <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
         <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+      </intent-filter>
+    </receiver>
+
+    <!-- P6 #499 Automation API: ADD_DOWNLOAD / PAUSE_ALL / RESUME_ALL from Tasker and other apps. Exported on purpose;
+         every intent is ignored unless the user turned on "Allow other apps to control downloads" (off by default). -->
+    <receiver
+      android:name="com.vidorax.media.remote.AutomationReceiver"
+      android:exported="true"
+      tools:ignore="ExportedReceiver">
+      <intent-filter>
+        <action android:name="com.vidorax.action.ADD_DOWNLOAD" />
+        <action android:name="com.vidorax.action.PAUSE_ALL" />
+        <action android:name="com.vidorax.action.RESUME_ALL" />
       </intent-filter>
     </receiver>
 

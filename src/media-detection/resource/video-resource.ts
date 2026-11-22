@@ -1,5 +1,7 @@
 /** Shared video format authority. Hints admit candidates; bytes prove resources. */
 import { sniffMediaSignature } from '@/downloads/engine/media-signature';
+import { contentKindOf } from '@/downloads/safety/content-kind';
+import { reportDisguised } from '@/downloads/safety/probe-observations';
 
 import type { Mp4BoxWalkVerdict } from './mp4-box-walk';
 
@@ -89,6 +91,13 @@ export function resolveVideoResource(input: {
   if (mime && /(?:\/|\+)json$/.test(mime)) return result('PROVEN_UNSUPPORTED', 'JSON_RESPONSE');
   if (hint === 'hls') return result('TRANSIENT_UNRESOLVED', 'MANIFEST_VERIFICATION_REQUIRED');
   if (!input.bytes?.length) return result('TRANSIENT_UNRESOLVED', 'BYTES_PENDING');
+  // P8 #461: a "video" whose bytes are a program or an archive (an APK renamed .mp4) is refused, and the user is told
+  // once (src/downloads/safety/probe-observations.ts).
+  const disguised = contentKindOf(input.bytes);
+  if (disguised) {
+    reportDisguised(input.finalUrl || input.url, disguised);
+    return result('PROVEN_UNSUPPORTED', 'DISGUISED_PROGRAM');
+  }
   const sig = sniffMediaSignature(input.bytes, {
     resourceTotalBytes: input.totalBytes,
     coversEntireResource: input.coversEntireResource,
@@ -112,6 +121,9 @@ export function resolveVideoResource(input: {
     const proven = ['html', 'json'].includes(sig.kind) || ['init_segment', 'media_fragment', 'drm_protected', 'invalid_box_size'].includes(sig.reason ?? '');
     return result(proven ? 'PROVEN_UNSUPPORTED' : 'TRANSIENT_UNRESOLVED', sig.reason ?? 'BYTES_PENDING');
   }
+  // MKV, MPEG-TS and FLV files: containers the browser does not play, classified by the engine from the same bytes
+  // (audio only, encrypted, endless live streams refused there). Whether a TS is a lone HLS segment is the caller's call.
+  if (sigKind === 'mkv' || sigKind === 'ts' || sigKind === 'flv') return result('VERIFIED', 'ENGINE_FILE_CONTAINER', null);
   const format = sigKind === 'mp4'
     ? (hint === 'm4v' || hint === 'mov' ? hint : 'mp4')
     : videoFormatFromExtension(sigKind);

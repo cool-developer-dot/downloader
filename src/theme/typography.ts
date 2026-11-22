@@ -1,20 +1,21 @@
-// Per-weight entry points: the packages' index files require every weight (36 TTFs in the APK); only 3 are used.
+// Per-weight entry points: the packages' index files require every weight (36 TTFs in the APK); only 2 are used.
+// The CEO's design (VidoraX · Light theme UI) sets every text in one family: Inter, regular for secondary text and
+// semibold for titles, row labels, buttons and chips. Poppins is no longer loaded.
 import { Inter_400Regular } from '@expo-google-fonts/inter/400Regular';
 import { Inter_600SemiBold } from '@expo-google-fonts/inter/600SemiBold';
-import { Poppins_600SemiBold } from '@expo-google-fonts/poppins/600SemiBold';
 import { Platform, TextStyle } from 'react-native';
 
 type FontRole = 'heading' | 'body' | 'bodySemiBold';
 type FontFamilyMap = Record<FontRole, string>;
 
 export const webFontFamilies: FontFamilyMap = {
-  heading: 'Poppins',
+  heading: 'Inter',
   body: 'Inter',
   bodySemiBold: 'Inter',
 };
 
 export const nativeFontFamilies: FontFamilyMap = {
-  heading: 'Poppins_600SemiBold',
+  heading: 'Inter_600SemiBold',
   body: 'Inter_400Regular',
   bodySemiBold: 'Inter_600SemiBold',
 };
@@ -25,7 +26,6 @@ export const fontFamilies = Platform.select({
 }) as FontFamilyMap;
 
 export const appFontAssets = {
-  [nativeFontFamilies.heading]: Poppins_600SemiBold,
   [nativeFontFamilies.body]: Inter_400Regular,
   [nativeFontFamilies.bodySemiBold]: Inter_600SemiBold,
 } as const;
@@ -40,12 +40,15 @@ export const fontSizes = {
   h1: 32,
   h2: 28,
   h3: 24,
-  title: 20,
+  /** Screen titles in the design: 22 semibold. */
+  title: 22,
   subtitle: 18,
-  body: 16,
-  bodySmall: 14,
+  /** Row titles, field text and buttons: 15. */
+  body: 15,
+  /** Secondary lines under a title: 12.5. */
+  bodySmall: 13,
   caption: 12,
-  button: 16,
+  button: 15,
   label: 14,
 } as const;
 
@@ -55,11 +58,11 @@ export const lineHeights = {
   h2: 36,
   h3: 32,
   title: 28,
-  subtitle: 26,
-  body: 24,
-  bodySmall: 20,
+  subtitle: 24,
+  body: 22,
+  bodySmall: 18,
   caption: 16,
-  button: 24,
+  button: 20,
   label: 20,
 } as const;
 

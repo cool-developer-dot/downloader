@@ -8,7 +8,7 @@ internal sealed interface SniffResult {
   /** A complete, downloadable progressive file in one of the contract's supported containers. */
   data class Supported(val container: Container) : SniffResult
 
-  /** Recognised but out of scope (DASH, HLS, MKV, TS, isolated fragment), encrypted, or not media at all. */
+  /** Recognised but out of scope (DASH, HLS, isolated fragment, audio file), encrypted, or not media at all. */
   data class Unsupported(val reason: ProbeFailure, val detail: String) : SniffResult
 }
 
@@ -24,9 +24,10 @@ internal data class TrackSummary(
 
 /**
  * Classifies a resource from its leading bytes, Content-Type and URL against the VidoraX download contract
- * (docs/ARCHITECTURE.md section 1). Supported progressive containers only: MP4/M4V/MOV/WebM/AVI/WMV and complete
- * standalone fMP4. Everything else — DASH, HLS, encrypted media, isolated init/media fragments, live, unknown —
- * is rejected with a reason. Magic bytes win over Content-Type, which servers routinely get wrong.
+ * (docs/ARCHITECTURE.md section 1). Supported progressive containers only: MP4/M4V/MOV/3G2/WebM/MKV/AVI/WMV/FLV,
+ * MPEG transport and program streams, and complete standalone fMP4. Everything else — DASH, HLS, encrypted or
+ * scrambled media, isolated init/media fragments, live, unknown — is rejected with a reason. Magic bytes win over
+ * Content-Type, which servers routinely get wrong.
  */
 internal object MediaSniffer {
   /** ISO-BMFF boxes that carry sample data; their presence proves a file is not an init-only segment. */
@@ -49,15 +50,12 @@ internal object MediaSniffer {
   /**
    * @param prefix   the leading bytes of the resource (a bounded probe read).
    * @param totalSize the full resource length when known (Content-Range/Content-Length), else null.
-   * @param allowTransportStream true only for a file an HLS download assembled from MPEG-TS segments. A bare TS
-   *   URL is still refused as a progressive source.
    */
   fun sniff(
     prefix: ByteArray,
     contentType: String?,
     url: String,
     totalSize: Long?,
-    allowTransportStream: Boolean = false,
   ): SniffResult {
     if (prefix.isEmpty()) return notMedia("empty response body")
 
@@ -66,11 +64,15 @@ internal object MediaSniffer {
     if (matchesAscii(prefix, 0, "RIFF") && matchesAscii(prefix, 8, "AVI ")) return SniffResult.Supported(Container.AVI)
     if (startsWithBytes(prefix, ASF_HEADER_GUID)) return SniffResult.Supported(Container.WMV)
     if (isTransportStream(prefix)) {
-      if (!allowTransportStream) return unsupported("MPEG-TS is not a supported progressive container")
-      return if (hasTransportStreamSync(prefix)) SniffResult.Supported(Container.TS)
-      else unsupported("MPEG-TS stream lost packet sync")
+      // A `.ts` file, or the file an HLS download assembled from TS segments. Scrambled packets are conditional access
+      // (pay TV, DVB-CSA): VidoraX never decrypts.
+      return when {
+        !hasTransportStreamSync(prefix) -> unsupported("MPEG-TS stream lost packet sync")
+        TransportStream.isScrambled(prefix) -> SniffResult.Unsupported(ProbeFailure.DRM_PROTECTED, "scrambled (encrypted) MPEG-TS")
+        else -> SniffResult.Supported(Container.TS)
+      }
     }
-    if (matchesAscii(prefix, 0, "FLV")) return unsupported("FLV is not a supported container")
+    if (isFlv(prefix)) return SniffResult.Supported(Container.FLV)
     if (MpegProgramStream.isProgramStream(prefix)) {
       // F4: .mpg/.mpeg/.vob. A CSS-protected DVD title marks its packets scrambled; VidoraX never decrypts.
       return if (MpegProgramStream.isScrambled(prefix)) {
@@ -99,12 +101,22 @@ internal object MediaSniffer {
   }
 
   /**
-   * The MP4/MOV's whole `moov` is in [prefix] and its tracks are sound only: an audio file, or the audio half of a
-   * stream split into separate audio and video files — not a video. False whenever the track list is not in the
-   * prefix (then only the finished file can tell).
+   * The file's own track list is in [prefix] and lists sound only: an audio file, or the audio half of a stream split
+   * into separate audio and video files — not a video. Read from an MP4/MOV `moov`, WebM/MKV `Tracks`, an FLV header's
+   * flags or an MPEG-TS program map. False whenever the track list is not in the prefix (then only the finished file
+   * can tell).
    */
   fun isAudioOnly(prefix: ByteArray): Boolean {
     trackHandlers(prefix)?.let { handlers -> return "soun" in handlers && "vide" !in handlers }
+    if (isFlv(prefix)) {
+      // TypeFlags: bit 2 audio, bit 0 video. Only a header that names sound and no picture is trusted.
+      val flags = prefix.getOrNull(4)?.toInt()?.and(0xFF) ?: return false
+      return flags and FLV_FLAG_AUDIO != 0 && flags and FLV_FLAG_VIDEO == 0
+    }
+    if (isTransportStream(prefix)) {
+      val tracks = TransportStream.tracks(prefix) ?: return false
+      return tracks.hasAudio && !tracks.hasVideo
+    }
     val webm = webmTrackTypes(prefix) ?: return false
     return WEBM_TRACK_AUDIO in webm && WEBM_TRACK_VIDEO !in webm
   }
@@ -428,20 +440,42 @@ internal object MediaSniffer {
   // --- EBML (WebM / Matroska) ---
 
   private fun ebml(data: ByteArray): SniffResult {
-    // DocType lives shortly after the EBML header. Only "webm" is in scope; "matroska" (generic MKV) is not.
+    // DocType lives shortly after the EBML header: "webm", or "matroska" for a generic MKV.
     val head = String(data, 0, minOf(data.size, 1024), Charsets.ISO_8859_1)
     return when {
       head.contains("webm") ->
         if (hasWebmEncryption(data)) SniffResult.Unsupported(ProbeFailure.DRM_PROTECTED, "encrypted (DRM) WebM")
         else SniffResult.Supported(Container.WEBM)
-      head.contains("matroska") -> unsupported("Matroska (MKV) is not a supported container")
+      head.contains("matroska") ->
+        if (hasWebmEncryption(data)) SniffResult.Unsupported(ProbeFailure.DRM_PROTECTED, "encrypted (DRM) Matroska")
+        else SniffResult.Supported(Container.MKV)
       else -> unsupported("EBML stream with an unrecognized DocType")
     }
   }
 
+  // --- FLV ---
+
+  /** `FLV` and header version 1: the only FLV version there is. */
+  private fun isFlv(data: ByteArray): Boolean = matchesAscii(data, 0, "FLV") && data.getOrNull(3)?.toInt() == 1
+
   /**
-   * Encrypted WebM (WebM Encryption / Widevine) declares a ContentEncryption element with an algorithm or key id
-   * inside ContentEncodings in the track headers, all before the first Cluster.
+   * The `duration` (seconds) an FLV's `onMetaData` script tag states, when it is in [prefix]. A file states its
+   * length; an HTTP-FLV live channel states 0 or nothing.
+   */
+  fun flvMetadataDurationSeconds(prefix: ByteArray): Double? {
+    if (!isFlv(prefix)) return null
+    // AMF0: the property name as a UTF-8 string with a 16-bit length, then a Number marker and an 8-byte double.
+    val key = byteArrayOf(0x00, 0x08) + "duration".toByteArray(Charsets.ISO_8859_1) + byteArrayOf(0x00)
+    val at = indexOf(prefix, key, 0, minOf(prefix.size, FLV_METADATA_WINDOW))
+    if (at < 0 || at + key.size + 8 > prefix.size) return null
+    var bits = 0L
+    for (i in 0 until 8) bits = (bits shl 8) or (prefix[at + key.size + i].toLong() and 0xFF)
+    return java.lang.Double.longBitsToDouble(bits).takeIf { it.isFinite() }
+  }
+
+  /**
+   * Encrypted WebM/Matroska (WebM Encryption / Widevine) declares a ContentEncryption element with an algorithm or key
+   * id inside ContentEncodings in the track headers, all before the first Cluster.
    */
   private fun hasWebmEncryption(data: ByteArray): Boolean {
     val headerEnd = indexOf(data, EBML_CLUSTER, 0, data.size).let { if (it < 0) data.size else it }
@@ -670,6 +704,11 @@ internal object MediaSniffer {
   private const val EBML_DURATION_ID = 0x4489L
   private const val WEBM_TRACK_VIDEO = 1L
   private const val WEBM_TRACK_AUDIO = 2L
+  private const val FLV_FLAG_VIDEO = 0x01
+  private const val FLV_FLAG_AUDIO = 0x04
+
+  /** `onMetaData` is the first tag, right after the 9-byte header; it is a few hundred bytes. */
+  private const val FLV_METADATA_WINDOW = 4096
 
   /** MPDs may open with an XML declaration and a long comment block before the root element. */
   private const val DASH_WINDOW = 16 * 1024
