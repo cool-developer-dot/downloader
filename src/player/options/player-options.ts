@@ -14,6 +14,7 @@ import type { TranslateFn, TranslationKey } from '@/localization';
 
 import type { OrientationMode } from '../orientation-mode';
 import type { PlayerController } from '../types';
+import type { MirrorMode, VideoFit } from '../video-display';
 
 import { createPlayerOptionsRegistry, type PlayerOptionRow } from './registry';
 
@@ -31,6 +32,14 @@ export type PlayerOptionUi = {
   seekTo: (seconds: number) => void;
   /** "Not available yet", shown and spoken. */
   notAvailableYet: () => void;
+  /** P2 #564–#566: the Aspect ratio sheet (fit, crop, stretch, forced ratios). */
+  openAspectRatio: () => void;
+  /** P2 #573: the Mirror / Flip sheet. */
+  openMirrorFlip: () => void;
+  /** P2 #576: full screen lets the picture fill the camera cutout (remembered). */
+  setFillCutout: (on: boolean) => void;
+  /** P2 #721: the info overlay on the video (remembered). */
+  setInfoOverlay: (on: boolean) => void;
 };
 
 export type PlayerOptionContext = {
@@ -51,6 +60,8 @@ export type PlayerOptionContext = {
   orientationMode: OrientationMode;
   /** A file another app opened (not in the library) and whether it was saved; null for library videos. */
   incoming: { saveState: 'idle' | 'saving' | 'saved' } | null;
+  /** P2: how the picture is shown — the fit (per video), mirror (this video), notch area and info overlay. */
+  display: { fit: VideoFit; mirror: MirrorMode; fillCutout: boolean; infoOverlay: boolean };
   ui: PlayerOptionUi;
 };
 

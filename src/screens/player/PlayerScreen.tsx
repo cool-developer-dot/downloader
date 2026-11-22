@@ -43,6 +43,15 @@ import {
   type SeekStepSeconds,
 } from '@/player';
 import { setSeekStepSeconds, useSeekStepSeconds } from '@/player/seek-step-preference';
+import type { MirrorMode, VideoFit } from '@/player/video-display';
+import { mirrorModeLabel, videoFitLabel } from '@/player/video-display-labels';
+import {
+  setFillCutout,
+  setInfoOverlay,
+  setVideoFit,
+  setVideoMirror,
+  useVideoDisplay,
+} from '@/player/video-display-preference';
 import type { PlayerOptionContext, PlayerOptionUi } from '@/player/options';
 import { useControlsVisibility } from '@/player/use-controls-visibility';
 import { useFullscreenLifecycle } from '@/player/use-fullscreen-lifecycle';
@@ -110,6 +119,8 @@ import { NOT_YET_ACTIONS, type PlayerPageAction } from './page/player-page-actio
 import { SeekIntervalSheet } from './page/SeekIntervalSheet';
 import { announcePlayer, usePlayerNotYet } from './page/use-player-not-yet';
 import { qualityLabel, useVideoTrackInfo } from './page/use-video-track-info';
+import { AspectRatioSheet, MirrorFlipSheet } from './page/VideoDisplaySheets';
+import { VideoInfoOverlay } from './page/VideoInfoOverlay';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -236,11 +247,15 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [seekIntervalOpen, setSeekIntervalOpen] = useState(false);
   const [jumpOpen, setJumpOpen] = useState(false);
+  // P2: the Aspect ratio (#564–#566) or the Mirror / Flip (#573) sheet.
+  const [displaySheet, setDisplaySheet] = useState<'aspectRatio' | 'mirrorFlip' | null>(null);
   const [frameMode, setFrameMode] = useState(false);
   const [frameShown, setFrameShown] = useState<{ frameIndex: number; frameStartSeconds: number } | null>(null);
   const lastFrameStepRef = useRef<{ target: number; at: number } | null>(null);
   const seekStepSeconds = useSeekStepSeconds();
   const trackInfo = useVideoTrackInfo(player);
+  // P2: fit (per video), mirror (this video), notch area and info overlay.
+  const display = useVideoDisplay(activeMediaId);
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const notYet = usePlayerNotYet();
@@ -436,8 +451,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
   } = useControlsVisibility({
     isPlaying: session.isPlaying,
     isSeeking: session.isSeeking,
-    // The P1 sheets and the frame panel hold the controls up like the speed sheet does.
-    isSpeedSheetOpen: speedSheetOpen || optionsOpen || seekIntervalOpen || jumpOpen || frameMode,
+    // The P1 / P2 sheets and the frame panel hold the controls up like the speed sheet does.
+    isSpeedSheetOpen: speedSheetOpen || optionsOpen || seekIntervalOpen || jumpOpen || frameMode || displaySheet != null,
     isOrientationSheetOpen: orientationSheetOpen,
     isLoading: session.isLoading || startupCoverVisible,
     hasError: Boolean(session.error),
@@ -466,10 +481,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
   }, [restorePresentation, router, sessionFailed, sessionKey]);
 
   const onChromeBack = useCallback(() => {
-    if (jumpOpen || seekIntervalOpen || optionsOpen) {
+    if (jumpOpen || seekIntervalOpen || optionsOpen || displaySheet) {
       setJumpOpen(false);
       setSeekIntervalOpen(false);
       setOptionsOpen(false);
+      setDisplaySheet(null);
       return;
     }
     if (speedSheetOpen) {
@@ -490,6 +506,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     }
     void leavePlayer();
   }, [
+    displaySheet,
     exitFullscreen,
     frameMode,
     isFullscreen,
@@ -507,10 +524,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
         // A locked screen ignores Back too (pocket / child presses); the lock pill unlocks.
         return true;
       }
-      if (jumpOpen || seekIntervalOpen || optionsOpen) {
+      if (jumpOpen || seekIntervalOpen || optionsOpen || displaySheet) {
         setJumpOpen(false);
         setSeekIntervalOpen(false);
         setOptionsOpen(false);
+        setDisplaySheet(null);
         return true;
       }
       if (speedSheetOpen) {
@@ -534,6 +552,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     });
     return () => sub.remove();
   }, [
+    displaySheet,
     frameMode,
     handleAndroidBack,
     jumpOpen,
@@ -634,7 +653,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
     [bumpControls, setPlaybackRate],
   );
 
-  const anyModalOpen = speedSheetOpen || orientationSheetOpen || optionsOpen || seekIntervalOpen || jumpOpen;
+  const anyModalOpen =
+    speedSheetOpen || orientationSheetOpen || optionsOpen || seekIntervalOpen || jumpOpen || displaySheet != null;
 
   const onSingleTap = useCallback(() => {
     if (anyModalOpen || session.isSeeking) {
@@ -708,6 +728,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     setOptionsOpen(false);
     setSeekIntervalOpen(false);
     setJumpOpen(false);
+    setDisplaySheet(null);
     setFrameMode(false);
     setLocked(true);
   }, [hud, endLongPress, setLocked]);
@@ -762,6 +783,38 @@ const PlayerSessionView = memo(function PlayerSessionView({
       bumpControls();
     },
     [bumpControls],
+  );
+
+  // ── P2 Video fit & display ─────────────────────────────────────────────────────────────────────────────────────
+  const openDisplaySheet = useCallback(
+    (sheet: 'aspectRatio' | 'mirrorFlip') => {
+      endLongPress();
+      showControls();
+      setDisplaySheet(sheet);
+    },
+    [endLongPress, showControls],
+  );
+
+  /** #564 Aspect ratio, #565 Crop to fill, #566 Stretch: remembered for this video. */
+  const onSelectFit = useCallback(
+    (fit: VideoFit) => {
+      setDisplaySheet(null);
+      setVideoFit(activeMediaId, fit);
+      bumpControls();
+      announcePlayer(videoFitLabel(t, fit));
+    },
+    [activeMediaId, bumpControls, t],
+  );
+
+  /** #573 Mirror / Flip: for this video, until another one plays. */
+  const onSelectMirror = useCallback(
+    (mode: MirrorMode) => {
+      setDisplaySheet(null);
+      setVideoMirror(activeMediaId, mode);
+      bumpControls();
+      announcePlayer(mirrorModeLabel(t, mode));
+    },
+    [activeMediaId, bumpControls, t],
   );
 
   /** The player's own clock (the session's position lags by up to a third of a second). */
@@ -860,6 +913,12 @@ const PlayerSessionView = memo(function PlayerSessionView({
         case 'frameByFrame':
           openFrameMode();
           return;
+        case 'aspectRatio':
+          openDisplaySheet('aspectRatio');
+          return;
+        case 'mirrorFlip':
+          openDisplaySheet('mirrorFlip');
+          return;
         default:
           notYet();
       }
@@ -871,6 +930,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       onLock,
       onOpenSpeed,
       onRewind,
+      openDisplaySheet,
       openFrameMode,
       toggleFullscreen,
     ],
@@ -896,9 +956,34 @@ const PlayerSessionView = memo(function PlayerSessionView({
       },
       seekTo: seekExact,
       notAvailableYet: notYet,
+      openAspectRatio: () => openDisplaySheet('aspectRatio'),
+      openMirrorFlip: () => openDisplaySheet('mirrorFlip'),
+      setFillCutout,
+      setInfoOverlay,
     }),
-    [endLongPress, notYet, onOpenOrientation, onOpenSpeed, onSaveToLibrary, onStop, openFrameMode, seekExact],
+    [
+      endLongPress,
+      notYet,
+      onOpenOrientation,
+      onOpenSpeed,
+      onSaveToLibrary,
+      onStop,
+      openDisplaySheet,
+      openFrameMode,
+      seekExact,
+    ],
   );
+
+  // P2 #576: the app draws edge to edge, so in full screen the window reaches under the camera cutout. The controls
+  // always keep clear of it; the picture does too unless "Use the notch area" is on. Not in picture-in-picture.
+  const cutoutInsets = useMemo(
+    () =>
+      isFullscreen && !pipActive
+        ? { top: insets.top, right: insets.right, bottom: insets.bottom, left: insets.left }
+        : null,
+    [insets.bottom, insets.left, insets.right, insets.top, isFullscreen, pipActive],
+  );
+  const pictureInsets = display.fillCutout ? null : cutoutInsets;
 
   /** The page's tab bar: leave the Player (it carries on in the mini player) for that tab, like Back does. */
   const onPressTab = useCallback(
@@ -958,6 +1043,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     seekStepSeconds,
     orientationMode,
     incoming: incomingToken ? { saveState } : null,
+    display,
     ui: optionsUi,
   };
 
@@ -979,7 +1065,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
             action={{
               icon: 'ellipsis-vertical',
               accessibilityLabel: t('videoPlayer.moreOptions'),
-              accessibilityHint: t('videoPlayer.moreOptionsHint'),
+              accessibilityHint: t('videoPlayer.moreOptionsSectionsHint'),
               onPress: openOptions,
               testID: 'player-page-options',
             }}
@@ -1020,6 +1106,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
           onZoomFinalize={sideGestures.onZoomFinalize}
           zoomResetKey={activeMediaId ?? ''}
           contentSize={contentSize}
+          // P2: picture-in-picture always fits (its window has the video's own shape).
+          fit={pipActive ? 'fit' : display.fit}
+          mirror={display.mirror}
+          pictureInsets={pictureInsets}
           pictureInPictureAutoEnter={pipAutoEnter}
           surfaceAttached={surface.attached}
           onPictureInPictureStart={handlePictureInPictureStart}
@@ -1045,8 +1135,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
           </View>
         ) : null}
         <PlayerAdjustmentHud hud={sideGestures.hud} />
-        {/* Single chrome container — avoids cover→controls remount swap shimmer. */}
-        <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
+        {/* Single chrome container — avoids cover→controls remount swap shimmer. Clear of the cutout (P2 #576). */}
+        <View style={[StyleSheet.absoluteFill, cutoutInsets]} pointerEvents="box-none">
           {pageLayout ? (
             overlayVisible && !startupCoverVisible ? (
               <PlayerCardOverlay
@@ -1127,14 +1217,30 @@ const PlayerSessionView = memo(function PlayerSessionView({
             </>
           )}
         </View>
-        <SeekFeedbackOverlay
-          previewSeconds={seekPreviewSeconds}
-          durationSeconds={session.durationSeconds}
-          visible={session.isSeeking}
-        />
-        <DoubleTapSeekFeedback side={doubleTapSide} seconds={seekStepSeconds} />
-        <LongPressSpeedPill visible={longPressActive} />
-        {locked && !showError && !pageLayout ? <PlayerLockedOverlay onUnlock={onUnlock} /> : null}
+        {/* The feedback, the info overlay and the lock pill, clear of the camera cutout in full screen (P2 #576). */}
+        <View style={[StyleSheet.absoluteFill, cutoutInsets, styles.overlayLayer]} pointerEvents="box-none">
+          <VideoInfoOverlay
+            visible={display.infoOverlay && !overlayVisible && !startupCoverVisible && !showError && !pipActive}
+            info={{
+              mimeType: trackInfo.mimeType,
+              width: trackInfo.width,
+              height: trackInfo.height,
+              frameRate: trackInfo.frameRate,
+              averageBitrate: trackInfo.averageBitrate,
+              peakBitrate: trackInfo.peakBitrate,
+              videoRange: trackInfo.videoRange,
+              playbackRate: session.playbackRate,
+            }}
+          />
+          <SeekFeedbackOverlay
+            previewSeconds={seekPreviewSeconds}
+            durationSeconds={session.durationSeconds}
+            visible={session.isSeeking}
+          />
+          <DoubleTapSeekFeedback side={doubleTapSide} seconds={seekStepSeconds} />
+          <LongPressSpeedPill visible={longPressActive} />
+          {locked && !showError && !pageLayout ? <PlayerLockedOverlay onUnlock={onUnlock} /> : null}
+        </View>
       </View>
 
       {pageLayout ? (
@@ -1148,7 +1254,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
       ) : (overlayVisible || session.isSeeking) && !startupCoverVisible ? (
         <Box
           px={16}
-          pb={isFullscreen ? 12 : 16}
+          pl={cutoutInsets ? 16 + cutoutInsets.left : undefined}
+          pr={cutoutInsets ? 16 + cutoutInsets.right : undefined}
+          pb={isFullscreen ? 12 + (cutoutInsets?.bottom ?? 0) : 16}
           pt={8}
           gap={4}
           style={styles.timelineDock}>
@@ -1215,7 +1323,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           style={
             pageLayout
               ? [styles.framePanel, { bottom: ds.size.tabBar + 1 + insets.bottom + ds.space.grid }]
-              : [styles.framePanel, styles.framePanelStage]
+              : [styles.framePanel, styles.framePanelStage, cutoutInsets ? { top: 60 + cutoutInsets.top } : null]
           }
         />
       ) : null}
@@ -1338,6 +1446,18 @@ const PlayerSessionView = memo(function PlayerSessionView({
         onJump={onJump}
         onClose={() => setJumpOpen(false)}
       />
+      <AspectRatioSheet
+        visible={displaySheet === 'aspectRatio'}
+        selected={display.fit}
+        onSelect={onSelectFit}
+        onClose={() => setDisplaySheet(null)}
+      />
+      <MirrorFlipSheet
+        visible={displaySheet === 'mirrorFlip'}
+        selected={display.mirror}
+        onSelect={onSelectMirror}
+        onClose={() => setDisplaySheet(null)}
+      />
     </SafeAreaScreen>
   );
 });
@@ -1390,6 +1510,10 @@ const styles = StyleSheet.create({
     top: 60,
     left: '18%',
     right: '18%',
+  },
+  // Above the startup cover and the chrome, as the lock overlay and the 2× pill were before they were grouped.
+  overlayLayer: {
+    zIndex: 10,
   },
   startupCover: {
     ...StyleSheet.absoluteFill,

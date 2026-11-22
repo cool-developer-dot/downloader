@@ -32,7 +32,7 @@ const TILE_LABELS: Record<Exclude<PageTile['id'], 'skipBack'>, TranslationKey> =
   frameByFrame: 'videoPlayer.tileFrameByFrame',
   abRepeat: 'videoPlayer.tileAbRepeat',
   aspectRatio: 'videoPlayer.tileAspectRatio',
-  filters: 'videoPlayer.tileFilters',
+  mirrorFlip: 'videoPlayer.tileMirrorFlip',
 };
 
 /**

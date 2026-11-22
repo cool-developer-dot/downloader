@@ -18,6 +18,12 @@ export const mmkvKeys = {
   playerDurationLabelMode: 'vidorax.mmkv.player.durationLabelMode.v1',
   /** P1 #527: the Player's seek interval in seconds (5, 10, 15, 20, 30 or 60; local only). */
   playerSeekStepSeconds: 'vidorax.mmkv.player.seekStepSeconds.v1',
+  /** P2 #564–#566: the fit chosen per video, `[mediaId, fit][]`, last 500, oldest first (local only). */
+  playerVideoFits: 'vidorax.mmkv.player.videoFits.v1',
+  /** P2 #576: full screen lets the picture fill the camera cutout (true) or keeps it clear (false, the default). */
+  playerFillCutout: 'vidorax.mmkv.player.fillCutout.v1',
+  /** P2 #721: the info overlay (codec, size, frame rate, bit rate, speed) is on. */
+  playerInfoOverlay: 'vidorax.mmkv.player.infoOverlay.v1',
   firstLaunch: 'vidorax.mmkv.flags.firstLaunch',
   onboardingComplete: 'vidorax.mmkv.flags.onboardingComplete',
   analyticsEnabled: 'vidorax.mmkv.flags.analyticsEnabled',

@@ -49,15 +49,14 @@ are shortcuts to the same commands.
 | Chip / tile / row | Replaced by | Features there |
 | --- | --- | --- |
 | Subs (chip) | **P3** Subtitles: load & tracks (P4 adds the style rows) | #589 Load, #590 Auto detect, #598 Multiple tracks, #602 Off, #603 Formats, #601 Encoding, #597 Sync |
-| Aspect ratio (tile) | **P2** Video fit & display | #564 Aspect ratio, #565 Crop to fill, #566 Stretch, #573 Mirror / flip |
 | A–B repeat (tile) | **P5** Repeat & loops | #541 A-B repeat, #722 Save loop |
 | Up next (row) | **P6** Queue & auto-next | #534 Auto play next, #619 Play queue, #620 Play next, #733 Next episode prompt |
 | Audio (chip) | **Faran's P17** — hidden until P17 is merged (`PAGE_CHIP_FLAGS.audio = false`; P17 sets it to `true`) | screen 22, Audio & equalizer |
-| Filters (tile) | **P2** — renamed to Mirror / Flip and wired to #573; Filters (#571, #572) is not planned | #573 Mirror / flip |
 | Stop (options row) | **Faran's P15** — the full stop; until then Stop pauses and goes back to 0:00 | #520 Stop |
 
 The package that builds one takes it out of `NOT_YET_ACTIONS` (`src/screens/player/page/player-page-actions.ts`) and
-handles it in `onPageAction` (`PlayerScreen.tsx`). The 1.0× chip is Faran's P16; P1 leaves it as it was.
+handles it in `onPageAction` (`PlayerScreen.tsx`). The 1.0× chip is Faran's P16; P1 leaves it as it was. P2 built the
+Aspect ratio tile and turned the Filters tile into Mirror / Flip (see P2 below), so both rows are gone from this table.
 
 **Faran's answers (2026-11-22):** `integration/player` created from the base (`9e9f343`); Stop as it is is fine for P1
 (real stop in P15); long-press 2× is fine as it is; Filters is not planned (the tile becomes Mirror / Flip in P2);
@@ -158,3 +157,81 @@ Play) would make #520 complete; the options row and the Stop command (`ctx.ui.st
 12. Scrubbing on the card: the bar answers a drag that starts a little above it (44 dp touch area).
 13. The options sheet in all six themes and in Urdu: section labels, rows, values (10 seconds, Auto); greyed rows while
     the video is preparing.
+
+## P2 — Video fit & display (#564, #565, #566, #573, #576, #721)
+
+Built on `hamza/player` after P1 (PR #40) was merged into it; branch `hamza/P2-video-fit`. Its PR targets
+`integration/player` and depends on #40.
+
+### What the user sees
+
+| # | Feature | Where | How |
+| --- | --- | --- | --- |
+| #564 | Aspect Ratio | "Aspect ratio" tile; Options → Video → Aspect ratio | A sheet: Fit to screen · Crop to fill · Stretch · Ratio 16:9 · Ratio 4:3 · Ratio 21:9 (toast + TalkBack name the choice). **Remembered per video** (MMKV `vidorax.mmkv.player.videoFits.v1`, the last 500 videos; choosing Fit forgets the video). A forced ratio is the largest box of that shape, centred, with the picture stretched into it: expo-video's `contentFit` is only contain / cover / fill. |
+| #565 | Crop to Fill | the same sheet | `cover`: no black bars, the edges that stick out are cut off. Pinch-zoom works as on Fit; panning stays inside the visible picture, so no black edge ever shows. |
+| #566 | Stretch | the same sheet | `fill`: the whole surface, the picture's shape not kept. |
+| #573 | Mirror/Flip | "Mirror / Flip" tile (in Filters' place); Options → Video | Normal · Mirror (left ↔ right) · Flip (upside down) · Mirror and flip. For the video playing now; another video starts normal. A view transform on the picture's frame inside the zoom layer (the surface is a TextureView), so pinch and pan still follow the fingers. |
+| #576 | Notch/Cutout Support | Options → Video → "Use the notch area" (a switch; off by default; remembered) | The app draws edge to edge (React Native sets the cutout mode to ALWAYS), and full screen uses no safe-area edges, so before P2 the top bar, the lock button, the timeline and the 2× pill could sit under the camera. Now in full screen all the controls and overlays keep clear of the cutout (safe-area insets, which include it). The picture keeps clear too, centred (the larger inset on both sides), unless the switch is on; then it fills the whole screen. Not applied in picture-in-picture. |
+| #721 | Info Overlay | Options → Video → "Info overlay" (a switch; off by default; remembered) | A small box in the top corner at the end side (right in English, left in Urdu; the lock pill is at the start) while the controls are hidden: Codec (H.264, H.265, VP9, AV1 …), Size, Frame rate, Bit rate (average, else peak), Range (SDR, HDR PQ / HLG) and Speed. A value the player doesn't know is left out; expo-video gives no audio codec, so none is shown. TalkBack reads it as one label. |
+
+### Options sheet
+
+Video now holds: Orientation (P1, 10), Aspect ratio 20, Mirror / Flip 30, Info overlay 40, Notch area 50. The registry
+gained two optional row fields, `subtitle` and `toggle`: a toggle row is drawn as a switch and flips without closing the
+sheet. P1's rows are unchanged; Playback and Audio are untouched for Faran.
+
+### Decisions
+
+- **The card on the page keeps the video's own shape** (P1's card size). For most videos Crop and Stretch therefore
+  look like Fit on the card (the card already has no bars); the difference shows in full screen and for videos wider
+  than the design card (about 1.93:1). A forced ratio shows inside the card, with bars.
+- **Mirror is not remembered** (only for the video playing now); the fit is remembered per video, as planned. Either is
+  a one-line change in `src/player/video-display-preference.ts`.
+- **Picture-in-picture** always uses Fit (the PiP window has the video's own shape); mirror stays.
+- **Notch's later home is screen 25** (Player settings, DISPLAY: "Notch"). Screen 25 isn't built, so the switch is an
+  options-sheet row for now.
+- **Filters (#571, #572) is not planned** (the checklist: "depends on device hardware/decoders"), so the tile is Mirror
+  / Flip. The old `videoPlayer.tileFilters` string is left in place, unused.
+- No native code, no change to `styles.xml`, the manifest or permissions; nothing of Faran's touched.
+
+### Files
+
+- Logic (unit-tested): `src/player/video-display.ts` (fit geometry, cutout area, per-video memory, mirror, info rows),
+  `video-display-labels.ts`; the store: `video-display-preference.ts` (zustand + MMKV).
+- Options: `src/player/options/p2-video-fit.ts` (+ one import in `index.ts`); `registry.ts` (`subtitle`, `toggle`);
+  `player-options.ts` (`ctx.display`, `ui.openAspectRatio` / `openMirrorFlip` / `setFillCutout` / `setInfoOverlay`).
+- Screen: `PlayerVideoSurface.tsx` (`fit`, `mirror`, `pictureInsets`; pan bounds follow the fit), `PlayerScreen.tsx`
+  (the two sheets, Back, the cutout insets for the chrome and overlays), `page/VideoDisplaySheets.tsx`,
+  `page/VideoInfoOverlay.tsx`, `page/PlayerOptionsSheet.tsx` (switch rows), `page/player-page-actions.ts`,
+  `page/PlayerPageBody.tsx`, `page/use-video-track-info.ts` (codec, bit rate, range).
+- Kit: `DsIcon` `flip-horizontal-2`. MMKV keys: `playerVideoFits`, `playerFillCutout`, `playerInfoOverlay`.
+- Strings: 23 new `videoPlayer.*` keys at the end of `videoPlayer.en.ts` / `videoPlayer.ur.ts`, including
+  `moreOptionsSectionsHint`, the ⋮ buttons' TalkBack hint (the old `moreOptionsHint` listed only P1's rows; it is left
+  in place, unused). The Mirror / Flip tile's test id is `player-tile-mirrorFlip` (was `player-tile-filters`).
+
+### Gate
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | 0 errors |
+| Unit tests | 2089 / 2089 (23 new: `video-display.test.ts` 17, `options/p2-video-fit.test.ts` 4, `options/registry.test.ts` 1, `player-page.test.ts` 1) |
+| `npm run lint` | 0 errors; 91 warnings, none in a file P2 changed |
+| `git diff --check` | clean |
+| Against the base | none of Faran's files; `package.json` / lockfile, `android/`, `modules/`, manifests unchanged |
+| Media3 | `1.9.0`, unchanged |
+
+### Device checks for Faran (release build; not possible here)
+
+1. Aspect ratio from the tile and from Options → Video: all six on a 16:9, a 4:3, a portrait and a 2.39:1 file, on the
+   card and in full screen. Close and reopen the same video: same fit. Another video: Fit.
+2. Crop to fill, then pinch-zoom and pan to each edge: no black edge shows (the pan stops at the visible picture).
+3. Mirror / Flip, each mode, also while zoomed: pinch and pan follow the fingers. Next / Previous: back to Normal.
+4. A cutout (Developer options → "Simulate a display with a cutout": corner, punch hole, tall): full screen in landscape
+   and in portrait (orientation lock Portrait, then Rotate). The top bar, lock, timeline, frame panel and 2× pill stay
+   clear of it; the picture stays clear by default and fills it with "Use the notch area" on. Also with 3-button
+   navigation.
+5. Info overlay on: an H.264 file, an H.265 or VP9 file, an HDR file and a stream. The values are sensible; the box
+   hides while the controls show; in Urdu it is on the left; TalkBack reads it.
+6. Picture-in-picture after choosing Crop, 4:3 and a mirror: the window shows the whole picture, mirrored.
+7. All six themes and Urdu: both sheets, the switch rows in the options sheet, the "Mirror / Flip" tile label.
+8. Changing the fit or the mirror never blacks out or restarts the picture (the view is laid out again, not remounted).
