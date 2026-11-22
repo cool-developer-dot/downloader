@@ -1,69 +1,104 @@
-import { memo, useMemo } from 'react';
+import { Fragment, memo } from 'react';
+import { Modal, Pressable as RNPressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
-import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
+import { DsRow, DsRowGroup, DsSectionLabel, DsText, ds } from '@/design';
+import { useTheme } from '@/hooks/use-theme';
 import { useTranslation, type TranslationKey } from '@/localization';
+import { playerOptions, type PlayerOptionContext, type PlayerOptionSection } from '@/player/options';
+import { useTourBlocker } from '@/tour/tour-store';
 
-import { OPTIONS_MENU, type PlayerPageAction } from './player-page-actions';
-
-const ITEMS: Record<(typeof OPTIONS_MENU)[number], { label: TranslationKey; icon: string }> = {
-  stop: { label: 'videoPlayer.stop', icon: 'stop' },
-  jumpToTime: { label: 'videoPlayer.jumpToTime', icon: 'clock-outline' },
-  frameByFrame: { label: 'videoPlayer.frameTitle', icon: 'filmstrip' },
-  seekInterval: { label: 'videoPlayer.seekInterval', icon: 'fast-forward' },
-  orientation: { label: 'player.orientationTitle', icon: 'screen-rotation' },
+const SECTION_LABELS: Record<PlayerOptionSection, TranslationKey> = {
+  playback: 'videoPlayer.sectionPlayback',
+  video: 'videoPlayer.sectionVideo',
+  audio: 'videoPlayer.sectionAudio',
+  subtitles: 'videoPlayer.sectionSubtitles',
+  tools: 'videoPlayer.sectionTools',
 };
 
 export type PlayerOptionsSheetProps = {
   visible: boolean;
-  /** A file another app opened: "Save to VidoraX" comes first (the page has no other place for it). */
-  save: { state: 'idle' | 'saving' | 'saved' } | null;
-  /** False while the video can't take commands: only Orientation (and Save) stay. */
-  playbackReady: boolean;
-  onAction: (action: PlayerPageAction) => void;
+  /** What the rows read and act on (built by the Player screen while the sheet is open). */
+  context: PlayerOptionContext;
   onClose: () => void;
 };
 
-/** P1: the ⋮ Video options menu of the page header, the video card and the full-screen top bar. */
-export const PlayerOptionsSheet = memo(function PlayerOptionsSheet({
-  visible,
-  save,
-  playbackReady,
-  onAction,
-  onClose,
-}: PlayerOptionsSheetProps) {
+/**
+ * The ⋮ options sheet (page header, video card, full-screen top bar): the registry's sections — Playback, Video,
+ * Audio, Subtitles, Tools — each with the rows the packages registered (src/player/options). A section with no rows
+ * is left out. A row runs once the sheet has closed, so a sheet it opens comes up on its own.
+ */
+export const PlayerOptionsSheet = memo(function PlayerOptionsSheet({ visible, context, onClose }: PlayerOptionsSheetProps) {
+  const theme = useTheme();
+  const insets = useSafeAreaInsets();
   const { t } = useTranslation();
-  const actions = useMemo<ActionSheetItem[]>(() => {
-    const items: ActionSheetItem[] = [];
-    if (save && save.state === 'idle') {
-      items.push({
-        id: 'player-option-save',
-        label: t('player.saveToLibrary'),
-        icon: 'content-save-outline',
-        onPress: () => onAction('saveToLibrary'),
-      });
-    }
-    for (const id of OPTIONS_MENU) {
-      if (!playbackReady && id !== 'orientation' && id !== 'seekInterval') {
-        continue;
-      }
-      items.push({
-        id: `player-option-${id}`,
-        label: t(ITEMS[id].label),
-        icon: ITEMS[id].icon,
-        onPress: () => onAction(id),
-      });
-    }
-    return items;
-  }, [onAction, playbackReady, save, t]);
+
+  useTourBlocker(visible);
+
+  if (!visible) return null;
+
+  const sections = playerOptions.sections(context);
 
   return (
-    <ActionSheetModal
-      visible={visible}
-      title={t('videoPlayer.optionsTitle')}
-      actions={actions}
-      onClose={onClose}
-      testID="player-options-sheet"
-    />
+    <Modal visible transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+      <View style={styles.root}>
+        <RNPressable
+          accessibilityRole="button"
+          accessibilityLabel={t('common.dismiss')}
+          onPress={onClose}
+          style={[StyleSheet.absoluteFill, { backgroundColor: `rgba(0,0,0,${theme.opacity.overlay})` }]}
+        />
+        <View
+          testID="player-options-sheet"
+          style={{
+            backgroundColor: theme.colors.background,
+            borderTopLeftRadius: theme.radius.xl,
+            borderTopRightRadius: theme.radius.xl,
+            paddingTop: 8,
+            paddingBottom: insets.bottom + 12,
+            maxHeight: '85%',
+          }}>
+          <View style={[styles.handle, { backgroundColor: theme.colors.border }]} />
+          <View style={styles.title}>
+            <DsText variant="cardTitle" accessibilityRole="header">
+              {t('videoPlayer.optionsTitle')}
+            </DsText>
+          </View>
+          <ScrollView
+            contentContainerStyle={{ paddingHorizontal: ds.space.screenX, paddingBottom: 8, gap: ds.space.stack }}
+            showsVerticalScrollIndicator={false}>
+            {sections.map((view, index) => (
+              <Fragment key={view.section}>
+                <DsSectionLabel first={index === 0} testID={`player-options-section-${view.section}`}>
+                  {t(SECTION_LABELS[view.section])}
+                </DsSectionLabel>
+                <DsRowGroup>
+                  {view.rows.map(({ row, enabled, value }) => (
+                    <DsRow
+                      key={row.id}
+                      icon={row.icon}
+                      title={t(row.label)}
+                      value={value ?? undefined}
+                      disabled={!enabled}
+                      onPress={() => {
+                        onClose();
+                        requestAnimationFrame(() => row.onPress(context));
+                      }}
+                      testID={`player-option-${row.id}`}
+                    />
+                  ))}
+                </DsRowGroup>
+              </Fragment>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
+});
+
+const styles = StyleSheet.create({
+  root: { flex: 1, justifyContent: 'flex-end' },
+  handle: { alignSelf: 'center', width: 40, height: 4, borderRadius: 2, marginBottom: 8 },
+  title: { paddingHorizontal: ds.space.screenX, paddingBottom: ds.space.stack },
 });

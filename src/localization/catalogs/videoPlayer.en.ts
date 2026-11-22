@@ -24,6 +24,12 @@ export const videoPlayerEn = {
   upNextSubtitle: 'Auto play next',
   // P1 — the ⋮ Video options menu (#520 Stop, #532 Jump to time).
   optionsTitle: 'Video options',
+  // P1 — the options sheet's sections (each package adds rows under them).
+  sectionPlayback: 'Playback',
+  sectionVideo: 'Video',
+  sectionAudio: 'Audio',
+  sectionSubtitles: 'Subtitles',
+  sectionTools: 'Tools',
   stop: 'Stop',
   stopped: 'Stopped at the start',
   jumpToTime: 'Jump to time',

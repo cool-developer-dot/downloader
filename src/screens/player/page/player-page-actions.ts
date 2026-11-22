@@ -4,7 +4,8 @@
  *
  * - "10 s" (⏪) skips back by the chosen seek interval; its label follows the interval.
  * - "Custom seek" (⏩) chooses the seek interval (#527 Custom Seek Interval).
- * - Jump to time (#532) and Stop (#520) are in the ⋮ menu: the frame draws no tile for them.
+ * - Stop (#520), Jump to time (#532) and the orientation lock are rows of the ⋮ options sheet (src/player/options):
+ *   the frame draws no tile for them. The tiles here are shortcuts to the same commands.
  */
 
 import type { DsIconName } from '@/design';
@@ -21,11 +22,7 @@ export type PlayerPageAction =
   | 'abRepeat'
   | 'aspectRatio'
   | 'filters'
-  | 'upNext'
-  | 'stop'
-  | 'jumpToTime'
-  | 'orientation'
-  | 'saveToLibrary';
+  | 'upNext';
 
 /** The chip row, in the design's order (1.0× · Subs · Audio · Rotate · Lock). */
 export const PAGE_CHIPS = ['speed', 'subs', 'audio', 'rotate', 'lock'] as const satisfies readonly PlayerPageAction[];
@@ -46,12 +43,10 @@ export const PAGE_TILES: readonly PageTile[] = [
   { id: 'filters', icon: 'moon', action: 'filters' },
 ];
 
-/** The ⋮ Video options menu (page header, card, full-screen top bar). "Save to VidoraX" leads it for a file from another app. */
-export const OPTIONS_MENU = ['stop', 'jumpToTime', 'frameByFrame', 'seekInterval', 'orientation'] as const satisfies readonly PlayerPageAction[];
-
 /**
  * Drawn by the design but built by a later package, so they say "Not available yet" for now: Subs (P3), Aspect ratio
- * (P2), A–B repeat (P5), Up next (P6), Audio (Faran's sound packages, screen 22). Filters is in no package yet.
+ * (P2), A–B repeat (P5), Up next (P6), Audio (Faran's sound packages, screen 22). Filters is in no package yet; it
+ * stays a placeholder until Faran says who owns it. The package that builds one removes it from this set.
  */
 export const NOT_YET_ACTIONS: ReadonlySet<PlayerPageAction> = new Set<PlayerPageAction>([
   'subs',

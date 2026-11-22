@@ -9,7 +9,7 @@ import { videoPlayerEn } from '../../../localization/catalogs/videoPlayer.en.ts'
 import { videoPlayerUr } from '../../../localization/catalogs/videoPlayer.ur.ts';
 
 import { CARD_DESIGN_RATIO, playerCardSize } from './card-size.ts';
-import { NOT_YET_ACTIONS, OPTIONS_MENU, PAGE_CHIPS, PAGE_TILES } from './player-page-actions.ts';
+import { NOT_YET_ACTIONS, PAGE_CHIPS, PAGE_TILES } from './player-page-actions.ts';
 
 describe('video card size', () => {
   it('is the design card (326 × 169) on the design screen when the picture is unknown or wide', () => {
@@ -46,17 +46,16 @@ describe('screen 19 mapping', () => {
     );
   });
 
-  it('gives P1 its entries: 10 s skips back, Custom seek sets the interval, Stop and Jump to time in the menu', () => {
+  it('gives P1 its tiles: 10 s skips back, Custom seek sets the interval, Frame by frame opens the panel', () => {
     const byId = Object.fromEntries(PAGE_TILES.map((tile) => [tile.id, tile.action]));
     assert.equal(byId.skipBack, 'skipBack');
     assert.equal(byId.customSeek, 'seekInterval');
     assert.equal(byId.frameByFrame, 'frameByFrame');
-    assert.deepEqual([...OPTIONS_MENU], ['stop', 'jumpToTime', 'frameByFrame', 'seekInterval', 'orientation']);
   });
 
   it('marks only later packages as not available yet', () => {
     assert.deepEqual([...NOT_YET_ACTIONS].sort(), ['abRepeat', 'aspectRatio', 'audio', 'filters', 'subs', 'upNext']);
-    for (const p1 of ['speed', 'rotate', 'lock', 'skipBack', 'seekInterval', 'frameByFrame', 'stop', 'jumpToTime'] as const) {
+    for (const p1 of ['speed', 'rotate', 'lock', 'skipBack', 'seekInterval', 'frameByFrame'] as const) {
       assert.equal(NOT_YET_ACTIONS.has(p1), false, p1);
     }
   });

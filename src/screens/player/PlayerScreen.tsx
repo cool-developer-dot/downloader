@@ -43,6 +43,7 @@ import {
   type SeekStepSeconds,
 } from '@/player';
 import { setSeekStepSeconds, useSeekStepSeconds } from '@/player/seek-step-preference';
+import type { PlayerOptionContext, PlayerOptionUi } from '@/player/options';
 import { useControlsVisibility } from '@/player/use-controls-visibility';
 import { useFullscreenLifecycle } from '@/player/use-fullscreen-lifecycle';
 import { usePlayQueueNeighbours } from '@/player/play-queue';
@@ -859,19 +860,6 @@ const PlayerSessionView = memo(function PlayerSessionView({
         case 'frameByFrame':
           openFrameMode();
           return;
-        case 'stop':
-          onStop();
-          return;
-        case 'jumpToTime':
-          endLongPress();
-          setJumpOpen(true);
-          return;
-        case 'orientation':
-          onOpenOrientation();
-          return;
-        case 'saveToLibrary':
-          void onSaveToLibrary();
-          return;
         default:
           notYet();
       }
@@ -881,22 +869,35 @@ const PlayerSessionView = memo(function PlayerSessionView({
       endLongPress,
       notYet,
       onLock,
-      onOpenOrientation,
       onOpenSpeed,
       onRewind,
-      onSaveToLibrary,
-      onStop,
       openFrameMode,
       toggleFullscreen,
     ],
   );
 
-  // The ⋮ menu closes before its entry runs; a sheet it opens comes up on the next frame, once the menu has gone.
-  const onOptionsAction = useCallback(
-    (action: PlayerPageAction) => {
-      requestAnimationFrame(() => onPageAction(action));
-    },
-    [onPageAction],
+  // The ⋮ options sheet (src/player/options): the rows registered by each package act through this context.
+  const optionsUi = useMemo<PlayerOptionUi>(
+    () => ({
+      stop: onStop,
+      openJumpToTime: () => {
+        endLongPress();
+        setJumpOpen(true);
+      },
+      openSeekInterval: () => {
+        endLongPress();
+        setSeekIntervalOpen(true);
+      },
+      openFrameByFrame: openFrameMode,
+      openOrientation: onOpenOrientation,
+      openSpeed: onOpenSpeed,
+      saveToLibrary: () => {
+        void onSaveToLibrary();
+      },
+      seekTo: seekExact,
+      notAvailableYet: notYet,
+    }),
+    [endLongPress, notYet, onOpenOrientation, onOpenSpeed, onSaveToLibrary, onStop, openFrameMode, seekExact],
   );
 
   /** The page's tab bar: leave the Player (it carries on in the mini player) for that tab, like Back does. */
@@ -941,6 +942,24 @@ const PlayerSessionView = memo(function PlayerSessionView({
   );
   const quality = qualityLabel(trackInfo.width, trackInfo.height);
   const gesturesEnabled = !locked && !anyModalOpen && !startupCoverVisible;
+  const optionsContext: PlayerOptionContext = {
+    t,
+    mediaId: activeMediaId,
+    player,
+    controller,
+    session: {
+      isReady: session.isReady,
+      isPlaying: session.isPlaying,
+      hasError: Boolean(session.error),
+      positionSeconds: session.positionSeconds,
+      durationSeconds: session.durationSeconds,
+      playbackRate: session.playbackRate,
+    },
+    seekStepSeconds,
+    orientationMode,
+    incoming: incomingToken ? { saveState } : null,
+    ui: optionsUi,
+  };
 
   const body = (
     <View
@@ -1303,9 +1322,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       />
       <PlayerOptionsSheet
         visible={optionsOpen}
-        save={incomingToken ? { state: saveState } : null}
-        playbackReady={canCommand}
-        onAction={onOptionsAction}
+        context={optionsContext}
         onClose={() => setOptionsOpen(false)}
       />
       <SeekIntervalSheet
