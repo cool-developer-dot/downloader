@@ -256,8 +256,10 @@ Local files only, no network, no new permission or dependency, no SQLite change.
   cropped) and is synced to `player.currentTime`, read ten times a second while a file shows.
 - When a file or Off is chosen, P3 sets `player.subtitleTrack = null`, so the player's own subtitles never show at the
   same time. That is a player property set from P3's hook; no file of Faran's is edited.
-- With nothing chosen for a video, the Player shows what the video turns on itself (Media3 picks a default-flagged
-  track), else the auto-detected file in the app's language, else English, else one without a language.
+- **expo-video turns the player's own subtitles off** when the player starts and for every new video
+  (`VideoPlayer.kt`: "we want them disabled by default"), so nothing carries over between videos. With nothing chosen
+  for a video, P3 shows a track the video flags as its default, else the auto-detected file in the app's language,
+  else English, else one without a language.
 
 ### What the user sees
 
@@ -316,7 +318,8 @@ Load subtitle 20, Auto-detect 30 (switch), Sync 40, Encoding 50 (files only), Su
 
 1. Load subtitle with an SRT, a VTT, an ASS and an SSA file (from Downloads and from a cloud provider in the picker);
    a `.txt` that is not a subtitle (refused, toast); a file over 5 MB (refused). The picker does not open a PiP window
-   while a video plays; App Lock does not ask again on return.
+   while a video plays (PiP is disarmed before the picker opens, and armed again after); App Lock does not ask again
+   on return.
 2. A download with "Download subtitles" on (H19): open it, and the `<video>.<lang>.vtt` shows by itself (the app's
    language first); turn Auto-detect off, and only chosen files remain.
 3. An MKV with two subtitle tracks and an HLS stream with subtitles: both appear as "… · in the video", switching works,
@@ -327,4 +330,6 @@ Load subtitle 20, Auto-detect 30 (switch), Sync 40, Encoding 50 (files only), Su
 6. Subtitles on the card (above the card's timeline when the controls show), in full screen, with a cutout (clear of
    it), in PiP, mirrored (the text is not mirrored), with Crop.
 7. Six themes and Urdu: the Subtitles sheet (Subs chip), the track, encoding and sync sheets.
-8. Previous / Next with subtitles on: the next video starts with its own choice.
+8. Previous / Next with subtitles on: the next video starts with its own choice. A video with a track inside it, set
+   to Off, then Next to a video whose subtitle track is flagged default: that track shows. Previous / Next onto an MKV:
+   its tracks are in the list.

@@ -8,7 +8,8 @@
  *   takes no sync offset and no VidoraX style.
  * - A subtitle file (loaded, or found next to the video): read and timed here, drawn by VidoraX's overlay — synced
  *   to `player.currentTime` ten times a second, shifted by the sync offset, styled by P4.
- * When a file (or Off) is chosen, the player's own track is turned off, so the two never show at once.
+ * When a file (or Off) is chosen, the player's own track is turned off, so the two never show at once. (expo-video
+ * itself turns the player's subtitles off for every new video; a chosen or default-flagged track is turned on here.)
  */
 
 import { useEventListener } from 'expo';
@@ -208,13 +209,18 @@ export function usePlayerSubtitles(player: VideoPlayer, mediaId: string | null):
       }
       return { kind: 'off' };
     }
-    // Nothing chosen for this video: a track the video turns on by itself, else a file found next to it.
+    // Nothing chosen for this video. expo-video starts every video with the player's own subtitles off, so: a track
+    // the player shows anyway, else a track the video flags as its default, else a file found next to it.
     if (nativeTrack) {
       return embeddedSource(nativeTrack);
     }
+    const flagged = embedded.find((track) => track.isDefault);
+    if (flagged) {
+      return embeddedSource(flagged);
+    }
     const found = autoDetect ? preferredSidecar(detected, appLanguage) : null;
     return found ? { kind: 'file', fileId: found.id } : { kind: 'off' };
-  }, [appLanguage, autoDetect, detected, files, nativeTrack, record.primary]);
+  }, [appLanguage, autoDetect, detected, embedded, files, nativeTrack, record.primary]);
   const currentKey = sourceKey(current);
   const currentFile = current.kind === 'file' ? (files.find((file) => file.id === current.fileId) ?? null) : null;
 

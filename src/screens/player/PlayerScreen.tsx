@@ -375,10 +375,12 @@ const PlayerSessionView = memo(function PlayerSessionView({
   });
   // P3: the subtitle file picker sends VidoraX to the background; that is not "leaving", so no PiP window meanwhile.
   const pipAutoEnter = pipActive || (pipArmedNow && !subtitles.picking);
+  const subtitlePicking = subtitles.picking;
   useEffect(() => {
     setPictureInPictureArmed(pipAutoEnter);
     armNativePictureInPicture(pipAutoEnter, contentSize);
-  }, [contentSize, pipAutoEnter, setPictureInPictureArmed]);
+    // `subtitlePicking`: armed again after the subtitle picker, which disarms directly (see onLoadSubtitle).
+  }, [contentSize, pipAutoEnter, setPictureInPictureArmed, subtitlePicking]);
   // Only the full Player opens a PiP window: once it is gone (the session may go on in the mini player), leaving the
   // app pauses instead.
   useEffect(
@@ -872,6 +874,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
   /** #589: the file picker; a toast says what happened. */
   const onLoadSubtitle = useCallback(async () => {
     endLongPress();
+    // Disarmed now, before the picker opens: the `picking` state reaches the arming effect only after a render, and
+    // the picker may already be in front by then. The effect arms again once picking is over.
+    armNativePictureInPicture(false, null);
+    setPictureInPictureArmed(false);
     const result = await loadSubtitles();
     switch (result.kind) {
       case 'loaded':
@@ -888,7 +894,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
         return;
       default:
     }
-  }, [endLongPress, loadSubtitles, t]);
+  }, [endLongPress, loadSubtitles, setPictureInPictureArmed, t]);
 
   // A remembered file that can no longer be read (deleted, moved): said once.
   const subtitleFailed = subtitles.loaded?.failed === true;
