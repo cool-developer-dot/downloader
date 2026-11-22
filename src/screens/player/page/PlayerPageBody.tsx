@@ -5,7 +5,7 @@ import { DsChip, DsChipRow, DsRow, DsRowGroup, DsTile, DsTileGrid, ds } from '@/
 import { useTranslation, type TranslationKey } from '@/localization';
 import { formatPlaybackRateChip, formatPlaybackRateLabel } from '@/player';
 
-import { PAGE_CHIPS, PAGE_TILES, type PageTile, type PlayerPageAction } from './player-page-actions';
+import { PAGE_TILES, shownPageChips, type PageChip, type PageTile, type PlayerPageAction } from './player-page-actions';
 
 export type PlayerPageBodyProps = {
   playbackRate: number;
@@ -17,12 +17,15 @@ export type PlayerPageBodyProps = {
   onAction: (action: PlayerPageAction) => void;
 };
 
-const CHIP_LABELS: Record<Exclude<(typeof PAGE_CHIPS)[number], 'speed'>, { label: TranslationKey; a11y: TranslationKey }> = {
+const CHIP_LABELS: Record<Exclude<PageChip, 'speed'>, { label: TranslationKey; a11y: TranslationKey }> = {
   subs: { label: 'videoPlayer.chipSubs', a11y: 'videoPlayer.chipSubsA11y' },
   audio: { label: 'videoPlayer.chipAudio', a11y: 'videoPlayer.chipAudio' },
   rotate: { label: 'videoPlayer.chipRotate', a11y: 'player.enterFullscreen' },
   lock: { label: 'videoPlayer.chipLock', a11y: 'player.lockScreen' },
 };
+
+/** The chips drawn: the design's row minus those switched off (Audio until Faran's P17). */
+const SHOWN_CHIPS = shownPageChips();
 
 const TILE_LABELS: Record<Exclude<PageTile['id'], 'skipBack'>, TranslationKey> = {
   customSeek: 'videoPlayer.tileCustomSeek',
@@ -53,7 +56,7 @@ export const PlayerPageBody = memo(function PlayerPageBody({
       accessibilityElementsHidden={accessibilityHidden}
       testID="player-page-body">
       <DsChipRow testID="player-page-chips">
-        {PAGE_CHIPS.map((chip) =>
+        {SHOWN_CHIPS.map((chip) =>
           chip === 'speed' ? (
             <DsChip
               key={chip}

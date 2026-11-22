@@ -9,7 +9,7 @@ import { videoPlayerEn } from '../../../localization/catalogs/videoPlayer.en.ts'
 import { videoPlayerUr } from '../../../localization/catalogs/videoPlayer.ur.ts';
 
 import { CARD_DESIGN_RATIO, playerCardSize } from './card-size.ts';
-import { NOT_YET_ACTIONS, PAGE_CHIPS, PAGE_TILES } from './player-page-actions.ts';
+import { NOT_YET_ACTIONS, PAGE_CHIP_FLAGS, PAGE_CHIPS, PAGE_TILES, shownPageChips } from './player-page-actions.ts';
 
 describe('video card size', () => {
   it('is the design card (326 × 169) on the design screen when the picture is unknown or wide', () => {
@@ -44,6 +44,12 @@ describe('screen 19 mapping', () => {
         ['filters', 'moon'],
       ],
     );
+  });
+
+  it('hides the Audio chip until P17 and leaves the others, 1.0× included, in the design order', () => {
+    assert.equal(PAGE_CHIP_FLAGS.audio, false);
+    assert.deepEqual(shownPageChips(), ['speed', 'subs', 'rotate', 'lock']);
+    assert.deepEqual(shownPageChips({ ...PAGE_CHIP_FLAGS, audio: true }), ['speed', 'subs', 'audio', 'rotate', 'lock']);
   });
 
   it('gives P1 its tiles: 10 s skips back, Custom seek sets the interval, Frame by frame opens the panel', () => {

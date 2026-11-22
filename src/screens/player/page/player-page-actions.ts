@@ -27,6 +27,26 @@ export type PlayerPageAction =
 /** The chip row, in the design's order (1.0× · Subs · Audio · Rotate · Lock). */
 export const PAGE_CHIPS = ['speed', 'subs', 'audio', 'rotate', 'lock'] as const satisfies readonly PlayerPageAction[];
 
+export type PageChip = (typeof PAGE_CHIPS)[number];
+
+/**
+ * Which chips are drawn. A chip whose flag is off is not shown, but its label, handler and place in the design order
+ * stay. Audio is Faran's P17 (screen 22): hidden until P17 is merged, which sets `audio: true`. The 1.0× chip is
+ * Faran's P16.
+ */
+export const PAGE_CHIP_FLAGS: Readonly<Record<PageChip, boolean>> = {
+  speed: true,
+  subs: true,
+  audio: false,
+  rotate: true,
+  lock: true,
+};
+
+/** The chips to draw, in the design order, leaving out those whose flag is off. */
+export function shownPageChips(flags: Readonly<Record<PageChip, boolean>> = PAGE_CHIP_FLAGS): PageChip[] {
+  return PAGE_CHIPS.filter((chip) => flags[chip]);
+}
+
 export type PageTile = {
   id: 'skipBack' | 'customSeek' | 'frameByFrame' | 'abRepeat' | 'aspectRatio' | 'filters';
   icon: DsIconName;
@@ -45,8 +65,9 @@ export const PAGE_TILES: readonly PageTile[] = [
 
 /**
  * Drawn by the design but built by a later package, so they say "Not available yet" for now: Subs (P3), Aspect ratio
- * (P2), A–B repeat (P5), Up next (P6), Audio (Faran's sound packages, screen 22). Filters is in no package yet; it
- * stays a placeholder until Faran says who owns it. The package that builds one removes it from this set.
+ * (P2), A–B repeat (P5), Up next (P6), Audio (Faran's P17; its chip is also hidden, see `PAGE_CHIP_FLAGS`). Filters
+ * (#571, #572) is not planned: P2 turns that tile into Mirror / Flip (#573). The package that builds one removes it
+ * from this set.
  */
 export const NOT_YET_ACTIONS: ReadonlySet<PlayerPageAction> = new Set<PlayerPageAction>([
   'subs',

@@ -36,7 +36,7 @@ are shortcuts to the same commands.
 
 | # | Feature | Where | How |
 | --- | --- | --- | --- |
-| — | Screen 19 page | Portrait, not full screen | Header "← Video player ⋮"; the video in a 326-wide card (169 dp for wide video, taller for 16:9 / portrait up to a square, so no black bars); chips 1.0× · Subs · Audio · Rotate · Lock; tiles 10 s · Custom seek · Frame by frame · A–B repeat · Aspect ratio · Filters; Up next; the tab bar. Landscape and full screen keep the black stage (no design frame for them). |
+| — | Screen 19 page | Portrait, not full screen | Header "← Video player ⋮"; the video in a 326-wide card (169 dp for wide video, taller for 16:9 / portrait up to a square, so no black bars); chips 1.0× · Subs · Rotate · Lock (the design's Audio chip is hidden until Faran's P17); tiles 10 s · Custom seek · Frame by frame · A–B repeat · Aspect ratio · Filters; Up next; the tab bar. Landscape and full screen keep the black stage (no design frame for them). |
 | — | Options sheet | ⋮ (page header, video card, full-screen top bar) | Sections in the plan's order, each with the rows the packages registered; empty sections are left out. P1: **Playback** — Stop, Jump to time, Seek interval (value "10 seconds"), Frame by frame; **Video** — the orientation lock (value Auto / Portrait / Landscape); **Tools** — "Save to VidoraX" for an unsaved file another app opened. |
 | #520 | Stop | Options → Playback | Pause and go back to 0:00 ("Stopped at the start", toast + TalkBack). Not a full stop yet — see "Stop #520" below. |
 | #527 | Custom Seek Interval | "Custom seek" tile, Options → Playback | 5 / 10 / 15 / 20 / 30 / 60 s, remembered (MMKV `vidorax.mmkv.player.seekStepSeconds.v1`). The "10 s" tile (skip back), the full-screen ⏪ / ⏩ (icon and label), double taps and their feedback follow it. |
@@ -52,11 +52,16 @@ are shortcuts to the same commands.
 | Aspect ratio (tile) | **P2** Video fit & display | #564 Aspect ratio, #565 Crop to fill, #566 Stretch, #573 Mirror / flip |
 | A–B repeat (tile) | **P5** Repeat & loops | #541 A-B repeat, #722 Save loop |
 | Up next (row) | **P6** Queue & auto-next | #534 Auto play next, #619 Play queue, #620 Play next, #733 Next episode prompt |
-| Audio (chip) | **Faran** — sound packages P14–P19 (screen 22, Audio & equalizer); which package, Faran to say | audio track, equalizer, … |
-| Filters (tile) | **Nobody yet** — stays a placeholder until Faran says who owns it | — |
+| Audio (chip) | **Faran's P17** — hidden until P17 is merged (`PAGE_CHIP_FLAGS.audio = false`; P17 sets it to `true`) | screen 22, Audio & equalizer |
+| Filters (tile) | **P2** — renamed to Mirror / Flip and wired to #573; Filters (#571, #572) is not planned | #573 Mirror / flip |
+| Stop (options row) | **Faran's P15** — the full stop; until then Stop pauses and goes back to 0:00 | #520 Stop |
 
 The package that builds one takes it out of `NOT_YET_ACTIONS` (`src/screens/player/page/player-page-actions.ts`) and
-handles it in `onPageAction` (`PlayerScreen.tsx`).
+handles it in `onPageAction` (`PlayerScreen.tsx`). The 1.0× chip is Faran's P16; P1 leaves it as it was.
+
+**Faran's answers (2026-11-22):** `integration/player` created from the base (`9e9f343`); Stop as it is is fine for P1
+(real stop in P15); long-press 2× is fine as it is; Filters is not planned (the tile becomes Mirror / Flip in P2);
+Audio chip → P17, hidden until then; 1.0× chip → P16, not touched.
 
 ### Options sheet (the plan's, registry-based)
 
@@ -85,6 +90,7 @@ notification / background play (`showNowPlayingNotification`, `staysActiveInBack
 owns the player; `replace(null)` or `release()` from the screen would break the session. **Kept: pause and seek to
 0:00.** For Faran: a session `stop()` (unload the source or put ExoPlayer idle, drop the notification, load again on
 Play) would make #520 complete; the options row and the Stop command (`ctx.ui.stop`) only need to call it.
+**Faran: fine for P1; the full stop comes in his P15.**
 
 ### Design and decisions
 
@@ -127,7 +133,7 @@ Play) would make #520 complete; the options row and the Stop command (`ctx.ui.st
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` | 0 errors |
-| Unit tests | 2065 / 2065 (39 new: `playback-basics.test.ts` 19, `options/registry.test.ts` 12, `player-page.test.ts` 7, `double-tap-seek.test.ts` 1) |
+| Unit tests | 2066 / 2066 (40 new: `playback-basics.test.ts` 19, `options/registry.test.ts` 12, `player-page.test.ts` 8, `double-tap-seek.test.ts` 1) |
 | `npm run lint` | 0 errors; 91 warnings, none in a file P1 changed |
 | `git diff --check` | clean |
 | `git diff 9e9f343` (base) | none of Faran's files: `remote-stream.ts`, `resolve-playback-source*.ts`, `use-player-session.ts`, `session-host/*`, manifests, `android/`, `modules/`, `package.json` / lockfile unchanged |
@@ -135,7 +141,8 @@ Play) would make #520 complete; the options row and the Stop command (`ctx.ui.st
 
 ### Device checks for Faran (release build; not possible here)
 
-1. Portrait: the page matches screen 19 in all six themes (Red: header band, red tab bar); Urdu (RTL rows).
+1. Portrait: the page matches screen 19 in all six themes (Red: header band, red tab bar); Urdu (RTL rows). The chip
+   row is 1.0× · Subs · Rotate · Lock (no Audio chip until P17).
 2. Rotate chip → full screen landscape and back; the picture never goes black or restarts; a paused frame stays.
 3. Lock on the page: nothing but the unlock pill responds (header ←, chips, tabs, Back).
 4. Hold the picture while playing → 2×, lift → the chosen speed (try 1.5×); hold, then lock / PiP / switch video.
