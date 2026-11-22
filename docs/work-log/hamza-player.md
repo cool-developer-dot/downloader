@@ -440,7 +440,9 @@ P6 adds Auto Play Next to the same function.
 **How it runs.** The Player screen listens to the player's own `playToEnd`, as `use-player-session.ts` does. That file
 is Faran's and isn't changed. The decision runs in a microtask, so the session's handler has always marked the video
 finished first, and a repeat happens before the next render, so the Replay button doesn't flash. It acts only through
-what the session already offers: `replay()`, its exact seek, `play()`, and Next's `setParams`. P5 doesn't set
+what the session already offers: `replay()`, its exact seek, `play()`, and Next's `setParams`. A loop that wraps at
+the very end (B at the end) goes through `replay()` and then seeks to A. `replay()` resets the session's "finished"
+guard, so once the loop is cleared the real end still shows Replay. P5 doesn't set
 `player.loop`: expo-video sends `playToEnd` on each loop, and the session would then mark a playing video finished.
 
 ### Decisions
@@ -485,7 +487,8 @@ what the session already offers: `replay()`, its exact seek, `play()`, and Next'
    download details (no list) repeats itself.
 4. A–B: tap the tile twice while playing; the ticks and tint show on the card's bar and in full screen; the loop
    repeats cleanly (no visible overshoot past B). B before A, and B at the very end (the loop wraps at the end). Clear
-   from the "A–B ✕" button and from the sheet. Another video starts with no loop.
+   from the "A–B ✕" button and from the sheet. Another video starts with no loop. With B at the end: let it wrap a few
+   times, clear it, play to the end. Replay must show and the watch history must count it.
 5. Repeat all in picture-in-picture, and with background play on and the screen off: the next video plays.
 6. Save loop with an Urdu name; the list after reopening the app; play, rename, delete (confirm); 50 loops.
 7. The A-B sheet and When the video ends in all six themes and in Urdu; TalkBack reads Set A / Set B with the time.

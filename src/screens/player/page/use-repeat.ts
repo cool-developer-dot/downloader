@@ -141,8 +141,10 @@ export function usePlayerRepeat(input: PlayerRepeatInput): PlayerRepeat {
       });
       switch (outcome.kind) {
         case 'loop':
+          // Through replay first: it resets the session's "finished" guard, so a later real end still shows Replay
+          // and counts as watched once the loop is cleared. Then to A.
+          now.replay();
           now.seekExact(outcome.seekSeconds);
-          controller.play();
           return;
         case 'replay':
           now.replay();
