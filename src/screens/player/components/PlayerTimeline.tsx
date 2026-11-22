@@ -20,6 +20,8 @@ import {
 import { seekPreviewLeft, seekPreviewSize } from '@/player/seek-preview';
 import { useTranslation } from '@/localization';
 
+import { TimelineLoopMarks } from './TimelineLoopMarks';
+
 export type PlayerTimelineProps = {
   positionSeconds: number;
   durationSeconds: number | null;
@@ -36,6 +38,10 @@ export type PlayerTimelineProps = {
    * a 6 dp white bar with no thumb until it is dragged, and the times under it.
    */
   variant?: 'dock' | 'card';
+  /** P5 #541: the A-B repeat points as fractions of the timeline (null where not set); omitted or both null: none. */
+  loopMarkers?: { a: number | null; b: number | null } | null;
+  /** P5 #541: clears the A-B repeat (the button shows while a point is set). */
+  onClearLoop?: () => void;
 };
 
 function ratioToSeconds(
@@ -61,6 +67,8 @@ export const PlayerTimeline = memo(function PlayerTimeline({
   onSeekCommit,
   onSeekCancel,
   variant = 'dock',
+  loopMarkers = null,
+  onClearLoop,
 }: PlayerTimelineProps) {
   const card = variant === 'card';
   const theme = useTheme();
@@ -237,6 +245,7 @@ export const PlayerTimeline = memo(function PlayerTimeline({
                 },
               ]}
             />
+            <TimelineLoopMarks marks={loopMarkers} color={progressColor} />
             {card && previewSeconds == null ? null : (
             <View
               style={[
@@ -256,6 +265,19 @@ export const PlayerTimeline = memo(function PlayerTimeline({
         <Text variant="caption" color="white">
           {formatPlaybackTime(displaySeconds)}
         </Text>
+        {onClearLoop && loopMarkers && (loopMarkers.a != null || loopMarkers.b != null) ? (
+          <Pressable
+            onPress={onClearLoop}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={t('videoPlayer.abClearA11y')}
+            style={styles.loopClear}
+            testID="player-timeline-loop-clear">
+            <Text variant="caption" color="white">
+              {`A${String.fromCharCode(0x2013)}B  ${String.fromCharCode(0x2715)}`}
+            </Text>
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={toggleDurationMode}
           hitSlop={12}
@@ -278,6 +300,12 @@ export const PlayerTimeline = memo(function PlayerTimeline({
 });
 
 const styles = StyleSheet.create({
+  loopClear: {
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+  },
   wrap: {
     width: '100%',
   },

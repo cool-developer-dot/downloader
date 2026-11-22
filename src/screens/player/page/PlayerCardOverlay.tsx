@@ -34,6 +34,9 @@ export type PlayerCardOverlayProps = {
   onSeekChange: (seconds: number) => void;
   onSeekCommit: () => void;
   onSeekCancel: () => void;
+  /** P5 #541: the A-B repeat points on the bar, and its clear button. */
+  loopMarkers?: { a: number | null; b: number | null } | null;
+  onClearLoop?: () => void;
 };
 
 /** Icon sizes measured on screen 19: 22.6 dp tall solid ⏮ ⏸ ⏭, 2.7 dp strokes, 51 dp apart. */
@@ -67,6 +70,8 @@ export const PlayerCardOverlay = memo(function PlayerCardOverlay({
   onSeekChange,
   onSeekCommit,
   onSeekCancel,
+  loopMarkers = null,
+  onClearLoop,
 }: PlayerCardOverlayProps) {
   const theme = useTheme();
   const { t, rtl } = useTranslation();
@@ -180,6 +185,8 @@ export const PlayerCardOverlay = memo(function PlayerCardOverlay({
           onSeekChange={onSeekChange}
           onSeekCommit={onSeekCommit}
           onSeekCancel={onSeekCancel}
+          loopMarkers={loopMarkers}
+          onClearLoop={onClearLoop}
         />
       </View>
     </View>

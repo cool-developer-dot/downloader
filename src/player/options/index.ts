@@ -6,6 +6,7 @@ import './p1-playback-basics';
 import './p2-video-fit';
 import './p3-subtitles';
 import './p4-subtitle-style';
+import './p5-repeat';
 
 export {
   playerOptions,

@@ -67,7 +67,7 @@ describe('screen 19 mapping', () => {
   });
 
   it('marks only later packages as not available yet', () => {
-    assert.deepEqual([...NOT_YET_ACTIONS].sort(), ['abRepeat', 'audio', 'upNext']);
+    assert.deepEqual([...NOT_YET_ACTIONS].sort(), ['audio', 'upNext']);
     const built = ['speed', 'subs', 'rotate', 'lock', 'skipBack', 'seekInterval', 'frameByFrame', 'aspectRatio', 'mirrorFlip'] as const;
     for (const action of built) {
       assert.equal(NOT_YET_ACTIONS.has(action), false, action);

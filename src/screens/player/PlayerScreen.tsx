@@ -59,7 +59,10 @@ import {
 import type { PlayerOptionContext, PlayerOptionUi } from '@/player/options';
 import { useControlsVisibility } from '@/player/use-controls-visibility';
 import { useFullscreenLifecycle } from '@/player/use-fullscreen-lifecycle';
-import { usePlayQueueNeighbours } from '@/player/play-queue';
+import { usePlayQueueNeighbours, usePlayQueueStore } from '@/player/play-queue';
+import { showAppDialog } from '@/components/modals/app-dialog';
+import { deleteLoop, renameLoop, saveLoop } from '@/player/repeat-preference';
+import { MAX_SAVED_LOOPS_PER_VIDEO, nextLoopName, type SavedLoop } from '@/player/saved-loops';
 import { usePlayerBrightness } from '@/player/hooks/use-player-brightness';
 import { usePlayerOrientation } from '@/player/hooks/use-player-orientation';
 import type { OrientationMode } from '@/player/orientation-mode';
@@ -128,6 +131,8 @@ import { VideoInfoLine, VideoInfoOverlay } from './page/VideoInfoOverlay';
 import { SubtitleOverlay } from './page/SubtitleOverlay';
 import { SubtitleEncodingSheet, SubtitleSyncSheet, SubtitleTrackSheet } from './page/SubtitleSheets';
 import { SubtitleStyleSheet } from './page/SubtitleStyleSheet';
+import { AbRepeatSheet, EndOfPlaybackSheet, LoopNameModal } from './page/RepeatSheets';
+import { useContinueAfterAutoAdvance, usePlayerRepeat } from './page/use-repeat';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -270,6 +275,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const [subtitleSheet, setSubtitleSheet] = useState<
     'subtitles' | 'tracks' | 'sync' | 'encoding' | 'style' | 'second' | null
   >(null);
+  // P5: which repeat sheet is open, and the loop-name dialog (saving the A-B loop, or renaming a saved one).
+  const [repeatSheet, setRepeatSheet] = useState<'endOfPlayback' | 'abRepeat' | null>(null);
+  const [loopNaming, setLoopNaming] = useState<{ mode: 'save' } | { mode: 'rename'; loop: SavedLoop } | null>(null);
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const notYet = usePlayerNotYet();
@@ -688,7 +696,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
     seekIntervalOpen ||
     jumpOpen ||
     displaySheet != null ||
-    subtitleSheet != null;
+    subtitleSheet != null ||
+    repeatSheet != null ||
+    loopNaming != null;
 
   const onSingleTap = useCallback(() => {
     if (anyModalOpen || session.isSeeking) {
@@ -764,6 +774,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
     setJumpOpen(false);
     setDisplaySheet(null);
     setSubtitleSheet(null);
+    setRepeatSheet(null);
+    setLoopNaming(null);
     setFrameMode(false);
     setLocked(true);
   }, [hud, endLongPress, setLocked]);
@@ -783,6 +795,78 @@ const PlayerSessionView = memo(function PlayerSessionView({
     [beginSeekPreview, commitSeekPreview],
   );
   const canCommand = session.isReady && !session.error;
+
+  // ── P5 Repeat & loops ──────────────────────────────────────────────────────────────────────────────────────────
+  // The A-B loop of this video, saved loops, and what the end of the video does (src/player/end-of-playback.ts).
+  const queueIds = usePlayQueueStore((s) => s.ids);
+  const repeat = usePlayerRepeat({
+    player,
+    controller,
+    mediaId: activeMediaId,
+    isReady: session.isReady,
+    isPlaying: session.isPlaying,
+    isSeeking: session.isSeeking,
+    hasError: Boolean(session.error),
+    durationSeconds: session.durationSeconds,
+    replay,
+    seekExact,
+    queue: queueIds,
+    goToMedia,
+  });
+  useContinueAfterAutoAdvance({
+    controller,
+    mediaId: activeMediaId,
+    isReady: session.isReady,
+    isPlaying: session.isPlaying,
+    hasError: Boolean(session.error),
+  });
+  const repeatOnTile = repeat.onTile;
+  const onSaveLoop = useCallback(
+    (name: string) => {
+      setLoopNaming(null);
+      const { a, b } = repeat.points;
+      if (!activeMediaId || a == null || b == null) {
+        return;
+      }
+      const result = saveLoop(activeMediaId, name, Math.min(a, b), Math.max(a, b));
+      if (result.ok) {
+        announcePlayer(t('videoPlayer.loopSaved', { name: result.loop.name }));
+      } else if (result.reason === 'full') {
+        announcePlayer(t('videoPlayer.loopsFull', { max: MAX_SAVED_LOOPS_PER_VIDEO }));
+      }
+    },
+    [activeMediaId, repeat.points, t],
+  );
+  const onRenameLoop = useCallback(
+    (loop: SavedLoop, name: string) => {
+      setLoopNaming(null);
+      if (activeMediaId) {
+        renameLoop(activeMediaId, loop.id, name);
+      }
+    },
+    [activeMediaId],
+  );
+  const onDeleteLoop = useCallback(
+    (loop: SavedLoop) => {
+      const mediaIdNow = activeMediaId;
+      if (!mediaIdNow) {
+        return;
+      }
+      void showAppDialog({
+        title: t('videoPlayer.loopDeleteTitle'),
+        message: t('videoPlayer.loopDeleteMessage', { name: loop.name }),
+        confirmLabel: t('videoPlayer.loopDeleteConfirm'),
+        cancelLabel: t('common.cancel'),
+        variant: 'error',
+      }).then((confirmed) => {
+        if (confirmed) {
+          deleteLoop(mediaIdNow, loop.id);
+          announcePlayer(t('videoPlayer.loopDeleted'));
+        }
+      });
+    },
+    [activeMediaId, t],
+  );
 
   /** #520 Stop: pause and go back to the start. */
   const onStop = useCallback(() => {
@@ -1015,6 +1099,13 @@ const PlayerSessionView = memo(function PlayerSessionView({
         case 'subs':
           openSubtitleSheet('subtitles');
           return;
+        case 'abRepeat':
+          // P5 #541: set A, then B; once the loop is on, the A-B sheet.
+          endLongPress();
+          if (repeatOnTile()) {
+            setRepeatSheet('abRepeat');
+          }
+          return;
         default:
           notYet();
       }
@@ -1029,6 +1120,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       openDisplaySheet,
       openFrameMode,
       openSubtitleSheet,
+      repeatOnTile,
       toggleFullscreen,
     ],
   );
@@ -1067,6 +1159,14 @@ const PlayerSessionView = memo(function PlayerSessionView({
       subtitlesOff: () => onSelectSubtitle({ kind: 'off' }),
       openSubtitleStyle: () => openSubtitleSheet('style'),
       openSubtitleSecond: () => openSubtitleSheet('second'),
+      openEndOfPlayback: () => {
+        endLongPress();
+        setRepeatSheet('endOfPlayback');
+      },
+      openAbRepeat: () => {
+        endLongPress();
+        setRepeatSheet('abRepeat');
+      },
     }),
     [
       endLongPress,
@@ -1183,6 +1283,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       autoDetect: subtitles.autoDetect,
       secondLabel: subtitles.secondaryLabel,
     },
+    repeat: { endActionLabel: repeat.endActionLabel, abLabel: repeat.abLabel },
     ui: optionsUi,
   };
 
@@ -1297,6 +1398,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
                 durationSeconds={session.durationSeconds}
                 previewSeconds={seekPreviewSeconds}
                 previewFrame={seekPreview.frame}
+                loopMarkers={repeat.markers}
+                onClearLoop={repeat.clear}
                 onSeekStart={onSeekStart}
                 onSeekChange={updateSeekPreview}
                 onSeekCommit={onSeekCommit}
@@ -1429,6 +1532,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
             onSeekChange={updateSeekPreview}
             onSeekCommit={onSeekCommit}
             onSeekCancel={onSeekCancel}
+            loopMarkers={repeat.markers}
+            onClearLoop={repeat.clear}
           />
           {session.isSeeking ? null : (
             <Box row style={styles.dockActions}>
@@ -1678,6 +1783,52 @@ const PlayerSessionView = memo(function PlayerSessionView({
           subtitles.setEncoding(encoding);
         }}
         onClose={() => setSubtitleSheet(null)}
+      />
+      {/* P5: When the video ends, A-B repeat with its saved loops, and a loop's name. */}
+      <EndOfPlaybackSheet
+        visible={repeatSheet === 'endOfPlayback'}
+        selected={repeat.endAction}
+        onSelect={(action) => {
+          setRepeatSheet(null);
+          repeat.setEndAction(action);
+        }}
+        onClose={() => setRepeatSheet(null)}
+      />
+      <AbRepeatSheet
+        visible={repeatSheet === 'abRepeat' && loopNaming == null}
+        points={repeat.points}
+        positionSeconds={session.positionSeconds}
+        durationSeconds={session.durationSeconds}
+        enabled={canCommand}
+        loops={repeat.loops}
+        onSetA={repeat.setA}
+        onSetB={repeat.setB}
+        onClear={repeat.clear}
+        onSave={() => setLoopNaming({ mode: 'save' })}
+        onPlayLoop={(loop) => {
+          setRepeatSheet(null);
+          repeat.playLoop(loop);
+        }}
+        onRenameLoop={(loop) => setLoopNaming({ mode: 'rename', loop })}
+        onDeleteLoop={onDeleteLoop}
+        onClose={() => setRepeatSheet(null)}
+      />
+      <LoopNameModal
+        visible={loopNaming != null}
+        title={loopNaming?.mode === 'rename' ? t('videoPlayer.loopRenameTitle') : t('videoPlayer.abSaveTitle')}
+        initialName={
+          loopNaming?.mode === 'rename'
+            ? loopNaming.loop.name
+            : nextLoopName(repeat.loops, t('videoPlayer.loopDefaultName'))
+        }
+        onSave={(name) => {
+          if (loopNaming?.mode === 'rename') {
+            onRenameLoop(loopNaming.loop, name);
+          } else {
+            onSaveLoop(name);
+          }
+        }}
+        onClose={() => setLoopNaming(null)}
       />
     </SafeAreaScreen>
   );
