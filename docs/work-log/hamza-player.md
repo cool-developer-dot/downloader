@@ -1532,7 +1532,8 @@ Gradle wasn't run (no Kotlin changed).
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` | 0 errors (both configs) |
-| Unit tests (JS) | 2455 / 2455 on top of P10 (2392 before; 63 new: `privacy/private-traces.test.ts` 13, `privacy/private-folder.test.ts` 10, `privacy/secure-window.test.ts` 6, `backup/backup-format.test.ts` 11, `backup/backup-restore.test.ts` 8, `backup/user-data.queries.test.ts` 9, `player/options/p11-privacy.test.ts` 6). `row-revision.test.ts` passed in the full run |
+| Unit tests (JS), stacked on P10 with P9's backfill (`1ad7865`) | 2466 / 2466 (2455 on `4ea8612`); 64 new, the last one added when stacking (`user-data.queries.test.ts`: a Replace restore resets play counts with `UPDATE … play_count = 0` instead of deleting the rows, so P9's measured `duration_ms` stay) |
+| Unit tests (JS), on `4ea8612` | 2455 / 2455 (2392 before; 63 new: `privacy/private-traces.test.ts` 13, `privacy/private-folder.test.ts` 10, `privacy/secure-window.test.ts` 6, `backup/backup-format.test.ts` 11, `backup/backup-restore.test.ts` 8, `backup/user-data.queries.test.ts` 9, `player/options/p11-privacy.test.ts` 6). `row-revision.test.ts` passed in the full run |
 | `npm run lint` | 0 errors; 91 warnings, the same older ones, none in a file P11 changed |
 | Gradle | Not run: no Kotlin changed |
 | Against `4ea8612` | `git diff --check` clean; none of Faran's files; nothing in `transfer/` or `engine/`; `package.json` / lockfile, `build.gradle`, manifests and `app.json` unchanged; no new dependency or permission; no SQLite change (`DATABASE_VERSION` still 10); Media3 untouched |
