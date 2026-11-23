@@ -9,9 +9,11 @@ import { useCallback, useEffect, useMemo } from 'react';
 import { AccessibilityInfo, Platform, ToastAndroid } from 'react-native';
 
 import { useTranslation } from '@/localization';
+import type { AudioEffectsInfo } from '@modules/vidorax-media';
 
 import type { AdjustmentHud } from '../adjustment-hud';
 import type { PlayerVolumeState } from '../hooks/use-player-volume';
+import { setAudioEffects, useAudioEffects, type BuiltInPreset } from './audio-effects';
 import { audioTrackLabel, formatAudioDelay } from './audio-settings';
 import { closeEngineSheet, openEngineSheet, useOpenEngineSheet } from './engine-sheets';
 import { applyTrackLimits } from './native-player';
@@ -26,6 +28,7 @@ import {
   useSleepTimer,
 } from './sleep-limits';
 import { useAudioEngine, type AudioEngine } from './use-audio-engine';
+import { useEffectsEngine } from './use-effects-engine';
 import { useHeadsetKeys, type HeadsetKeys, type PlayerKeyHandlers } from './use-headset-keys';
 import { useSleepLimits } from './use-sleep-limits';
 import { useSpeedEngine } from './use-speed-engine';
@@ -61,7 +64,7 @@ export type UsePlayerEngineInput = {
 export type PlayerEngineSheets = {
   streamQuality: StreamQualitySheetState;
   headsetKeys: { visible: boolean; close: () => void };
-  audio: { visible: boolean; close: () => void; engine: AudioEngine };
+  audio: { visible: boolean; close: () => void; engine: AudioEngine; effectsInfo: AudioEffectsInfo | null };
   sleepTimer: { visible: boolean; close: () => void };
   dailyLimit: { visible: boolean; close: () => void };
   limitReached: { visible: boolean; close: () => void };
@@ -134,6 +137,47 @@ export function usePlayerEngine(input: UsePlayerEngineInput): PlayerEngine {
     setPlaybackRate: input.setPlaybackRate,
   });
 
+  // P19
+  const effectsEngine = useEffectsEngine({ player, isReady });
+  const fx = useAudioEffects();
+  const presetKey = fx.preset.startsWith('user:') ? null : (fx.preset as BuiltInPreset | 'custom');
+  const userPresetName = fx.preset.startsWith('user:')
+    ? (fx.userPresets.find((p) => `user:${p.id}` === fx.preset)?.name ?? null)
+    : null;
+  const eqLabel = !fx.eqEnabled
+    ? t('playerEngine.volumeBoostOff')
+    : (userPresetName ??
+      t(
+        presetKey === 'custom'
+          ? 'playerEngine.eqPresetCustom'
+          : presetKey === 'bass'
+            ? 'playerEngine.eqPresetBass'
+            : presetKey === 'vocal'
+              ? 'playerEngine.eqPresetVocal'
+              : presetKey === 'rock'
+                ? 'playerEngine.eqPresetRock'
+                : presetKey === 'pop'
+                  ? 'playerEngine.eqPresetPop'
+                  : presetKey === 'classical'
+                    ? 'playerEngine.eqPresetClassical'
+                    : presetKey === 'jazz'
+                      ? 'playerEngine.eqPresetJazz'
+                      : 'playerEngine.eqPresetFlat',
+      ));
+  const boostLabel =
+    fx.volumeBoost <= 100 ? t('playerEngine.volumeBoostOff') : t('playerEngine.percent', { n: fx.volumeBoost });
+  const effectsOption = useMemo(
+    () => ({
+      eqLabel,
+      boostLabel,
+      nightMode: fx.nightMode,
+      mono: fx.mono,
+      set: (patch: { nightMode?: boolean; mono?: boolean }) => setAudioEffects(patch),
+      open: () => openEngineSheet('audio'),
+    }),
+    [boostLabel, eqLabel, fx.mono, fx.nightMode],
+  );
+
   // P18
   const sleepAnnounce = useCallback(
     (what: 'sleep' | 'limit') =>
@@ -198,20 +242,21 @@ export function usePlayerEngine(input: UsePlayerEngineInput): PlayerEngine {
       sleep: { valueLabel: sleepLabel, open: openSleep },
       limit: { valueLabel: limitLabel, open: openLimit },
       kidLock: { start: startKidLock },
+      effects: effectsOption,
     }),
-    [audioOption, limitLabel, openHeadsetKeys, openLimit, openSleep, sleepLabel, startKidLock, stream.option],
+    [audioOption, effectsOption, limitLabel, openHeadsetKeys, openLimit, openSleep, sleepLabel, startKidLock, stream.option],
   );
 
   const sheets = useMemo<PlayerEngineSheets>(
     () => ({
       streamQuality: stream.sheet,
       headsetKeys: { visible: openSheet === 'headsetKeys', close: closeEngineSheet },
-      audio: { visible: openSheet === 'audio', close: closeEngineSheet, engine: audio },
+      audio: { visible: openSheet === 'audio', close: closeEngineSheet, engine: audio, effectsInfo: effectsEngine.info },
       sleepTimer: { visible: openSheet === 'sleepTimer', close: closeEngineSheet },
       dailyLimit: { visible: openSheet === 'dailyLimit', close: closeEngineSheet },
       limitReached: { visible: sleepLimits.limitSheetVisible, close: sleepLimits.closeLimitSheet },
     }),
-    [audio, openSheet, sleepLimits.closeLimitSheet, sleepLimits.limitSheetVisible, stream.sheet],
+    [audio, effectsEngine.info, openSheet, sleepLimits.closeLimitSheet, sleepLimits.limitSheetVisible, stream.sheet],
   );
 
   return { option, sheets, keys, audioOnly: audio.audioOnly, kidLock: sleepLimits.kidLock };

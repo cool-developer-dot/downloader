@@ -12,6 +12,14 @@ export type PlayingVideoSize = { width: number; height: number; bitrate: number 
 /** P15 #661 / #701: a media session's ⏭ / ⏮ (headset double press, a remote, the notification) for the Player's queue. */
 export type QueueCommandEvent = { command: 'next' | 'previous' };
 
+/** P19: the phone's equalizer (its bands and level range in millibels) and which effects it has. */
+export type AudioEffectsInfo = {
+  equalizer: boolean;
+  bands: { centerHz: number; minMb: number; maxMb: number }[];
+  bassBoost: boolean;
+  virtualizer: boolean;
+};
+
 export type VidoraPlayerEvents = {
   onQueueCommand: (event: QueueCommandEvent) => void;
   /** P18 #644 / #730: the countdown set by `setPlaybackDeadline` ran out (the video faded out and paused). */
@@ -41,8 +49,30 @@ export interface VidoraPlayerModuleApi {
    * back), and `onPlaybackDeadline` fires; null cancels. Native, so it runs with the screen off.
    */
   setPlaybackDeadline(player: VideoPlayer, inMs: number | null, fadeMs: number): Promise<void>;
-  /** Releases what the module keeps for the player (countdown, session player); the session calls it last. */
+  /**
+   * P19 #555 mono, #556 balance (−1 … 1), #557 night mode, #558 normalization, #548 volume boost (100–200 %): the
+   * player's own PCM (VidoraAudioProcessor), limited so it never clips.
+   */
+  setSoundShaping(
+    player: VideoPlayer,
+    mono: boolean,
+    balance: number,
+    nightMode: boolean,
+    normalize: boolean,
+    boostPercent: number,
+  ): Promise<void>;
+  /** P19 #549 / #551 / #552: Android's equalizer (millibels per device band), bass boost and virtualizer (0–1000). */
+  setAudioEffects(
+    player: VideoPlayer,
+    eqEnabled: boolean,
+    bandLevelsMb: number[],
+    bassStrength: number,
+    virtualizerStrength: number,
+  ): Promise<void>;
+  /** Releases what the module keeps for the player (effects, countdown, session player); the session calls it last. */
   releasePlayer(player: VideoPlayer): Promise<void>;
+  /** P19: the phone's equalizer bands and which effects it has. */
+  describeAudioEffects(player: VideoPlayer): Promise<AudioEffectsInfo>;
   /** P15 #560: pause when headphones are unplugged or a Bluetooth headset disconnects. */
   setPauseWhenAudioBecomesNoisy(player: VideoPlayer, enabled: boolean): Promise<void>;
   /** P15 #703: show the app's window over the lock screen; false when there is no activity. */

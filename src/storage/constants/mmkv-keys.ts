@@ -96,6 +96,8 @@ export const mmkvKeys = {
   playerAudioDelayPerVideo: 'vidorax.mmkv.player.audioDelayPerVideo.v1',
   /** Faran's P18 #730: the daily watching limit and today's count, `{ dailyMinutes, usedSeconds, day }`. */
   playerDailyLimit: 'vidorax.mmkv.player.dailyLimit.v1',
+  /** Faran's P19: the equalizer, its presets (built-in and the user's), the effects, mono, balance (app-wide). */
+  playerAudioEffects: 'vidorax.mmkv.player.audioEffects.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

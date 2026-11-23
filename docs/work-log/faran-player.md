@@ -158,3 +158,49 @@ countdown, the re-arm rule, durations, Kid Lock), `p18-sleep-limits.test.ts` (th
 | Kid lock on | Tab bar, Back and the volume keys did nothing (volume stayed at 7); a 3.6 s hold on the lock unlocked |
 | Daily limit 15 min, 7 min already watched, set 14:00:22 | Faded out and paused at 14:08:41; "Today's limit is reached" sheet; Play refused with a toast |
 | "15 more minutes" (App Lock off, so no PIN) | The video played again |
+
+## P19 Audio effects & EQ (#548–#552, #555–#558, #729)
+
+| # | Feature | Where | How |
+| --- | --- | --- | --- |
+| #549 | Equalizer | Audio sheet → Equalizer (switch and five bands: 60 Hz, 230 Hz, 910 Hz, 3.6 kHz, 14 kHz, −12…+12 dB); ⋮ → Audio → Equalizer | Android's `Equalizer` on the player's own audio session (`AudioEffectsHost.kt`), so only VidoraX's sound changes. The design's five gains are mapped onto the phone's bands on a log-frequency scale, in millibels within the phone's range (`mapGainsToDevice`). A phone without an equalizer shows it as unavailable. |
+| #550 | EQ Presets | Audio sheet: Flat, Bass, Vocal, Rock, Pop, Classical, Jazz | Picking one sets the five gains and turns the equalizer on; moving a band makes it Custom. |
+| #729 | Save EQ | Audio sheet → Save as a preset (a name of up to 30 characters); delete from the chosen preset | Up to 20 of the user's presets, newest first, app-wide (MMKV). |
+| #551 | Bass Boost | Audio sheet → Effects (0–100 %) | Android's `BassBoost` on the same session (created when first turned on, released at 0 %). |
+| #552 | Virtualizer | Audio sheet → Effects (0–100 %) | Android's `Virtualizer` on the same session. |
+| #548 | Volume Boost | Audio sheet → Effects (Off, 110–200 %); ⋮ → Audio → Volume boost | `SoundShaper.kt` inside `VidoraAudioProcessor`: up to +6 dB with a soft limiter (knee 0.8) so it never clips. |
+| #556 | Balance | Audio sheet → Sound (left 100 … centre … right 100) | `SoundShaper`, stereo only. |
+| #555 | Mono | Audio sheet → Sound; ⋮ → Audio → Mono | `SoundShaper`: both channels get the average, stereo only. |
+| #557 | Night mode audio | Audio sheet → Sound; ⋮ → Audio → Night mode | `SoundShaper`: a compressor (−30 dB threshold, 3:1, +9 dB make-up), so quiet parts are louder and loud parts softer. |
+| #558 | Volume normalization | Audio sheet → Sound | `SoundShaper`: a gain towards −20 dBFS (±12 dB) from a 1.5 s loudness window, moving at most 6 dB/s, starting from the first sound (not the silence before it). |
+
+Everything applies at once and is kept app-wide; "Reset sound settings" puts it all back (the user's presets stay).
+The effects stay on while the video carries on in the mini player and are released with the player
+(`releasePlayer`). The section sits in P17's Audio sheet (design screen 22), and its options-sheet rows follow P17's.
+
+Tests: `audio-effects.test.ts` (settings clean-up, presets, custom, user presets and the cap, band mapping, reset),
+`p19-effects.test.ts` (the four rows); JVM `SoundShaperTest.kt` (8: pass-through, mono, balance, stereo only, boost
+never clips, soft limit, night mode, normalization).
+
+### P19 device test (release build, Pixel_8 AVD, 2026-11-23)
+
+| Check | Result |
+| --- | --- |
+| Audio sheet on quiet.mp4 | Equalizer section with the presets and five bands, Effects, Sound |
+| Rock | `dumpsys media.audio_flinger`: "1 effects for session 281 … Equalizer … Enabled" (VidoraX's session) |
+| Bass boost 70 %, Virtualizer 70 % | "3 effects for session 281": Equalizer, Dynamic Bass Boost, Virtualizer |
+| Volume boost 170 %, Mono, Night mode, Normalization on | Playback stays PLAYING, no player or audio-sink errors in logcat |
+| App closed and opened again, left-only.mp4 | Every setting kept; "3 effects for session 289" on the new player's session |
+| Balance dragged left; 3.6 kHz dragged right; 910 Hz tapped at a quarter | L 60; +6 dB; −6 dB |
+| A vertical swipe that starts on a slider | The sheet scrolls; the slider keeps its value |
+| Save as a preset "Night Rock", then a band moved, then Night Rock | The chip shows after Jazz; picking it restores +5 / +2 / −2 / +2 / +5; "Delete preset" removes it |
+| Reset sound settings | Everything off / flat; `audio_flinger` lists no effects on the session; still PLAYING |
+
+Bugs found and fixed before commit:
+
+- The sliders were drawn and dragged mirrored in English: `useTranslation().rtl` is the RTL layout object (always
+  truthy). `EngineSlider` now uses `isRtl`.
+- A vertical swipe starting on a slider set its value and the sheet didn't scroll. The slider now only takes a drag
+  once it goes sideways (or a tap), and lets the sheet's ScrollView have vertical swipes.
+- The preset's name field opened under the keyboard (the Player's sheets have no keyboard handling). It is now a dialog
+  of its own (`AppModal` + `TextField`, as P9's bookmark names).

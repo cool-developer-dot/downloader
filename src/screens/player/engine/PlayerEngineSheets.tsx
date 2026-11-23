@@ -6,6 +6,7 @@ import { streamCapLabel, type PlayerEngineSheets as Sheets } from '@/player/engi
 
 import { EngineChoiceSheet, type EngineChoice } from './EngineChoiceSheet';
 import { AudioSheet } from './AudioSheet';
+import { EffectsSection } from './EffectsSection';
 import { HeadsetKeysSheet } from './HeadsetKeysSheet';
 import { DailyLimitSheet, LimitReachedSheet, SleepTimerSheet } from './SleepLimitSheets';
 
@@ -44,7 +45,10 @@ export const PlayerEngineSheets = memo(function PlayerEngineSheets({ sheets }: P
         testID="player-stream-quality-sheet"
       />
       <HeadsetKeysSheet visible={sheets.headsetKeys.visible} onClose={sheets.headsetKeys.close} />
-      <AudioSheet visible={sheets.audio.visible} onClose={sheets.audio.close} audio={sheets.audio.engine} />
+      <AudioSheet visible={sheets.audio.visible} onClose={sheets.audio.close} audio={sheets.audio.engine}>
+        {/* P19: the equalizer and the effects, under the tracks and the delay (screen 22). */}
+        <EffectsSection info={sheets.audio.effectsInfo} />
+      </AudioSheet>
       <SleepTimerSheet visible={sheets.sleepTimer.visible} onClose={sheets.sleepTimer.close} />
       {sheets.dailyLimit.visible ? <DailyLimitSheet visible onClose={sheets.dailyLimit.close} /> : null}
       {sheets.limitReached.visible ? <LimitReachedSheet visible onClose={sheets.limitReached.close} /> : null}

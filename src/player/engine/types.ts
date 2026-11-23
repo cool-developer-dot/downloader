@@ -37,4 +37,13 @@ export type PlayerEngineOption = {
   limit: { valueLabel: string; open: () => void };
   /** P18 #712 */
   kidLock: { start: () => void };
+  /** P19: "Rock", "Custom", "Off"; "150 %", "Off"; night mode and mono switches; the Audio sheet. */
+  effects: {
+    eqLabel: string;
+    boostLabel: string;
+    nightMode: boolean;
+    mono: boolean;
+    set: (patch: { nightMode?: boolean; mono?: boolean }) => void;
+    open: () => void;
+  };
 };

@@ -8,6 +8,7 @@ import androidx.media3.common.util.UnstableApi
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 /**
@@ -34,6 +35,10 @@ class VidoraAudioProcessor : BaseAudioProcessor() {
   /** Net frames added (+) or dropped (−) since the last flush. Playback thread only. */
   private var applied = 0L
 
+  /** P19: mono, balance, night mode, normalization, volume boost (see SoundShaper). */
+  val shaper = SoundShaper()
+  private var scratch = FloatArray(0)
+
   /** P17 #554: the sound later (+) or earlier (−) than the picture, in ms, at this playback speed. */
   fun setDelay(delayMs: Int, speed: Float) {
     this.delayMs = delayMs.coerceIn(MIN_DELAY_MS, MAX_DELAY_MS)
@@ -42,6 +47,7 @@ class VidoraAudioProcessor : BaseAudioProcessor() {
 
   override fun onConfigure(inputAudioFormat: AudioFormat): AudioFormat =
     if (inputAudioFormat.encoding == C.ENCODING_PCM_16BIT || inputAudioFormat.encoding == C.ENCODING_PCM_FLOAT) {
+      shaper.configure(inputAudioFormat.sampleRate)
       inputAudioFormat
     } else {
       AudioFormat.NOT_SET
@@ -80,18 +86,43 @@ class VidoraAudioProcessor : BaseAudioProcessor() {
     }
     inputBuffer.position(inputBuffer.position() + (step.droppedFrames * frameSize).toInt())
     if (inputBuffer.hasRemaining()) {
-      output.put(inputBuffer)
+      if (shaper.settings.neutral) {
+        output.put(inputBuffer)
+      } else {
+        shape(inputBuffer, output, keepFrames, format.channelCount, format.encoding)
+      }
     }
     output.flip()
+  }
+
+  /** P19: the kept frames through the SoundShaper, from `input` into `output` in the same encoding. */
+  private fun shape(input: ByteBuffer, output: ByteBuffer, frames: Int, channels: Int, encoding: Int) {
+    val count = frames * channels
+    if (scratch.size < count) scratch = FloatArray(count)
+    input.order(ByteOrder.nativeOrder())
+    if (encoding == C.ENCODING_PCM_FLOAT) {
+      for (i in 0 until count) scratch[i] = input.getFloat()
+    } else {
+      for (i in 0 until count) scratch[i] = input.getShort() / 32768f
+    }
+    shaper.process(scratch, frames, channels)
+    if (encoding == C.ENCODING_PCM_FLOAT) {
+      for (i in 0 until count) output.putFloat(scratch[i])
+    } else {
+      for (i in 0 until count) output.putShort((scratch[i] * 32767f).roundToInt().coerceIn(-32768, 32767).toShort())
+    }
+    input.position(input.limit())
   }
 
   override fun onFlush() {
     // A seek or a new stream: the sink starts its clock again, so the whole delay is applied again.
     applied = 0
+    shaper.reset()
   }
 
   override fun onReset() {
     applied = 0
+    shaper.reset()
   }
 
   companion object {

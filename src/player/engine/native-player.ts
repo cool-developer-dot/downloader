@@ -6,7 +6,7 @@
 
 import type { VideoPlayer } from 'expo-video';
 
-import { getVidoraPlayer, type PlayingVideoSize } from '@modules/vidorax-media';
+import { getVidoraPlayer, type AudioEffectsInfo, type PlayingVideoSize } from '@modules/vidorax-media';
 
 import { playerLog } from '../diagnostics';
 
@@ -164,7 +164,49 @@ export function subscribePlaybackDeadline(listener: () => void): () => void {
   return () => subscription.remove();
 }
 
-/** Releases what the native module keeps for the player (countdown, session player); the session calls it last. */
+/** P19: mono, balance, night mode, normalization and volume boost on the player's PCM. */
+export function applySoundShaping(
+  player: VideoPlayer,
+  shaping: { mono: boolean; balance: number; nightMode: boolean; normalize: boolean; boostPercent: number },
+): void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return;
+  }
+  native
+    .setSoundShaping(player, shaping.mono, shaping.balance, shaping.nightMode, shaping.normalize, Math.round(shaping.boostPercent))
+    .catch((error: unknown) => warn('setSoundShaping', error));
+}
+
+/** P19: Android's equalizer, bass boost and virtualizer on the player's audio session. */
+export function applyAudioEffects(
+  player: VideoPlayer,
+  effects: { eqEnabled: boolean; bandLevelsMb: number[]; bassStrength: number; virtualizerStrength: number },
+): void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return;
+  }
+  native
+    .setAudioEffects(player, effects.eqEnabled, effects.bandLevelsMb, Math.round(effects.bassStrength), Math.round(effects.virtualizerStrength))
+    .catch((error: unknown) => warn('setAudioEffects', error));
+}
+
+/** P19: the phone's equalizer bands; null without the module or when it can't tell. */
+export async function readAudioEffectsInfo(player: VideoPlayer): Promise<AudioEffectsInfo | null> {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return null;
+  }
+  try {
+    return await native.describeAudioEffects(player);
+  } catch (error) {
+    warn('describeAudioEffects', error);
+    return null;
+  }
+}
+
+/** Releases what the native module keeps for the player (audio effects, countdown); the session calls it last. */
 export function releasePlayerEngine(player: VideoPlayer): void {
   const native = getVidoraPlayer();
   if (!native) {

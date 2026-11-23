@@ -36,6 +36,9 @@ class VidoraPlayerModule : Module() {
   /** P18: each player's sleep-timer / daily-limit countdown. */
   private val deadlines = WeakHashMap<VideoPlayer, PlaybackDeadline>()
 
+  /** P19: each player's Android audio effects (bound to its audio session). */
+  private val effects = WeakHashMap<VideoPlayer, AudioEffectsHost>()
+
   override fun definition() = ModuleDefinition {
     Name("VidoraPlayer")
 
@@ -57,13 +60,37 @@ class VidoraPlayerModule : Module() {
       sessionPlayers.clear()
       deadlines.values.forEach { it.cancel() }
       deadlines.clear()
+      effects.values.forEach { it.releaseAll() }
+      effects.clear()
     }
 
-    // Faran's packages: everything kept for a player (countdown, session player), when it is released.
+    // P19 #555 mono, #556 balance, #557 night mode, #558 normalization, #548 volume boost (the player's PCM).
+    AsyncFunction("setSoundShaping") {
+      player: VideoPlayer, mono: Boolean, balance: Double, nightMode: Boolean, normalize: Boolean, boostPercent: Int ->
+      player.audioProcessor()?.shaper?.settings = SoundShaper.Settings(
+        mono = mono,
+        balance = balance.toFloat().coerceIn(-1f, 1f),
+        nightMode = nightMode,
+        normalize = normalize,
+        boost = SoundShaper.boostGain(boostPercent),
+      )
+    }.runOnQueue(Queues.MAIN)
+
+    // P19 #549 equalizer (device bands, millibels), #551 bass boost, #552 virtualizer (0–1000).
+    AsyncFunction("setAudioEffects") {
+      player: VideoPlayer, eqEnabled: Boolean, bandLevelsMb: List<Int>, bassStrength: Int, virtualizerStrength: Int ->
+      effectsFor(player).apply(AudioEffectsHost.Settings(eqEnabled, bandLevelsMb, bassStrength, virtualizerStrength))
+    }.runOnQueue(Queues.MAIN)
+
+    // Faran's packages: everything kept for a player (effects, countdown, session player), when it is released.
     AsyncFunction("releasePlayer") { player: VideoPlayer ->
+      effects.remove(player)?.releaseAll()
       deadlines.remove(player)?.cancel()
       sessionPlayers.remove(player)
     }.runOnQueue(Queues.MAIN)
+
+    // P19: the device's equalizer bands and which effects exist.
+    AsyncFunction("describeAudioEffects") { player: VideoPlayer -> effectsFor(player).describe() }.runOnQueue(Queues.MAIN)
 
     // P18 #644 / #730: the player fades out and pauses `inMs` from now (null cancels); then onPlaybackDeadline.
     AsyncFunction("setPlaybackDeadline") { player: VideoPlayer, inMs: Double?, fadeMs: Int ->
@@ -127,6 +154,15 @@ class VidoraPlayerModule : Module() {
       }
       LockScreen.requestUnlock(activity, keyguard) { unlocked -> promise.resolve(unlocked) }
     }.runOnQueue(Queues.MAIN)
+  }
+
+  /** The effects host for the player's current audio session (a new session gets new effects). */
+  private fun effectsFor(player: VideoPlayer): AudioEffectsHost {
+    val session = player.player.audioSessionId
+    val current = effects[player]
+    if (current != null && current.sessionId == session) return current
+    current?.releaseAll()
+    return AudioEffectsHost(session).also { effects[player] = it }
   }
 
   companion object {
