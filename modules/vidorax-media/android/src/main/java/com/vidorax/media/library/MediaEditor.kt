@@ -19,6 +19,7 @@ import com.vidorax.media.InvalidRequestException
 import com.vidorax.media.InvalidStateException
 import com.vidorax.media.NotFoundException
 import com.vidorax.media.StorageException
+import com.vidorax.media.StoragePermissionException
 import com.vidorax.media.model.Container
 import com.vidorax.media.model.LibraryItem
 import com.vidorax.media.process.MediaFiles
@@ -38,6 +39,7 @@ import kotlin.coroutines.resumeWithException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 
@@ -51,7 +53,8 @@ class EditNoSpaceException(message: String) : CodedException("ERR_NO_SPACE", mes
 class EditCancelledException : CodedException("ERR_EDIT_CANCELLED", "The edit was cancelled", null)
 
 /** P10 adds COMPRESS (#680): an MP4 with the video re-encoded smaller ([CompressPlan]). */
-internal enum class EditKind(val wire: String) { TRIM("trim"), MP4("mp4"), AUDIO("audio"), COMPRESS("compress") }
+// P12 adds MERGE (#682: library videos joined, [MergePlan]) and SPEED (#684: faster or slower, [SpeedPlan]).
+internal enum class EditKind(val wire: String) { TRIM("trim"), MP4("mp4"), AUDIO("audio"), COMPRESS("compress"), MERGE("merge"), SPEED("speed") }
 
 /** How one track goes into the output: copied as it is (transmuxed), re-encoded, or left out. */
 internal enum class TrackPlan(val wire: String) { COPY("copy"), H264("h264"), AAC("aac"), DROP("drop") }
@@ -68,6 +71,10 @@ internal data class EditRequest(
   val title: String,
   /** COMPRESS only: the target bitrate and size. */
   val compress: CompressSettings? = null,
+  /** P12 MERGE only: the videos joined, in order. */
+  val merge: MergeSettings? = null,
+  /** P12 SPEED only: the speed and the part. */
+  val speed: SpeedSettings? = null,
 )
 
 /** What JavaScript sends to `startEdit` (src/media-edit/edit-plan.ts decides the plan). */
@@ -83,6 +90,10 @@ data class EditRequestRecord(
   /** P10 COMPRESS only (src/media-edit/compress-plan.ts): bits per second, and the short side at most (pixels). */
   @Field val videoBitrate: Double? = null,
   @Field val maxShortSide: Double? = null,
+  /** P12 MERGE only (src/media-edit/merge-plan.ts): the videos joined, in order; `sourceId` is one of them. */
+  @Field val sourceIds: List<String>? = null,
+  /** P12 SPEED only (src/media-edit/speed-plan.ts): 0.25–4, not 1. The part is `startMs`–`endMs` (both null: all). */
+  @Field val speed: Double? = null,
 ) : Record {
   internal fun toModel(): EditRequest {
     val editKind = EditKind.values().firstOrNull { it.wire == kind } ?: throw InvalidRequestException("Unknown edit $kind")
@@ -96,6 +107,12 @@ data class EditRequestRecord(
     if (editKind != EditKind.AUDIO && videoPlan == TrackPlan.DROP) throw InvalidRequestException("A video edit keeps the video")
     if (editKind == EditKind.COMPRESS && videoPlan != TrackPlan.H264) throw InvalidRequestException("Compress re-encodes the video")
     val compressSettings = if (editKind == EditKind.COMPRESS) CompressPlan.settings(videoBitrate, maxShortSide) else null
+    // P12 MERGE and SPEED re-encode the video (a sequence of several videos; new timestamps).
+    if ((editKind == EditKind.MERGE || editKind == EditKind.SPEED) && videoPlan != TrackPlan.H264) {
+      throw InvalidRequestException("This edit re-encodes the video")
+    }
+    val mergeSettings = if (editKind == EditKind.MERGE) MergePlan.settings(sourceId, sourceIds) else null
+    val speedSettings = if (editKind == EditKind.SPEED) SpeedPlan.settings(speed, startMs, endMs) else null
     return EditRequest(
       sourceId = sourceId,
       kind = editKind,
@@ -106,6 +123,8 @@ data class EditRequestRecord(
       audio = audioPlan,
       title = Titles.clamp(title),
       compress = compressSettings,
+      merge = mergeSettings,
+      speed = speedSettings,
     )
   }
 }
@@ -121,6 +140,8 @@ data class EditRequestRecord(
  * before starting. A long edit (a conversion, or a trim keeping 30 s or more) runs with [MediaEditService] in the
  * foreground, with its progress and Cancel in a notification; if Android refuses that service, it runs as before.
  * P10 Compress video (#680) is one more kind, run the same way; [CompressPlan] holds what it changes.
+ * P12 Merge videos (#682) and Change speed (#684) are two more ([MergePlan], [SpeedPlan]); Create GIF (#676) runs
+ * under the same lock, progress and Cancel through [gif], but makes a Gallery image instead of a library item.
  */
 @OptIn(UnstableApi::class)
 internal class MediaEditor(
@@ -163,7 +184,9 @@ internal class MediaEditor(
     var thumbnail: File? = null
     try {
       val source = library.get(request.sourceId) ?: throw NotFoundException("Unknown library item ${request.sourceId}")
-      val plan = withContext(Dispatchers.IO) { check(source, request) }
+      // P12 MERGE: every video joined, in order (each is read and checked like the source in check()).
+      val mergeItems = request.merge?.sourceIds?.map { id -> library.get(id) ?: throw NotFoundException("Unknown library item $id") }
+      val plan = withContext(Dispatchers.IO) { check(source, request, mergeItems) }
       val keptMs = (plan.clipEndMs ?: plan.durationMs) - plan.clipStartMs
       // The service stops itself once this edit has ended (progress() is null again): never stopped from here, so it
       // is never stopped before it entered the foreground.
@@ -228,10 +251,84 @@ internal class MediaEditor(
     }
   }
 
-  private data class Plan(val durationMs: Long, val clipStartMs: Long, val clipEndMs: Long?, val hasAudio: Boolean)
+  /**
+   * P12 Create GIF (#676): a part of a library video as a GIF in the Gallery (Pictures/VidoraX), with one private copy
+   * for Share. It runs as the one edit ([runExclusive]: the same lock, progress, Cancel and notification as [edit]),
+   * but its result is an image, not a library item. The video is only read. [GifExport] and [GifEncoder] do the work.
+   */
+  suspend fun gif(request: GifRequest, gallery: ThumbnailExport): GifResult = runExclusive { workDir ->
+    val source = library.get(request.sourceId) ?: throw NotFoundException("Unknown library item ${request.sourceId}")
+    val plan = withContext(Dispatchers.IO) { GifExport.plan(source, request) }
+    if (!gallery.canSaveToGallery()) {
+      throw StoragePermissionException("Saving to the gallery needs the storage permission on Android 9 and older")
+    }
+    if (paths.workRoot.apply { mkdirs() }.usableSpace < GifPlan.spaceNeeded(plan) + FREE_SPACE_MARGIN_BYTES) {
+      throw EditNoSpaceException("Not enough free space for this GIF")
+    }
+    MediaEditForeground.start(context, request.title)
+    workDir.mkdirs()
+    val output = File(workDir, "edit.gif")
+    withContext(Dispatchers.IO) {
+      val scope = this
+      GifExport.write(
+        source.file,
+        plan,
+        output,
+        onFrame = { done -> progressValue = (done.toDouble() / plan.frames * GIF_FRAMES_PROGRESS).coerceAtMost(0.99) },
+        checkActive = { scope.ensureActive() },
+      )
+    }
+    val bytes = output.length()
+    val uri = gallery.saveGif(output, request.title)
+    // Share is offered only with its copy; the GIF is in the Gallery either way.
+    val shareName = withContext(Dispatchers.IO) {
+      runCatching { GifExport.keepShareCopy(paths, output, request.title).name }.getOrDefault("")
+    }
+    progressValue = 1.0
+    GifResult(uri, shareName, plan.width, plan.height, plan.frames, bytes, plan.endMs - plan.startMs)
+  }
+
+  /**
+   * P12: runs [block] as the one edit — [edit]'s lock (ERR_INVALID_STATE while another runs), progress, Cancel
+   * (ERR_EDIT_CANCELLED, also from the notification) and clean-up — for an export that isn't a new library item.
+   * [block] gets a work folder of its own, deleted afterwards with anything partial in it.
+   */
+  private suspend fun <T> runExclusive(block: suspend (workDir: File) -> T): T {
+    if (!busy.compareAndSet(false, true)) throw InvalidStateException("Another edit is running")
+    running = currentCoroutineContext()[Job]
+    progressValue = 0.0
+    val workDir = File(paths.workRoot, "edit-${UUID.randomUUID()}")
+    try {
+      return block(workDir)
+    } catch (e: Throwable) {
+      throw when (e) {
+        is CancellationException -> EditCancelledException()
+        is CodedException -> e
+        else -> StorageException("The export failed", e)
+      }
+    } finally {
+      workDir.deleteRecursively()
+      running = null
+      progressValue = null
+      busy.set(false)
+    }
+  }
+
+  private data class Plan(
+    val durationMs: Long,
+    val clipStartMs: Long,
+    val clipEndMs: Long?,
+    val hasAudio: Boolean,
+    /** P12: the source's frame rate (SPEED drops frames over 60 fps); null when unknown. */
+    val frameRate: Float? = null,
+    /** P12 MERGE: the videos joined and the output's size. */
+    val merge: MergeLayout? = null,
+    /** P12: the output's expected length when it isn't the part kept (MERGE: all videos; SPEED: the part ÷ speed). */
+    val expectedMs: Long? = null,
+  )
 
   /** Refusals, range clamping and the free-space check — everything decided before a byte is written. */
-  private fun check(source: LibraryItem, request: EditRequest): Plan {
+  private fun check(source: LibraryItem, request: EditRequest, mergeItems: List<LibraryItem>? = null): Plan {
     if (!source.file.isFile) throw NotFoundException("The file of ${source.id} is missing")
     val verdict = Verifier.verify(source.file)
     if (verdict is VerifyResult.Invalid) throw EditRefusedException("This file cannot be edited (${verdict.detail})")
@@ -250,15 +347,30 @@ internal class MediaEditor(
       end = (request.endMs ?: durationMs).coerceIn(start + MIN_TRIM_MS, durationMs)
       if (end - start < MIN_TRIM_MS) throw InvalidRequestException("A trim keeps at least one second")
     }
+    // P12 SPEED: the part (or the whole video), clamped like a trim.
+    val speedSettings = request.speed
+    if (speedSettings != null) {
+      val (partStart, partEnd) = SpeedPlan.range(speedSettings, durationMs)
+      start = partStart
+      end = partEnd
+    }
+    // P12 MERGE: every video read and checked like the source; the output takes the first one's size.
+    val merge = mergeItems?.let { items -> MergePlan.layout(items.map(MergePlan::inspect)) }
     val fraction = if (end != null) (end - start).toDouble() / durationMs else 1.0
     val reencodes = request.video == TrackPlan.H264
     // P10 COMPRESS: its own size comes from the target bitrate (twice the source would refuse it on a full phone).
     val estimate = request.compress?.let { (CompressPlan.estimateBytes(durationMs, it, hasAudio) * COPY_FACTOR).toLong() }
+      // P12: a merge counts every video it joins; a speed change its part, ÷ the speed (a slower copy is longer).
+      ?: merge?.let { MergePlan.estimateBytes(it) }
+      ?: request.speed?.let { SpeedPlan.estimateBytes(source.sizeBytes, durationMs, start, end, it.speed) }
       ?: (source.sizeBytes * fraction * (if (reencodes) REENCODE_FACTOR else COPY_FACTOR)).toLong()
     if (paths.workRoot.apply { mkdirs() }.usableSpace < estimate + FREE_SPACE_MARGIN_BYTES) {
       throw EditNoSpaceException("Not enough free space for this edit")
     }
-    return Plan(durationMs, start, end, hasAudio)
+    // P12: what MERGE and SPEED add to the plan (nothing for the other kinds).
+    val expectedMs = merge?.totalMs ?: request.speed?.let { SpeedPlan.outputMs((end ?: durationMs) - start, it.speed) }
+    val frameRate = info.video?.format?.frameRate?.takeIf { it > 0f }
+    return Plan(durationMs, start, end, merge?.hasAudio ?: hasAudio, frameRate, merge, expectedMs)
   }
 
   private suspend fun export(source: LibraryItem, request: EditRequest, plan: Plan, output: File) {
@@ -301,7 +413,13 @@ internal class MediaEditor(
             request.compress?.let { builder.setEncoderFactory(CompressPlan.encoderFactory(context, it)) }
             val built = builder.build()
             transformer = built
-            built.start(editedItem(source, request, plan), output.path)
+            // P12 MERGE: one sequence of every video, fitted to the first one's size ([MergePlan]).
+            val merge = plan.merge
+            if (merge != null) {
+              built.start(MergePlan.composition(merge, keepAudio = merge.hasAudio && request.audio != TrackPlan.DROP), output.path)
+            } else {
+              built.start(editedItem(source, request, plan), output.path)
+            }
             handler.postDelayed(poll, PROGRESS_POLL_MS)
           } catch (e: Exception) {
             output.delete()
@@ -331,11 +449,25 @@ internal class MediaEditor(
       plan.clipEndMs?.let { clipping.setEndPositionMs(it) }
       media.setClippingConfiguration(clipping.build())
     }
+    // P12 SPEED of a part: that part alone, from its exact start (the video is re-encoded anyway).
+    val partEndMs = plan.clipEndMs
+    if (request.speed != null && partEndMs != null) {
+      media.setClippingConfiguration(
+        MediaItem.ClippingConfiguration.Builder().setStartPositionMs(plan.clipStartMs).setEndPositionMs(partEndMs).build(),
+      )
+    }
     return EditedMediaItem.Builder(media.build())
       .setRemoveVideo(request.kind == EditKind.AUDIO)
       .setRemoveAudio(request.audio == TrackPlan.DROP)
       // P10 COMPRESS: scaled down (never up) when the video is bigger than asked.
       .apply { request.compress?.let { setEffects(CompressPlan.effects(it, source.width, source.height)) } }
+      // P12 SPEED: Transformer's own speed change (picture and sound), frames over 60 fps dropped ([SpeedPlan]).
+      .apply {
+        request.speed?.let {
+          setSpeed(SpeedPlan.provider(it.speed))
+          setEffects(SpeedPlan.effects(it, plan.frameRate))
+        }
+      }
       .build()
   }
 
@@ -362,7 +494,8 @@ internal class MediaEditor(
       if (info.video == null) throw StorageException("The edited file has no video")
       if (plan.hasAudio && request.audio != TrackPlan.DROP && info.audio == null) throw StorageException("The edited file lost its sound")
     }
-    val expectedMs = (plan.clipEndMs ?: plan.durationMs) - plan.clipStartMs
+    // P12: a merge is as long as its videos together, a speed change as its part ÷ the speed.
+    val expectedMs = plan.expectedMs ?: ((plan.clipEndMs ?: plan.durationMs) - plan.clipStartMs)
     val producedMs = info.durationUs?.let { it / 1_000 }
     // A keyframe start may begin a little earlier than asked: only a far-off length is wrong.
     if (producedMs != null && !MediaProcessor.lengthsAgree(expectedMs * 1_000, producedMs * 1_000) && !request.keyframeStart) {
@@ -378,6 +511,9 @@ internal class MediaEditor(
     /** Output size against the part of the source it keeps: copied tracks about the same, re-encoded up to double. */
     const val COPY_FACTOR = 1.1
     const val REENCODE_FACTOR = 2.0
+
+    /** P12 Create GIF: the share of its progress the frames take; saving to the Gallery is the rest. */
+    const val GIF_FRAMES_PROGRESS = 0.95
 
     private val busy = AtomicBoolean(false)
 

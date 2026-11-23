@@ -168,6 +168,20 @@ export type PlayerOptionContext = {
   privacy?: {
     moveToPrivate: { available: boolean; run: () => void };
   };
+  /**
+   * P12 Export extras (#676, #682, #684), under Tools: Create GIF, Merge videos, Change speed — for a library video
+   * only, like P10's editors, and only when this build's native side has each one. `running` is the edit's progress
+   * while one of this video runs. Optional, so the other packages' tests build their context without it.
+   */
+  exportExtras?: {
+    canGif: boolean;
+    canMerge: boolean;
+    canSpeed: boolean;
+    running: string | null;
+    openGif: () => void;
+    openMerge: () => void;
+    openSpeed: () => void;
+  };
   ui: PlayerOptionUi;
 };
 

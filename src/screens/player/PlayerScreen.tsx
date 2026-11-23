@@ -171,6 +171,9 @@ import { usePlayerEditTools } from './page/use-player-edit-tools';
 // P11 Privacy & backup: ⋮ → Tools → Move to Private (Private's own move dialog).
 import { PrivateMoveDialog } from '@/screens/private/PrivateMoveDialog';
 import { usePlayerPrivateMove } from './page/use-player-private-move';
+// P12 Export extras: ⋮ → Tools → Create GIF, Merge videos, Change speed.
+import { PlayerExportExtrasSheets } from './page/PlayerExportExtrasSheets';
+import { usePlayerExportExtras } from './page/use-player-export-extras';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -802,6 +805,20 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const p11ClosePrivate = p11Private.close;
   // ── end P11 ────────────────────────────────────────────────────────────────────────────────────────────────────
 
+  // ── P12 Export extras ──────────────────────────────────────────────────────────────────────────────────────────
+  // ⋮ → Tools: Create GIF (#676), Merge videos (#682) and Change speed (#684), for library videos only (P10's rule; P10
+  // loads the item). They pause the video, and P10's hold keeps it paused while they run.
+  const p12Export = usePlayerExportExtras({
+    item: p10EditTools.sheets.item,
+    canEdit: p10EditTools.option.canEdit,
+    player,
+    controller,
+    positionSeconds: session.positionSeconds,
+    endLongPress,
+  });
+  const p12CloseSheets = p12Export.closeSheets;
+  // ── end P12 ────────────────────────────────────────────────────────────────────────────────────────────────────
+
   const anyModalOpen =
     speedSheetOpen ||
     orientationSheetOpen ||
@@ -817,7 +834,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
     p8Sheet != null ||
     p9.sheetOpen ||
     p10EditTools.sheetOpen ||
-    p11Private.sheetOpen;
+    p11Private.sheetOpen ||
+    p12Export.sheetOpen;
 
   const onSingleTap = useCallback(() => {
     if (anyModalOpen || session.isSeeking) {
@@ -901,8 +919,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
     setFrameMode(false);
     p10CloseSheets();
     p11ClosePrivate();
+    p12CloseSheets();
     setLocked(true);
-  }, [hud, endLongPress, setLocked, closeP9Sheets, p10CloseSheets, p11ClosePrivate]);
+  }, [hud, endLongPress, setLocked, closeP9Sheets, p10CloseSheets, p11ClosePrivate, p12CloseSheets]);
   const onUnlock = useCallback(() => {
     setLocked(false);
     showControls();
@@ -1521,6 +1540,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     },
     editTools: p10EditTools.option,
     privacy: p11Private.option,
+    exportExtras: p12Export.option,
     ui: optionsUi,
   };
 
@@ -2159,6 +2179,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
       <PlayerEditToolsSheets state={p10EditTools.sheets} />
       {/* P11: Move to Private's dialogs (set up App Lock, the confirm with its data-loss warning, the progress). */}
       <PrivateMoveDialog controller={p11Private.controller} testID="player-private-move" />
+      {/* P12: Create GIF, Merge videos, Change speed and the running export's progress. */}
+      <PlayerExportExtrasSheets state={p12Export.sheets} />
     </SafeAreaScreen>
   );
 });

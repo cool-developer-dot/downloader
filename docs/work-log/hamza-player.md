@@ -1572,3 +1572,198 @@ Gradle wasn't run (no Kotlin changed).
     `"version": 2` says "made by a newer version of VidoraX"; a browser backup is sent to the browser's restore.
 11. **Six themes and Urdu (RTL):** the Settings rows, the restore preview, the confirms, the Move out sheet and dialog;
     TalkBack reads the switch and the preview.
+
+## P12 — Export extras (#676, #682, #684)
+
+Built in its own worktree from `hamza/P10-edit-tools` (`4ea8612`, the stack P1–P10), on the local branch
+`wip/P12-export-extras`, while P11 (privacy & backup) was built in parallel; it is meant to be cherry-picked on top of
+P11. **Its PR depends on P11's PR** and builds on P10 (MediaEditor, its job, sheets and pause hold). Under Tools it uses
+72, 74 and 76 (P10 has 50–70, P8 80, P11 85, P9 90). **P12 adds native code** to the media module (see Native code
+first). It doesn't change the SQLite schema, and adds no dependency, permission, manifest line or `build.gradle` line.
+
+### Native code
+
+Kotlin in `modules/vidorax-media` only, nothing in `transfer/` or `engine/`. Media3 stays 1.9.0: everything comes from
+`media3-transformer` 1.9.0 (a dependency already) and `media3-effect` / `media3-common` 1.9.0, which it brings (P10
+used `Presentation` the same way). The GIF encoder is the app's own code; no GIF library.
+
+| File | New / changed | What |
+| --- | --- | --- |
+| `library/GifEncoder.kt` | **new** | A GIF89a encoder in plain Kotlin (no Android types). `GifEncoder`: header, logical screen with the first frame's palette as the global colour table, NETSCAPE2.0 loop extension (loop forever), per frame a Graphic Control Extension (delay in 1/100 s), image descriptor, local colour table (frames 2+), LZW data, trailer. `delaysCs` spreads the rounding (15 fps → 7, 6, 7, …). `GifQuantizer`: median cut over a 5-5-5 bit RGB histogram (32 768 bins) to at most 256 colours per frame; a box's colour is the exact mean of its pixels; a pixel takes its bin's box (no per-pixel search); the palette is sorted by colour, so the output is deterministic; no dithering. `GifLzw`: GIF's variable-length LZW (Clear, End, width from min code size + 1 up to 12 bits, a Clear when 4096 codes are used, LSB-first bits in ≤ 255-byte sub-blocks), dictionary in an open-addressing hash of primitive arrays (5003 slots). |
+| `library/GifExport.kt` | **new** | `GifRequestRecord` (checks: 1–15 s, width 16–480, 1–15 fps → `ERR_INVALID_REQUEST`). `GifPlan`: the range (inside the video, start moved back near the end), the size (never wider than the video, aspect kept), ⌈length × fps⌉ frames and their times, the size estimate and the space bound (the same maths as JavaScript). `GifExport`: the frames from `MediaMetadataRetriever.getScaledFrameAtTime(t, OPTION_CLOSEST, w, h)` (Android 8.1+; `getFrameAtTime` + scale on 7–8), scaled to the exact size when a pixel off, `getPixels` into one `IntArray`, one frame at a time into the encoder (a frame that can't be read repeats the one before); then the one private share copy `files/library/.gif-exports/<title>.gif` (only the latest kept; the FileProvider already serves `library/`), `shareFile` (a bare name only) and `share` (the subtitle share path, `image/gif`). |
+| `library/EditSources.kt` | **new** | `EditSources.inspect(item)`: a library video read and checked the way `MediaEditor.check` checks a source (file there, verifier, not protected, has video, known length) plus its displayed size (rotation applied) and frame rate. Used by GIF and Merge. |
+| `library/MergePlan.kt` | **new** | `settings` (2–10 ids, each once, `sourceId` one of them), `inspect`, `layout` (the first video's size rounded down to even numbers; sound if any video has it), `fitInside` (the scale-to-fit maths), `frameRateCap`, `estimateBytes`, `videoEffects` (`FrameDropEffect` for a faster clip, then `Presentation.createForWidthAndHeight(w, h, LAYOUT_SCALE_TO_FIT)`), `composition` (one `EditedMediaItemSequence`: `withAudioAndVideoFrom` when any video has sound, `withVideoFrom` otherwise). |
+| `library/SpeedPlan.kt` | **new** | `settings` (0.25–4, not 1×; the part at least 1 s), `range` (clamped like a trim; all of it = the whole video), `outputMs` (part ÷ speed), `estimateBytes`, `ConstantSpeedProvider` (a `SpeedProvider` data class: Transformer compares providers with `equals`), `frameRateCap` / `effects` (`FrameDropEffect` to 60 fps when sped up past it). |
+| `library/MediaEditor.kt` | changed, additive | `EditKind.MERGE("merge")`, `SPEED("speed")` (so `getEditKinds` lists them); optional `EditRequest.merge` / `speed` and `EditRequestRecord.sourceIds` / `speed` (with defaults). `toModel()`: both need `video = h264`. One-line hooks that run only for them: `edit()` reads the merge's items; `check()` clamps SPEED's part, inspects every merge video, their space estimate, the expected length, the frame rate; `export()` starts a `Composition` for MERGE; `editedItem()` clips SPEED's part and sets `setSpeed` + its effects; `verifyOutput()` uses the expected length. New: `gif(request, gallery)` and `runExclusive` — Create GIF under the same lock (`ERR_INVALID_STATE`), progress, Cancel (`ERR_EDIT_CANCELLED`, notification included), foreground notification and clean-up as `edit()`. Trim, MP4, audio and compress take exactly the paths they took before. |
+| `library/ThumbnailExport.kt` | changed, additive | `saveGif(file, title)`: the GIF copied into `Pictures/VidoraX` as `image/gif` — MediaStore on Android 10+, the public folder and a media scan on 7–9 (the storage permission already declared with `maxSdkVersion 28`; `ERR_STORAGE_PERMISSION` without it). `canSaveToGallery()`. The JPEG paths are unchanged. |
+| `VidoraMediaModule.kt` | changed, additive | One P12 group after P10's `getEditKinds`: `startGifExport(request)` → `{ uri, shareName, width, height, frames, bytes, durationMs }`, `shareGif(shareName)`. Merge and Change speed go through the existing `startEdit`. |
+| `test/.../GifEncoderTest.kt` | **new** | 7 JUnit tests: a 2 × 2 two-colour frame is exactly the expected 63 bytes (header, screen, palette, loop, control, descriptor, LZW `02 03 44 02 05 00`, trailer); a flat frame's LZW at 8 bits is Clear 0 258 0 End; the delays; a 160 × 120 three-frame GIF with 200 colours (the LZW table fills and restarts) **decoded back by the JDK's own GIF reader** (`javax.imageio`, called by reflection because android.jar hides it at compile time) — every pixel, every delay, the local tables, the NETSCAPE loop; 4096 colours → 256, worst channel error ≤ 24; same input → same bytes; the guards. |
+| `test/.../GifExportTest.kt` | **new** | 7 Robolectric tests (native graphics): the request checks, the range, the size, frames / times / estimate (the same numbers as JavaScript), **Android's own decoder (`BitmapFactory`, Skia) reading the encoder's output**, the share copy (only the latest; no name reaches outside). |
+| `test/.../MergePlanTest.kt` | **new** | 6 Robolectric tests: the request (2–10, each once, from one of them, re-encodes), even sizes, fitting (the same numbers as JavaScript, and `Presentation.configure` giving the output's size), the frame-rate rule, the sequence (in order; `forceAudioTrack` and track types {audio, video} with sound, {video} without), the space. |
+| `test/.../SpeedPlanTest.kt` | **new** | 6 JUnit tests: the request (0.25–4, not 1, part ≥ 1 s, re-encodes), the part, length = part ÷ speed, the space (the same numbers as JavaScript), the 60 fps cap, the constant provider. |
+| `test/.../CompressPlanTest.kt` | changed, one line | P10's `theEditorListsCompressAmongItsKinds` compares the whole list, which now ends with `merge`, `speed`. |
+
+**What Media3 1.9.0 does, read from its bytecode** (`javap` on the 1.9.0 jars in the Gradle cache):
+
+- `EditedMediaItemSequence.Builder(EditedMediaItem…)` / `Builder(List)` and `experimentalSetForceAudioTrack` are
+  **deprecated** in 1.9.0; the forced track only works on a builder made the old way (`checkState` on its `-2` marker).
+  The new way is a sequence made with track types: `withAudioAndVideoFrom(items)` declares {audio, video}, and the
+  sequence then sets `forceAudioTrack = trackTypes.contains(AUDIO)`, so an item without sound gets silence.
+- `EditedMediaItem.Builder.setSpeed(SpeedProvider)` exists; `Transformer.start` turns it into a
+  `SpeedChangingAudioProcessor` put before the audio processors and a `TimestampAdjustment` put before the video
+  effects (`setSpeedChangingEffects`), so a `FrameDropEffect` in the item's effects sees the new timestamps.
+- `SpeedChangingAudioProcessor.updateSpeed(s)` calls Sonic's `setSpeed(s)` **and** `setPitch(s)`: the sound's pitch
+  follows the speed.
+- `TransformerUtil.shouldTranscodeVideo` re-encodes any sequence of more than one item, and any item with video
+  effects.
+
+### What the user sees
+
+| # | Feature | Where | How (evidence) |
+| --- | --- | --- | --- |
+| #676 | Create GIF | ⋮ → Tools → **Create GIF** (library videos) | A sheet: **Starts at 1:23.4** (the moment playing when it opened; − / + half a second; "From the moment playing"), **Length** 2 / 3 / 5 / 10 / 15 s (those that fit; a shorter video gets its own length), **Width** 320 / 480 px (never wider than the video; the same width twice is one chip), **Frames per second** 5 / 10 / 15, and before anything starts **"480 × 270 · 50 frames · about 3.8 MB"**. Create: Android 9 and older ask for the storage permission once; then the progress sheet ("Creating GIF", %, Cancel), the video paused. The GIF is saved in **Pictures/VidoraX** as "<video title> 1m23.4s.gif"; then "GIF saved … Share?" → **Share** opens the share sheet with the GIF (its private copy). `src/media-edit/gif-plan.ts`, `page/GifSheet.tsx`, `page/use-player-export-extras.ts`; native `GifExport.kt`, `GifEncoder.kt`, `ThumbnailExport.saveGif`. |
+| #682 | Merge Videos | ⋮ → Tools → **Merge videos** (library videos) | A sheet with the list, **the video playing first** ("Playing now"): ↑ / ↓ on every row, ✕ on all but the playing one, **Add videos** (the Library's videos, newest first, a check each; at most 10 in all; each once). Under it: "The copy: 1920 × 1080 (the first video's size), 12:04 long", the note on bars and frame rates, and "Videos without sound are silent in the copy" when that applies. **Merge 3 videos** (two at least) → progress sheet → a **new Library item** "<title> (merged)". `src/media-edit/merge-plan.ts`, `page/MergeVideosSheet.tsx`; native `MergePlan.kt`. |
+| #684 | Change Speed Export | ⋮ → Tools → **Change speed** (library videos) | A sheet: **0.25× 0.5× 0.75× 1.25× 1.5× 2× 3× 4×** (2× chosen), **Whole video** or **A part** (the Trim screen's handles, starting at the moment playing; at least 1 s), "**New length: 5:02**" (part ÷ speed), the note that the sound follows the speed. **Save at 2×** → progress sheet → a **new Library item** "<title> (2× speed)". `src/media-edit/speed-plan.ts`, `page/SpeedExportSheet.tsx`; native `SpeedPlan.kt`. |
+| all | Progress, Cancel, storage, pause, one at a time | the sheets | The app's one edit job (`edit-job.ts`; Create GIF through the new `startTask`, Merge and Change speed through `start`), so none runs with another edit (also from Download details: "Another edit is running"). Before starting: the items are still there, the export makes sense, there is room (`hasRoomForEdit`, the native check's own numbers + 64 MB); natively again (`ERR_NO_SPACE` → "Not enough free space for this edit."). Then the video is **paused** and P10's hold keeps it paused (the edit origin is set to the video). Progress with **Cancel edit** in the sheet (P10's `EditProgressSheet` / `EditJobBanner`) and in the notification (`MediaEditService`); the rows show "45%" and reopen it. **A new file every time**; the originals are only read. `src/media-edit/player-export-run.ts` (`runPlayerExport`, `playerExportMessageKey`, `playerExportRefusal`). |
+
+### Create GIF: sizes, frames and the estimate
+
+- **Part:** 1–15 s, inside the video; near the end the start moves back so the chosen length is kept (`gifRange`,
+  `GifPlan.clampRange`).
+- **Size:** width 320 or 480 px, but never more than the video's own; height = round(video height × width ÷ video
+  width). A portrait video at 480 is 480 × 853.
+- **Frames:** ⌈length × fps⌉, one every 1/fps s from the start (at most 15 s × 15 fps = 225).
+- **Estimate** = 33 + frames × (788 + L + ⌈L ÷ 255⌉) bytes, L = ⌈width × height × 3 ÷ 5⌉.
+  - 33: header, logical screen, loop extension, trailer; 788 per frame: control extension, descriptor, a 256-colour
+    table, LZW code size, terminator; L: the LZW data at 0.6 byte a pixel; ⌈L ÷ 255⌉: the sub-blocks' length bytes.
+  - Example: 5 s at 10 fps, 480 × 270 = 33 + 50 × (788 + 77 760 + 305) = 3 942 683 bytes ("about 3.8 MB"). The
+    largest (15 s, 15 fps, 480 × 270) is 17 741 958 bytes ("about 16.9 MB").
+  - Free-space check: L at 3/2 byte a pixel (12-bit codes, the most LZW writes), × 2 (the Gallery GIF and the share
+    copy): 19 595 166 bytes for the example, + 64 MB.
+  - The same operations in JavaScript (`gifEstimateBytes`) and Kotlin (`GifPlan.estimateBytes`), tested with the same
+    numbers.
+- **Palette:** median cut per frame to ≤ 256 colours (first frame = global table, then local tables), no dithering.
+
+### Merge: size, frame rate, sound
+
+- **Size:** the first video's displayed size, rounded down to even numbers. Each video is fitted inside with
+  `LAYOUT_SCALE_TO_FIT`: scaled up or down, aspect kept, black bars for the rest (1080 × 1920 in 1920 × 1080 → a
+  608 × 1080 picture with bars at the sides; 640 × 480 → 1440 × 1080).
+- **Frame rate:** timestamps are kept, so every clip plays at its real speed. A clip faster than the first video
+  (by more than 0.5 fps) is dropped to the first one's rate (`FrameDropEffect.createDefaultFrameDropEffect`); a
+  slower clip keeps its frames (none are invented), so the file can have a variable frame rate, which MP4 carries.
+- **Sound:** any video with sound → the sequence has a sound track (`withAudioAndVideoFrom`): silence while a video
+  without sound plays. None with sound → no sound track (`withVideoFrom`).
+- **Re-encoded:** video H.264, sound AAC (Transformer re-encodes any sequence of more than one item).
+- **Order:** as the list; the video playing is the one it's started from (`sourceId`, the new item's site and page);
+  it can move but not leave.
+- **Space:** the videos' sizes × 2 + 64 MB (`mergeEstimateBytes`, `MergePlan.estimateBytes`).
+
+### Change speed: range, sound, frames
+
+- **Speed:** 0.25× to 4×; 1× is refused (`ERR_INVALID_REQUEST`; JavaScript never sends it).
+- **Part:** whole video, or a part like a trim (at least 1 s, inside the video); a part that covers it all is the
+  whole video. The copy is that part alone.
+- **Length** = part ÷ speed (10 s at 0.25× = 40 s; at 3× = 3.3 s); checked again on the output (`verifyOutput`).
+- **Sound:** with the picture, through Transformer's own `setSpeed` (not the expo-video audio bridge). Media3 1.9.0
+  changes the pitch with the speed (2× sounds higher, 0.5× lower).
+- **Frames:** slowed down, frames are shown longer (30 fps at 0.5× = 15 fps); sped up past 60 fps, frames are dropped
+  evenly to 60 (`FrameDropEffect` after the speed change), e.g. 30 fps at 4×.
+- **Space:** the part's share of the file × 2 ÷ speed + 64 MB (a whole 600 MB video at 0.25× needs 4.8 GB).
+
+### Decisions
+
+- **Merge and Change speed are new MediaEditor kinds**, as P10 did Compress: they get the lock, progress, Cancel, the
+  notification, the output check and the new library row for free. What they change lives in `MergePlan.kt` and
+  `SpeedPlan.kt`.
+- **Create GIF isn't a `startEdit` kind:** its result is a Gallery image, not a library item, so it has its own
+  request (`startGifExport`) and runs through `MediaEditor.gif` / `runExclusive`, which share `edit()`'s lock,
+  progress, Cancel and clean-up. In JavaScript `EditKind` gained `gif` so the one job can carry it (`startTask`);
+  `editRequest` casts its kind back to `startEdit`'s kinds (it never gets `gif`).
+- **The GIF encoder** is median cut (better than a fixed palette for video) on a 5-5-5 histogram (fast and
+  deterministic), per-frame palettes, no dithering (smaller files, but banding in smooth gradients). Every frame is a
+  full frame (no transparency / frame differencing), which keeps it simple but bigger.
+- **Width presets are widths** (as asked), so a portrait GIF is taller than wide (480 × 853).
+- **GIF defaults:** 3 s, 320 px, 10 fps. The − / + step is 0.5 s.
+- **The merge starts from the video playing**, which stays in the list (it can move): the job's source is then always
+  the video on screen, so P10's progress rows, sheet and pause hold work unchanged.
+- **At most 10 videos in a merge**, each once (to repeat a part, merge a trimmed copy).
+- **Merge's frame rate follows the first video** (faster clips dropped to it), like its size.
+- **Speed-ups are capped at 60 fps**; slow-downs keep every frame.
+- **Pitch follows speed** (Media3 1.9.0's behaviour, kept). Keeping the pitch would need an extra
+  `SonicAudioProcessor` with `setPitch(1 / speed)` after Transformer's own processor: not done here.
+- **Space estimates for Merge and Change speed** use P10's re-encode rule (× 2), and the GIF check its upper bound.
+- **Strings:** 54 new `videoPlayer.*` keys, English and Urdu, at the end of both catalogs. Messages after an export
+  reuse the Downloader's `mediaEdit.*` strings and `thumbnailSave.needsPermission`; ↑ / ↓ reuse P8's
+  `customizeMoveUp` / `customizeMoveDown`. "2×", "480 × 270" and "1:02" are built in code.
+- **Icons:** images, layers, gauge (existing design-kit names).
+
+### Files
+
+- Logic (unit-tested, pure): `src/media-edit/gif-plan.ts`, `merge-plan.ts`, `speed-plan.ts`, `player-export-run.ts`;
+  `src/media-edit/edit-job.ts` (+ `startTask`); `src/media-edit/edit-plan.ts` (`EditKind` + `merge` / `speed` / `gif`,
+  one availability branch, the cast in `editRequest`).
+- Port: `src/media-edit/export-extras-port.ts` (`startGifExport` / `shareGif`, what the build has).
+- Screen: `src/screens/player/page/use-player-export-extras.ts`, `PlayerExportExtrasSheets.tsx`, `GifSheet.tsx`,
+  `MergeVideosSheet.tsx`, `SpeedExportSheet.tsx`. `PlayerScreen.tsx`: one fenced P12 block, plus the imports,
+  `anyModalOpen`, `onLock`, `optionsContext.exportExtras` and the sheets at the end.
+- Reused, changed additively: `page/EditProgressSheet.tsx` (titles for the three kinds; the GIF's note),
+  `src/screens/media-edit/useRunEdit.ts` (three labels), `media-edit/RangeTrack.tsx` (used as it is).
+- Options: `src/player/options/p12-export-extras.ts` (+ one import line), `player-options.ts` (optional `exportExtras`).
+- Types: `modules/vidorax-media/src/VidoraMedia.types.ts` (`EditRequest.kind` + `merge` / `speed`, `sourceIds`,
+  `speed`; `GifRequest`, `GifResult`; a P12 group with `startGifExport`, `shareGif`).
+- Native: see Native code.
+- Strings: `src/localization/catalogs/videoPlayer.en.ts` / `.ur.ts`, 54 keys.
+
+### Gate
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | 0 errors |
+| Unit tests (JS) | 2434 / 2434 on `4ea8612` + P12 (2392 before; 42 new: `media-edit/gif-plan.test.ts` 10, `merge-plan.test.ts` 8, `speed-plan.test.ts` 6, `player-export-run.test.ts` 13, `player/options/p12-export-extras.test.ts` 5). `row-revision.test.ts` passed in the full run |
+| `npm run lint` | 0 errors; 91 warnings, the same as before and none in a file P12 changed |
+| Gradle `:vidorax-media:compileDebugKotlin` | BUILD SUCCESSFUL (Windows, JDK 17); no warning in a P12 file |
+| Gradle `:vidorax-media:testDebugUnitTest --continue` | As on every Windows run, `DownloadRunnerTest.kt` is left out of the test compile (its backtick test name has a `"`, not a legal class-file path on Windows; a local init script in the scratchpad, not committed). **1152 tests, 1148 passed, 2 failed, 2 skipped** (1126 before; 26 new). **New: `GifEncoderTest` 7 / 7, `GifExportTest` 7 / 7, `MergePlanTest` 6 / 6, `SpeedPlanTest` 6 / 6**; `CompressPlanTest` 9 / 9 (one line updated), `MediaEditorTest` 6 / 6, `MediaEditServiceTest` 4 / 4, `FrameExportTest` 3 / 3, `ThumbnailsTest` 4 / 4. The 2 failures are the known Windows-only ones, in code P12 doesn't touch: `StoragePathsTest.storedPathsAreRelativeToFilesDir` and `IncomingImportTest.aFileIsCopiedIntoTheLibraryUnderDevice` (both expect `/` in a path). The transfer tests (`ParallelTransferTest`, `HlsTransferTest`), which flake on Windows, all passed this time |
+| Against `4ea8612` | `git diff --check` clean; none of Faran's files; nothing in `transfer/` or `engine/`; `package.json` / lockfile, `build.gradle`, manifests and `app.json` unchanged; no new dependency or permission; no SQLite change |
+| Media3 | `1.9.0`, unchanged |
+
+### Device checks for Faran (release build; not possible here)
+
+1. **Create GIF, basic:** a 1080p library video at 1:23, 3 s, 320 px, 10 fps. The sheet says "320 × 180 · 30 frames
+   · about …". The GIF is in Gallery → Pictures/VidoraX as "<title> 1m23.0s.gif", animates and loops in the Gallery,
+   Google Photos and a browser, is 320 × 180, about 3 s, and shows the right moment (OPTION_CLOSEST). Its file size
+   against the estimate.
+2. **The biggest GIF:** 15 s, 480 px, 15 fps (225 frames). How long it takes; the progress moves; the size against the
+   estimate ("about 16.9 MB"). Cancel half way (sheet and notification): "Edit cancelled. Nothing was saved.", no GIF in
+   the Gallery.
+3. **GIF of a portrait phone recording** (rotation metadata): upright, 480 × 853. A 4K video works (frames decoded at
+   the GIF's size on Android 8.1+).
+4. **GIF colours:** a sunset or sky gradient and a face: is the banding acceptable without dithering?
+5. **Share the GIF:** WhatsApp / Telegram / Gmail receive an animated GIF. Done closes the dialog.
+6. **Android 9 or older:** the storage permission is asked once; refused → "Allow storage access to save to the
+   Gallery". The GIF is saved with it.
+7. **Near the end:** start 3 s before the end with 10 s chosen → the start moves back (the sheet shows it).
+8. **Merge, sizes:** a 1080p landscape video playing, then a 720p one and a portrait phone video, reordered with ↑ / ↓.
+   The copy is 1920 × 1080; the 720p one fills it; the portrait one has bars at the sides; the order is kept; the
+   length is the sum. Then make the portrait video first: the copy is portrait (1080 × 1920) and the landscape ones
+   get bars above and below.
+9. **Merge, sound:** a screen recording without sound between two videos with sound: silence during it, sound in
+   sync otherwise. Two videos without sound: no sound track.
+10. **Merge, frame rates:** a 30 fps video first, then a 60 fps one: both play at normal speed, smoothly, and the file
+    reports about 30 fps. A 24 fps video after a 30 fps one plays normally.
+11. **Merge, other files:** a WebM / VP9 with an MP4; an HDR video (it may fail: then "The edit failed. The original is
+    unchanged."); 10 videos; the picker lists only videos and greys more than ten.
+12. **Change speed:** 2× of the whole video (half as long, sound higher, in sync to the end); 0.5× of a 10 s part
+    (20 s); the extremes 0.25× and 4×; a 60 fps video at 4× plays smoothly at 60 fps. The new length in the sheet
+    against the file.
+13. **The pause hold, one at a time, low storage:** play during an export → paused with "Paused while the edit runs";
+    an edit in Download details blocks one here ("Another edit is running"); a merge bigger than the free space →
+    "Not enough free space for this edit." before anything starts.
+14. **New items:** "<title> (merged)" and "<title> (2× speed)" appear in the Library at once and play; the originals
+    are unchanged.
+15. **The rows' visibility:** a library video (all three), a video on this device, a file from another app, a stream,
+    an audio file (none). While an export runs, every Tools edit row shows "45%" and opens its progress.
+16. **Long exports in the background:** a 30-minute merge with VidoraX in the background (the notification, Cancel
+    there).
+17. **Six themes and Urdu (right to left):** the three sheets, the picker, the progress sheet and the dialog; TalkBack
+    reads the chips, the ↑ / ↓ / ✕ buttons and the picker's "Adds it to the merge".

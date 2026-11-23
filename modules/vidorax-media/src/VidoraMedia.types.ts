@@ -703,8 +703,12 @@ export type ImportIncomingResult =
  */
 export interface EditRequest {
   sourceId: string;
-  /** P10 adds `compress` (#680): an MP4 with the video re-encoded to H.264 at `videoBitrate`, scaled to `maxShortSide`. */
-  kind: 'trim' | 'mp4' | 'audio' | 'compress';
+  /**
+   * P10 adds `compress` (#680): an MP4 with the video re-encoded to H.264 at `videoBitrate`, scaled to `maxShortSide`.
+   * P12 adds `merge` (#682: the videos of `sourceIds` joined in order) and `speed` (#684: the video, or `startMs`–
+   * `endMs`, at `speed`). Both re-encode the video (`video: 'h264'`).
+   */
+  kind: 'trim' | 'mp4' | 'audio' | 'compress' | 'merge' | 'speed';
   /** Trim only (ms). */
   startMs?: number | null;
   endMs?: number | null;
@@ -718,6 +722,39 @@ export interface EditRequest {
   videoBitrate?: number | null;
   /** Compress only: the output's short side at most this many pixels (never scaled up); null keeps the size. */
   maxShortSide?: number | null;
+  /**
+   * P12 Merge only: the library videos joined, in order (2–10, each once). `sourceId` is one of them: the video the
+   * merge was started from (the new item gets its site and page). The output has the first video's size.
+   */
+  sourceIds?: string[] | null;
+  /** P12 Change speed only: 0.25–4, not 1. `startMs` / `endMs` give the part; both null for the whole video. */
+  speed?: number | null;
+}
+
+/**
+ * P12 Create GIF (#676): what `startGifExport` makes of a library video: `startMs`–`endMs` (1–15 s) at `width` pixels
+ * (16–480; never more than the video's own) and `fps` frames a second (1–15).
+ */
+export interface GifRequest {
+  sourceId: string;
+  startMs: number;
+  endMs: number;
+  width: number;
+  fps: number;
+  /** The Gallery file's name, without the extension ("<video title> 1m23.4s"). */
+  title: string;
+}
+
+/** P12: the GIF made: in `Pictures/VidoraX` (`uri`), with one private copy `shareGif(shareName)` sends. */
+export interface GifResult {
+  uri: string;
+  /** Empty when the share copy couldn't be kept (the GIF is in the Gallery all the same). */
+  shareName: string;
+  width: number;
+  height: number;
+  frames: number;
+  bytes: number;
+  durationMs: number;
 }
 
 export interface DownloadSettings {
@@ -1116,6 +1153,17 @@ export interface VidoraMediaModuleApi {
   shareFrame?(frame: object, title: string): Promise<void>;
   /** P10: the edit kinds the native editor runs (`compress` from P10). Missing on older native builds. */
   getEditKinds?(): string[];
+  // ── P12 Export extras (#676, #682, #684) ──
+  /**
+   * P12 Create GIF: runs as the one edit (ERR_INVALID_STATE while another runs; `getEditProgress` / `cancelEdit` work
+   * for it, ERR_EDIT_CANCELLED when cancelled) and saves the GIF in `Pictures/VidoraX`. ERR_NO_SPACE without room,
+   * ERR_EDIT_REFUSED for a file that can't be read, ERR_STORAGE_PERMISSION on Android 9 and older without the storage
+   * permission. The video is only read. Missing on older native builds (then no Create GIF).
+   */
+  startGifExport?(request: GifRequest): Promise<GifResult>;
+  /** P12: the share sheet with the GIF `startGifExport` made (`GifResult.shareName`); ERR_NOT_FOUND once replaced. */
+  shareGif?(shareName: string): Promise<void>;
+  // ── end P12 ──
   /** System chooser to play the file in another app. */
   openWith(id: string): Promise<void>;
   share(ids: string[]): Promise<void>;

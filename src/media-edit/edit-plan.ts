@@ -11,8 +11,13 @@ import type { EditRequest, LibraryItem } from '@modules/vidorax-media/src/Vidora
 
 import { formatPlaybackTime } from '@/player/format-time';
 
-/** P10 adds `compress` (#680, src/media-edit/compress-plan.ts): an MP4 with the video re-encoded smaller. */
-export type EditKind = 'trim' | 'mp4' | 'audio' | 'compress';
+/**
+ * P10 adds `compress` (#680, src/media-edit/compress-plan.ts): an MP4 with the video re-encoded smaller. P12 adds
+ * `merge` (#682, merge-plan.ts), `speed` (#684, speed-plan.ts) and `gif` (#676, gif-plan.ts: a GIF in the Gallery, run
+ * through the same one-at-a-time job, not a `startEdit` request). Each has its own plan file; they don't go through
+ * `trackPlan` / `editRequest`.
+ */
+export type EditKind = 'trim' | 'mp4' | 'audio' | 'compress' | 'merge' | 'speed' | 'gif';
 export type VideoPlan = EditRequest['video'];
 export type AudioPlan = EditRequest['audio'];
 export type TrackPlan = { video: VideoPlan; audio: AudioPlan };
@@ -120,6 +125,12 @@ export function editAvailability(kind: EditKind, source: EditSource): EditAvaila
       ? 'ok'
       : 'no-duration';
   }
+  // P12: the length is all these need here; their own plans (gif-plan.ts, merge-plan.ts, speed-plan.ts) decide the rest.
+  if (kind === 'merge' || kind === 'speed' || kind === 'gif') {
+    return typeof source.durationMs === 'number' && Number.isFinite(source.durationMs) && source.durationMs > 0
+      ? 'ok'
+      : 'no-duration';
+  }
   if (kind === 'trim') {
     const check = clampTrimRange({ startMs: 0, endMs: source.durationMs ?? 0 }, source.durationMs);
     return check.ok ? 'ok' : check.reason;
@@ -167,7 +178,8 @@ export function editRequest(
   const plan = trackPlan(kind, source, trim?.keyframeStart ?? false);
   return {
     sourceId: source.id,
-    kind,
+    // P12: never 'gif' here (Create GIF sends its own request, gif-plan.ts); the native editor refuses unknown kinds.
+    kind: kind as EditRequest['kind'],
     startMs: kind === 'trim' ? (trim?.range.startMs ?? 0) : null,
     endMs: kind === 'trim' ? (trim?.range.endMs ?? null) : null,
     keyframeStart: kind === 'trim' ? Boolean(trim?.keyframeStart) && plan.video === 'copy' : false,
