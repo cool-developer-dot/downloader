@@ -39,6 +39,8 @@ class VidoraPlayerModule : Module() {
     Events(ON_QUEUE_COMMAND)
 
     OnCreate {
+      // P17 / P19: every new player's audio sink runs a VidoraAudioProcessor first (its own instance).
+      VideoPlayerHooks.audioProcessors = { arrayOf(VidoraAudioProcessor()) }
       VideoPlayerHooks.sessionPlayerFactory = { owner, exo ->
         sessionPlayers.getOrPut(owner) {
           QueueSessionPlayer(exo) { command -> runCatching { sendEvent(ON_QUEUE_COMMAND, mapOf("command" to command)) } }
@@ -47,9 +49,10 @@ class VidoraPlayerModule : Module() {
     }
 
     OnDestroy {
+      VideoPlayerHooks.audioProcessors = null
       VideoPlayerHooks.sessionPlayerFactory = null
       sessionPlayers.clear()
-    }
+
 
     // P14 #670 (stream quality cap) and P17 #574 (Audio Only Mode: no video decoding).
     AsyncFunction("setTrackLimits") { player: VideoPlayer, maxLongSide: Int?, videoDisabled: Boolean ->
@@ -71,6 +74,11 @@ class VidoraPlayerModule : Module() {
     // P15 #661 / #701: what the media session's ⏮ / ⏭ (headset double press, remotes, the notification) may do.
     AsyncFunction("setQueueNavigation") { player: VideoPlayer, enabled: Boolean, hasNext: Boolean, hasPrevious: Boolean ->
       sessionPlayers[player]?.setNavigation(QueueNavigation(enabled, hasNext, hasPrevious))
+    }.runOnQueue(Queues.MAIN)
+
+    // P17 #554: the sound later (+) or earlier (−) than the picture, in ms, kept the same in real time at any speed.
+    AsyncFunction("setAudioDelay") { player: VideoPlayer, delayMs: Int, speed: Double ->
+      player.audioProcessor()?.setDelay(delayMs, speed.toFloat())
     }.runOnQueue(Queues.MAIN)
 
     // P15 #560: pause when the sound would move to the speaker (headphones unplugged, Bluetooth disconnected).
@@ -106,6 +114,11 @@ class VidoraPlayerModule : Module() {
     const val ON_QUEUE_COMMAND = "onQueueCommand"
   }
 }
+
+/** This player's VidoraAudioProcessor; null for a player built before the module registered its hook. */
+@OptIn(UnstableApi::class)
+internal fun VideoPlayer.audioProcessor(): VidoraAudioProcessor? =
+  extraAudioProcessors.firstNotNullOfOrNull { it as? VidoraAudioProcessor }
 
 /** P15 #703: showing over the lock screen, and asking for the unlock. Main thread. */
 internal object LockScreen {

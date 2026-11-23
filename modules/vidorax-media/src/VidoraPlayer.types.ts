@@ -29,6 +29,11 @@ export interface VidoraPlayerModuleApi {
    * Off: the sessions keep expo-video's own commands. ⏮ is offered whenever the video can seek (to its start).
    */
   setQueueNavigation(player: VideoPlayer, enabled: boolean, hasNext: boolean, hasPrevious: boolean): Promise<void>;
+  /**
+   * P17 #554: the sound later (+) or earlier (−) than the picture, in ms (clamped to ±3000), kept the same in real
+   * time at `speed`. Applied by the player's VidoraAudioProcessor; again after every seek.
+   */
+  setAudioDelay(player: VideoPlayer, delayMs: number, speed: number): Promise<void>;
   /** P15 #560: pause when headphones are unplugged or a Bluetooth headset disconnects. */
   setPauseWhenAudioBecomesNoisy(player: VideoPlayer, enabled: boolean): Promise<void>;
   /** P15 #703: show the app's window over the lock screen; false when there is no activity. */

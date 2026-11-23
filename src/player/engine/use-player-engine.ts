@@ -5,14 +5,17 @@
  */
 
 import type { VideoPlayer } from 'expo-video';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 
 import { useTranslation } from '@/localization';
 
 import type { AdjustmentHud } from '../adjustment-hud';
 import type { PlayerVolumeState } from '../hooks/use-player-volume';
+import { audioTrackLabel, formatAudioDelay } from './audio-settings';
+import { closeEngineSheet, openEngineSheet, useOpenEngineSheet } from './engine-sheets';
 import { applyTrackLimits } from './native-player';
 import type { PlayerEngineOption } from './types';
+import { useAudioEngine, type AudioEngine } from './use-audio-engine';
 import { useHeadsetKeys, type HeadsetKeys, type PlayerKeyHandlers } from './use-headset-keys';
 import { useSpeedEngine } from './use-speed-engine';
 import { useStreamEngine, type StreamQualitySheetState } from './use-stream-engine';
@@ -44,12 +47,15 @@ export type UsePlayerEngineInput = {
 export type PlayerEngineSheets = {
   streamQuality: StreamQualitySheetState;
   headsetKeys: { visible: boolean; close: () => void };
+  audio: { visible: boolean; close: () => void; engine: AudioEngine };
 };
 
 export type PlayerEngine = {
   option: PlayerEngineOption;
   sheets: PlayerEngineSheets;
   keys: HeadsetKeys;
+  /** P17 #574: no picture is decoded; the screen shows the audio-only cover. */
+  audioOnly: boolean;
 };
 
 export function usePlayerEngine(input: UsePlayerEngineInput): PlayerEngine {
@@ -66,13 +72,17 @@ export function usePlayerEngine(input: UsePlayerEngineInput): PlayerEngine {
     leaveToDownloads: input.leaveToDownloads,
   });
 
-  // The track limits: P14's stream quality cap.
+  // P17
+  const audio = useAudioEngine({ player, mediaId: input.mediaId, isReady, playbackRate: input.playbackRate });
+
+  // The track limits: P14's stream quality cap and P17's Audio Only Mode.
   const { maxLongSide } = stream;
+  const videoDisabled = audio.audioOnly;
   useEffect(() => {
     if (isReady) {
-      applyTrackLimits(player, { maxLongSide, videoDisabled: false });
+      applyTrackLimits(player, { maxLongSide, videoDisabled });
     }
-  }, [isReady, maxLongSide, player]);
+  }, [isReady, maxLongSide, player, videoDisabled]);
 
   // P15
   const keys = useHeadsetKeys({
@@ -97,22 +107,39 @@ export function usePlayerEngine(input: UsePlayerEngineInput): PlayerEngine {
     setPlaybackRate: input.setPlaybackRate,
   });
 
-  const [headsetKeysOpen, setHeadsetKeysOpen] = useState(false);
-  const openHeadsetKeys = useCallback(() => setHeadsetKeysOpen(true), []);
-  const closeHeadsetKeys = useCallback(() => setHeadsetKeysOpen(false), []);
+  const openSheet = useOpenEngineSheet();
+  const openHeadsetKeys = useCallback(() => openEngineSheet('headsetKeys'), []);
+  const openAudio = useCallback(() => openEngineSheet('audio'), []);
+
+  const trackIndex = audio.track ? audio.tracks.findIndex((track) => track === audio.track) : -1;
+  const trackLabel =
+    audio.track && audio.tracks.length > 1
+      ? audioTrackLabel(audio.track, Math.max(0, trackIndex), (n) => t('playerEngine.audioTrackNumber', { n }))
+      : null;
+  const audioOption = useMemo(
+    () => ({
+      trackLabel,
+      delayLabel: formatAudioDelay(audio.delayMs),
+      audioOnly: audio.audioOnly,
+      setAudioOnly: audio.setAudioOnly,
+      open: openAudio,
+    }),
+    [audio.audioOnly, audio.delayMs, audio.setAudioOnly, openAudio, trackLabel],
+  );
 
   const option = useMemo<PlayerEngineOption>(
-    () => ({ stream: stream.option, headsetKeys: { open: openHeadsetKeys } }),
-    [openHeadsetKeys, stream.option],
+    () => ({ stream: stream.option, headsetKeys: { open: openHeadsetKeys }, audio: audioOption }),
+    [audioOption, openHeadsetKeys, stream.option],
   );
 
   const sheets = useMemo<PlayerEngineSheets>(
     () => ({
       streamQuality: stream.sheet,
-      headsetKeys: { visible: headsetKeysOpen, close: closeHeadsetKeys },
+      headsetKeys: { visible: openSheet === 'headsetKeys', close: closeEngineSheet },
+      audio: { visible: openSheet === 'audio', close: closeEngineSheet, engine: audio },
     }),
-    [closeHeadsetKeys, headsetKeysOpen, stream.sheet],
+    [audio, openSheet, stream.sheet],
   );
 
-  return { option, sheets, keys };
+  return { option, sheets, keys, audioOnly: audio.audioOnly };
 }

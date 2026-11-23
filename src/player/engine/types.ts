@@ -12,9 +12,23 @@ export type PlayerEngineStreamOption = {
   download: () => void;
 };
 
+export type PlayerEngineAudioOption = {
+  /** #553: the playing track's name ("English"); null when the video has one track or none. */
+  trackLabel: string | null;
+  /** #554: "+120 ms", "0 ms". */
+  delayLabel: string;
+  /** #574 */
+  audioOnly: boolean;
+  setAudioOnly: (on: boolean) => void;
+  /** The Audio sheet (screen 19's Audio chip). */
+  open: () => void;
+};
+
 export type PlayerEngineOption = {
   /** P14: present while an online stream plays. */
   stream: PlayerEngineStreamOption | null;
   /** P15: the Headset, keys & lock screen sheet. */
   headsetKeys: { open: () => void };
+  /** P17: the audio tracks, the delay and Audio Only Mode. */
+  audio: PlayerEngineAudioOption;
 };

@@ -25,11 +25,14 @@ import { PAGE_CHIP_FLAGS, PAGE_TILES, shownPageChips } from './player-page-actio
 
 const NOTHING: ControlsLayout = {};
 const AUDIO_ON = { ...PAGE_CHIP_FLAGS, audio: true };
+/** The page as it was before Faran's P17 turned the Audio chip on. */
+const AUDIO_OFF = { ...PAGE_CHIP_FLAGS, audio: false };
 
 describe('customize controls: nothing saved is today\'s Player', () => {
   it('draws the page\'s chips, tiles and Up next as before', () => {
     assert.deepEqual(pageChipsToDraw(NOTHING), shownPageChips());
-    assert.deepEqual(pageChipsToDraw(NOTHING), ['speed', 'subs', 'rotate', 'lock']);
+    // Faran's P17 turned the Audio chip on: it draws in its design place, after Subs.
+    assert.deepEqual(pageChipsToDraw(NOTHING), ['speed', 'subs', 'audio', 'rotate', 'lock']);
     assert.deepEqual(pageTilesToDraw(NOTHING), [...PAGE_TILES]);
     assert.equal(pageTilesToDraw(NOTHING)[0], PAGE_TILES[0]);
     assert.equal(pageCardShown(NOTHING, 'upNext'), true);
@@ -52,30 +55,31 @@ describe('customize controls: nothing saved is today\'s Player', () => {
 
 describe('customize controls: the page', () => {
   it('hides and moves chips, the 1.0× chip (Faran\'s P16) too', () => {
-    const available = availableControls('pageChips');
+    const available = availableControls('pageChips', AUDIO_OFF);
     let chips = setControlShown(available, undefined, 'speed', false);
     let layout = withGroupLayout(NOTHING, 'pageChips', chips);
-    assert.deepEqual(pageChipsToDraw(layout), ['subs', 'rotate', 'lock']);
+    assert.deepEqual(pageChipsToDraw(layout, AUDIO_OFF), ['subs', 'rotate', 'lock']);
     chips = setControlShown(available, chips, 'speed', true);
     chips = moveControl(available, chips, 'speed', 1)!;
     chips = moveControl(available, chips, 'speed', 1)!;
     layout = withGroupLayout(layout, 'pageChips', chips);
-    assert.deepEqual(pageChipsToDraw(layout), ['subs', 'rotate', 'speed', 'lock']);
+    assert.deepEqual(pageChipsToDraw(layout, AUDIO_OFF), ['subs', 'rotate', 'speed', 'lock']);
   });
 
   it('keeps the Audio chip out of the list and off the page while its flag is off', () => {
-    assert.deepEqual(availableControls('pageChips'), ['speed', 'subs', 'rotate', 'lock']);
-    assert.ok(!controlsInGroup(availableControls('pageChips'), undefined).some((entry) => entry.id === 'audio'));
+    assert.deepEqual(availableControls('pageChips', AUDIO_OFF), ['speed', 'subs', 'rotate', 'lock']);
+    assert.ok(!controlsInGroup(availableControls('pageChips', AUDIO_OFF), undefined).some((entry) => entry.id === 'audio'));
     // A saved order that names it (an older build where it showed) still does not draw it.
     const layout = { pageChips: { order: ['audio', 'lock', 'speed', 'subs', 'rotate'], hidden: [] } };
-    assert.deepEqual(pageChipsToDraw(layout), ['lock', 'speed', 'subs', 'rotate']);
+    assert.deepEqual(pageChipsToDraw(layout, AUDIO_OFF), ['lock', 'speed', 'subs', 'rotate']);
   });
 
   it('shows the Audio chip, in its default place after Subs, once P17 turns its flag on — with nothing more to do', () => {
     assert.deepEqual(availableControls('pageChips', AUDIO_ON), ['speed', 'subs', 'audio', 'rotate', 'lock']);
     assert.deepEqual(pageChipsToDraw(NOTHING, AUDIO_ON), ['speed', 'subs', 'audio', 'rotate', 'lock']);
+    assert.deepEqual(availableControls('pageChips'), ['speed', 'subs', 'audio', 'rotate', 'lock']);
     // The user reordered while Audio was hidden: Lock first, Subs last.
-    const available = availableControls('pageChips');
+    const available = availableControls('pageChips', AUDIO_OFF);
     let chips = moveControl(available, undefined, 'lock', -1)!;
     chips = moveControl(available, chips, 'lock', -1)!;
     chips = moveControl(available, chips, 'lock', -1)!;
@@ -83,7 +87,7 @@ describe('customize controls: the page', () => {
     assert.equal(moveControl(available, chips, 'subs', 1), null); // already last
     assert.deepEqual(chips.order, ['lock', 'speed', 'rotate', 'subs']);
     const layout = withGroupLayout(NOTHING, 'pageChips', chips);
-    assert.deepEqual(pageChipsToDraw(layout), ['lock', 'speed', 'rotate', 'subs']);
+    assert.deepEqual(pageChipsToDraw(layout, AUDIO_OFF), ['lock', 'speed', 'rotate', 'subs']);
     assert.deepEqual(pageChipsToDraw(layout, AUDIO_ON), ['lock', 'speed', 'rotate', 'subs', 'audio']);
     // And it can be hidden or moved like any chip from then on.
     const listed = controlsInGroup(availableControls('pageChips', AUDIO_ON), layout.pageChips).map((entry) => entry.id);

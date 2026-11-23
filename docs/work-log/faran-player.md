@@ -92,3 +92,45 @@ The Player's old speed list (`PlaybackSpeedSheet`) is replaced by `SpeedSheet`. 
 temporary rate on the player only: it never reaches the session's speed, the chip or the remembered speeds.
 
 Tests: `playback-rates.test.ts`, `speed-settings.test.ts`, `p16-speed.test.ts`.
+
+### P16 device test (release build, Pixel_8 AVD, 2026-11-23)
+
+| Check | Result |
+| --- | --- |
+| 1.0× chip | The new speed sheet: − 1.0× +, presets, Natural voice, Remember each video's speed, Speed button |
+| + twice | "Now 1.2×"; the native player plays at 1.2 (media session speed=1.2) |
+| 1.5× on two-audio, close the session (mini player ✕), reopen | Opens at 1.5× (chip and native speed) |
+| Next video / back within 3 s | left-only at 1.0×, two-audio at 1.5× again |
+| Speed button → Switches 1.0× ↔ 1.5×, two taps on the chip | 1.0, then 1.5 |
+
+Bug found and fixed (commit "P16: keep a speed picked…"): a first open restored 1.0× onto 1.0×, which re-rendered
+nothing, so the restore's wait never ended and the next speed picked was not kept.
+
+## P17 Audio tracks & delay (#553, #554, #574) and the Audio chip
+
+| # | Feature | Where | How |
+| --- | --- | --- | --- |
+| #553 | Audio Track Switch | Screen 19's Audio chip (now shown) → Audio sheet; ⋮ → Audio → Audio track (only with 2+ tracks) | expo-video's `availableAudioTracks` / `audioTrack`, read on each load and change; names from the label, language or name ("English · Commentary", else "Track 2"). Until the player reports one, the file's default track (its first) shows as playing. |
+| #554 | Audio Delay | Audio sheet: − / + in 50 ms steps within ±3 s (TalkBack adjustable), Reset; ⋮ → Audio → Audio delay | `VidoraAudioProcessor` (expo-video's sink, through `VideoPlayerHooks.audioProcessors`): silence in front of the sound makes ExoPlayer's audio clock lead what is heard (sound later); dropping sound at the start makes it lag (sound earlier). Applied again after every seek; scaled by the speed so it stays the same in real time. Kept per video (MMKV, latest 300; never streams). |
+| #574 | Audio Only Mode | Audio sheet; ⋮ → Audio → Audio only (switch) | The video track is disabled in ExoPlayer's track selection (no video decoding: the battery saving) and the session keeps playing with the screen off, as with background play. The picture's place shows the title and how to turn it back on. For this run only. |
+
+The Audio chip (Hamza's `PAGE_CHIP_FLAGS.audio`) is on and opens the Audio sheet; nothing is left "not available
+yet". Faran's sheets now share one open-sheet store (`engine-sheets.ts`), so the chip opens it from anywhere in the
+Player screen, and they count as open sheets for the Player's keys.
+
+Tests: `audio-settings.test.ts`, `p17-audio.test.ts`, Hamza's page and customize-controls tests updated for the Audio
+chip; JVM `VidoraAudioProcessorTest.kt` (9: pass-through, positive / negative delay, re-applied after a seek, change
+while playing, clamp, empty buffers).
+
+### P17 device test (release build, Pixel_8 AVD, 2026-11-23)
+
+| Check | Result |
+| --- | --- |
+| Opening two-audio.mp4 (English 440 Hz / Urdu 880 Hz tracks) | Plays through the VidoraAudioProcessor; Audio chip shown |
+| Audio chip | Audio sheet: English ✓ (default), Urdu; Audio delay 0 ms; Audio only |
+| Urdu | A new AAC decoder instance starts at the tap (ExoPlayer re-selected the audio track); Urdu ✓ |
+| Audio only | The cover shows the title; the H.264 decoder flushes and does no more work; the sound keeps playing |
+
+Bug found and fixed before commit: Media3 polls each processor with `AudioProcessor.EMPTY_BUFFER`, and writing it into
+the processor's empty output (the same shared buffer) threw "The source buffer is this buffer" — every video failed
+to play. The processor now does nothing on an empty buffer (two JVM tests added).

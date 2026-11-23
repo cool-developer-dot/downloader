@@ -9,6 +9,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { TranslateFn } from '@/localization';
 
 import { isStreamMediaId, knownRemoteStream } from '../remote-stream';
+import { closeEngineSheet, openEngineSheet, useOpenEngineSheet } from './engine-sheets';
 import { readPlayingVideoSize } from './native-player';
 import { requestStreamDownload } from './stream-download-handoff';
 import {
@@ -94,12 +95,12 @@ export function useStreamEngine(input: {
     };
   }, [isPlaying, isReady, isStream, mediaId, player, streamQuality]);
 
-  const [sheetOpen, setSheetOpen] = useState(false);
-  const openQuality = useCallback(() => setSheetOpen(true), []);
-  const close = useCallback(() => setSheetOpen(false), []);
+  const sheetOpen = useOpenEngineSheet() === 'streamQuality';
+  const openQuality = useCallback(() => openEngineSheet('streamQuality'), []);
+  const close = closeEngineSheet;
   const select = useCallback((quality: StreamQuality) => {
     setStreamQuality(quality);
-    setSheetOpen(false);
+    closeEngineSheet();
   }, []);
 
   const download = useCallback(() => {

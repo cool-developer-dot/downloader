@@ -92,6 +92,8 @@ export const mmkvKeys = {
   playerSpeedSettings: 'vidorax.mmkv.player.speedSettings.v1',
   /** Faran's P16 #736: each video's (or book's) own speed, `{ [mediaId]: { rate, at } }`, the most recent 300. */
   playerSpeedPerVideo: 'vidorax.mmkv.player.speedPerVideo.v1',
+  /** Faran's P17 #554: each video's own audio delay in ms, `{ [mediaId]: { ms, at } }`, the most recent 300. */
+  playerAudioDelayPerVideo: 'vidorax.mmkv.player.audioDelayPerVideo.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

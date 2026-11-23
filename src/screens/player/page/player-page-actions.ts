@@ -33,13 +33,12 @@ export type PageChip = (typeof PAGE_CHIPS)[number];
 
 /**
  * Which chips are drawn. A chip whose flag is off is not shown, but its label, handler and place in the design order
- * stay. Audio is Faran's P17 (screen 22): hidden until P17 is merged, which sets `audio: true`. The 1.0× chip is
- * Faran's P16.
+ * stay. Audio is Faran's P17 (screen 22): its Audio sheet. The 1.0× chip is Faran's P16.
  */
 export const PAGE_CHIP_FLAGS: Readonly<Record<PageChip, boolean>> = {
   speed: true,
   subs: true,
-  audio: false,
+  audio: true,
   rotate: true,
   lock: true,
 };
@@ -66,8 +65,8 @@ export const PAGE_TILES: readonly PageTile[] = [
 ];
 
 /**
- * Drawn by the design but built by a later package, so it says "Not available yet" for now: Audio (Faran's P17; its
- * chip is also hidden, see `PAGE_CHIP_FLAGS`). The package that builds one removes it from this set. (Subs opens P3's
- * Subtitles sheet; A–B repeat is P5's: set A, then B, then its sheet; Up next opens P6's queue sheet.)
+ * Drawn by the design but built by a later package, so it says "Not available yet" for now. None left: Faran's P17
+ * built Audio. (Subs opens P3's Subtitles sheet; A–B repeat is P5's: set A, then B, then its sheet; Up next opens P6's
+ * queue sheet.)
  */
-export const NOT_YET_ACTIONS: ReadonlySet<PlayerPageAction> = new Set<PlayerPageAction>(['audio']);
+export const NOT_YET_ACTIONS: ReadonlySet<PlayerPageAction> = new Set<PlayerPageAction>();

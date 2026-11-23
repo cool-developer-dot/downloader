@@ -171,6 +171,8 @@ import { PlayerEditToolsSheets } from './page/PlayerEditToolsSheets';
 import { usePlayerEditTools } from './page/use-player-edit-tools';
 import { usePlayerEngine } from '@/player/engine/use-player-engine';
 import { getSpeedSettings, speedButtonTarget } from '@/player/engine/speed-settings';
+import { openEngineSheet, useOpenEngineSheet } from '@/player/engine/engine-sheets';
+import { AudioOnlyCover } from './engine/AudioOnlyCover';
 import { PlayerEngineSheets } from './engine/PlayerEngineSheets';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
@@ -811,7 +813,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const p10CloseSheets = p10EditTools.closeSheets;
   // ── end P10 ────────────────────────────────────────────────────────────────────────────────────────────────────
 
+  // Faran's sheets (P14–P19) count as open sheets too.
+  const engineSheetOpen = useOpenEngineSheet() != null;
   const anyModalOpen =
+    engineSheetOpen ||
     speedSheetOpen ||
     orientationSheetOpen ||
     optionsOpen ||
@@ -1280,6 +1285,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
         case 'speed':
           onSpeedButton();
           return;
+        case 'audio':
+          // Faran's P17: the Audio sheet (tracks, delay, audio only; P19's equalizer and effects).
+          endLongPress();
+          openEngineSheet('audio');
+          return;
         case 'rotate':
           endLongPress();
           bumpControls();
@@ -1652,6 +1662,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
           onSwipeSeekFinalize={swipeSeek.onFinalize}
           onTwoFingerTap={onPlayPause}
         />
+        {/* Faran's P17 #574: Audio only — no picture is decoded; its place shows the title. */}
+        <AudioOnlyCover visible={engine.audioOnly && !pipActive} title={title} />
         {/*
           Instant opaque cover (no FadeOut). FadeOut over a SurfaceView that
           just flipped alpha caused the remaining startup shimmer.

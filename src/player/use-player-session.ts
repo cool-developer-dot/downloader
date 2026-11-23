@@ -34,6 +34,7 @@ import {
   userMessageForPlayerError,
 } from './errors';
 import { emitPlaybackEvent } from './playback-events';
+import { useAudioOnly } from './engine/audio-settings';
 import {
   adaptVideoPlayer,
   createPlayerController,
@@ -164,8 +165,11 @@ export function usePlayerSession(
     instance.muted = false;
   });
 
-  // Settings → Player → "Keep playing in background" (off by default).
-  const backgroundPlayback = useSettingsStore(selectBackgroundPlayback);
+  // Settings → Player → "Keep playing in background" (off by default). Faran's P17 #574 Audio only keeps the sound
+  // playing with the screen off too, whatever the setting.
+  const backgroundSetting = useSettingsStore(selectBackgroundPlayback);
+  const audioOnly = useAudioOnly();
+  const backgroundPlayback = backgroundSetting || audioOnly;
   const backgroundPlaybackRef = useRef(backgroundPlayback);
   useEffect(() => {
     backgroundPlaybackRef.current = backgroundPlayback;

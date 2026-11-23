@@ -122,3 +122,23 @@ export function applyPitchCorrection(player: { preservesPitch: boolean }, on: bo
     // A released player.
   }
 }
+
+/** P17 #554: the audio delay (ms), the same in real time at this speed. */
+export function applyAudioDelay(player: VideoPlayer, delayMs: number, speed: number): void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return;
+  }
+  native
+    .setAudioDelay(player, Math.round(delayMs), Number.isFinite(speed) && speed > 0 ? speed : 1)
+    .catch((error: unknown) => warn('setAudioDelay', error));
+}
+
+/** P17 #553: plays one of the video's audio tracks (expo-video's own property). */
+export function selectAudioTrack(player: { audioTrack: unknown }, track: unknown): void {
+  try {
+    player.audioTrack = track;
+  } catch {
+    // A released player.
+  }
+}
