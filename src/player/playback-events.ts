@@ -4,6 +4,8 @@
  * Do not add a second player-event system.
  */
 
+import { isMovedToPrivate } from '../privacy/private-media-guard';
+
 export type PlaybackContractEvent =
   | {
       type: 'playbackStarted';
@@ -50,6 +52,11 @@ export function subscribePlaybackEvents(
 }
 
 export function emitPlaybackEvent(event: PlaybackContractEvent): void {
+  // P11 #686: a video moved to Private in this run records nothing more — no resume point, no Watch history or
+  // Continue watching entry, no play count (both listeners read these events).
+  if (isMovedToPrivate(event.mediaId)) {
+    return;
+  }
   for (const listener of listeners) {
     try {
       listener(event);

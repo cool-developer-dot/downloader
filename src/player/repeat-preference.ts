@@ -112,3 +112,16 @@ export function deleteLoop(mediaId: string, loopId: string): void {
     writeLoops(after);
   }
 }
+
+/** P11: every saved loop as the Player holds it now (the backup reads it). */
+export function getSavedLoopRecords(): SavedLoopRecords {
+  return useRepeatStore.getState().loops;
+}
+
+/**
+ * P11: replaces every saved loop at once — a restored backup (#700), or a video moved to Private leaving its loops
+ * behind (#686). Checked by `readSavedLoopRecords`, like what is read at start; the screens update at once.
+ */
+export function restoreSavedLoopRecords(records: unknown): void {
+  writeLoops(readSavedLoopRecords(records));
+}

@@ -19,6 +19,7 @@ import {
   reduceVaultSession,
 } from '@/private-vault/vault-gate';
 import { clearVaultPlayback } from '@/private-vault/vault-port';
+import { usePrivateFolderCaptureBlock } from '@/privacy/use-private-folder-capture-block';
 import { selectAppLockEnabled, useAppLockStore } from '@/security/app-lock';
 
 import { PrivatePinGate } from './PrivatePinGate';
@@ -35,6 +36,8 @@ export const PrivateScreen = memo(function PrivateScreen() {
   const { t } = useTranslation();
   const enabled = useAppLockStore(selectAppLockEnabled);
   const [session, dispatch] = useReducer(reduceVaultSession, LOCKED_SESSION);
+  // P11 #689: with "Block screenshots in Private" on, no screenshot or recording while Private is in front.
+  usePrivateFolderCaptureBlock();
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (state) => {

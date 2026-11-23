@@ -10,6 +10,7 @@ import { showsBiometricSetting } from '@/security/app-lock/biometric-unlock';
 import { promptBiometrics, useBiometricAvailability } from '@/security/app-lock/use-biometric-unlock';
 import { AppLockDataLossWarning } from '@/screens/security/AppLockDataLossWarning';
 
+import { BlockScreenCaptureRow } from './BlockScreenCaptureRow';
 import { SettingsRow } from './SettingsRow';
 import { SettingsSection } from './SettingsSection';
 
@@ -132,6 +133,8 @@ export const PrivacySection = memo(function PrivacySection({
           />
         </>
       ) : null}
+      {/* P11 #689: no screenshots or screen recording inside Private (off by default). */}
+      <BlockScreenCaptureRow disabled={disabled} testID={`${testID}-block-capture`} />
       {/* What losing both the PIN and the recovery code means, next to the PIN / recovery code settings. */}
       <View style={{ paddingBottom: 14, paddingTop: isEnabled ? 4 : 0 }}>
         <AppLockDataLossWarning compact testID={`${testID}-data-loss-warning`} />

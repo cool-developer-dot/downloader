@@ -10,6 +10,8 @@ import { isBrowserRouteVisible, subscribeBrowserRouteVisible } from '@/browser/w
 import { translate } from '@/localization';
 import { useAppLockStore } from '@/security/app-lock/app-lock.store';
 import { isExpectingSystemScreen } from '@/security/app-lock/expected-system-screen';
+import { INCOGNITO_SECURE_OWNER } from '@/privacy/secure-window';
+import { holdSecureWindow } from '@/privacy/secure-window.runtime';
 
 import {
   bindIncognitoDownloadNotifier,
@@ -225,9 +227,9 @@ function applySecure(): void {
     (inFront || (switcherOpen && state.tabs.some((tab) => isIncognitoTabId(tab.id))));
   if (secure === lastSecure) return;
   lastSecure = secure;
-  void web()
-    ?.setWindowSecure?.(secure)
-    .catch(() => false);
+  // P11 #689: through the app's one secure-window arbiter, so incognito and the Private Folder never clear the flag
+  // under each other (the native side keeps a single owner). It calls `setWindowSecure` as this did.
+  holdSecureWindow(INCOGNITO_SECURE_OWNER, secure);
 }
 
 function lockIfReturning(): void {

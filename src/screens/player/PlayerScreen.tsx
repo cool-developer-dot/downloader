@@ -168,6 +168,9 @@ import { BookmarkNameModal } from './page/BookmarkNameModal';
 // P10 Screenshot & edit tools: ⋮ → Tools → Screenshot, Trim video, Extract audio, Video converter, Compress video.
 import { PlayerEditToolsSheets } from './page/PlayerEditToolsSheets';
 import { usePlayerEditTools } from './page/use-player-edit-tools';
+// P11 Privacy & backup: ⋮ → Tools → Move to Private (Private's own move dialog).
+import { PrivateMoveDialog } from '@/screens/private/PrivateMoveDialog';
+import { usePlayerPrivateMove } from './page/use-player-private-move';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -783,6 +786,22 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const p10CloseSheets = p10EditTools.closeSheets;
   // ── end P10 ────────────────────────────────────────────────────────────────────────────────────────────────────
 
+  // ── P11 Privacy & backup ───────────────────────────────────────────────────────────────────────────────────────
+  // ⋮ → Tools → Move to Private (#686), library videos only: H21's move dialog (App Lock, the data-loss warning), the
+  // video paused while it moves, then the next video or the Player closes. The move forgets the video everywhere
+  // (src/privacy). Block Screen Capture (#689) and Backup (#700) live in Settings, not here.
+  const p11Private = usePlayerPrivateMove({
+    mediaId: activeMediaId,
+    controller,
+    endLongPress,
+    bumpControls,
+    sessionKey,
+    restorePresentation,
+    router,
+  });
+  const p11ClosePrivate = p11Private.close;
+  // ── end P11 ────────────────────────────────────────────────────────────────────────────────────────────────────
+
   const anyModalOpen =
     speedSheetOpen ||
     orientationSheetOpen ||
@@ -797,7 +816,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
     p7Playlists.sheetOpen ||
     p8Sheet != null ||
     p9.sheetOpen ||
-    p10EditTools.sheetOpen;
+    p10EditTools.sheetOpen ||
+    p11Private.sheetOpen;
 
   const onSingleTap = useCallback(() => {
     if (anyModalOpen || session.isSeeking) {
@@ -880,8 +900,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
     closeP9Sheets();
     setFrameMode(false);
     p10CloseSheets();
+    p11ClosePrivate();
     setLocked(true);
-  }, [hud, endLongPress, setLocked, closeP9Sheets, p10CloseSheets]);
+  }, [hud, endLongPress, setLocked, closeP9Sheets, p10CloseSheets, p11ClosePrivate]);
   const onUnlock = useCallback(() => {
     setLocked(false);
     showControls();
@@ -1499,6 +1520,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       total: SWITCHABLE_GESTURES.length,
     },
     editTools: p10EditTools.option,
+    privacy: p11Private.option,
     ui: optionsUi,
   };
 
@@ -2135,6 +2157,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
       <BookmarkNameModal {...p9.nameModal} />
       {/* P10: Video converter, Compress video and the running edit's progress. */}
       <PlayerEditToolsSheets state={p10EditTools.sheets} />
+      {/* P11: Move to Private's dialogs (set up App Lock, the confirm with its data-loss warning, the progress). */}
+      <PrivateMoveDialog controller={p11Private.controller} testID="player-private-move" />
     </SafeAreaScreen>
   );
 });
