@@ -56,6 +56,10 @@ export type PlayerOptionUi = {
   openSubtitleStyle: () => void;
   /** P4 #599: the second-subtitle sheet. */
   openSubtitleSecond: () => void;
+  /** P5 #535 / #539 / #540: the "When the video ends" sheet. */
+  openEndOfPlayback?: () => void;
+  /** P5 #541 / #722: the A-B repeat sheet (set A and B, clear, saved loops). */
+  openAbRepeat?: () => void;
 };
 
 export type PlayerOptionContext = {
@@ -91,6 +95,8 @@ export type PlayerOptionContext = {
     /** P4 #599: the second subtitle; null when there is none. */
     secondLabel: string | null;
   };
+  /** P5: the End of Playback Action ("Stop", "Repeat one", "Repeat all") and the A-B loop ("Off", "A 1:23", "1:23–1:45"). */
+  repeat?: { endActionLabel: string; abLabel: string };
   ui: PlayerOptionUi;
 };
 

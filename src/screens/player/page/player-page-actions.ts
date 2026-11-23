@@ -66,12 +66,11 @@ export const PAGE_TILES: readonly PageTile[] = [
 ];
 
 /**
- * Drawn by the design but built by a later package, so they say "Not available yet" for now: A–B repeat (P5), Up next
- * (P6), Audio (Faran's P17; its chip is also hidden, see `PAGE_CHIP_FLAGS`). The package that builds one removes it
- * from this set. (Subs opens P3's Subtitles sheet.)
+ * Drawn by the design but built by a later package, so they say "Not available yet" for now: Up next (P6), Audio
+ * (Faran's P17; its chip is also hidden, see `PAGE_CHIP_FLAGS`). The package that builds one removes it from this set.
+ * (Subs opens P3's Subtitles sheet; A–B repeat is P5's: set A, then B, then its sheet.)
  */
 export const NOT_YET_ACTIONS: ReadonlySet<PlayerPageAction> = new Set<PlayerPageAction>([
   'audio',
-  'abRepeat',
   'upNext',
 ]);

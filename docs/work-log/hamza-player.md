@@ -405,3 +405,90 @@ swatch rings, buttons.
    second), "Top of the picture"; a track inside the video as the first with a file as the second (the second at the
    top, no overlap).
 7. Reset style; close and reopen the app: the style is kept; another video keeps its own second subtitle.
+
+## P5 — Repeat & loops (#539, #540, #541, #722)
+
+Built on `hamza/player` after P4; branch `hamza/P5-repeat`. Its PR depends on P4.
+
+**#535 End of Playback Action had no choices before P5.** The checklist ticks it for "Replay handling at end": a
+finished video stops on its last frame and shows Replay. There was no setting and no code by that name. P5 adds the
+setting **"When the video ends"** with that behaviour as **Stop, the default**, so nothing changes until the user picks
+**Repeat one** (#539) or **Repeat all** (#540). It is app-wide and remembered (MMKV
+`vidorax.mmkv.player.endOfPlayback.v1`). It lives in the ⋮ options sheet under Playback (screen 25, "Player settings",
+isn't built).
+
+### What the user sees
+
+| # | Feature | Where | How (evidence) |
+| --- | --- | --- | --- |
+| #539 | Repeat One | Options → Playback → When the video ends | The same video again from the start, through the session's own `replay()` (so each play counts as watched, as a manual Replay does). `src/player/end-of-playback.ts` (`decideEndOfPlayback`), `src/screens/player/page/use-repeat.ts`. |
+| #540 | Repeat All | the same | The next video of the play queue (`play-queue.ts` `ids`, the list the video was opened from), and the first after the last. A video opened with no list (download details, a shelf) repeats itself. The next video opens like Next does (`appRouter.setParams`). |
+| #541 | A-B Repeat | The "A–B repeat" tile; Options → Playback → A–B repeat | The tile sets **A** at the playing position, then **B**; the loop starts at once. Once a loop is on, the tile opens the A-B sheet: Set A, Set B (at the position playing now), Clear, Save loop. A and B show on the timeline (card and full screen) as white ticks with the part between them tinted, and an "A–B ✕" button next to the time clears them. B before A is swapped; a point past the end is moved to the end; A and B closer than 0.5 s are refused, with a message. Playing into B (or seeking past it) jumps back to A; before A the video plays on into the loop. The position is read every 100 ms while the loop plays, and the jump goes 50 ms early, so it doesn't overshoot B. The loop belongs to the video: another video starts with none. `src/player/ab-repeat.ts`, `page/use-repeat.ts`, `components/TimelineLoopMarks.tsx`, `components/PlayerTimeline.tsx`. |
+| #722 | Save Loop | A-B sheet → Save loop; Saved loops | Saves the loop with a name (suggested "Loop 3"; up to 80 characters, Urdu included), **per video**, in MMKV (`vidorax.mmkv.player.savedLoops.v1`, last 300 videos, up to 50 loops each; one more is refused with a message, never dropped). The list shows the video's loops in timeline order. Tap one to play it (it becomes the A-B loop, from A). Rename (pencil) or Delete (bin, with a confirm). `src/player/saved-loops.ts`, `repeat-preference.ts`, `page/RepeatSheets.tsx`. |
+
+### What decides the end (one function)
+
+`decideEndOfPlayback` (`src/player/end-of-playback.ts`), in this order:
+
+1. An A-B loop that is on: back to A, playing.
+2. Repeat one: the same video again.
+3. Repeat all: the next video of the queue; after the last one, the first.
+4. Otherwise: stop, as before P5.
+
+P6 adds Auto Play Next to the same function.
+
+**How it runs.** The Player screen listens to the player's own `playToEnd`, as `use-player-session.ts` does. That file
+is Faran's and isn't changed. The decision runs in a microtask, so the session's handler has always marked the video
+finished first, and a repeat happens before the next render, so the Replay button doesn't flash. It acts only through
+what the session already offers: `replay()`, its exact seek, `play()`, and Next's `setParams`. A loop that wraps at
+the very end (B at the end) goes through `replay()` and then seeks to A. `replay()` resets the session's "finished"
+guard, so once the loop is cleared the real end still shows Replay. P5 doesn't set
+`player.loop`: expo-video sends `playToEnd` on each loop, and the session would then mark a playing video finished.
+
+### Decisions
+
+- **The setting's home is the options sheet** (Playback), until screen 25 is built.
+- **The in-app mini player keeps today's end** (stop, with Replay). Leaving the Player for the mini player unmounts the
+  screen that runs the end. Moving to another video from the mini player would also need the session host, which
+  isn't part of this package.
+- **Repeat all in the background or in picture-in-picture.** The session host starts a newly opened video only with the
+  app in front. So after an automatic move to the next video, the Player plays it once it has loaded, if VidoraX is not
+  in front (`useContinueAfterAutoAdvance`). That can only happen in picture-in-picture or with background play on,
+  because otherwise the video was paused when VidoraX left the screen. Device check 5.
+- **A–B on the timeline reads left to right** in Urdu too (it is a time line), as P3's sync buttons do.
+
+### Files
+
+- Logic (unit-tested): `src/player/ab-repeat.ts`, `end-of-playback.ts`, `saved-loops.ts`, `repeat-labels.ts`.
+- Store: `src/player/repeat-preference.ts` (zustand + MMKV); MMKV keys `playerEndOfPlayback`, `playerSavedLoops`.
+- Screen: `src/screens/player/page/use-repeat.ts`, `page/RepeatSheets.tsx` (When the video ends, the A-B sheet, the
+  loop-name dialog), `components/TimelineLoopMarks.tsx`, `components/PlayerTimeline.tsx` and `page/PlayerCardOverlay.tsx`
+  (optional `loopMarkers`, `onClearLoop`), `PlayerScreen.tsx` (the tile, the rows, the sheets).
+  `page/player-page-actions.ts`: `abRepeat` removed from `NOT_YET_ACTIONS`.
+- Options: `src/player/options/p5-repeat.ts` (+ one import), `player-options.ts` (optional `repeat` context and two
+  optional `ui` commands). Strings: 40 new `videoPlayer.*` keys (English and Urdu).
+
+### Gate
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | 0 errors |
+| Unit tests | 2158 / 2158 (25 new: `ab-repeat.test.ts` 7, `end-of-playback.test.ts` 7, `saved-loops.test.ts` 8, `options/p5-repeat.test.ts` 3) |
+| `npm run lint` | 0 errors; 91 warnings, none in a file P5 changed |
+| Against the base | none of Faran's files; `play-queue.ts` untouched; `package.json` / lockfile, `android/`, `modules/`, manifests, `app.json` unchanged |
+| Media3 | `1.9.0`, unchanged |
+
+### Device checks for Faran (release build; not possible here)
+
+1. Options → Playback → When the video ends: Stop (default) behaves as before: last frame and Replay, also with a list
+   (opened from the library) that has a next video.
+2. Repeat one: the video starts again by itself, with no Replay flash; the watch history counts it again.
+3. Repeat all from the library list: the next video opens and plays; after the last one, the first. A video from
+   download details (no list) repeats itself.
+4. A–B: tap the tile twice while playing; the ticks and tint show on the card's bar and in full screen; the loop
+   repeats cleanly (no visible overshoot past B). B before A, and B at the very end (the loop wraps at the end). Clear
+   from the "A–B ✕" button and from the sheet. Another video starts with no loop. With B at the end: let it wrap a few
+   times, clear it, play to the end. Replay must show and the watch history must count it.
+5. Repeat all in picture-in-picture, and with background play on and the screen off: the next video plays.
+6. Save loop with an Urdu name; the list after reopening the app; play, rename, delete (confirm); 50 loops.
+7. The A-B sheet and When the video ends in all six themes and in Urdu; TalkBack reads Set A / Set B with the time.

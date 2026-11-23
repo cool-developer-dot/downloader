@@ -30,6 +30,10 @@ export const mmkvKeys = {
   playerSubtitleAutoDetect: 'vidorax.mmkv.player.subtitleAutoDetect.v1',
   /** P4 #592–#596, #599: the subtitle style (size, colour, font, edge, position, second subtitle's place), app-wide. */
   playerSubtitleStyle: 'vidorax.mmkv.player.subtitleStyle.v1',
+  /** P5 #535: what a finished video does — 'stop' (the default, as before P5), 'repeatOne' (#539), 'repeatAll' (#540). */
+  playerEndOfPlayback: 'vidorax.mmkv.player.endOfPlayback.v1',
+  /** P5 #722: saved A-B loops per video, `[mediaId, loops][]`, last 300 videos, oldest first (local only). */
+  playerSavedLoops: 'vidorax.mmkv.player.savedLoops.v1',
   firstLaunch: 'vidorax.mmkv.flags.firstLaunch',
   onboardingComplete: 'vidorax.mmkv.flags.onboardingComplete',
   analyticsEnabled: 'vidorax.mmkv.flags.analyticsEnabled',
