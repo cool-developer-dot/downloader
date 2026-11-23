@@ -1,6 +1,15 @@
 {
   "name": "mobile",
   "main": "./src/entry.js",
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          "expo-video"
+        ]
+      }
+    }
+  },
   "version": "1.0.0",
   "dependencies": {
     "@expo-google-fonts/inter": "^0.4.2",
@@ -69,7 +78,7 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "postinstall": "node scripts/patch-react-native-webview.js",
+    "postinstall": "node scripts/patch-react-native-webview.js && node scripts/patch-expo-video.js",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",

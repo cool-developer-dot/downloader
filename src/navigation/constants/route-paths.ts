@@ -112,6 +112,8 @@ export const routePaths = {
   pdfViewer: '/pdf-viewer',
   /** Videos already on the device, played in VidoraX. */
   deviceVideos: '/device-videos',
+  /** Faran's P14 #663, design screen 52: play a typed or pasted video link without downloading it. */
+  networkStream: '/network-stream',
   /** P7 #617 / #618: the user's playlists of local videos (Playlist Download is `downloadsPlaylist`). */
   playlists: '/playlists',
 } as const;

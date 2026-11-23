@@ -61,7 +61,7 @@ export function useVolumeKeyScroll({ overlayOpen }: { overlayOpen: boolean }): v
     const unsubscribe = keyCapture.subscribe((event) => {
       const direction = volumeKeyDirection(event.key);
       if (direction !== 0) scrollActivePageStep(direction);
-    });
+    }, keyCapture.BROWSER_VOLUME_OWNER);
     return () => {
       unsubscribe();
       keyCapture.setVolumeKeys(false);

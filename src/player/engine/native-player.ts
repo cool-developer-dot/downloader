@@ -1,0 +1,224 @@
+/**
+ * Faran's Player packages' calls into the `VidoraPlayer` native module (modules/vidorax-media). Every call is safe:
+ * without the module (Node tests, an older build) or on a released player it does nothing, so the Player keeps
+ * playing with expo-video's defaults.
+ */
+
+import type { VideoPlayer } from 'expo-video';
+
+import { getVidoraPlayer, type AudioEffectsInfo, type PlayingVideoSize } from '@modules/vidorax-media';
+
+import { playerLog } from '../diagnostics';
+
+function warn(call: string, error: unknown): void {
+  playerLog('player.engine_call_failed', { call, message: error instanceof Error ? error.message : String(error) }, 'warn');
+}
+
+/** Players the session let go (`releasePlayerEngine`): the hooks' late cleanups skip them. */
+const releasedPlayers = new WeakSet<object>();
+
+/** The native module for calls on this player; null without the module or once the player was released. */
+function nativeFor(player: object) {
+  return releasedPlayers.has(player) ? null : getVidoraPlayer();
+}
+
+/** P14 #670 / P17 #574: the stream quality cap and Audio Only Mode. */
+export function applyTrackLimits(player: VideoPlayer, limits: { maxLongSide: number | null; videoDisabled: boolean }): void {
+  const native = nativeFor(player);
+  if (!native) {
+    return;
+  }
+  native.setTrackLimits(player, limits.maxLongSide, limits.videoDisabled).catch((error: unknown) => warn('setTrackLimits', error));
+}
+
+/** P14 #670: the playing video track's size (an adaptive stream changes it with the connection). */
+export async function readPlayingVideoSize(player: VideoPlayer): Promise<PlayingVideoSize | null> {
+  const native = nativeFor(player);
+  if (!native) {
+    return null;
+  }
+  try {
+    return await native.getPlayingVideoSize(player);
+  } catch (error) {
+    warn('getPlayingVideoSize', error);
+    return null;
+  }
+}
+
+/** P15 #661 / #701: what the media session's ⏭ / ⏮ may do (the Player's queue). */
+export function applyQueueNavigation(
+  player: VideoPlayer,
+  navigation: { enabled: boolean; hasNext: boolean; hasPrevious: boolean },
+): void {
+  const native = nativeFor(player);
+  if (!native) {
+    return;
+  }
+  native
+    .setQueueNavigation(player, navigation.enabled, navigation.hasNext, navigation.hasPrevious)
+    .catch((error: unknown) => warn('setQueueNavigation', error));
+}
+
+/** P15 #661 / #701: a media session's ⏭ / ⏮ for the Player's queue. Returns the unsubscribe. */
+export function subscribeQueueCommands(listener: (command: 'next' | 'previous') => void): () => void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return () => undefined;
+  }
+  const subscription = native.addListener('onQueueCommand', (event) => {
+    if (event?.command === 'next' || event?.command === 'previous') {
+      listener(event.command);
+    }
+  });
+  return () => subscription.remove();
+}
+
+/** P15 #560: pause when headphones are unplugged or a Bluetooth headset disconnects. */
+export function applyPauseWhenAudioBecomesNoisy(player: VideoPlayer, enabled: boolean): void {
+  const native = nativeFor(player);
+  if (!native) {
+    return;
+  }
+  native.setPauseWhenAudioBecomesNoisy(player, enabled).catch((error: unknown) => warn('setPauseWhenAudioBecomesNoisy', error));
+}
+
+/** P15 #703: show the window over the lock screen (only while the Player is in front). */
+export function applyShowWhenLocked(show: boolean): void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return;
+  }
+  native.setShowWhenLocked(show).catch((error: unknown) => warn('setShowWhenLocked', error));
+}
+
+/** P15 #703: the phone is locked; false when it can't be told. */
+export async function readDeviceLocked(): Promise<boolean> {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return false;
+  }
+  try {
+    return await native.isDeviceLocked();
+  } catch (error) {
+    warn('isDeviceLocked', error);
+    return false;
+  }
+}
+
+/** P15 #703: asks for the phone's unlock; true once it is unlocked. */
+export async function requestDeviceUnlock(): Promise<boolean> {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return true;
+  }
+  try {
+    return await native.requestUnlock();
+  } catch (error) {
+    warn('requestUnlock', error);
+    return false;
+  }
+}
+
+/**
+ * P16 #538: voices keep their pitch at any speed. expo-video's Android player leaves it uncorrected unless told (its
+ * own property, not a VidoraPlayer call).
+ */
+export function applyPitchCorrection(player: { preservesPitch: boolean }, on: boolean): void {
+  try {
+    player.preservesPitch = on;
+  } catch {
+    // A released player.
+  }
+}
+
+/** P17 #554: the audio delay (ms), the same in real time at this speed. */
+export function applyAudioDelay(player: VideoPlayer, delayMs: number, speed: number): void {
+  const native = nativeFor(player);
+  if (!native) {
+    return;
+  }
+  native
+    .setAudioDelay(player, Math.round(delayMs), Number.isFinite(speed) && speed > 0 ? speed : 1)
+    .catch((error: unknown) => warn('setAudioDelay', error));
+}
+
+/** P17 #553: plays one of the video's audio tracks (expo-video's own property). */
+export function selectAudioTrack(player: { audioTrack: unknown }, track: unknown): void {
+  try {
+    player.audioTrack = track;
+  } catch {
+    // A released player.
+  }
+}
+
+/** P18 #644 / #730: the countdown (ms from now, the fade inside it); null cancels. */
+export function applyPlaybackDeadline(player: VideoPlayer, inMs: number | null, fadeMs: number): void {
+  const native = nativeFor(player);
+  if (!native) {
+    return;
+  }
+  native
+    .setPlaybackDeadline(player, inMs == null ? null : Math.max(0, Math.round(inMs)), Math.max(0, Math.round(fadeMs)))
+    .catch((error: unknown) => warn('setPlaybackDeadline', error));
+}
+
+/** P18: the countdown ran out (the video faded out and paused). Returns the unsubscribe. */
+export function subscribePlaybackDeadline(listener: () => void): () => void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return () => undefined;
+  }
+  const subscription = native.addListener('onPlaybackDeadline', () => listener());
+  return () => subscription.remove();
+}
+
+/** P19: mono, balance, night mode, normalization and volume boost on the player's PCM. */
+export function applySoundShaping(
+  player: VideoPlayer,
+  shaping: { mono: boolean; balance: number; nightMode: boolean; normalize: boolean; boostPercent: number },
+): void {
+  const native = nativeFor(player);
+  if (!native) {
+    return;
+  }
+  native
+    .setSoundShaping(player, shaping.mono, shaping.balance, shaping.nightMode, shaping.normalize, Math.round(shaping.boostPercent))
+    .catch((error: unknown) => warn('setSoundShaping', error));
+}
+
+/** P19: Android's equalizer, bass boost and virtualizer on the player's audio session. */
+export function applyAudioEffects(
+  player: VideoPlayer,
+  effects: { eqEnabled: boolean; bandLevelsMb: number[]; bassStrength: number; virtualizerStrength: number },
+): void {
+  const native = nativeFor(player);
+  if (!native) {
+    return;
+  }
+  native
+    .setAudioEffects(player, effects.eqEnabled, effects.bandLevelsMb, Math.round(effects.bassStrength), Math.round(effects.virtualizerStrength))
+    .catch((error: unknown) => warn('setAudioEffects', error));
+}
+
+/** P19: the phone's equalizer bands; null without the module or when it can't tell. */
+export async function readAudioEffectsInfo(player: VideoPlayer): Promise<AudioEffectsInfo | null> {
+  const native = nativeFor(player);
+  if (!native) {
+    return null;
+  }
+  try {
+    return await native.describeAudioEffects(player);
+  } catch (error) {
+    warn('describeAudioEffects', error);
+    return null;
+  }
+}
+
+/**
+ * The session is letting the player go: Faran's calls from now on skip it (the hooks' own cleanups run after
+ * useVideoPlayer has released it). The native module drops what it kept for the player by itself, when expo-video
+ * releases it (VideoPlayerHooks.onRelease).
+ */
+export function releasePlayerEngine(player: VideoPlayer): void {
+  releasedPlayers.add(player);
+}

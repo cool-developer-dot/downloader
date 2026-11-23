@@ -28,6 +28,7 @@ import {
   type AbPoints,
 } from '@/player/ab-repeat';
 import { decideEndOfPlayback, type EndOfPlaybackAction, type EndOfPlaybackOutcome } from '@/player/end-of-playback';
+import { isSleepAtEndOfVideo } from '@/player/engine/sleep-limits';
 import { formatPlaybackTime } from '@/player/format-time';
 import { abPointsLabel, endOfPlaybackLabel, loopSpanLabel } from '@/player/repeat-labels';
 import { setEndOfPlaybackAction, useEndOfPlaybackAction, useSavedLoops } from '@/player/repeat-preference';
@@ -178,6 +179,7 @@ export function usePlayerRepeat(input: PlayerRepeatInput): PlayerRepeat {
         autoPlayNext: now.autoPlayNext,
         folderNextId: now.folderNextId,
         advanceCancelled: now.advanceCancelled,
+        sleepAtEnd: isSleepAtEndOfVideo(),
       });
       switch (outcome.kind) {
         case 'loop':

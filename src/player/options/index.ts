@@ -14,6 +14,12 @@ import './p9-library-stats';
 import './p10-edit-tools';
 import './p11-privacy';
 import './p12-export-extras';
+import './p14-streams';
+import './p15-headset-keys';
+import './p16-speed';
+import './p17-audio';
+import './p18-sleep-limits';
+import './p19-effects';
 
 export {
   playerOptions,

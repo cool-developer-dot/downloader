@@ -46,10 +46,10 @@ describe('screen 19 mapping', () => {
     );
   });
 
-  it('hides the Audio chip until P17 and leaves the others, 1.0× included, in the design order', () => {
-    assert.equal(PAGE_CHIP_FLAGS.audio, false);
-    assert.deepEqual(shownPageChips(), ['speed', 'subs', 'rotate', 'lock']);
-    assert.deepEqual(shownPageChips({ ...PAGE_CHIP_FLAGS, audio: true }), ['speed', 'subs', 'audio', 'rotate', 'lock']);
+  it('shows the Audio chip (Faran’s P17) with the others, 1.0× included, in the design order', () => {
+    assert.equal(PAGE_CHIP_FLAGS.audio, true);
+    assert.deepEqual(shownPageChips(), ['speed', 'subs', 'audio', 'rotate', 'lock']);
+    assert.deepEqual(shownPageChips({ ...PAGE_CHIP_FLAGS, audio: false }), ['speed', 'subs', 'rotate', 'lock']);
   });
 
   it('gives P1 its tiles: 10 s skips back, Custom seek sets the interval, Frame by frame opens the panel', () => {
@@ -66,9 +66,9 @@ describe('screen 19 mapping', () => {
     assert.equal(PAGE_TILES.length, 6);
   });
 
-  it('marks only later packages as not available yet', () => {
-    assert.deepEqual([...NOT_YET_ACTIONS].sort(), ['audio']);
-    const built = ['speed', 'subs', 'rotate', 'lock', 'skipBack', 'seekInterval', 'frameByFrame', 'aspectRatio', 'mirrorFlip'] as const;
+  it('has nothing left marked not available yet (P17 built Audio)', () => {
+    assert.deepEqual([...NOT_YET_ACTIONS], []);
+    const built = ['speed', 'subs', 'audio', 'rotate', 'lock', 'skipBack', 'seekInterval', 'frameByFrame', 'aspectRatio', 'mirrorFlip'] as const;
     for (const action of built) {
       assert.equal(NOT_YET_ACTIONS.has(action), false, action);
     }

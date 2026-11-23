@@ -78,7 +78,7 @@ export function useKeyboardShortcuts(): void {
       if (!action) return;
       if (event.repeat && action !== 'nextTab' && action !== 'previousTab') return;
       run(action);
-    });
+    }, OWNER);
     return () => {
       unsubscribe();
       keyCapture.setCombos(OWNER, []);

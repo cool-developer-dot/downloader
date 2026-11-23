@@ -92,3 +92,17 @@ describe('what a finished video does (precedence)', () => {
     });
   });
 });
+
+describe("Faran's P18: the sleep timer's End of this video", () => {
+  test('stops before anything else, even an A-B loop or Repeat one', () => {
+    assert.deepEqual(decideEndOfPlayback({ ...base, sleepAtEnd: true }), { kind: 'stop' });
+    assert.deepEqual(decideEndOfPlayback({ ...base, loop, action: 'repeatOne', autoPlayNext: true, sleepAtEnd: true }), {
+      kind: 'stop',
+    });
+    assert.deepEqual(decideEndOfPlayback({ ...base, action: 'repeatAll', sleepAtEnd: false }), {
+      kind: 'next',
+      mediaId: 'c',
+      reason: 'repeatAll',
+    });
+  });
+});

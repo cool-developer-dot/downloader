@@ -70,6 +70,7 @@ import { settingsViewEn } from './catalogs/settingsView.en';
 import { playlistsEn } from './catalogs/playlists.en';
 import { libraryStatsEn } from './catalogs/libraryStats.en';
 import { privacyBackupEn } from './catalogs/privacyBackup.en';
+import { playerEngineEn } from './catalogs/playerEngine.en';
 
 export const en = {
   common: {
@@ -2987,4 +2988,5 @@ export const en = {
   libraryStats: libraryStatsEn,
   // P11 Privacy & backup (Hamza): Block screenshots in Private, Move out of Private, back up / restore all data
   privacyBackup: privacyBackupEn,
+  playerEngine: playerEngineEn,
 } as const;

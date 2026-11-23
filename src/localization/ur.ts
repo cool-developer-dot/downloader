@@ -72,6 +72,7 @@ import { settingsViewUr } from './catalogs/settingsView.ur';
 import { playlistsUr } from './catalogs/playlists.ur';
 import { libraryStatsUr } from './catalogs/libraryStats.ur';
 import { privacyBackupUr } from './catalogs/privacyBackup.ur';
+import { playerEngineUr } from './catalogs/playerEngine.ur';
 
 export const ur: CatalogStrings<typeof en> = {
   common: {
@@ -2990,4 +2991,5 @@ export const ur: CatalogStrings<typeof en> = {
   libraryStats: libraryStatsUr,
   // P11 Privacy & backup (Hamza): Block screenshots in Private, Move out of Private, back up / restore all data
   privacyBackup: privacyBackupUr,
+  playerEngine: playerEngineUr,
 };

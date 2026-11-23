@@ -260,6 +260,15 @@ export const LibraryScreen = memo(function LibraryScreen() {
             <Icon name="cellphone-play" size="md" color="headerIcon" />
           </Pressable>
           <Pressable
+            testID="library-network-stream"
+            accessibilityRole="button"
+            accessibilityLabel={t('playerEngine.streamOpenA11y')}
+            onPress={() => navigation.push(routePaths.networkStream)}
+            hitSlop={8}
+            style={{ padding: 8 }}>
+            <Icon name="play-network-outline" size="md" color="headerIcon" />
+          </Pressable>
+          <Pressable
             testID="library-playlists"
             accessibilityRole="button"
             accessibilityLabel={t('playlists.open')}

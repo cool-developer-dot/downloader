@@ -26,6 +26,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { localizePlayerError, useTranslation, type TranslationKey } from '@/localization';
 import { completedActionErrorMessageKey } from '@/downloads/completed-file/action-errors';
 import {
+  formatPlaybackRateChip,
   formatPlaybackRateLabel,
   formatPlaybackTime,
   frameAt,
@@ -123,7 +124,7 @@ import { routePaths, tabRouteNames } from '@/navigation/constants';
 import { PlayerControls } from './components/PlayerControls';
 import { PlayerLockButton, PlayerLockedOverlay } from './components/PlayerLockControl';
 import { PlayerAdjustmentHud } from './components/PlayerAdjustmentHud';
-import { PlaybackSpeedSheet } from './components/PlaybackSpeedSheet';
+import { SpeedSheet } from './engine/SpeedSheet';
 import { OrientationSheet } from './components/OrientationSheet';
 import { PlayerTimeline } from './components/PlayerTimeline';
 import { PlayerTopBar } from './components/PlayerTopBar';
@@ -174,6 +175,13 @@ import { usePlayerPrivateMove } from './page/use-player-private-move';
 // P12 Export extras: ⋮ → Tools → Create GIF, Merge videos, Change speed.
 import { PlayerExportExtrasSheets } from './page/PlayerExportExtrasSheets';
 import { usePlayerExportExtras } from './page/use-player-export-extras';
+import { usePlayerEngine } from '@/player/engine/use-player-engine';
+import { getSpeedSettings, speedButtonTarget } from '@/player/engine/speed-settings';
+import { openEngineSheet, useOpenEngineSheet } from '@/player/engine/engine-sheets';
+import { useKidLock } from '@/player/engine/sleep-limits';
+import { KidLockOverlay } from './engine/KidLockOverlay';
+import { AudioOnlyCover } from './engine/AudioOnlyCover';
+import { PlayerEngineSheets } from './engine/PlayerEngineSheets';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -267,6 +275,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     setVolume,
     toggleMute,
     replay,
+    stop: stopSession,
     retry,
     setPictureInPictureArmed,
     onPictureInPictureStart,
@@ -743,6 +752,29 @@ const PlayerSessionView = memo(function PlayerSessionView({
     [bumpControls, setPlaybackRate],
   );
 
+  /** P16 #537: the speed sheet's − / + (the sheet stays open). */
+  const onAdjustSpeed = useCallback(
+    (rate: PlaybackRate) => {
+      setPlaybackRate(rate);
+      bumpControls();
+    },
+    [bumpControls, setPlaybackRate],
+  );
+
+  /** P16 #544: the 1.0× chip and the full-screen speed button — the speed sheet, or a one-tap switch to 1.0× / back. */
+  const onSpeedButton = useCallback(() => {
+    const target = speedButtonTarget(session.playbackRate, getSpeedSettings());
+    if (target == null) {
+      onOpenSpeed();
+      return;
+    }
+    endLongPress();
+    if (setPlaybackRate(target)) {
+      bumpControls();
+      announcePlayer(t('playerEngine.speedSwitched', { rate: formatPlaybackRateChip(target) }));
+    }
+  }, [bumpControls, endLongPress, onOpenSpeed, session.playbackRate, setPlaybackRate, t]);
+
   // ── P7 Playlists ───────────────────────────────────────────────────────────────────────────────────────────────
   // ⋮ → Tools → Add to playlist: the playing video into one of the user's playlists (src/playlists).
   const p7Playlists = usePlayerPlaylistAdd({ mediaId: activeMediaId, title: session.displayName, endLongPress });
@@ -819,7 +851,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const p12CloseSheets = p12Export.closeSheets;
   // ── end P12 ────────────────────────────────────────────────────────────────────────────────────────────────────
 
+  // Faran's sheets (P14–P19) count as open sheets too; P18's Kid Lock blocks the Player's keys like the Lock.
+  const engineSheetOpen = useOpenEngineSheet() != null;
+  const kidLock = useKidLock();
   const anyModalOpen =
+    engineSheetOpen ||
     speedSheetOpen ||
     orientationSheetOpen ||
     optionsOpen ||
@@ -1048,17 +1084,17 @@ const PlayerSessionView = memo(function PlayerSessionView({
     [activeMediaId, t],
   );
 
-  /** #520 Stop: pause and go back to the start. */
+  /** #520 Stop: pause, go back to the start and (P15) end the background session: no notification until it plays. */
   const onStop = useCallback(() => {
     endLongPress();
     if (!canCommand) {
       return;
     }
-    controller.pause();
+    stopSession();
     seekExact(0);
     showControls();
     announcePlayer(t('videoPlayer.stopped'));
-  }, [canCommand, controller, endLongPress, seekExact, showControls, t]);
+  }, [canCommand, endLongPress, seekExact, showControls, stopSession, t]);
 
   /** #532 Jump to time. */
   const onJump = useCallback(
@@ -1290,7 +1326,12 @@ const PlayerSessionView = memo(function PlayerSessionView({
       }
       switch (action) {
         case 'speed':
-          onOpenSpeed();
+          onSpeedButton();
+          return;
+        case 'audio':
+          // Faran's P17: the Audio sheet (tracks, delay, audio only; P19's equalizer and effects).
+          endLongPress();
+          openEngineSheet('audio');
           return;
         case 'rotate':
           endLongPress();
@@ -1340,7 +1381,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       endLongPress,
       notYet,
       onLock,
-      onOpenSpeed,
+      onSpeedButton,
       onRewind,
       openDisplaySheet,
       openFrameMode,
@@ -1495,6 +1536,47 @@ const PlayerSessionView = memo(function PlayerSessionView({
   );
   const quality = qualityLabel(trackInfo.width, trackInfo.height);
   const gesturesEnabled = !locked && !anyModalOpen && !startupCoverVisible;
+  // Faran's P14–P19 (streams, keys, speed, audio, timers, effects): their native settings, rows and sheets.
+  const leaveToDownloads = useCallback(() => onPressTab(tabRouteNames.downloads), [onPressTab]);
+  const engineHandlers = useMemo(
+    () => ({
+      togglePlay: onPlayPause,
+      seekBy: (deltaSeconds: number) => (deltaSeconds < 0 ? onRewind() : onForward()),
+      restart: () => seekExact(0),
+      next: onNext,
+      previous: onPrevious,
+      toggleFullscreen: () => void toggleFullscreen(),
+      exitFullscreen: () => void exitFullscreen(),
+      toggleMute: onToggleMute,
+    }),
+    [exitFullscreen, onForward, onNext, onPlayPause, onPrevious, onRewind, onToggleMute, seekExact, toggleFullscreen],
+  );
+  const engine = usePlayerEngine({
+    player,
+    mediaId: activeMediaId,
+    isReady: session.isReady,
+    isPlaying: session.isPlaying,
+    positionSeconds: session.positionSeconds,
+    seekStepSeconds,
+    isFullscreen,
+    pipActive,
+    inputBlocked: anyModalOpen || locked || kidLock,
+    handlers: engineHandlers,
+    volume,
+    hud,
+    volumeFallback: { level: session.volume, set: setVolume },
+    leaveToDownloads,
+    playbackRate: session.playbackRate,
+    setPlaybackRate,
+  });
+  // P15 #703: over the lock screen, the options and the tab bar ask for the phone's unlock first.
+  const { whenUnlocked } = engine.keys;
+  const openOptionsUnlocked = useCallback(() => whenUnlocked(openOptions), [openOptions, whenUnlocked]);
+  const onChromeBackUnlocked = useCallback(() => whenUnlocked(onChromeBack), [onChromeBack, whenUnlocked]);
+  const onPressTabUnlocked = useCallback(
+    (route: string) => whenUnlocked(() => onPressTab(route)),
+    [onPressTab, whenUnlocked],
+  );
   const optionsContext: PlayerOptionContext = {
     t,
     mediaId: activeMediaId,
@@ -1541,6 +1623,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     editTools: p10EditTools.option,
     privacy: p11Private.option,
     exportExtras: p12Export.option,
+    engine: engine.option,
     ui: optionsUi,
   };
 
@@ -1564,12 +1647,12 @@ const PlayerSessionView = memo(function PlayerSessionView({
           accessibilityElementsHidden={pageA11yHidden}>
           <DsHeader
             title={t('videoPlayer.title')}
-            onBack={onChromeBack}
+            onBack={onChromeBackUnlocked}
             action={{
               icon: 'ellipsis-vertical',
               accessibilityLabel: t('videoPlayer.moreOptions'),
               accessibilityHint: t('videoPlayer.moreOptionsSectionsHint'),
-              onPress: openOptions,
+              onPress: openOptionsUnlocked,
               testID: 'player-page-options',
             }}
             testID="player-page-header"
@@ -1624,6 +1707,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
           onSwipeSeekFinalize={swipeSeek.onFinalize}
           onTwoFingerTap={onPlayPause}
         />
+        {/* Faran's P17 #574: Audio only — no picture is decoded; its place shows the title. */}
+        <AudioOnlyCover visible={engine.audioOnly && !pipActive} title={title} />
         {/*
           Instant opaque cover (no FadeOut). FadeOut over a SurfaceView that
           just flipped alpha caused the remaining startup shimmer.
@@ -1658,8 +1743,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
                 isLoading={session.isLoading && session.hasFirstFrame}
                 isCompleted={session.isCompleted}
                 disabled={Boolean(session.error)}
-                onBack={onChromeBack}
-                onOpenOptions={openOptions}
+                onBack={onChromeBackUnlocked}
+                onOpenOptions={openOptionsUnlocked}
                 onPrevious={onPrevious}
                 onNext={onNext}
                 onPlayPause={onPlayPause}
@@ -1686,13 +1771,13 @@ const PlayerSessionView = memo(function PlayerSessionView({
                   isFullscreen={isFullscreen}
                   visible
                   orientationIcon={orientationIcon}
-                  onBack={onChromeBack}
+                  onBack={onChromeBackUnlocked}
                   onOpenOrientation={onOpenOrientation}
                   onToggleFullscreen={() => {
                     bumpControls();
                     void toggleFullscreen();
                   }}
-                  onOpenOptions={openOptions}
+                  onOpenOptions={openOptionsUnlocked}
                   buttons={topBarButtons}
                   save={
                     incomingToken
@@ -1841,7 +1926,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
                     />
                   ) : (
                     <Pressable
-                      onPress={onOpenSpeed}
+                      onPress={onSpeedButton}
+                      onLongPress={onOpenSpeed}
                       disabled={Boolean(session.error)}
                       accessibilityRole="button"
                       accessibilityLabel={t('player.playbackSpeedSelected', {
@@ -1869,7 +1955,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           <DsTabBarView
             activeRoute={tabRouteNames.library}
             routes={DS_TAB_ROUTES}
-            onPressTab={onPressTab}
+            onPressTab={onPressTabUnlocked}
             bottomInset={insets.bottom}
           />
         </View>
@@ -1979,10 +2065,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
         body
       )}
 
-      <PlaybackSpeedSheet
+      <SpeedSheet
         visible={speedSheetOpen}
-        selectedRate={session.playbackRate}
+        rate={session.playbackRate}
         onSelect={onSelectSpeed}
+        onAdjust={onAdjustSpeed}
         onClose={onCloseSpeed}
       />
       <OrientationSheet
@@ -2181,6 +2268,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
       <PrivateMoveDialog controller={p11Private.controller} testID="player-private-move" />
       {/* P12: Create GIF, Merge videos, Change speed and the running export's progress. */}
       <PlayerExportExtrasSheets state={p12Export.sheets} />
+      <PlayerEngineSheets sheets={engine.sheets} />
+      {/* Faran's P18 #712: Kid Lock covers the whole Player, its controls and tab bar. */}
+      <KidLockOverlay visible={kidLock} />
     </SafeAreaScreen>
   );
 });

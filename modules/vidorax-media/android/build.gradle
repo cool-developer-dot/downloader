@@ -41,6 +41,10 @@ dependencies {
   // MediaCodec encoders; lossless remux and A/V merge use media3-muxer directly (process/Remuxer.kt).
   implementation "androidx.media3:media3-transformer:${media3Version}"
 
+  // Faran's Player packages (VidoraPlayerModule): calls take expo-video's VideoPlayer shared object and reach its
+  // ExoPlayer (track limits, audio processors, the media session's player). expo-video brings the same Media3 1.9.0.
+  implementation project(':expo-video')
+
   implementation "com.squareup.okhttp3:okhttp:4.12.0"
   // #304 FTP/FTPS downloads (Apache-2.0). Its FTPClient keeps java.time fields, so FTP runs on Android 8+ only
   // (net/FtpSession.kt refuses it below API 26 instead of crashing).

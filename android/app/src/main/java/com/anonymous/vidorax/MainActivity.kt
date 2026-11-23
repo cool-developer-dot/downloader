@@ -48,6 +48,20 @@ class MainActivity : ReactActivity() {
     VidoraKeyChannel.dispatch(event) || super.dispatchKeyEvent(event)
 
   /**
+   * P15 #701: React Native takes ⏩'s key down for its developer menu even in a release build (`ReactDelegate.onKeyDown`
+   * only checks that a dev-support manager exists, and a release build has one), so a remote's or a headset's fast
+   * forward never reached the Player's media session while VidoraX was in front: only the key up did, which seeks
+   * nothing. In a release build the key now goes on to the system, which hands it to the media session, as ⏪ already
+   * did. A debug build keeps React Native's long-press for the developer menu.
+   */
+  override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
+    if (keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD && !BuildConfig.DEBUG) {
+      return false
+    }
+    return super.onKeyDown(keyCode, event)
+  }
+
+  /**
    * Returns the name of the main component registered from JavaScript. This is used to schedule
    * rendering of the component.
    */

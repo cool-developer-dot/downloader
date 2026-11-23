@@ -86,6 +86,20 @@ export const mmkvKeys = {
   libraryExcludedFolders: 'vidorax.mmkv.library.excludedFolders.v1',
   /** P11 #689: Block screenshots and screen recording inside Private (default off). */
   privacyBlockScreenCapture: 'vidorax.mmkv.privacy.blockScreenCapture.v1',
+  /** Faran's P14 #670: the stream quality cap (`auto`, `saver`, `720`, `1080`), app-wide. */
+  playerStreamQuality: 'vidorax.mmkv.player.streamQuality.v1',
+  /** Faran's P15: headphones, headset buttons, volume and remote keys, showing over the lock screen (app-wide). */
+  playerHeadsetKeys: 'vidorax.mmkv.player.headsetKeys.v1',
+  /** Faran's P16: pitch correction, remembering each video's speed, the speed button's one-tap shortcut (app-wide). */
+  playerSpeedSettings: 'vidorax.mmkv.player.speedSettings.v1',
+  /** Faran's P16 #736: each video's (or book's) own speed, `{ [mediaId]: { rate, at } }`, the most recent 300. */
+  playerSpeedPerVideo: 'vidorax.mmkv.player.speedPerVideo.v1',
+  /** Faran's P17 #554: each video's own audio delay in ms, `{ [mediaId]: { ms, at } }`, the most recent 300. */
+  playerAudioDelayPerVideo: 'vidorax.mmkv.player.audioDelayPerVideo.v1',
+  /** Faran's P18 #730: the daily watching limit and today's count, `{ dailyMinutes, usedSeconds, day }`. */
+  playerDailyLimit: 'vidorax.mmkv.player.dailyLimit.v1',
+  /** Faran's P19: the equalizer, its presets (built-in and the user's), the effects, mono, balance (app-wide). */
+  playerAudioEffects: 'vidorax.mmkv.player.audioEffects.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];
