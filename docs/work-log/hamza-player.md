@@ -600,8 +600,9 @@ Checklist #733 says only "to move quickly through episodes", so the timing is mi
 
 ## P7 — Playlists (#617, #618, #629)
 
-Built on `hamza/player` after P5 (`ff07f45`), on the local branch `wip/P7-playlists`, to be cherry-picked on top of P6
-(`hamza/P6-queue`). **Its PR depends on P6:** a playlist plays through the play queue P6 extends, and P6 switches
+Built in its own worktree from `hamza/player` at P5 (`ff07f45`), while P6 was being built, on the local branch
+`wip/P7-playlists`. It was cherry-picked on top of P6 (`6a1a595`) only after P6 passed its checks; branch
+`hamza/P7-playlists`. **Its PR depends on P6:** a playlist plays through the play queue P6 extends, and P6 switches
 Shuffle on (see Playing). **P7 bumps the SQLite schema once, 8 → 9** (see Schema).
 
 ### What the user sees
@@ -780,7 +781,7 @@ Both ignore case and Unicode composition.
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` | 0 errors |
-| Unit tests | 2194 / 2194 (36 new: `playlists.queries.test.ts` 14 — fresh install, v8 upgrade with rows in six tables, idempotent, the operations, delete touching nothing else; `m3u.test.ts` 9; `playlists.test.ts` 10; `options/p7-playlists.test.ts` 3) |
+| Unit tests | 2234 / 2234 on top of P6 (2194 / 2194 on the P5 base; 36 new: `playlists.queries.test.ts` 14 — fresh install, v8 upgrade with rows in six tables, idempotent, the operations, delete touching nothing else; `m3u.test.ts` 9; `playlists.test.ts` 10; `options/p7-playlists.test.ts` 3) |
 | `npm run lint` | 0 errors; 91 warnings, none new (`LibraryList.tsx`'s `columnWrapperStyle` warning is older; its line moved) |
 | Against the base | none of Faran's files; `play-queue.ts` untouched; `package.json` / lockfile, `android/`, `modules/`, manifests, `app.json` unchanged; no new dependency or permission |
 | Schema | `DATABASE_VERSION` 8 → 9, once; `BROWSER_PROFILE_DATABASE_VERSION` unchanged |
@@ -817,7 +818,8 @@ Both ignore case and Unicode composition.
 ## P8 Gestures & custom controls (#582, #585, #586, #587, #692)
 
 Built from `hamza/player` at P4 (`d2796bc`) in its own worktree, on local `wip/P8-gestures`, while P5–P7 were built in
-parallel; it is meant to be cherry-picked on top of P7 as `hamza/P8-gestures`. Its PR depends on P7
+parallel. It was cherry-picked on top of P7 (`74fa8a4`) as `hamza/P8-gestures` only after P6 passed its checks.
+ Its PR depends on P7
 (`hamza/P7-playlists`). Every gesture that existed before P8 keeps its numbers and its behaviour; the new options only
 add to them.
 
@@ -931,7 +933,7 @@ seek. `resolveSwipeAxis` / `lockSwipeAxis` follow the gesture handler's order (a
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` | 0 errors |
-| Unit tests | 2194 / 2194 (61 new: `gesture-zones.test.ts` 11, `gesture-settings.test.ts` 12, `swipe-seek.test.ts` 9, `controls-layout.test.ts` 13, `page/player-controls-customize.test.ts` 11, `options/p8-gestures.test.ts` 5) |
+| Unit tests | 2295 / 2295 on top of P7, the whole stack P1–P8 (2194 / 2194 on the P4 base; 61 new: `gesture-zones.test.ts` 11, `gesture-settings.test.ts` 12, `swipe-seek.test.ts` 9, `controls-layout.test.ts` 13, `page/player-controls-customize.test.ts` 11, `options/p8-gestures.test.ts` 5) |
 | `npm run lint` | 0 errors; 91 warnings, none in a file P8 changed |
 | Against `d2796bc` | `git diff --check` clean; none of Faran's files; `package.json` / lockfile, `android/`, `modules/`, manifests, `app.json` unchanged; no new dependency or permission; no SQLite change |
 | Media3 | `1.9.0`, unchanged |
