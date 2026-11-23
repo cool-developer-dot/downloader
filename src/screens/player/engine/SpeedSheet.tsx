@@ -113,6 +113,11 @@ export const SpeedSheet = memo(function SpeedSheet({ visible, rate, onSelect, on
           title={t('playerEngine.speedButtonSheet')}
           onPress={() => setSpeedSettings({ speedButton: 'sheet' })}
           trailing={settings.speedButton === 'sheet' ? <DsIcon name="check" size={20} /> : 'none'}
+          accessibilityLabel={
+            settings.speedButton === 'sheet'
+              ? `${t('playerEngine.speedButtonSheet')}, ${t('common.selected')}`
+              : t('playerEngine.speedButtonSheet')
+          }
           testID="player-speed-button-sheet"
         />
         <DsRow
@@ -121,6 +126,11 @@ export const SpeedSheet = memo(function SpeedSheet({ visible, rate, onSelect, on
           subtitle={t('playerEngine.speedButtonSwitchSub')}
           onPress={() => setSpeedSettings({ speedButton: 'switch' })}
           trailing={settings.speedButton === 'switch' ? <DsIcon name="check" size={20} /> : 'none'}
+          accessibilityLabel={[
+            t('playerEngine.speedButtonSwitch', { rate: formatPlaybackRateChip(settings.shortcutRate) }),
+            t('playerEngine.speedButtonSwitchSub'),
+            ...(settings.speedButton === 'switch' ? [t('common.selected')] : []),
+          ].join(', ')}
           testID="player-speed-button-switch"
         />
       </DsRowGroup>

@@ -204,3 +204,9 @@ Bugs found and fixed before commit:
   once it goes sideways (or a tap), and lets the sheet's ScrollView have vertical swipes.
 - The preset's name field opened under the keyboard (the Player's sheets have no keyboard handling). It is now a dialog
   of its own (`AppModal` + `TextField`, as P9's bookmark names).
+
+## After P19: TalkBack says which choice is selected
+
+The Speed button rows (P16) and the Sleep timer and Daily limit choices (P18) showed the selected one only with a
+check icon. Like the other choice sheets (stream quality, volume keys, audio track), their TalkBack label now ends in
+"Selected".

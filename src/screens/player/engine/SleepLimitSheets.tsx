@@ -41,6 +41,8 @@ export const SleepTimerSheet = memo(function SleepTimerSheet({ visible, onClose 
     onClose();
   };
   const tick = <DsIcon name="check" size={20} />;
+  const spoken = (label: string, selected: boolean) => (selected ? `${label}, ${t('common.selected')}` : label);
+  const minutesChosen = (minutes: number) => timer.mode === 'minutes' && timer.minutes === minutes;
   return (
     <PlayerSheetFrame
       visible={visible}
@@ -54,6 +56,7 @@ export const SleepTimerSheet = memo(function SleepTimerSheet({ visible, onClose 
           title={t('playerEngine.sleepOff')}
           onPress={() => choose(cancelSleepTimer)}
           trailing={timer.mode === 'off' ? tick : 'none'}
+          accessibilityLabel={spoken(t('playerEngine.sleepOff'), timer.mode === 'off')}
           testID="player-sleep-off"
         />
         {SLEEP_TIMER_MINUTES.map((minutes) => (
@@ -62,7 +65,8 @@ export const SleepTimerSheet = memo(function SleepTimerSheet({ visible, onClose 
             icon="timer"
             title={duration(minutes)}
             onPress={() => choose(() => startSleepTimer(minutes))}
-            trailing={timer.mode === 'minutes' && timer.minutes === minutes ? tick : 'none'}
+            trailing={minutesChosen(minutes) ? tick : 'none'}
+            accessibilityLabel={spoken(duration(minutes), minutesChosen(minutes))}
             testID={`player-sleep-${minutes}`}
           />
         ))}
@@ -71,6 +75,7 @@ export const SleepTimerSheet = memo(function SleepTimerSheet({ visible, onClose 
           title={t('playerEngine.sleepEndOfVideo')}
           onPress={() => choose(sleepAtEndOfVideo)}
           trailing={timer.mode === 'endOfVideo' ? tick : 'none'}
+          accessibilityLabel={spoken(t('playerEngine.sleepEndOfVideo'), timer.mode === 'endOfVideo')}
           testID="player-sleep-end"
         />
       </DsRowGroup>
@@ -172,6 +177,8 @@ export const DailyLimitSheet = memo(function DailyLimitSheet({ visible, onClose 
     });
   const tick = <DsIcon name="check" size={20} />;
   const choices = useMemo(() => [0, ...DAILY_LIMIT_MINUTES], []);
+  const limitLabel = (minutes: number) =>
+    minutes === 0 ? t('playerEngine.limitOff') : t('playerEngine.limitValue', { time: duration(minutes) });
   if (pinSheet) {
     return pinSheet;
   }
@@ -195,9 +202,12 @@ export const DailyLimitSheet = memo(function DailyLimitSheet({ visible, onClose 
           <DsRow
             key={minutes}
             icon={minutes === 0 ? 'x' : 'clock'}
-            title={minutes === 0 ? t('playerEngine.limitOff') : t('playerEngine.limitValue', { time: duration(minutes) })}
+            title={limitLabel(minutes)}
             onPress={() => choose(minutes)}
             trailing={limit.dailyMinutes === minutes ? tick : 'none'}
+            accessibilityLabel={
+              limit.dailyMinutes === minutes ? `${limitLabel(minutes)}, ${t('common.selected')}` : limitLabel(minutes)
+            }
             testID={`player-limit-${minutes}`}
           />
         ))}
