@@ -703,7 +703,8 @@ export type ImportIncomingResult =
  */
 export interface EditRequest {
   sourceId: string;
-  kind: 'trim' | 'mp4' | 'audio';
+  /** P10 adds `compress` (#680): an MP4 with the video re-encoded to H.264 at `videoBitrate`, scaled to `maxShortSide`. */
+  kind: 'trim' | 'mp4' | 'audio' | 'compress';
   /** Trim only (ms). */
   startMs?: number | null;
   endMs?: number | null;
@@ -713,6 +714,10 @@ export interface EditRequest {
   audio: 'copy' | 'aac' | 'drop';
   /** The new item's title. */
   title: string;
+  /** Compress only: the video encoder's target in bits per second (100 000 – 50 000 000). */
+  videoBitrate?: number | null;
+  /** Compress only: the output's short side at most this many pixels (never scaled up); null keeps the size. */
+  maxShortSide?: number | null;
 }
 
 export interface DownloadSettings {
@@ -1100,6 +1105,17 @@ export interface VidoraMediaModuleApi {
    * native builds.
    */
   saveThumbnailToGallery?(id: string): Promise<string>;
+  /**
+   * P10 Screenshot (#675): `frame` is an expo-video `VideoThumbnail` (from `player.generateThumbnailsAsync` without
+   * `maxWidth` / `maxHeight`: the video's own size), passed by reference. Saved as a JPEG in `Pictures/VidoraX` like
+   * `saveThumbnailToGallery`; resolves with its URI. ERR_STORAGE_PERMISSION on Android 9 and older without the storage
+   * permission. The caller still owns (and releases) the frame. Missing on older native builds.
+   */
+  saveFrameToGallery?(frame: object, title: string): Promise<string>;
+  /** P10: the share sheet with that frame as a JPEG (one private copy, through the app's FileProvider). */
+  shareFrame?(frame: object, title: string): Promise<void>;
+  /** P10: the edit kinds the native editor runs (`compress` from P10). Missing on older native builds. */
+  getEditKinds?(): string[];
   /** System chooser to play the file in another app. */
   openWith(id: string): Promise<void>;
   share(ids: string[]): Promise<void>;

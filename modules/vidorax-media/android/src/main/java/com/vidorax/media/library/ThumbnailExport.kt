@@ -12,6 +12,7 @@ import android.os.Environment
 import android.provider.MediaStore
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
+import com.vidorax.media.InvalidRequestException
 import com.vidorax.media.NotFoundException
 import com.vidorax.media.StorageException
 import com.vidorax.media.StoragePermissionException
@@ -43,6 +44,18 @@ internal class ThumbnailExport(
       } finally {
         bitmap.recycle()
       }
+    }
+  }
+
+  /**
+   * P10 Screenshot (#675): a frame of the video playing — expo-video's frame at the video's own size, handed over by
+   * reference — saved the same way as a thumbnail: a JPEG in `Pictures/VidoraX`, the same permission rule, resolves with
+   * the new item's URI. The bitmap belongs to the caller (expo-video) and is not recycled here.
+   */
+  suspend fun saveFrame(frame: Bitmap, title: String): String {
+    if (frame.isRecycled || frame.width <= 0 || frame.height <= 0) throw InvalidRequestException("No frame to save")
+    return withContext(Dispatchers.IO) {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) publish(frame, title) else writeLegacy(frame, title)
     }
   }
 

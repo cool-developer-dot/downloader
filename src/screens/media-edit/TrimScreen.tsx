@@ -17,6 +17,7 @@ import { useEditJobStore } from '@/media-edit/edit-job-store';
 import { clampTrimRange, formatTrimTime, trackPlan, type TrimRange } from '@/media-edit/edit-plan';
 import { getEditPort } from '@/media-edit/edit-port';
 import { navigation } from '@/navigation';
+import { parseTrimStartParam } from '@/player/edit-tools';
 import type { LibraryItem } from '@modules/vidorax-media/src/VidoraMedia.types';
 
 import { EditJobBanner } from './EditJobBanner';
@@ -29,9 +30,21 @@ const SAME_FRAME_MS = 50;
 const KEYFRAME_LOOKUP_DELAY_MS = 250;
 
 /** The preview of the library file: no autoplay, records nothing (it is not the app's Player). */
-function TrimPreview({ uri, onPlayer }: { uri: string; onPlayer: (player: VideoPlayer | null) => void }) {
+function TrimPreview({
+  uri,
+  onPlayer,
+  startSeconds = 0,
+}: {
+  uri: string;
+  onPlayer: (player: VideoPlayer | null) => void;
+  /** P10: opened from the Player, the preview starts where the trim starts. */
+  startSeconds?: number;
+}) {
   const player = useVideoPlayer({ uri }, (created) => {
     created.loop = false;
+    if (startSeconds > 0) {
+      created.currentTime = startSeconds;
+    }
   });
   useEffect(() => {
     onPlayer(player);
@@ -105,11 +118,14 @@ function ModeOption({
 export const TrimScreen = memo(function TrimScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const params = useLocalSearchParams<{ id?: string | string[]; startMs?: string | string[] }>();
   const id = typeof params.id === 'string' ? params.id : '';
+  // P10: the Player opens Trim at the moment playing (`startMs`); without it the range starts at 0 as before.
+  const startParam = parseTrimStartParam(params.startMs);
   const [source, setSource] = useState<LibraryItem | null>(null);
   const [status, setStatus] = useState<'loading' | 'ready' | 'missing'>('loading');
   const [range, setRange] = useState<TrimRange>({ startMs: 0, endMs: 0 });
+  const [previewStartMs, setPreviewStartMs] = useState(0);
   const [keyframe, setKeyframe] = useState<{ forStartMs: number; keyframeMs: number | null } | null>(null);
   const [mode, setMode] = useState<'keyframe' | 'exact'>('keyframe');
   const playerRef = useRef<VideoPlayer | null>(null);
@@ -130,13 +146,14 @@ export const TrimScreen = memo(function TrimScreen() {
         if (!live) {
           return;
         }
-        const check = item ? clampTrimRange({ startMs: 0, endMs: item.durationMs ?? 0 }, item.durationMs) : null;
+        const check = item ? clampTrimRange({ startMs: startParam ?? 0, endMs: item.durationMs ?? 0 }, item.durationMs) : null;
         if (!item || !check?.ok) {
           setStatus('missing');
           return;
         }
         setSource(item);
         setRange(check.range);
+        setPreviewStartMs(check.range.startMs);
         setStatus('ready');
       })
       .catch(() => {
@@ -147,7 +164,7 @@ export const TrimScreen = memo(function TrimScreen() {
     return () => {
       live = false;
     };
-  }, [id]);
+  }, [id, startParam]);
 
   // Where the nearest keyframe at or before the start is: the start of a trim that keeps the original quality.
   useEffect(() => {
@@ -252,7 +269,7 @@ export const TrimScreen = memo(function TrimScreen() {
           <View
             style={{ aspectRatio: 16 / 9, backgroundColor: theme.colors.black, borderRadius: 12, overflow: 'hidden' }}
             accessibilityLabel={t('mediaEdit.previewA11y')}>
-            <TrimPreview uri={source.fileUri} onPlayer={onPlayer} />
+            <TrimPreview uri={source.fileUri} onPlayer={onPlayer} startSeconds={previewStartMs / 1000} />
           </View>
           <Text variant="bodySmall" color="textSecondary">
             {t('mediaEdit.trimHint')}

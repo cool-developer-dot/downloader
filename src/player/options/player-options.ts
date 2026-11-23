@@ -143,6 +143,23 @@ export type PlayerOptionContext = {
     /** `available`: a video in VidoraX's library (not a gallery video, another app's file or a stream). */
     quickDelete: { available: boolean; run: () => void };
   };
+  /**
+   * P10 Screenshot & edit tools (#675, #677–#680), under Tools. Screenshot is for any file on the phone that shows
+   * video (not streams); the editors only for a library video (the native editor's sources are library items), so they
+   * are hidden for videos on this device, files from other apps and streams. `running` is the edit's progress ("45%",
+   * "Running") while an edit started from the Player runs; its rows then open that progress.
+   */
+  editTools?: {
+    canScreenshot: boolean;
+    canEdit: boolean;
+    canCompress: boolean;
+    running: string | null;
+    screenshot: () => void;
+    openTrim: () => void;
+    extractAudio: () => void;
+    openConverter: () => void;
+    openCompress: () => void;
+  };
   ui: PlayerOptionUi;
 };
 

@@ -165,6 +165,9 @@ import { fullscreenDockButtons, fullscreenTopButtons, fullscreenVideoButtons } f
 import { usePlayerLibraryStats } from './page/use-player-library-stats';
 import { VideoBookmarksSheet } from './page/VideoBookmarksSheet';
 import { BookmarkNameModal } from './page/BookmarkNameModal';
+// P10 Screenshot & edit tools: ⋮ → Tools → Screenshot, Trim video, Extract audio, Video converter, Compress video.
+import { PlayerEditToolsSheets } from './page/PlayerEditToolsSheets';
+import { usePlayerEditTools } from './page/use-player-edit-tools';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -762,6 +765,24 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const closeP9Sheets = p9.closeSheets;
   // ── end P9 ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
+  // ── P10 Screenshot & edit tools ────────────────────────────────────────────────────────────────────────────────
+  // ⋮ → Tools: Screenshot (#675) for files on the phone; Trim (#677), Extract audio (#678), Video converter (#679) and
+  // Compress (#680) for library videos only. The edits pause the video and keep it paused while they run.
+  const p10EditTools = usePlayerEditTools({
+    mediaId: activeMediaId,
+    title: session.displayName,
+    player,
+    controller,
+    isPlaying: session.isPlaying,
+    hasVideoFrame: session.hasFirstFrame,
+    incoming: incomingToken != null,
+    positionSeconds: session.positionSeconds,
+    endLongPress,
+    restorePresentation,
+  });
+  const p10CloseSheets = p10EditTools.closeSheets;
+  // ── end P10 ────────────────────────────────────────────────────────────────────────────────────────────────────
+
   const anyModalOpen =
     speedSheetOpen ||
     orientationSheetOpen ||
@@ -775,7 +796,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
     queueSheetOpen ||
     p7Playlists.sheetOpen ||
     p8Sheet != null ||
-    p9.sheetOpen;
+    p9.sheetOpen ||
+    p10EditTools.sheetOpen;
 
   const onSingleTap = useCallback(() => {
     if (anyModalOpen || session.isSeeking) {
@@ -857,8 +879,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
     setP8Sheet(null);
     closeP9Sheets();
     setFrameMode(false);
+    p10CloseSheets();
     setLocked(true);
-  }, [hud, endLongPress, setLocked, closeP9Sheets]);
+  }, [hud, endLongPress, setLocked, closeP9Sheets, p10CloseSheets]);
   const onUnlock = useCallback(() => {
     setLocked(false);
     showControls();
@@ -1475,6 +1498,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       onCount: gesturesOnCount(gestureSettings),
       total: SWITCHABLE_GESTURES.length,
     },
+    editTools: p10EditTools.option,
     ui: optionsUi,
   };
 
@@ -2109,6 +2133,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
       {/* P9 #705: the video's bookmarks, and a bookmark's name (adding or renaming). */}
       <VideoBookmarksSheet {...p9.listSheet} />
       <BookmarkNameModal {...p9.nameModal} />
+      {/* P10: Video converter, Compress video and the running edit's progress. */}
+      <PlayerEditToolsSheets state={p10EditTools.sheets} />
     </SafeAreaScreen>
   );
 });

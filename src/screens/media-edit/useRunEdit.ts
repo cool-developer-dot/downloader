@@ -46,6 +46,8 @@ const LABEL_KEYS: Record<EditKind, TranslationKey> = {
   trim: 'mediaEdit.trimmedLabel',
   mp4: 'mediaEdit.mp4Label',
   audio: 'mediaEdit.audioLabel',
+  // P10: the Player's Compress runs through its own runner (src/media-edit/player-edit-run.ts) with this label too.
+  compress: 'videoPlayer.compressedLabel',
 };
 
 /**
