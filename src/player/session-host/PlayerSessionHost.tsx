@@ -3,6 +3,7 @@ import { AppState } from 'react-native';
 
 import { useResumePrompt } from '@/playback/use-resume-prompt';
 
+import { useSleepLimitSession } from '../engine/use-sleep-limits';
 import { usePlayerSession } from '../use-player-session';
 import { shouldCloseFailedSession } from './mini-player-policy';
 import {
@@ -62,6 +63,15 @@ function PlayerSessionRunner({ sessionKey, mediaId }: RunnerProps) {
       controller.play();
     }
   }, [controller, resolveGeneration, session.error, session.isReady]);
+
+  // Faran's P18: the sleep timer and the daily limit follow the session — full Player, mini player, screen off.
+  useSleepLimitSession({
+    player: result.player,
+    isReady: session.isReady,
+    isPlaying: session.isPlaying,
+    isCompleted: session.isCompleted,
+    pause: controller.pause,
+  });
 
   // Published before paint, so the Player screen and the mini player render the state this commit produced.
   useLayoutEffect(() => {

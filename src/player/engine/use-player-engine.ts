@@ -30,7 +30,7 @@ import {
 import { useAudioEngine, type AudioEngine } from './use-audio-engine';
 import { useEffectsEngine } from './use-effects-engine';
 import { useHeadsetKeys, type HeadsetKeys, type PlayerKeyHandlers } from './use-headset-keys';
-import { useSleepLimits } from './use-sleep-limits';
+import { useSleepLimitsView } from './use-sleep-limits';
 import { useSpeedEngine } from './use-speed-engine';
 import { useStreamEngine, type StreamQualitySheetState } from './use-stream-engine';
 
@@ -56,9 +56,6 @@ export type UsePlayerEngineInput = {
   /** P16: the session's speed, and how to set it (the session's own, so the chip and the notification follow). */
   playbackRate: number;
   setPlaybackRate: (rate: number) => boolean;
-  /** P18: the video finished, and pausing through the session. */
-  isCompleted: boolean;
-  pause: () => void;
 };
 
 export type PlayerEngineSheets = {
@@ -178,20 +175,8 @@ export function usePlayerEngine(input: UsePlayerEngineInput): PlayerEngine {
     [boostLabel, eqLabel, fx.mono, fx.nightMode],
   );
 
-  // P18
-  const sleepAnnounce = useCallback(
-    (what: 'sleep' | 'limit') =>
-      announce(what === 'sleep' ? t('playerEngine.sleepStopped') : t('playerEngine.limitReachedToast')),
-    [t],
-  );
-  const sleepLimits = useSleepLimits({
-    player,
-    isReady,
-    isPlaying: input.isPlaying,
-    isCompleted: input.isCompleted,
-    pause: input.pause,
-    announce: sleepAnnounce,
-  });
+  // P18 (its countdown and counting run with the session: useSleepLimitSession in PlayerSessionHost)
+  const sleepLimits = useSleepLimitsView();
   const sleepTimer = useSleepTimer();
   const limitState = useLimitState();
   const sleepMinutes = sleepMinutesLeft(sleepTimer);

@@ -1,13 +1,19 @@
 /**
- * P18 Sleep timer & limits on the Player screen: the shared countdown (#644 / #730, armed natively while a video
- * plays), counting today's watching (#730), and Kid Lock's Back and keys (#712). Called by `usePlayerEngine`.
+ * P18 Sleep timer & limits, in two parts:
+ *
+ * - `useSleepLimitSession`, in the session runner (PlayerSessionHost), so it carries on while the video plays in the
+ *   mini player or with the screen off: the shared countdown (#644 / #730, armed natively while a video plays),
+ *   counting today's watching (#730), pausing a video started at the limit, and "End of this video".
+ * - `useSleepLimitsView`, on the Player screen (through `usePlayerEngine`): the "limit reached" sheet and Kid Lock's
+ *   Back and keys (#712).
  */
 
 import type { VideoPlayer } from 'expo-video';
 import { useCallback, useEffect, useRef } from 'react';
-import { AppState, BackHandler } from 'react-native';
+import { AccessibilityInfo, AppState, BackHandler, Platform, ToastAndroid } from 'react-native';
 
 import { keyCapture } from '@/browser/services/key-capture.service';
+import { translate } from '@/localization';
 
 import { applyPlaybackDeadline, subscribePlaybackDeadline } from './native-player';
 import {
@@ -33,8 +39,6 @@ const COUNT_EVERY_MS = 5_000;
 const KID_LOCK_KEYS = 'player.p18.kidLock';
 
 export type SleepLimits = {
-  /** #730: today's limit is used up (the video can't play until tomorrow, or more time). */
-  limitReached: boolean;
   /** The "Daily limit reached" sheet. */
   limitSheetVisible: boolean;
   closeLimitSheet: () => void;
@@ -42,19 +46,26 @@ export type SleepLimits = {
   kidLock: boolean;
 };
 
-export function useSleepLimits(input: {
+/** Shown and spoken wherever the video is (full Player, mini player, screen off). */
+function announce(what: 'sleep' | 'limit'): void {
+  const message = translate(what === 'sleep' ? 'playerEngine.sleepStopped' : 'playerEngine.limitReachedToast');
+  if (Platform.OS === 'android') {
+    ToastAndroid.show(message, ToastAndroid.SHORT);
+  }
+  AccessibilityInfo.announceForAccessibility(message);
+}
+
+export function useSleepLimitSession(input: {
   player: VideoPlayer;
   isReady: boolean;
   isPlaying: boolean;
   isCompleted: boolean;
   /** Pause through the session (so its state follows). */
   pause: () => void;
-  announce: (message: 'sleep' | 'limit') => void;
-}): SleepLimits {
-  const { player, isReady, isPlaying, isCompleted, pause, announce } = input;
+}): void {
+  const { player, isReady, isPlaying, isCompleted, pause } = input;
   const timer = useSleepTimer();
   const limit = useLimitState();
-  const kidLock = useKidLock();
 
   // --- #730: count today's watching while a video plays ----------------------------------------------------------
   const lastTick = useRef<number | null>(null);
@@ -84,7 +95,6 @@ export function useSleepLimits(input: {
   const today = localDay(new Date());
   const left = limitSecondsLeft(limit, today);
   const limitReached = left != null && left <= 0;
-  const limitSheetVisible = useLimitNotice();
 
   // A video started at the limit pauses at once and says why.
   useEffect(() => {
@@ -93,7 +103,7 @@ export function useSleepLimits(input: {
       showLimitNotice();
       announce('limit');
     }
-  }, [announce, isPlaying, limitReached, pause]);
+  }, [isPlaying, limitReached, pause]);
 
   // --- #644 / #730: the shared countdown, armed natively while the video plays ------------------------------------
   // Set again only when its end moves (a new timer, another limit, more time) — not on each count of today's watching,
@@ -118,13 +128,8 @@ export function useSleepLimits(input: {
     const { inMs, fadeMs } = countdownStart(plan.inMs);
     applyPlaybackDeadline(player, inMs, fadeMs);
   }, [isPlaying, isReady, leftSeconds, player, timer]);
-  useEffect(
-    () => () => {
-      armed.current = null;
-      applyPlaybackDeadline(player, null, 0);
-    },
-    [player],
-  );
+  // No cancel on unmount: the runner goes with its player, and the native module drops the player's countdown when
+  // expo-video releases it (VideoPlayerHooks.onRelease).
 
   useEffect(
     () =>
@@ -141,7 +146,7 @@ export function useSleepLimits(input: {
           announce('limit');
         }
       }),
-    [announce],
+    [],
   );
 
   // #644 "End of this video": P5's end of playback stops the video (`isSleepAtEndOfVideo`); then the timer is done.
@@ -150,7 +155,13 @@ export function useSleepLimits(input: {
       cancelSleepTimer();
       announce('sleep');
     }
-  }, [announce, isCompleted, timer.mode]);
+  }, [isCompleted, timer.mode]);
+}
+
+/** The Player screen's part: the "limit reached" sheet, and Kid Lock's Back and volume keys (#712). */
+export function useSleepLimitsView(): SleepLimits {
+  const kidLock = useKidLock();
+  const limitSheetVisible = useLimitNotice();
 
   // --- #712 Kid Lock: Back and the volume keys do nothing (touches: the overlay) --------------------------------
   useEffect(() => {
@@ -169,5 +180,5 @@ export function useSleepLimits(input: {
 
   const closeLimitSheet = useCallback(() => hideLimitNotice(), []);
 
-  return { limitReached, limitSheetVisible, closeLimitSheet, kidLock };
+  return { limitSheetVisible, closeLimitSheet, kidLock };
 }

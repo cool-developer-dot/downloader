@@ -1528,8 +1528,6 @@ const PlayerSessionView = memo(function PlayerSessionView({
     leaveToDownloads,
     playbackRate: session.playbackRate,
     setPlaybackRate,
-    isCompleted: session.isCompleted,
-    pause: controller.pause,
   });
   // P15 #703: over the lock screen, the options and the tab bar ask for the phone's unlock first.
   const { whenUnlocked } = engine.keys;
