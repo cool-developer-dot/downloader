@@ -1152,7 +1152,8 @@ unchanged, then runs the migration and the DDL again.
 ## P10 — Screenshot & edit tools (#675, #677, #678, #679, #680)
 
 Built in its own worktree from `hamza/player` at P8 (`1ba7714`), on the local branch `wip/P10-edit-tools`, while P9
-was built in parallel from the same base. **Its PR depends on P9 (`hamza/P9-library-stats`)**: P10 goes on top of it,
+was built in parallel from the same base; it was cherry-picked on top of P9 (`d628a8a`) as `hamza/P10-edit-tools`.
+**Its PR depends on P9 (`hamza/P9-library-stats`)**: P10 goes on top of it,
 and both use the Tools section (P9 has 40–45 and 90, P10 has 50–70). **P10 adds native code** to the media module
 (see Native code). It doesn't change the SQLite schema, and it adds no dependency or permission.
 
@@ -1313,10 +1314,11 @@ and `TransformerUtil.shouldTranscodeVideo` re-encodes when that is true. So an H
 | Check | Result |
 | --- | --- |
 | `npm run typecheck` | 0 errors |
-| Unit tests (JS) | 2335 / 2335 on P8 (`1ba7714`, 2295 before; 40 new: `media-edit/compress-plan.test.ts` 12, `player/edit-tools.test.ts` 13, `media-edit/player-edit-run.test.ts` 10, `player/options/p10-edit-tools.test.ts` 5). `row-revision.test.ts` passed in the full run |
+| Unit tests (JS) | 2392 / 2392 on top of P9, the whole stack P1–P10 (2335 / 2335 on P8 `1ba7714` alone, 2295 before; 40 new: `media-edit/compress-plan.test.ts` 12, `player/edit-tools.test.ts` 13, `media-edit/player-edit-run.test.ts` 10, `player/options/p10-edit-tools.test.ts` 5). `row-revision.test.ts` passed in the full run |
 | `npm run lint` | 0 errors; 91 warnings, none in a file P10 changed |
 | Gradle `:vidorax-media:compileDebugKotlin` | BUILD SUCCESSFUL (Windows, JDK 17) |
 | Gradle `:vidorax-media:testDebugUnitTest --continue` | As expected on Windows, the test compile fails on `DownloadRunnerTest` (a backtick name with `"` is not a legal class-file path). Run again with only that file left out of the test compile (an init script in the scratchpad, not committed): **1126 tests, 1121 passed, 3 failed, 2 skipped**. **New: `CompressPlanTest` 9 / 9, `FrameExportTest` 3 / 3**; `MediaEditorTest` 6 / 6, `MediaEditServiceTest` 4 / 4. The 3 failures are Windows-only, in code P10 doesn't touch: `StoragePathsTest.storedPathsAreRelativeToFilesDir` and `IncomingImportTest.aFileIsCopiedIntoTheLibraryUnderDevice` (both expect `/` in a path; line 113 checks `"/library/device/"`), and `HlsTransferTest.pausedAndResumedThreeTimesInParallelIsByteIdenticalToAnUninterruptedDownload` (`AccessDeniedException`: Windows can't replace a checkpoint file that's still open; in `transfer/`) |
+| Gradle, re-run on the stacked branch (P1–P10, `c3cee83`) | `compileDebugKotlin`: BUILD SUCCESSFUL. `testDebugUnitTest` (same init script): 1126 tests, 1121 passed, 3 failed, 2 skipped; `CompressPlanTest` 9 / 9, `FrameExportTest` 3 / 3, `MediaEditorTest` 6 / 6, `MediaEditServiceTest` 4 / 4. Failures: `StoragePathsTest` and `IncomingImportTest` (Windows paths, as above) and `ParallelTransferTest.withTheWriteCacheOnEveryPartStillLandsExactlyAndAPauseClaimsOnlyWhatIsOnDisk` (`Required value was null`, in `transfer/`); that suite passes 25 / 25 run on its own, and `HlsTransferTest` passed this time: the transfer tests are timing-sensitive on Windows, and P9 / P10 don't touch `transfer/` |
 | Against `1ba7714` | `git diff --check` clean; none of Faran's files; nothing in `transfer/` or `engine/`; `package.json` / lockfile, `build.gradle`, manifests and `app.json` unchanged; no new dependency or permission; no SQLite change (`DATABASE_VERSION` still 9) |
 | Media3 | `1.9.0`, unchanged |
 
