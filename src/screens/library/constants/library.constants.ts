@@ -63,4 +63,6 @@ export const LIBRARY_SORT_OPTIONS: readonly {
   { id: 'largest', label: 'Largest', available: true },
   { id: 'smallest', label: 'Smallest', available: true },
   { id: 'recently_played', label: 'Recently Played', available: true },
+  // P9 #626
+  { id: 'most_played', label: 'Most played', available: true },
 ] as const;

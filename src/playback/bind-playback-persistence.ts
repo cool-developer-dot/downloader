@@ -45,6 +45,17 @@ function defaultSubscribeAppState(
   }
 }
 
+/** P9 #687: Disable History, read lazily so this module still imports under the test runner (no MMKV there). */
+function defaultHistoryPaused(): boolean {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const preference = require('./history-pause-preference') as { isWatchHistoryPaused: () => boolean };
+    return preference.isWatchHistoryPaused();
+  } catch {
+    return false;
+  }
+}
+
 function defaultBoundaryFlush(): void {
   try {
     // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -64,6 +75,8 @@ function defaultBoundaryFlush(): void {
 export function bindPlaybackPersistence(
   overrides?: Partial<PlaybackCoordinatorDeps> & {
     coordinator?: PlaybackPersistenceCoordinator;
+    /** P9 #687: true while Disable History is on (default: the app-wide setting). */
+    isHistoryPaused?: () => boolean;
   },
 ): PlaybackPersistenceCoordinator {
   if (bound && coordinator && !overrides?.coordinator) {
@@ -91,9 +104,15 @@ export function bindPlaybackPersistence(
         }),
     });
 
+  const historyPaused = overrides?.isHistoryPaused ?? defaultHistoryPaused;
   const listener: PlaybackEventListener = (event) => {
     // An online stream (F17) is not a library video: no resume record, no Watch history, no Continue watching.
     if (isStreamMediaId(event.mediaId)) {
+      return;
+    }
+    // P9 #687 Disable History: while on, nothing new is stored either (the coordinator is the only writer of resume
+    // points, Watch history and Continue watching). What was stored before stays.
+    if (historyPaused()) {
       return;
     }
     coordinator?.handleEvent(event);

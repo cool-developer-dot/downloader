@@ -21,6 +21,7 @@ import { seekPreviewLeft, seekPreviewSize } from '@/player/seek-preview';
 import { useTranslation } from '@/localization';
 
 import { TimelineLoopMarks } from './TimelineLoopMarks';
+import { TimelineBookmarkMarks } from './TimelineBookmarkMarks';
 
 export type PlayerTimelineProps = {
   positionSeconds: number;
@@ -42,6 +43,8 @@ export type PlayerTimelineProps = {
   loopMarkers?: { a: number | null; b: number | null } | null;
   /** P5 #541: clears the A-B repeat (the button shows while a point is set). */
   onClearLoop?: () => void;
+  /** P9 #705: the video's bookmarks as fractions of the timeline (small dots); omitted or empty: none. */
+  bookmarkMarkers?: readonly number[] | null;
 };
 
 function ratioToSeconds(
@@ -69,6 +72,7 @@ export const PlayerTimeline = memo(function PlayerTimeline({
   variant = 'dock',
   loopMarkers = null,
   onClearLoop,
+  bookmarkMarkers = null,
 }: PlayerTimelineProps) {
   const card = variant === 'card';
   const theme = useTheme();
@@ -246,6 +250,7 @@ export const PlayerTimeline = memo(function PlayerTimeline({
               ]}
             />
             <TimelineLoopMarks marks={loopMarkers} color={progressColor} />
+            <TimelineBookmarkMarks marks={bookmarkMarkers} />
             {card && previewSeconds == null ? null : (
             <View
               style={[

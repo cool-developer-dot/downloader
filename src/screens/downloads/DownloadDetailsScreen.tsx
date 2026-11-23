@@ -59,6 +59,7 @@ import { DownloadDetailsSkeleton } from './components/DownloadDetailsSkeleton';
 import { DownloadEditActions } from './components/DownloadEditActions';
 import { DownloadIntegritySection } from './components/DownloadIntegritySection';
 import { DownloadMoveToPrivateAction } from './components/DownloadMoveToPrivateAction';
+import { DownloadPlayCountRows } from './components/DownloadPlayCountRows';
 import { DownloadProgressDetailsRows, DownloadSegmentBars } from './components/DownloadProgressDetailsRows';
 import { DownloadSaveLocationAction } from './components/DownloadSaveLocationAction';
 import { DownloadStartAtControl } from './components/DownloadStartAtControl';
@@ -630,6 +631,8 @@ const DetailsBody = memo(function DetailsBody({
           <DownloadProgressDetailsRows id={item.id} />
           {created ? <InfoRow label={t('downloads.infoCreatedDate')} value={created} /> : null}
           {completedAt ? <InfoRow label={t('downloads.infoDownloadedDate')} value={completedAt} /> : null}
+          {/* P9 #708: how many times it was played (a finished video only). */}
+          {completed ? <DownloadPlayCountRows id={item.id} /> : null}
           {sourceHost || item.sourceUrl ? (
             <View style={{ marginTop: 12, gap: 4 }}>
               <DsText variant="rowSub">{t('downloads.detailsSourceTitle')}</DsText>

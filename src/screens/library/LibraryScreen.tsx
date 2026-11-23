@@ -36,6 +36,8 @@ import { PrivateMoveDialog } from '@/screens/private/PrivateMoveDialog';
 import { AddToPlaylistSheet } from '@/screens/playlists/components/AddToPlaylistSheet';
 import { LibrarySelectionBar } from './components/LibrarySelectionBar';
 import { useLibraryPlaylists } from './hooks/useLibraryPlaylists';
+// P9 #628: Filter → Include / exclude folders.
+import { LibraryFolderVisibilitySheet } from './components/LibraryFolderVisibilitySheet';
 
 export const LibraryScreen = memo(function LibraryScreen() {
   const theme = useTheme();
@@ -91,6 +93,14 @@ export const LibraryScreen = memo(function LibraryScreen() {
     deleteLoading,
     openDownloads,
     openWatchHistory,
+    durationBucket,
+    onSelectDuration,
+    excludedFolderIds,
+    hiddenFolderCount,
+    folderVisibilityVisible,
+    openFolderVisibility,
+    closeFolderVisibility,
+    playCounts,
   } = useLibraryScreen();
   const showInFolderActionsFor = useShowInFolderSheetActions();
 
@@ -206,13 +216,28 @@ export const LibraryScreen = memo(function LibraryScreen() {
       ? `${playableCount} video${playableCount === 1 ? '' : 's'}`
       : undefined;
 
+  // P9 #708: how many times the video was played, after the menu's usual line.
+  const actionPlays = actionItemId ? (playCounts[actionItemId]?.playCount ?? 0) : 0;
   const actionSubtitle = actionError
     ? actionError
     : actionStatusMessage === 'saved'
       ? t('library.savedToDevice')
       : actionStatusMessage === 'already_saved'
         ? t('library.alreadySavedToDevice')
-        : t('library.actionsSubtitle');
+        : actionPlays > 0
+          ? `${t('library.actionsSubtitle')} · ${
+              actionPlays === 1 ? t('libraryStats.playedOnce') : t('libraryStats.playedTimes', { count: actionPlays })
+            }`
+          : t('library.actionsSubtitle');
+
+  const folderList = useMemo(
+    () =>
+      folderOrderedIds
+        .map((id) => foldersById[id])
+        .filter((folder): folder is NonNullable<typeof folder> => folder != null)
+        .map((folder) => ({ id: folder.id, name: folder.name })),
+    [folderOrderedIds, foldersById],
+  );
 
   return (
     <SafeAreaScreen
@@ -273,6 +298,10 @@ export const LibraryScreen = memo(function LibraryScreen() {
           onSelectQuality={onSelectQuality}
           onToggleViewMode={onToggleViewMode}
           onReset={onReset}
+          durationBucket={durationBucket}
+          onSelectDuration={onSelectDuration}
+          onOpenFolderVisibility={openFolderVisibility}
+          hiddenFolderCount={hiddenFolderCount}
         />
       </Box>
       {playlists.selecting ? (
@@ -313,6 +342,12 @@ export const LibraryScreen = memo(function LibraryScreen() {
       />
       <PrivateMoveDialog controller={privateMove} testID="library-private-move" />
       <AddToPlaylistSheet inputs={playlists.sheetInputs} onClose={playlists.closeSheet} onAdded={playlists.onAdded} />
+      <LibraryFolderVisibilitySheet
+        visible={folderVisibilityVisible}
+        folders={folderList}
+        excludedFolderIds={excludedFolderIds}
+        onClose={closeFolderVisibility}
+      />
 
       {status === 'loading' ? (
         <LibrarySkeleton />

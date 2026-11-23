@@ -1,8 +1,11 @@
 import { LIBRARY_RECENT_DOWNLOAD_WINDOW_MS, UNFILED_FOLDER_SELECTION_ID } from './constants';
+import { filterByDurationBucket } from './duration-buckets';
 import { isPlayableAvailability } from './eligibility';
+import { applyFolderExclusion } from './folder-exclusion';
 import { normalizeWhitespace, parseByteSize } from './mapper';
 import type {
   LibraryFilter,
+  LibraryPlayCount,
   LibraryQueryInput,
   LibraryQueryResult,
   LibrarySort,
@@ -124,7 +127,18 @@ type SortKey = {
   lastPlayedAt: number | null;
   fileSize: bigint;
   displayName: string;
+  /** P9 #626: counted plays (0 when never) and when the last one was counted. */
+  playCount: number;
+  lastCountedAt: number | null;
 };
+
+function isoMs(value: string | null | undefined): number | null {
+  if (!value) {
+    return null;
+  }
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? time : null;
+}
 
 function compareNullableDesc(a: number | null, b: number | null): number {
   if (a == null && b == null) {
@@ -156,19 +170,27 @@ function compareNullableAsc(a: number | null, b: number | null): number {
  * Stable deterministic sort. Unknown/missing values sort last, then id.
  * Sort keys are precomputed once — never Date.parse / BigInt inside the comparator.
  * `recently_played` / Recently Watched filter use lastPlayedAt DESC.
+ * P9 `most_played`: play count DESC, then the last counted play DESC (then the last time played at all), then the
+ * newest download; never-played videos (count 0) after every played one. `playCounts` is only read by it.
  */
 export function sortLibraryItems(
   items: readonly MediaLibraryItem[],
   sort: LibrarySort,
+  playCounts?: Readonly<Record<string, LibraryPlayCount>> | null,
 ): MediaLibraryItem[] {
-  const keyed: SortKey[] = items.map((item, index) => ({
-    item,
-    index,
-    downloadedAt: downloadedAtMs(item),
-    lastPlayedAt: lastPlayedAtMs(item),
-    fileSize: parseByteSize(item.fileSize),
-    displayName: item.displayName,
-  }));
+  const keyed: SortKey[] = items.map((item, index) => {
+    const plays = sort === 'most_played' ? playCounts?.[item.id] : undefined;
+    return {
+      item,
+      index,
+      downloadedAt: downloadedAtMs(item),
+      lastPlayedAt: lastPlayedAtMs(item),
+      fileSize: parseByteSize(item.fileSize),
+      displayName: item.displayName,
+      playCount: plays && Number.isFinite(plays.playCount) ? Math.max(0, Math.trunc(plays.playCount)) : 0,
+      lastCountedAt: isoMs(plays?.lastPlayedAt),
+    };
+  });
 
   keyed.sort((left, right) => {
     let result = 0;
@@ -229,6 +251,19 @@ export function sortLibraryItems(
         }
         break;
       }
+      case 'most_played': {
+        result = right.playCount - left.playCount;
+        if (result === 0) {
+          result = compareNullableDesc(left.lastCountedAt, right.lastCountedAt);
+        }
+        if (result === 0) {
+          result = compareNullableDesc(left.lastPlayedAt, right.lastPlayedAt);
+        }
+        if (result === 0) {
+          result = compareNullableDesc(left.downloadedAt, right.downloadedAt);
+        }
+        break;
+      }
       default:
         result = 0;
     }
@@ -273,7 +308,9 @@ export function listDistinctFolderIds(
 /**
  * Canonical Library Source
  *   → Availability Filter
+ *   → Hidden folders (P9 #628)
  *   → Product Filters
+ *   → Length (P9 #711)
  *   → Search
  *   → Sort (Recently Watched forces lastPlayedAt order)
  *   → Visible Items
@@ -283,14 +320,19 @@ export function applyLibraryQuery(
   input: LibraryQueryInput,
 ): LibraryQueryResult {
   const playable = filterByAvailability(source);
-  const filtered = applyProductFilter(playable, input);
+  const shown = applyFolderExclusion(playable, input.excludedFolderIds, input);
+  const filtered = filterByDurationBucket(
+    applyProductFilter(shown, input),
+    input.durationBucket,
+    input.durationById,
+  );
   const needle = normalizeSearchQuery(input.search);
   const searched = needle
     ? filtered.filter((item) => haystack(item).includes(needle))
     : filtered;
   const sort: LibrarySort =
     input.filter === 'recently_watched' ? 'recently_played' : input.sort;
-  const sorted = sortLibraryItems(searched, sort);
+  const sorted = sortLibraryItems(searched, sort, input.playCounts);
 
   return {
     items: sorted,

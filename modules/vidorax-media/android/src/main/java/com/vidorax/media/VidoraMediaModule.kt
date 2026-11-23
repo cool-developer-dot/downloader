@@ -17,6 +17,7 @@ import com.vidorax.media.bridge.PageFetchRequestRecord
 import com.vidorax.media.bridge.ProbeRequestRecord
 import com.vidorax.media.library.EditRequestRecord
 import com.vidorax.media.library.MediaEditor
+import com.vidorax.media.library.LengthProbe
 import com.vidorax.media.bridge.toJs
 import com.vidorax.media.bridge.toSourceJs
 import com.vidorax.media.net.NetworkOptions
@@ -443,6 +444,14 @@ class VidoraMediaModule : Module() {
 
     AsyncFunction("getLibraryItems") Coroutine { ids: List<String> ->
       services.library.getMany(ids).map { it.toJs() }
+    }
+
+    // P9 #711: lengths of library videos with none recorded, measured from their own files with the existing MediaInfo
+    // probe, at most 10 per call (library/LengthProbe.kt). JavaScript keeps them; nothing is written here.
+    AsyncFunction("probeLibraryLengths") Coroutine { ids: List<String> ->
+      LengthProbe({ services.library.get(it) }, { services.mediaInfo.read(it).durationMs })
+        .lengths(ids)
+        .map { mapOf("id" to it.id, "durationMs" to it.durationMs) }
     }
 
     AsyncFunction("applyLegacyMetadata") Coroutine { entries: List<LegacyMetadataRecord> ->

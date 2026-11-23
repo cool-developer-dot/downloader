@@ -10,6 +10,7 @@ import './p5-repeat';
 import './p6-queue';
 import './p7-playlists';
 import './p8-gestures';
+import './p9-library-stats';
 
 export {
   playerOptions,

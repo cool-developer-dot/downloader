@@ -70,6 +70,7 @@ import { sourceCheckUr } from './catalogs/sourceCheck.ur';
 import { archiveImportUr } from './catalogs/archiveImport.ur';
 import { settingsViewUr } from './catalogs/settingsView.ur';
 import { playlistsUr } from './catalogs/playlists.ur';
+import { libraryStatsUr } from './catalogs/libraryStats.ur';
 
 export const ur: CatalogStrings<typeof en> = {
   common: {
@@ -2984,4 +2985,6 @@ export const ur: CatalogStrings<typeof en> = {
   settingsView: settingsViewUr,
   // P7 Playlists (Hamza)
   playlists: playlistsUr,
+  // P9 Library stats & bookmarks (Hamza)
+  libraryStats: libraryStatsUr,
 };

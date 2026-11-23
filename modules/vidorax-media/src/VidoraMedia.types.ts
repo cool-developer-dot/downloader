@@ -1024,6 +1024,11 @@ export interface VidoraMediaModuleApi {
   /** Items for the given ids that exist, in the same order (missing ids are skipped). */
   getLibraryItems(ids: string[]): Promise<LibraryItem[]>;
   /**
+   * P9 #711: lengths of library videos with none recorded, measured from their own files (at most 10 ids per call;
+   * `durationMs` null when the id isn't a library video or its file can't be read). Optional: older builds lack it.
+   */
+  probeLibraryLengths?(ids: string[]): Promise<{ id: string; durationMs: number | null }[]>;
+  /**
    * One-time migration from the v1 app: JS reads titles/sites/pages/favorites from the old catalog and applies
    * them to items created by the native legacy file import (matched by id). Unknown ids are ignored.
    */

@@ -17,6 +17,17 @@ import {
   type FileAssessment,
   type MediaLibraryItem,
 } from '@/library';
+// P9 Library stats: Most played (#626), the length filter (#711), hidden folders (#628).
+import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
+import type { DurationBucket } from '@/library/duration-buckets';
+import { applyFolderExclusion, countExcluded } from '@/library/folder-exclusion';
+import {
+  backfillLibraryLengths,
+  loadLibraryDurations,
+  resetLibraryDurationBucket,
+  setLibraryDurationBucket,
+  useLibraryStatsStore,
+} from '@/library/library-stats-store';
 import { translate, type TranslationKey } from '@/localization';
 import { navigation, openPlayer, routePaths, consumeSecondaryDestinationIntent } from '@/navigation';
 import {
@@ -38,6 +49,9 @@ import { useFavoritesStore } from '@/store/favorites';
 import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 import { useLibraryStore } from '@/store/library';
+
+/** P9 #711: the background length backfill starts this long after the Library's list last changed. */
+const LENGTH_BACKFILL_START_DELAY_MS = 3000;
 
 function localizeCompletedActionError(
   code: Parameters<typeof completedActionErrorMessageKey>[0],
@@ -177,6 +191,41 @@ export function useLibraryScreen() {
     [canonicalItems, playbackById],
   );
 
+  // ── P9 Library stats ─────────────────────────────────────────────────────────────────────────────────────────
+  // Play counts for Most played (#626), lengths for the length filter (#711: the items carry none of their own, so
+  // the native library's measured length, else the playback record's), and the hidden folders (#628).
+  const playCounts = useLibraryStatsStore((state) => state.playCounts);
+  const nativeDurations = useLibraryStatsStore((state) => state.durationById);
+  const durationBucket = useLibraryStatsStore((state) => state.durationBucket);
+  const excludedFolderIds = useLibraryStatsStore((state) => state.excludedFolderIds);
+  const durationById = useMemo(() => {
+    const merged: Record<string, number> = {};
+    for (const [id, summary] of playbackById) {
+      if (Number.isFinite(summary.durationSeconds) && summary.durationSeconds > 0) {
+        merged[id] = summary.durationSeconds;
+      }
+    }
+    return { ...merged, ...nativeDurations };
+  }, [nativeDurations, playbackById]);
+  // Lengths: asked for at once while a length filter is chosen (once per video per run), and filled in the background
+  // a few seconds after the list settles, whatever the filter (P9 backfill: the existing MediaInfo probe, a few at a
+  // time, kept in media_play_stats).
+  useEffect(() => {
+    const missing = enrichedCanonical.filter((item) => item.duration == null).map((item) => item.id);
+    if (durationBucket !== 'any') {
+      void loadLibraryDurations(missing);
+    }
+    const timer = setTimeout(() => {
+      void backfillLibraryLengths(missing);
+    }, LENGTH_BACKFILL_START_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [durationBucket, enrichedCanonical]);
+  const hiddenFolderVideoCount = useMemo(
+    () => countExcluded(enrichedCanonical, excludedFolderIds),
+    [enrichedCanonical, excludedFolderIds],
+  );
+  // ── end P9 ───────────────────────────────────────────────────────────────────────────────────────────────────
+
   // "Recently downloaded" is judged at the library's last refresh (every focus and every completion
   // refreshes it), so rendering stays pure.
   const queryResult = useMemo(
@@ -189,13 +238,30 @@ export function useLibraryScreen() {
         folderId,
         recentDownloadWindowMs: LIBRARY_RECENT_DOWNLOAD_WINDOW_MS,
         nowMs: lastReconciledAt ?? 0,
+        durationBucket,
+        durationById,
+        excludedFolderIds,
+        playCounts,
       }),
-    [enrichedCanonical, filter, folderId, lastReconciledAt, quality, searchQuery, sort],
+    [
+      durationBucket,
+      durationById,
+      enrichedCanonical,
+      excludedFolderIds,
+      filter,
+      folderId,
+      lastReconciledAt,
+      playCounts,
+      quality,
+      searchQuery,
+      sort,
+    ],
   );
 
   const continueWatchingItems = useMemo(() => {
+    // P9 #628: a hidden folder's videos stay out of the Library's Continue watching row too.
     const libraryById = new Map(
-      enrichedCanonical.map((item) => [item.id, item] as const),
+      applyFolderExclusion(enrichedCanonical, excludedFolderIds).map((item) => [item.id, item] as const),
     );
     const rows = [];
     for (const summary of continueQuery.items) {
@@ -220,7 +286,7 @@ export function useLibraryScreen() {
       });
     }
     return rows;
-  }, [continueQuery.items, enrichedCanonical]);
+  }, [continueQuery.items, enrichedCanonical, excludedFolderIds]);
 
   const qualities = useMemo(
     () => listDistinctQualities(enrichedCanonical),
@@ -296,7 +362,13 @@ export function useLibraryScreen() {
 
   const visibleItems: MediaLibraryItem[] = queryResult.items;
   const searchActive = searchQuery.trim().length > 0;
-  const filterActive = filter !== 'all' || Boolean(quality) || Boolean(folderId);
+  // P9: a length filter, or hidden folders that hide something, make an empty list "No videos found", not "No downloads".
+  const filterActive =
+    filter !== 'all' ||
+    Boolean(quality) ||
+    Boolean(folderId) ||
+    durationBucket !== 'any' ||
+    hiddenFolderVideoCount > 0;
 
   const status = useMemo(() => {
     if (!initialized && loading && visibleItems.length === 0) {
@@ -321,7 +393,8 @@ export function useLibraryScreen() {
     searchDraft.trim().length > 0 ||
     filter !== 'all' ||
     sort !== 'newest' ||
-    Boolean(quality);
+    Boolean(quality) ||
+    durationBucket !== 'any';
 
   const onChangeSearch = useCallback(
     (value: string) => {
@@ -401,7 +474,14 @@ export function useLibraryScreen() {
     }
     setSearchDraft('');
     resetQuery();
+    // P9: Reset clears the length filter too (hidden folders are a setting, kept).
+    resetLibraryDurationBucket();
   }, [resetQuery]);
+
+  const onSelectDuration = useCallback((bucket: DurationBucket) => {
+    setLibraryDurationBucket(bucket);
+  }, []);
+  const [folderVisibilityVisible, setFolderVisibilityVisible] = useState(false);
 
   const refresh = useCallback(async () => {
     setRefreshing(true);
@@ -591,5 +671,16 @@ export function useLibraryScreen() {
     deleteLoading,
     openDownloads,
     openWatchHistory,
+    // P9
+    durationBucket,
+    onSelectDuration,
+    excludedFolderIds,
+    // Folders that still exist (a deleted folder's id stays in the list but hides nothing).
+    hiddenFolderCount: excludedFolderIds.filter((id) => id === UNFILED_FOLDER_SELECTION_ID || foldersById[id] != null)
+      .length,
+    folderVisibilityVisible,
+    openFolderVisibility: () => setFolderVisibilityVisible(true),
+    closeFolderVisibility: () => setFolderVisibilityVisible(false),
+    playCounts,
   };
 }

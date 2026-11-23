@@ -292,6 +292,10 @@ export async function runAppInitializer(): Promise<RoutePath> {
           );
         }
       }
+      const { ensureLibraryStats } = await import('@/library/ensure-library-stats');
+      // P9: play counts from the playback events (skipped while Disable History is on); deleted videos' counts and
+      // bookmarks go with them.
+      ensureLibraryStats();
       const { ensureMediaTagCleanup } = await import('@/media-edit/ensure-media-tags');
       // Edit after download: an item's artist tag goes with it when it is deleted.
       ensureMediaTagCleanup();

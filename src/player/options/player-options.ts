@@ -131,6 +131,18 @@ export type PlayerOptionContext = {
     /** … of how many. */
     total: number;
   };
+  /**
+   * P9: Disable History (#687, app-wide), this video's bookmarks (#705) and Quick Delete (#726). Optional, so the
+   * other packages' tests build their context without it; the rows hide when it is missing.
+   */
+  p9?: {
+    historyPaused: boolean;
+    setHistoryPaused: (paused: boolean) => void;
+    /** `available`: a video with a lasting id (not a file another app opened, not a stream). */
+    bookmarks: { available: boolean; count: number; add: () => void; openList: () => void };
+    /** `available`: a video in VidoraX's library (not a gallery video, another app's file or a stream). */
+    quickDelete: { available: boolean; run: () => void };
+  };
   ui: PlayerOptionUi;
 };
 

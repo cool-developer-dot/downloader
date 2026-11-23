@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { ScrollView } from 'react-native';
 
 import { Box } from '@/components/base/Box';
@@ -9,6 +9,7 @@ import { IconButton } from '@/components/buttons/IconButton';
 import { Chip } from '@/components/common/Chip';
 import { SearchField } from '@/components/inputs/SearchField';
 import type { LibraryFilter, LibrarySort, LibraryViewMode } from '@/library';
+import { DURATION_BUCKETS, type DurationBucket } from '@/library/duration-buckets';
 import { useTranslation, type TranslationKey } from '@/localization';
 import { PlayerTagFilterChip } from '@/screens/downloads/components/OrganizeFilterChips';
 
@@ -34,6 +35,16 @@ const SORT_LABEL_KEYS: Record<LibrarySort, TranslationKey> = {
   largest: 'library.sortLargest',
   smallest: 'library.sortSmallest',
   recently_played: 'library.sortRecentlyPlayed',
+  most_played: 'libraryStats.sortMostPlayed',
+};
+
+/** P9 #711: the length filter's choices. */
+const DURATION_LABEL_KEYS: Record<DurationBucket, TranslationKey> = {
+  any: 'libraryStats.durationAny',
+  under5: 'libraryStats.durationUnder5',
+  from5to20: 'libraryStats.duration5to20',
+  from20to60: 'libraryStats.duration20to60',
+  over60: 'libraryStats.durationOver60',
 };
 import { useLibraryTokens } from '../theme/library-tokens';
 
@@ -61,6 +72,12 @@ export type LibraryHeaderControlsProps = {
   onToggleViewMode: () => void;
   onReset: () => void;
   testID?: string;
+  /** P9 #711: the length filter (a chip and its sheet); omitted: no chip. */
+  durationBucket?: DurationBucket;
+  onSelectDuration?: (bucket: DurationBucket) => void;
+  /** P9 #628: the filter sheet's "Include / exclude folders" row, and how many folders are hidden. */
+  onOpenFolderVisibility?: () => void;
+  hiddenFolderCount?: number;
 };
 
 export const LibraryHeaderControls = memo(function LibraryHeaderControls({
@@ -87,15 +104,22 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
   onToggleViewMode,
   onReset,
   testID = 'library-controls',
+  durationBucket = 'any',
+  onSelectDuration,
+  onOpenFolderVisibility,
+  hiddenFolderCount = 0,
 }: LibraryHeaderControlsProps) {
   const libraryTokens = useLibraryTokens();
   const { t } = useTranslation();
   const filterLabel = t(FILTER_LABEL_KEYS[filter] ?? 'library.filterAll');
   const sortLabel = t(SORT_LABEL_KEYS[sort] ?? 'library.sortNewest');
+  // P9 #711: the length sheet belongs to its chip.
+  const [durationSheetVisible, setDurationSheetVisible] = useState(false);
+  const durationLabel = t(DURATION_LABEL_KEYS[durationBucket] ?? 'libraryStats.durationAny');
 
   const filterActions = useMemo<ActionSheetItem[]>(
-    () =>
-      LIBRARY_FILTER_OPTIONS.filter((option) => option.available).map((option) => ({
+    () => [
+      ...LIBRARY_FILTER_OPTIONS.filter((option) => option.available).map((option) => ({
         id: option.id,
         label: option.id === filter ? `${t(FILTER_LABEL_KEYS[option.id])} ✓` : t(FILTER_LABEL_KEYS[option.id]),
         icon:
@@ -108,7 +132,34 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
                 : 'filter-outline',
         onPress: () => onSelectFilter(option.id),
       })),
-    [filter, onSelectFilter, t],
+      // P9 #628: last, as on screen 18.
+      ...(onOpenFolderVisibility
+        ? [
+            {
+              id: 'p9-folder-visibility',
+              label:
+                hiddenFolderCount > 0
+                  ? t('libraryStats.foldersHiddenCount', { count: hiddenFolderCount })
+                  : t('libraryStats.foldersTitle'),
+              icon: 'folder-eye-outline',
+              onPress: onOpenFolderVisibility,
+            },
+          ]
+        : []),
+    ],
+    [filter, hiddenFolderCount, onOpenFolderVisibility, onSelectFilter, t],
+  );
+
+  const durationActions = useMemo<ActionSheetItem[]>(
+    () =>
+      DURATION_BUCKETS.map((bucket) => ({
+        id: bucket,
+        label: t(DURATION_LABEL_KEYS[bucket]),
+        selected: bucket === durationBucket,
+        icon: 'timer-outline',
+        onPress: () => onSelectDuration?.(bucket),
+      })),
+    [durationBucket, onSelectDuration, t],
   );
 
   const sortActions = useMemo<ActionSheetItem[]>(
@@ -190,6 +241,15 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
             onPress={onOpenSort}
             testID={`${testID}-sort-chip`}
           />
+          {onSelectDuration ? (
+            <Chip
+              label={durationLabel}
+              selected={durationBucket !== 'any'}
+              icon="timer-outline"
+              onPress={() => setDurationSheetVisible(true)}
+              testID={`${testID}-duration-chip`}
+            />
+          ) : null}
           <PlayerTagFilterChip testID={testID} />
         </ScrollView>
 
@@ -217,12 +277,13 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
         ) : null}
       </Box>
 
-      {filter !== 'all' || sort !== 'newest' || quality ? (
+      {filter !== 'all' || sort !== 'newest' || quality || durationBucket !== 'any' ? (
         <Box px={libraryTokens.spacing.screenX}>
           <Text variant="caption" color="textSecondary">
             {[
               filter !== 'all' ? `Filter: ${filterLabel}` : null,
               quality ? `Quality: ${quality}` : null,
+              durationBucket !== 'any' ? t('libraryStats.lengthCaption', { label: durationLabel }) : null,
               sort !== 'newest' ? `Sort: ${sortLabel}` : null,
             ]
               .filter(Boolean)
@@ -256,6 +317,15 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
         subtitle={t('library.qualitySubtitle')}
         actions={qualityActions}
         testID={`${testID}-quality-sheet`}
+      />
+
+      <ActionSheetModal
+        visible={durationSheetVisible}
+        onClose={() => setDurationSheetVisible(false)}
+        title={t('libraryStats.durationTitle')}
+        subtitle={t('libraryStats.durationSubtitle')}
+        actions={durationActions}
+        testID={`${testID}-duration-sheet`}
       />
     </Box>
   );
