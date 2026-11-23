@@ -6,6 +6,7 @@
 
 import type { VideoPlayer } from 'expo-video';
 import { useCallback, useEffect, useMemo } from 'react';
+import { AccessibilityInfo, Platform, ToastAndroid } from 'react-native';
 
 import { useTranslation } from '@/localization';
 
@@ -15,8 +16,18 @@ import { audioTrackLabel, formatAudioDelay } from './audio-settings';
 import { closeEngineSheet, openEngineSheet, useOpenEngineSheet } from './engine-sheets';
 import { applyTrackLimits } from './native-player';
 import type { PlayerEngineOption } from './types';
+import {
+  formatDuration,
+  limitSecondsLeft,
+  localDay,
+  setKidLock,
+  sleepMinutesLeft,
+  useLimitState,
+  useSleepTimer,
+} from './sleep-limits';
 import { useAudioEngine, type AudioEngine } from './use-audio-engine';
 import { useHeadsetKeys, type HeadsetKeys, type PlayerKeyHandlers } from './use-headset-keys';
+import { useSleepLimits } from './use-sleep-limits';
 import { useSpeedEngine } from './use-speed-engine';
 import { useStreamEngine, type StreamQualitySheetState } from './use-stream-engine';
 
@@ -42,12 +53,18 @@ export type UsePlayerEngineInput = {
   /** P16: the session's speed, and how to set it (the session's own, so the chip and the notification follow). */
   playbackRate: number;
   setPlaybackRate: (rate: number) => boolean;
+  /** P18: the video finished, and pausing through the session. */
+  isCompleted: boolean;
+  pause: () => void;
 };
 
 export type PlayerEngineSheets = {
   streamQuality: StreamQualitySheetState;
   headsetKeys: { visible: boolean; close: () => void };
   audio: { visible: boolean; close: () => void; engine: AudioEngine };
+  sleepTimer: { visible: boolean; close: () => void };
+  dailyLimit: { visible: boolean; close: () => void };
+  limitReached: { visible: boolean; close: () => void };
 };
 
 export type PlayerEngine = {
@@ -56,7 +73,17 @@ export type PlayerEngine = {
   keys: HeadsetKeys;
   /** P17 #574: no picture is decoded; the screen shows the audio-only cover. */
   audioOnly: boolean;
+  /** P18 #712: the Kid Lock overlay covers the Player. */
+  kidLock: boolean;
 };
+
+/** A short message, shown and spoken (the Player's own toasts). */
+function announce(message: string): void {
+  if (Platform.OS === 'android') {
+    ToastAndroid.show(message, ToastAndroid.SHORT);
+  }
+  AccessibilityInfo.announceForAccessibility(message);
+}
 
 export function usePlayerEngine(input: UsePlayerEngineInput): PlayerEngine {
   const { t } = useTranslation();
@@ -107,6 +134,42 @@ export function usePlayerEngine(input: UsePlayerEngineInput): PlayerEngine {
     setPlaybackRate: input.setPlaybackRate,
   });
 
+  // P18
+  const sleepAnnounce = useCallback(
+    (what: 'sleep' | 'limit') =>
+      announce(what === 'sleep' ? t('playerEngine.sleepStopped') : t('playerEngine.limitReachedToast')),
+    [t],
+  );
+  const sleepLimits = useSleepLimits({
+    player,
+    isReady,
+    isPlaying: input.isPlaying,
+    isCompleted: input.isCompleted,
+    pause: input.pause,
+    announce: sleepAnnounce,
+  });
+  const sleepTimer = useSleepTimer();
+  const limitState = useLimitState();
+  const sleepMinutes = sleepMinutesLeft(sleepTimer);
+  const sleepLabel =
+    sleepTimer.mode === 'endOfVideo'
+      ? t('playerEngine.sleepEndValue')
+      : sleepMinutes != null
+        ? t('playerEngine.sleepLeft', { time: formatDuration(t, sleepMinutes) })
+        : t('playerEngine.sleepOff');
+  const limitLeft = limitSecondsLeft(limitState, localDay(new Date()));
+  const limitLabel =
+    limitLeft == null
+      ? t('playerEngine.limitOff')
+      : t('playerEngine.limitLeftValue', { time: formatDuration(t, limitLeft / 60) });
+  const openSleep = useCallback(() => openEngineSheet('sleepTimer'), []);
+  const openLimit = useCallback(() => openEngineSheet('dailyLimit'), []);
+  const startKidLock = useCallback(() => {
+    closeEngineSheet();
+    setKidLock(true);
+    announce(t('playerEngine.kidLockOn'));
+  }, [t]);
+
   const openSheet = useOpenEngineSheet();
   const openHeadsetKeys = useCallback(() => openEngineSheet('headsetKeys'), []);
   const openAudio = useCallback(() => openEngineSheet('audio'), []);
@@ -128,8 +191,15 @@ export function usePlayerEngine(input: UsePlayerEngineInput): PlayerEngine {
   );
 
   const option = useMemo<PlayerEngineOption>(
-    () => ({ stream: stream.option, headsetKeys: { open: openHeadsetKeys }, audio: audioOption }),
-    [audioOption, openHeadsetKeys, stream.option],
+    () => ({
+      stream: stream.option,
+      headsetKeys: { open: openHeadsetKeys },
+      audio: audioOption,
+      sleep: { valueLabel: sleepLabel, open: openSleep },
+      limit: { valueLabel: limitLabel, open: openLimit },
+      kidLock: { start: startKidLock },
+    }),
+    [audioOption, limitLabel, openHeadsetKeys, openLimit, openSleep, sleepLabel, startKidLock, stream.option],
   );
 
   const sheets = useMemo<PlayerEngineSheets>(
@@ -137,9 +207,12 @@ export function usePlayerEngine(input: UsePlayerEngineInput): PlayerEngine {
       streamQuality: stream.sheet,
       headsetKeys: { visible: openSheet === 'headsetKeys', close: closeEngineSheet },
       audio: { visible: openSheet === 'audio', close: closeEngineSheet, engine: audio },
+      sleepTimer: { visible: openSheet === 'sleepTimer', close: closeEngineSheet },
+      dailyLimit: { visible: openSheet === 'dailyLimit', close: closeEngineSheet },
+      limitReached: { visible: sleepLimits.limitSheetVisible, close: sleepLimits.closeLimitSheet },
     }),
-    [audio, openSheet, stream.sheet],
+    [audio, openSheet, sleepLimits.closeLimitSheet, sleepLimits.limitSheetVisible, stream.sheet],
   );
 
-  return { option, sheets, keys, audioOnly: audio.audioOnly };
+  return { option, sheets, keys, audioOnly: audio.audioOnly, kidLock: sleepLimits.kidLock };
 }

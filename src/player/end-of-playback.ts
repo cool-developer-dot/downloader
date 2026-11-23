@@ -37,6 +37,8 @@ export type EndOfPlaybackInput = {
   folderNextId?: string | null;
   /** P6 #733: the user cancelled the "Next: …" card for this video: it ends without moving on. */
   advanceCancelled?: boolean;
+  /** Faran's P18 #644: the sleep timer is set to "End of this video": it stops, before any loop or repeat. */
+  sleepAtEnd?: boolean;
 };
 
 export type EndOfPlaybackOutcome =
@@ -59,9 +61,13 @@ export type EndOfPlaybackOutcome =
  * 3. Repeat all → the next one of the queue, the first after the last (a video without a queue repeats itself);
  * 4. Auto Play Next (P6) → the next one of the queue, without wrapping; with no queue, the next in its folder;
  * 5. otherwise → the End of Playback Action's Stop, as before P5.
- * A "next" the user cancelled on the Next Episode card (P6) stops instead.
+ * A "next" the user cancelled on the Next Episode card (P6) stops instead. The sleep timer's "End of this video"
+ * (Faran's P18) stops first of all.
  */
 export function decideEndOfPlayback(input: EndOfPlaybackInput): EndOfPlaybackOutcome {
+  if (input.sleepAtEnd) {
+    return { kind: 'stop' };
+  }
   const outcome = decideBeforeCancel(input);
   return outcome.kind === 'next' && input.advanceCancelled ? { kind: 'stop' } : outcome;
 }

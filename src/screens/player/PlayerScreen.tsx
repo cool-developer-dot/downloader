@@ -172,6 +172,8 @@ import { usePlayerEditTools } from './page/use-player-edit-tools';
 import { usePlayerEngine } from '@/player/engine/use-player-engine';
 import { getSpeedSettings, speedButtonTarget } from '@/player/engine/speed-settings';
 import { openEngineSheet, useOpenEngineSheet } from '@/player/engine/engine-sheets';
+import { useKidLock } from '@/player/engine/sleep-limits';
+import { KidLockOverlay } from './engine/KidLockOverlay';
 import { AudioOnlyCover } from './engine/AudioOnlyCover';
 import { PlayerEngineSheets } from './engine/PlayerEngineSheets';
 
@@ -813,8 +815,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const p10CloseSheets = p10EditTools.closeSheets;
   // ── end P10 ────────────────────────────────────────────────────────────────────────────────────────────────────
 
-  // Faran's sheets (P14–P19) count as open sheets too.
+  // Faran's sheets (P14–P19) count as open sheets too; P18's Kid Lock blocks the Player's keys like the Lock.
   const engineSheetOpen = useOpenEngineSheet() != null;
+  const kidLock = useKidLock();
   const anyModalOpen =
     engineSheetOpen ||
     speedSheetOpen ||
@@ -1517,7 +1520,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     seekStepSeconds,
     isFullscreen,
     pipActive,
-    inputBlocked: anyModalOpen || locked,
+    inputBlocked: anyModalOpen || locked || kidLock,
     handlers: engineHandlers,
     volume,
     hud,
@@ -1525,6 +1528,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
     leaveToDownloads,
     playbackRate: session.playbackRate,
     setPlaybackRate,
+    isCompleted: session.isCompleted,
+    pause: controller.pause,
   });
   // P15 #703: over the lock screen, the options and the tab bar ask for the phone's unlock first.
   const { whenUnlocked } = engine.keys;
@@ -2220,6 +2225,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
       {/* P10: Video converter, Compress video and the running edit's progress. */}
       <PlayerEditToolsSheets state={p10EditTools.sheets} />
       <PlayerEngineSheets sheets={engine.sheets} />
+      {/* Faran's P18 #712: Kid Lock covers the whole Player, its controls and tab bar. */}
+      <KidLockOverlay visible={kidLock} />
     </SafeAreaScreen>
   );
 });

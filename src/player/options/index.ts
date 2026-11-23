@@ -16,6 +16,7 @@ import './p14-streams';
 import './p15-headset-keys';
 import './p16-speed';
 import './p17-audio';
+import './p18-sleep-limits';
 
 export {
   playerOptions,

@@ -31,4 +31,10 @@ export type PlayerEngineOption = {
   headsetKeys: { open: () => void };
   /** P17: the audio tracks, the delay and Audio Only Mode. */
   audio: PlayerEngineAudioOption;
+  /** P18 #644: "Off", "23 min left", "End of video". */
+  sleep: { valueLabel: string; open: () => void };
+  /** P18 #730: "No limit", "35 min left today". */
+  limit: { valueLabel: string; open: () => void };
+  /** P18 #712 */
+  kidLock: { start: () => void };
 };

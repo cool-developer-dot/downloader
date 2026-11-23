@@ -5,7 +5,7 @@
 
 import { createStore } from '@/store/shared/create-store';
 
-export type EngineSheet = 'streamQuality' | 'headsetKeys' | 'audio';
+export type EngineSheet = 'streamQuality' | 'headsetKeys' | 'audio' | 'sleepTimer' | 'dailyLimit';
 
 const useEngineSheetStore = createStore<{ open: EngineSheet | null }>()(() => ({ open: null }));
 

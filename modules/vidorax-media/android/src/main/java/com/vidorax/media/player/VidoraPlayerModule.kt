@@ -33,10 +33,13 @@ class VidoraPlayerModule : Module() {
   /** One session player per expo-video player (its basic session and the playback service's share it). */
   private val sessionPlayers = WeakHashMap<VideoPlayer, QueueSessionPlayer>()
 
+  /** P18: each player's sleep-timer / daily-limit countdown. */
+  private val deadlines = WeakHashMap<VideoPlayer, PlaybackDeadline>()
+
   override fun definition() = ModuleDefinition {
     Name("VidoraPlayer")
 
-    Events(ON_QUEUE_COMMAND)
+    Events(ON_QUEUE_COMMAND, ON_PLAYBACK_DEADLINE)
 
     OnCreate {
       // P17 / P19: every new player's audio sink runs a VidoraAudioProcessor first (its own instance).
@@ -52,7 +55,23 @@ class VidoraPlayerModule : Module() {
       VideoPlayerHooks.audioProcessors = null
       VideoPlayerHooks.sessionPlayerFactory = null
       sessionPlayers.clear()
+      deadlines.values.forEach { it.cancel() }
+      deadlines.clear()
+    }
 
+    // Faran's packages: everything kept for a player (countdown, session player), when it is released.
+    AsyncFunction("releasePlayer") { player: VideoPlayer ->
+      deadlines.remove(player)?.cancel()
+      sessionPlayers.remove(player)
+    }.runOnQueue(Queues.MAIN)
+
+    // P18 #644 / #730: the player fades out and pauses `inMs` from now (null cancels); then onPlaybackDeadline.
+    AsyncFunction("setPlaybackDeadline") { player: VideoPlayer, inMs: Double?, fadeMs: Int ->
+      val deadline = deadlines.getOrPut(player) {
+        PlaybackDeadline(player.player) { runCatching { sendEvent(ON_PLAYBACK_DEADLINE, emptyMap<String, Any>()) } }
+      }
+      deadline.arm(inMs?.toLong(), fadeMs.toLong())
+    }.runOnQueue(Queues.MAIN)
 
     // P14 #670 (stream quality cap) and P17 #574 (Audio Only Mode: no video decoding).
     AsyncFunction("setTrackLimits") { player: VideoPlayer, maxLongSide: Int?, videoDisabled: Boolean ->
@@ -112,6 +131,7 @@ class VidoraPlayerModule : Module() {
 
   companion object {
     const val ON_QUEUE_COMMAND = "onQueueCommand"
+    const val ON_PLAYBACK_DEADLINE = "onPlaybackDeadline"
   }
 }
 

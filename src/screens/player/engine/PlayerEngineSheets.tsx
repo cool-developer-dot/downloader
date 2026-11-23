@@ -7,6 +7,7 @@ import { streamCapLabel, type PlayerEngineSheets as Sheets } from '@/player/engi
 import { EngineChoiceSheet, type EngineChoice } from './EngineChoiceSheet';
 import { AudioSheet } from './AudioSheet';
 import { HeadsetKeysSheet } from './HeadsetKeysSheet';
+import { DailyLimitSheet, LimitReachedSheet, SleepTimerSheet } from './SleepLimitSheets';
 
 export type PlayerEngineSheetsProps = { sheets: Sheets };
 
@@ -44,6 +45,9 @@ export const PlayerEngineSheets = memo(function PlayerEngineSheets({ sheets }: P
       />
       <HeadsetKeysSheet visible={sheets.headsetKeys.visible} onClose={sheets.headsetKeys.close} />
       <AudioSheet visible={sheets.audio.visible} onClose={sheets.audio.close} audio={sheets.audio.engine} />
+      <SleepTimerSheet visible={sheets.sleepTimer.visible} onClose={sheets.sleepTimer.close} />
+      {sheets.dailyLimit.visible ? <DailyLimitSheet visible onClose={sheets.dailyLimit.close} /> : null}
+      {sheets.limitReached.visible ? <LimitReachedSheet visible onClose={sheets.limitReached.close} /> : null}
     </>
   );
 });

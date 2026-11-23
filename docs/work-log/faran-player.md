@@ -134,3 +134,27 @@ while playing, clamp, empty buffers).
 Bug found and fixed before commit: Media3 polls each processor with `AudioProcessor.EMPTY_BUFFER`, and writing it into
 the processor's empty output (the same shared buffer) threw "The source buffer is this buffer" — every video failed
 to play. The processor now does nothing on an empty buffer (two JVM tests added).
+
+## P18 Sleep timer & limits (#644, #730, #712)
+
+| # | Feature | Where | How |
+| --- | --- | --- | --- |
+| #644 | Sleep Timer | ⋮ → Playback → Sleep timer: 5, 10, 15, 30, 45, 60, 90 or 120 minutes, End of this video, Off | One native countdown (`PlaybackDeadline.kt`, a main-looper Handler, so it also runs with the screen off or in the mini player): over the last 10 s the volume ramps down in 100 ms steps, then the player pauses and the volume is set back. "End of this video" stops at the end instead of repeating or going to the next one (`end-of-playback.ts`: `sleepAtEnd` comes first). For this run only; the row shows the minutes left. |
+| #730 | Playback Time Limit | ⋮ → Playback → Daily limit: 15, 30, 45 min, 1, 1.5, 2, 3 h, No limit | Watching is counted every 5 s while a video plays and kept per local day (MMKV, reset at midnight). The timer and the limit share the native countdown (whichever is first). At the limit the video fades out and pauses, the "Today's limit is reached" sheet shows, and Play is refused with a toast for the rest of the day. "15 more minutes" and changing the limit need the App Lock PIN when App Lock is on. |
+| #712 | Kid Lock | ⋮ → Playback → Kid lock | Every touch on the Player, Back, the volume keys (owner `player.p18.kidLock` on the key channel) and the tab bar do nothing; a lock button stays on screen and holding it for 3 s (a progress bar fills) unlocks. For this run only. |
+
+The countdown is only re-armed when the deadline moves by more than 1.5 s (`shouldRearm`), so the 5 s watch count
+never restarts a fade that is under way.
+
+Tests: `sleep-limits.test.ts` (timer and end of video, local day, saved state, watching and more time, the shared
+countdown, the re-arm rule, durations, Kid Lock), `p18-sleep-limits.test.ts` (the three rows), `end-of-playback-precedence.test.ts`
+(sleep at the end beats repeat and autoplay); JVM `FadeCurveTest.kt`.
+
+### P18 device test (release build, Pixel_8 AVD, 2026-11-23)
+
+| Check | Result |
+| --- | --- |
+| Sleep timer 5 min, set 13:53:50 | The sound faded out and the player paused at 13:59:00; the row went back to Off |
+| Kid lock on | Tab bar, Back and the volume keys did nothing (volume stayed at 7); a 3.6 s hold on the lock unlocked |
+| Daily limit 15 min, 7 min already watched, set 14:00:22 | Faded out and paused at 14:08:41; "Today's limit is reached" sheet; Play refused with a toast |
+| "15 more minutes" (App Lock off, so no PIN) | The video played again |

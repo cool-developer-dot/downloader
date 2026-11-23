@@ -142,3 +142,33 @@ export function selectAudioTrack(player: { audioTrack: unknown }, track: unknown
     // A released player.
   }
 }
+
+/** P18 #644 / #730: the countdown (ms from now, the fade inside it); null cancels. */
+export function applyPlaybackDeadline(player: VideoPlayer, inMs: number | null, fadeMs: number): void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return;
+  }
+  native
+    .setPlaybackDeadline(player, inMs == null ? null : Math.max(0, Math.round(inMs)), Math.max(0, Math.round(fadeMs)))
+    .catch((error: unknown) => warn('setPlaybackDeadline', error));
+}
+
+/** P18: the countdown ran out (the video faded out and paused). Returns the unsubscribe. */
+export function subscribePlaybackDeadline(listener: () => void): () => void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return () => undefined;
+  }
+  const subscription = native.addListener('onPlaybackDeadline', () => listener());
+  return () => subscription.remove();
+}
+
+/** Releases what the native module keeps for the player (countdown, session player); the session calls it last. */
+export function releasePlayerEngine(player: VideoPlayer): void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return;
+  }
+  native.releasePlayer(player).catch((error: unknown) => warn('releasePlayer', error));
+}

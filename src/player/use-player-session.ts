@@ -35,6 +35,7 @@ import {
 } from './errors';
 import { emitPlaybackEvent } from './playback-events';
 import { useAudioOnly } from './engine/audio-settings';
+import { releasePlayerEngine } from './engine/native-player';
 import {
   adaptVideoPlayer,
   createPlayerController,
@@ -530,13 +531,15 @@ export function usePlayerSession(
       cancelPendingReveal();
       watchdogRef.current?.dispose();
       watchdogRef.current = null;
+      // Faran's packages: the native audio effects, countdown and session player kept for this player.
+      releasePlayerEngine(player);
       try {
         controller.dispose();
       } catch {
         // ignore
       }
     };
-  }, [cancelPendingReveal, controller]);
+  }, [cancelPendingReveal, controller, player]);
 
   // Picture-in-picture: the screen arms it while the video plays; the window's own events say when it is showing.
   const pictureInPictureRef = useRef<PictureInPictureState>({ armed: false, active: false });

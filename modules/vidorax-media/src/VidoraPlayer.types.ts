@@ -14,6 +14,8 @@ export type QueueCommandEvent = { command: 'next' | 'previous' };
 
 export type VidoraPlayerEvents = {
   onQueueCommand: (event: QueueCommandEvent) => void;
+  /** P18 #644 / #730: the countdown set by `setPlaybackDeadline` ran out (the video faded out and paused). */
+  onPlaybackDeadline: () => void;
 };
 
 export interface VidoraPlayerModuleApi {
@@ -34,6 +36,13 @@ export interface VidoraPlayerModuleApi {
    * time at `speed`. Applied by the player's VidoraAudioProcessor; again after every seek.
    */
   setAudioDelay(player: VideoPlayer, delayMs: number, speed: number): Promise<void>;
+  /**
+   * P18 #644 / #730: `inMs` from now the sound fades out over `fadeMs` and the player pauses (its volume is then put
+   * back), and `onPlaybackDeadline` fires; null cancels. Native, so it runs with the screen off.
+   */
+  setPlaybackDeadline(player: VideoPlayer, inMs: number | null, fadeMs: number): Promise<void>;
+  /** Releases what the module keeps for the player (countdown, session player); the session calls it last. */
+  releasePlayer(player: VideoPlayer): Promise<void>;
   /** P15 #560: pause when headphones are unplugged or a Bluetooth headset disconnects. */
   setPauseWhenAudioBecomesNoisy(player: VideoPlayer, enabled: boolean): Promise<void>;
   /** P15 #703: show the app's window over the lock screen; false when there is no activity. */
