@@ -52,6 +52,10 @@ export type PlayerOptionUi = {
   openSubtitleEncoding: () => void;
   /** P3 #602: subtitles off for this video. */
   subtitlesOff: () => void;
+  /** P4 #592–#596: the subtitle style sheet. */
+  openSubtitleStyle: () => void;
+  /** P4 #599: the second-subtitle sheet. */
+  openSubtitleSecond: () => void;
 };
 
 export type PlayerOptionContext = {
@@ -84,6 +88,8 @@ export type PlayerOptionContext = {
     /** The showing file's encoding ("Automatic (UTF-8)"); null when no file shows. */
     encodingLabel: string | null;
     autoDetect: boolean;
+    /** P4 #599: the second subtitle; null when there is none. */
+    secondLabel: string | null;
   };
   ui: PlayerOptionUi;
 };

@@ -31,6 +31,8 @@ const ui: PlayerOptionUi = {
   openSubtitleSync: () => calls.push('subtitleSync'),
   openSubtitleEncoding: () => calls.push('subtitleEncoding'),
   subtitlesOff: () => calls.push('subtitlesOff'),
+  openSubtitleStyle: () => calls.push('subtitleStyle'),
+  openSubtitleSecond: () => calls.push('subtitleSecond'),
 };
 
 const context = (display: Partial<PlayerOptionContext['display']> = {}): PlayerOptionContext => ({
@@ -44,7 +46,7 @@ const context = (display: Partial<PlayerOptionContext['display']> = {}): PlayerO
   orientationMode: 'auto',
   incoming: null,
   display: { fit: 'fit', mirror: 'none', fillCutout: false, infoOverlay: false, ...display },
-  subtitles: { label: null, isFile: false, offsetMs: 0, encodingLabel: null, autoDetect: true },
+  subtitles: { label: null, isFile: false, offsetMs: 0, encodingLabel: null, autoDetect: true, secondLabel: null },
   ui,
 });
 
