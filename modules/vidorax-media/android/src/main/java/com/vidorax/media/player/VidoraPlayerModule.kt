@@ -52,11 +52,14 @@ class VidoraPlayerModule : Module() {
           QueueSessionPlayer(exo) { command -> runCatching { sendEvent(ON_QUEUE_COMMAND, mapOf("command" to command)) } }
         }
       }
+      // P15 / P18 / P19: what the module kept for a player goes with it (main thread, before its ExoPlayer is released).
+      VideoPlayerHooks.onRelease = { owner -> release(owner) }
     }
 
     OnDestroy {
       VideoPlayerHooks.audioProcessors = null
       VideoPlayerHooks.sessionPlayerFactory = null
+      VideoPlayerHooks.onRelease = null
       sessionPlayers.clear()
       deadlines.values.forEach { it.cancel() }
       deadlines.clear()
@@ -80,13 +83,6 @@ class VidoraPlayerModule : Module() {
     AsyncFunction("setAudioEffects") {
       player: VideoPlayer, eqEnabled: Boolean, bandLevelsMb: List<Int>, bassStrength: Int, virtualizerStrength: Int ->
       effectsFor(player).apply(AudioEffectsHost.Settings(eqEnabled, bandLevelsMb, bassStrength, virtualizerStrength))
-    }.runOnQueue(Queues.MAIN)
-
-    // Faran's packages: everything kept for a player (effects, countdown, session player), when it is released.
-    AsyncFunction("releasePlayer") { player: VideoPlayer ->
-      effects.remove(player)?.releaseAll()
-      deadlines.remove(player)?.cancel()
-      sessionPlayers.remove(player)
     }.runOnQueue(Queues.MAIN)
 
     // P19: the device's equalizer bands and which effects exist.
@@ -154,6 +150,13 @@ class VidoraPlayerModule : Module() {
       }
       LockScreen.requestUnlock(activity, keyguard) { unlocked -> promise.resolve(unlocked) }
     }.runOnQueue(Queues.MAIN)
+  }
+
+  /** Everything kept for a player (effects, countdown, session player): expo-video is releasing it. Main thread. */
+  private fun release(player: VideoPlayer) {
+    effects.remove(player)?.releaseAll()
+    deadlines.remove(player)?.cancel()
+    sessionPlayers.remove(player)
   }
 
   /** The effects host for the player's current audio session (a new session gets new effects). */

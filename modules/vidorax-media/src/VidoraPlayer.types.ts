@@ -69,8 +69,6 @@ export interface VidoraPlayerModuleApi {
     bassStrength: number,
     virtualizerStrength: number,
   ): Promise<void>;
-  /** Releases what the module keeps for the player (effects, countdown, session player); the session calls it last. */
-  releasePlayer(player: VideoPlayer): Promise<void>;
   /** P19: the phone's equalizer bands and which effects it has. */
   describeAudioEffects(player: VideoPlayer): Promise<AudioEffectsInfo>;
   /** P15 #560: pause when headphones are unplugged or a Bluetooth headset disconnects. */

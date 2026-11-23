@@ -14,9 +14,17 @@ function warn(call: string, error: unknown): void {
   playerLog('player.engine_call_failed', { call, message: error instanceof Error ? error.message : String(error) }, 'warn');
 }
 
+/** Players the session let go (`releasePlayerEngine`): the hooks' late cleanups skip them. */
+const releasedPlayers = new WeakSet<object>();
+
+/** The native module for calls on this player; null without the module or once the player was released. */
+function nativeFor(player: object) {
+  return releasedPlayers.has(player) ? null : getVidoraPlayer();
+}
+
 /** P14 #670 / P17 #574: the stream quality cap and Audio Only Mode. */
 export function applyTrackLimits(player: VideoPlayer, limits: { maxLongSide: number | null; videoDisabled: boolean }): void {
-  const native = getVidoraPlayer();
+  const native = nativeFor(player);
   if (!native) {
     return;
   }
@@ -25,7 +33,7 @@ export function applyTrackLimits(player: VideoPlayer, limits: { maxLongSide: num
 
 /** P14 #670: the playing video track's size (an adaptive stream changes it with the connection). */
 export async function readPlayingVideoSize(player: VideoPlayer): Promise<PlayingVideoSize | null> {
-  const native = getVidoraPlayer();
+  const native = nativeFor(player);
   if (!native) {
     return null;
   }
@@ -42,7 +50,7 @@ export function applyQueueNavigation(
   player: VideoPlayer,
   navigation: { enabled: boolean; hasNext: boolean; hasPrevious: boolean },
 ): void {
-  const native = getVidoraPlayer();
+  const native = nativeFor(player);
   if (!native) {
     return;
   }
@@ -67,7 +75,7 @@ export function subscribeQueueCommands(listener: (command: 'next' | 'previous') 
 
 /** P15 #560: pause when headphones are unplugged or a Bluetooth headset disconnects. */
 export function applyPauseWhenAudioBecomesNoisy(player: VideoPlayer, enabled: boolean): void {
-  const native = getVidoraPlayer();
+  const native = nativeFor(player);
   if (!native) {
     return;
   }
@@ -125,7 +133,7 @@ export function applyPitchCorrection(player: { preservesPitch: boolean }, on: bo
 
 /** P17 #554: the audio delay (ms), the same in real time at this speed. */
 export function applyAudioDelay(player: VideoPlayer, delayMs: number, speed: number): void {
-  const native = getVidoraPlayer();
+  const native = nativeFor(player);
   if (!native) {
     return;
   }
@@ -145,7 +153,7 @@ export function selectAudioTrack(player: { audioTrack: unknown }, track: unknown
 
 /** P18 #644 / #730: the countdown (ms from now, the fade inside it); null cancels. */
 export function applyPlaybackDeadline(player: VideoPlayer, inMs: number | null, fadeMs: number): void {
-  const native = getVidoraPlayer();
+  const native = nativeFor(player);
   if (!native) {
     return;
   }
@@ -169,7 +177,7 @@ export function applySoundShaping(
   player: VideoPlayer,
   shaping: { mono: boolean; balance: number; nightMode: boolean; normalize: boolean; boostPercent: number },
 ): void {
-  const native = getVidoraPlayer();
+  const native = nativeFor(player);
   if (!native) {
     return;
   }
@@ -183,7 +191,7 @@ export function applyAudioEffects(
   player: VideoPlayer,
   effects: { eqEnabled: boolean; bandLevelsMb: number[]; bassStrength: number; virtualizerStrength: number },
 ): void {
-  const native = getVidoraPlayer();
+  const native = nativeFor(player);
   if (!native) {
     return;
   }
@@ -194,7 +202,7 @@ export function applyAudioEffects(
 
 /** P19: the phone's equalizer bands; null without the module or when it can't tell. */
 export async function readAudioEffectsInfo(player: VideoPlayer): Promise<AudioEffectsInfo | null> {
-  const native = getVidoraPlayer();
+  const native = nativeFor(player);
   if (!native) {
     return null;
   }
@@ -206,11 +214,11 @@ export async function readAudioEffectsInfo(player: VideoPlayer): Promise<AudioEf
   }
 }
 
-/** Releases what the native module keeps for the player (audio effects, countdown); the session calls it last. */
+/**
+ * The session is letting the player go: Faran's calls from now on skip it (the hooks' own cleanups run after
+ * useVideoPlayer has released it). The native module drops what it kept for the player by itself, when expo-video
+ * releases it (VideoPlayerHooks.onRelease).
+ */
 export function releasePlayerEngine(player: VideoPlayer): void {
-  const native = getVidoraPlayer();
-  if (!native) {
-    return;
-  }
-  native.releasePlayer(player).catch((error: unknown) => warn('releasePlayer', error));
+  releasedPlayers.add(player);
 }

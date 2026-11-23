@@ -1,5 +1,5 @@
 /**
- * Faran's Player packages (P15, P17, P19): two hooks in expo-video's Android sources for modules/vidorax-media.
+ * Faran's Player packages (P15, P17, P18, P19): three hooks in expo-video's Android sources for modules/vidorax-media.
  *
  * expo-video builds its ExoPlayer and its media sessions inside its own classes, before any app code can reach the
  * player. The app needs two things there:
@@ -13,8 +13,11 @@
  *    plays one item, so a session's "next" / "previous" (a headset double press, a Bluetooth remote's ⏭) has nowhere
  *    to go. The hook lets the app give each session a forwarding player that hands those commands to the Player's own
  *    queue; everything else reaches the ExoPlayer unchanged.
+ * 3. The moment a player is released (P18 countdown, P19 audio effects, P15 session player). JavaScript can't ask for it
+ *    in time: `useVideoPlayer` releases the player in its own unmount cleanup, and a native call queued after it finds
+ *    the player gone. The hook runs on the main thread just before the ExoPlayer is released.
  *
- * Both hooks live in one object (`VideoPlayerHooks`); with nothing registered expo-video behaves exactly as stock.
+ * The hooks live in one object (`VideoPlayerHooks`); with nothing registered expo-video behaves exactly as stock.
  * The app builds expo-video from source for this (`expo.autolinking.android.buildFromSource` in package.json): the
  * prebuilt AAR would ignore these sources.
  *
@@ -50,6 +53,8 @@ import androidx.media3.exoplayer.ExoPlayer
  * - [sessionPlayerFactory] gives each media session of a player the \`Player\` it controls (one that forwards to the
  *   ExoPlayer). Called on the main thread when a session is built: once for the player's basic session and again
  *   when the playback service takes it over.
+ * - [onRelease] is called once per player on the main thread when it is released, just before its ExoPlayer is
+ *   (still usable then), so the app can drop what it kept for it.
  *
  * Null (the default) keeps expo-video's stock behaviour.
  */
@@ -66,6 +71,15 @@ object VideoPlayerHooks {
   @JvmStatic
   fun sessionPlayer(owner: VideoPlayer, player: ExoPlayer): Player =
     runCatching { sessionPlayerFactory?.invoke(owner, player) }.getOrNull() ?: player
+
+  @JvmStatic
+  @Volatile
+  var onRelease: ((owner: VideoPlayer) -> Unit)? = null
+
+  @JvmStatic
+  fun released(owner: VideoPlayer) {
+    runCatching { onRelease?.invoke(owner) }
+  }
 }
 `;
 
@@ -100,6 +114,15 @@ const EDITS = [
     anchor: `  var mediaSession: MediaSession = buildBasicMediaSession(context, player)`,
     patched: `  // ${MARKER}: the session controls the player VideoPlayerHooks gives (the ExoPlayer itself by default).
   var mediaSession: MediaSession = buildBasicMediaSession(context, VideoPlayerHooks.sessionPlayer(this, player))`,
+  },
+  {
+    file: path.join(VIDEO_DIR, 'player', 'VideoPlayer.kt'),
+    anchor: `    GlobalScope.launch(Dispatchers.Main) {
+      firstFrameEventGenerator.release()`,
+    patched: `    GlobalScope.launch(Dispatchers.Main) {
+      // ${MARKER}: the app drops what it kept for this player, while the ExoPlayer still works.
+      VideoPlayerHooks.released(this@VideoPlayer)
+      firstFrameEventGenerator.release()`,
   },
   {
     file: path.join(VIDEO_DIR, 'utils', 'MediaSessionUtils.kt'),

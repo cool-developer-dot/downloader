@@ -9,6 +9,7 @@ import { useVideoPlayer } from 'expo-video';
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -523,6 +524,10 @@ export function usePlayerSession(
     };
   }, [cancelPendingReveal, mediaId, player]);
 
+  // Faran's packages skip this player from now on (their hooks' cleanups would reach it released). A layout effect's
+  // cleanup runs before every passive cleanup of the same commit — so before useVideoPlayer's, which releases it.
+  useLayoutEffect(() => () => releasePlayerEngine(player), [player]);
+
   // Native controller lifetime matches the screen, not media switches.
   useEffect(() => {
     return () => {
@@ -531,8 +536,6 @@ export function usePlayerSession(
       cancelPendingReveal();
       watchdogRef.current?.dispose();
       watchdogRef.current = null;
-      // Faran's packages: the native audio effects, countdown and session player kept for this player.
-      releasePlayerEngine(player);
       try {
         controller.dispose();
       } catch {
