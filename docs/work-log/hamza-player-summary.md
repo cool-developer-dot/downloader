@@ -2,6 +2,12 @@
 
 Hamza's Player work for Faran: what was built, what is open, what to test. Detail per package is in `docs/work-log/hamza-player.md` (on `integration/player` up to P10; P11 and P12 add their sections in #50 / #51). Checklist ticks, ready to paste after device testing: `docs/work-log/hamza-player-checklist-ticks.md` / `.csv`.
 
+**P6 fix (#60, draft): device videos that don't switch.** From Device videos, Up next or ⏮ restarted the same video
+instead of switching to the one picked. The cause isn't found yet: every JavaScript step handles `device:<id>` like a
+library id (`docs/work-log/p6-device-next-trace.md`, with `node:test` cases in `src/player/p6-device-next.test.ts`).
+#60 adds `[P6-DEVNEXT]` log lines (development builds only) for Faran's repro. The fix follows once those lines show
+where the switch is lost. Device check 145.
+
 ## Packages
 
 | # | Package | Features (checklist #) | Points | PR | Status |
@@ -22,12 +28,6 @@ Hamza's Player work for Faran: what was built, what is open, what to test. Detai
 | | **Total** | **61 features** | **52** | | P1–P12 merged, P13 open (#59) |
 
 Checklist status of the 61 features (from the tick file): **Built 38, Built with limitation 23, Not planned 0, Not started 0** (#667 Chromecast is Built in P13). Filters #571 / #572 are Not planned and not among the 61: their tile became Mirror / Flip #573.
-
-**P6 fix (#60, draft): device videos that don't switch.** From Device videos, Up next or ⏮ restarted the same video
-instead of switching to the one picked. The cause isn't found yet: every JavaScript step handles `device:<id>` like a
-library id (`docs/work-log/p6-device-next-trace.md`, with `node:test` cases in `src/player/p6-device-next.test.ts`).
-#60 adds `[P6-DEVNEXT]` log lines (development builds only) for Faran's repro. The fix follows once those lines show
-where the switch is lost. Device check 145.
 
 ## Open decisions for Faran
 
@@ -153,6 +153,12 @@ Release build, emulator and one real phone, all six themes and Urdu. 144 checks,
 49. Auto Play Next off (default): a library list stops at the end, as before. On: the next one plays; the last one stops. A video from download details (no queue) goes on to the next in its folder.
 50. Next Episode card: a folder with "Show S01E01.mp4", "Show S01E02.mp4" and Auto Play Next on. The card shows 10 s before the end and counts down; Play now; Cancel (the video stops at its end); pause and seek back (it hides). No card for "Holiday.mp4" → "Work.mp4". Check it's clear of the controls on the card and in full screen.
 51. Auto Play Next in picture-in-picture and with background play on and the screen off: the next video plays.
+145. **P6 fix (#60), added after check 144: device videos switch** (a development build first, for #60's `[P6-DEVNEXT]` lines; then the build with the fix):
+     Device videos → quiet.mp4 → Up next → two-audio.mp4 plays (not quiet.mp4 again). Then, from a device video with one
+     before it, ⏮ at about 1 s goes to the previous video; with none before it, ⏮ restarts (P15, by design). Then ⏭,
+     Auto Play Next at the end, Repeat all wrapping from the last device video to the first, a playlist with a device video
+     in it, and the next-episode card's Play now: each switches. A library video and a playlist of library videos still
+     do exactly as before.
 
 ### P7 Playlists (#46)
 
@@ -284,17 +290,6 @@ is created by reflection).
      "Casting to …" cover and every message; TalkBack reads the Cast button and the device rows.
 144. **The media notification while casting:** note what it shows and does (logged for Faran: it still controls the paused
      phone player).
-
-### P6 fix: device videos switch (#60)
-
-Check 145 brings the list to 145 checks.
-
-145. **Device videos switch** (a development build first, for #60's `[P6-DEVNEXT]` lines; then the build with the fix):
-     Device videos → quiet.mp4 → Up next → two-audio.mp4 plays (not quiet.mp4 again). Then, from a device video with one
-     before it, ⏮ at about 1 s goes to the previous video; with none before it, ⏮ restarts (P15, by design). Then ⏭,
-     Auto Play Next at the end, Repeat all wrapping from the last device video to the first, a playlist with a device video
-     in it, and the next-episode card's Play now: each switches. A library video and a playlist of library videos still
-     do exactly as before.
 
 ## Files changed outside the Player
 
