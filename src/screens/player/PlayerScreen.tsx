@@ -59,7 +59,15 @@ import {
 import type { PlayerOptionContext, PlayerOptionUi } from '@/player/options';
 import { useControlsVisibility } from '@/player/use-controls-visibility';
 import { useFullscreenLifecycle } from '@/player/use-fullscreen-lifecycle';
-import { usePlayQueueNeighbours, usePlayQueueStore } from '@/player/play-queue';
+import {
+  movePlayQueueItem,
+  removeFromPlayQueue,
+  setPlayQueueShuffle,
+  usePlayQueueNeighbours,
+} from '@/player/play-queue';
+import { setAutoPlayNext, setNextEpisodePrompt } from '@/player/auto-next-preference';
+import { nextEpisodePromptState } from '@/player/next-episode-prompt';
+import { queueMediaTitle } from '@/player/queue-media';
 import { showAppDialog } from '@/components/modals/app-dialog';
 import { deleteLoop, renameLoop, saveLoop } from '@/player/repeat-preference';
 import { MAX_SAVED_LOOPS_PER_VIDEO, nextLoopName, type SavedLoop } from '@/player/saved-loops';
@@ -133,6 +141,9 @@ import { SubtitleEncodingSheet, SubtitleSyncSheet, SubtitleTrackSheet } from './
 import { SubtitleStyleSheet } from './page/SubtitleStyleSheet';
 import { AbRepeatSheet, EndOfPlaybackSheet, LoopNameModal } from './page/RepeatSheets';
 import { useContinueAfterAutoAdvance, usePlayerRepeat } from './page/use-repeat';
+import { NextEpisodeCard } from './page/NextEpisodeCard';
+import { QueueSheet } from './page/QueueSheet';
+import { usePlayerQueueContext } from './page/use-queue';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -278,6 +289,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
   // P5: which repeat sheet is open, and the loop-name dialog (saving the A-B loop, or renaming a saved one).
   const [repeatSheet, setRepeatSheet] = useState<'endOfPlayback' | 'abRepeat' | null>(null);
   const [loopNaming, setLoopNaming] = useState<{ mode: 'save' } | { mode: 'rename'; loop: SavedLoop } | null>(null);
+  // P6: the queue sheet ("Up next").
+  const [queueSheetOpen, setQueueSheetOpen] = useState(false);
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const notYet = usePlayerNotYet();
@@ -698,7 +711,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
     displaySheet != null ||
     subtitleSheet != null ||
     repeatSheet != null ||
-    loopNaming != null;
+    loopNaming != null ||
+    queueSheetOpen;
 
   const onSingleTap = useCallback(() => {
     if (anyModalOpen || session.isSeeking) {
@@ -776,6 +790,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     setSubtitleSheet(null);
     setRepeatSheet(null);
     setLoopNaming(null);
+    setQueueSheetOpen(false);
     setFrameMode(false);
     setLocked(true);
   }, [hud, endLongPress, setLocked]);
@@ -798,7 +813,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
 
   // ── P5 Repeat & loops ──────────────────────────────────────────────────────────────────────────────────────────
   // The A-B loop of this video, saved loops, and what the end of the video does (src/player/end-of-playback.ts).
-  const queueIds = usePlayQueueStore((s) => s.ids);
+  // P6: the queue, Shuffle, Auto Play Next (with its folder fallback) and the Next Episode card's Cancel feed it.
+  const queueCtx = usePlayerQueueContext(activeMediaId);
   const repeat = usePlayerRepeat({
     player,
     controller,
@@ -810,8 +826,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
     durationSeconds: session.durationSeconds,
     replay,
     seekExact,
-    queue: queueIds,
+    queue: queueCtx.queue,
     goToMedia,
+    autoPlayNext: queueCtx.autoPlayNext,
+    folderNextId: queueCtx.folderNextId,
+    advanceCancelled: queueCtx.advanceCancelled,
   });
   useContinueAfterAutoAdvance({
     controller,
@@ -821,6 +840,39 @@ const PlayerSessionView = memo(function PlayerSessionView({
     hasError: Boolean(session.error),
   });
   const repeatOnTile = repeat.onTile;
+
+  // ── P6 Queue & auto-next ───────────────────────────────────────────────────────────────────────────────────────
+  const onShuffle = useCallback(
+    (on: boolean) => {
+      setPlayQueueShuffle(on);
+      announcePlayer(t(on ? 'videoPlayer.shuffleOn' : 'videoPlayer.shuffleOff'));
+    },
+    [t],
+  );
+  const onAutoPlayNext = useCallback(
+    (on: boolean) => {
+      setAutoPlayNext(on);
+      announcePlayer(t(on ? 'videoPlayer.autoNextOn' : 'videoPlayer.autoNextOff'));
+    },
+    [t],
+  );
+  const upcomingNextId = repeat.upcoming.kind === 'next' ? repeat.upcoming.mediaId : null;
+  // #733: "Next: …" in the last seconds, only when the end is about to play the next episode anyway.
+  const nextEpisode = nextEpisodePromptState({
+    enabled: queueCtx.nextEpisodePrompt,
+    upcoming: repeat.upcoming,
+    currentTitle: session.displayName ?? (activeMediaId ? queueMediaTitle(queueCtx.index, activeMediaId) : null),
+    nextTitle: upcomingNextId ? queueMediaTitle(queueCtx.index, upcomingNextId) : null,
+    positionSeconds: session.positionSeconds,
+    durationSeconds: session.durationSeconds,
+    cancelled: queueCtx.advanceCancelled,
+    ready: canCommand,
+  });
+  const cancelAdvance = queueCtx.cancelAdvance;
+  const onCancelNextEpisode = useCallback(() => {
+    cancelAdvance();
+    announcePlayer(t('videoPlayer.nextEpisodeCancelled'));
+  }, [cancelAdvance, t]);
   const onSaveLoop = useCallback(
     (name: string) => {
       setLoopNaming(null);
@@ -1099,6 +1151,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
         case 'subs':
           openSubtitleSheet('subtitles');
           return;
+        case 'upNext':
+          // P6 #619: the queue sheet.
+          endLongPress();
+          setQueueSheetOpen(true);
+          return;
         case 'abRepeat':
           // P5 #541: set A, then B; once the loop is on, the A-B sheet.
           endLongPress();
@@ -1167,8 +1224,17 @@ const PlayerSessionView = memo(function PlayerSessionView({
         endLongPress();
         setRepeatSheet('abRepeat');
       },
+      openQueue: () => {
+        endLongPress();
+        setQueueSheetOpen(true);
+      },
+      setShuffle: onShuffle,
+      setAutoPlayNext: onAutoPlayNext,
+      setNextEpisodePrompt,
     }),
     [
+      onAutoPlayNext,
+      onShuffle,
       endLongPress,
       notYet,
       onLoadSubtitle,
@@ -1284,6 +1350,13 @@ const PlayerSessionView = memo(function PlayerSessionView({
       secondLabel: subtitles.secondaryLabel,
     },
     repeat: { endActionLabel: repeat.endActionLabel, abLabel: repeat.abLabel },
+    queue: {
+      countLabel: t('videoPlayer.queueCount', { count: queueCtx.queue.length }),
+      size: queueCtx.queue.length,
+      shuffled: queueCtx.shuffled,
+      autoPlayNext: queueCtx.autoPlayNext,
+      nextEpisodePrompt: queueCtx.nextEpisodePrompt,
+    },
     ui: optionsUi,
   };
 
@@ -1497,6 +1570,19 @@ const PlayerSessionView = memo(function PlayerSessionView({
           />
           <DoubleTapSeekFeedback side={doubleTapSide} seconds={seekStepSeconds} />
           <LongPressSpeedPill visible={longPressActive} />
+          {/* P6 #733: the Next Episode card, above the controls along the bottom while they show. */}
+          <NextEpisodeCard
+            visible={nextEpisode.visible && !locked && !pipActive && !showError}
+            title={nextEpisode.visible ? nextEpisode.nextTitle : ''}
+            secondsLeft={nextEpisode.visible ? nextEpisode.secondsLeft : 0}
+            bottom={pageLayout ? (overlayVisible ? 56 : 12) : overlayVisible ? 120 : 16}
+            onPlayNow={() => {
+              if (nextEpisode.visible) {
+                goToMedia(nextEpisode.nextId);
+              }
+            }}
+            onCancel={onCancelNextEpisode}
+          />
           {locked && !showError && !pageLayout ? <PlayerLockedOverlay onUnlock={onUnlock} /> : null}
         </View>
       </View>
@@ -1829,6 +1915,27 @@ const PlayerSessionView = memo(function PlayerSessionView({
           }
         }}
         onClose={() => setLoopNaming(null)}
+      />
+      {/* P6 #619 / #542 / #534: the queue ("Up next"). */}
+      <QueueSheet
+        visible={queueSheetOpen}
+        ids={queueCtx.queue}
+        currentId={activeMediaId}
+        index={queueCtx.index}
+        shuffled={queueCtx.shuffled}
+        autoPlayNext={queueCtx.autoPlayNext}
+        onShuffle={onShuffle}
+        onAutoPlayNext={onAutoPlayNext}
+        onPlay={(id) => {
+          setQueueSheetOpen(false);
+          goToMedia(id);
+        }}
+        onMove={movePlayQueueItem}
+        onRemove={(id) => {
+          removeFromPlayQueue(id);
+          announcePlayer(t('videoPlayer.queueRemoved'));
+        }}
+        onClose={() => setQueueSheetOpen(false)}
       />
     </SafeAreaScreen>
   );

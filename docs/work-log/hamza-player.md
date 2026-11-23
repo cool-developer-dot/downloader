@@ -492,3 +492,108 @@ guard, so once the loop is cleared the real end still shows Replay. P5 doesn't s
 5. Repeat all in picture-in-picture, and with background play on and the screen off: the next video plays.
 6. Save loop with an Urdu name; the list after reopening the app; play, rename, delete (confirm); 50 loops.
 7. The A-B sheet and When the video ends in all six themes and in Urdu; TalkBack reads Set A / Set B with the time.
+
+## P6 — Queue & auto-next (#619, #620, #542, #534, #733)
+
+Built on `hamza/player` after P5; branch `hamza/P6-queue`. Its PR depends on P5. It extends `src/player/play-queue.ts`
+and keeps every function that was there working as before. The headset-key tests below call them as they're called
+today.
+
+### What the user sees
+
+| # | Feature | Where | How (evidence) |
+| --- | --- | --- | --- |
+| #619 | Play Queue | The page's "Up next" row (it said "Not available yet"); Options → Playback → Up next | A sheet listing the queue in play order, with the video playing marked "Now playing". Each video shows its length and "File missing" when gone; tap a video to play it. Up / down moves it one place; × removes it (not the one playing). Shuffle and Auto play next switches sit at the top. It draws up to 100 rows: 5 before the video playing and the rest after, with "Showing 100 of 240" when there are more. **The queue survives a restart** (MMKV `vidorax.mmkv.player.queue.v1`, up to 2,000 ids, with the shuffle state and the video playing). `page/QueueSheet.tsx`, `src/player/play-queue.ts`, `play-queue-persistence.ts`. |
+| #620 | Play Next | Library → long-press a video → Play next / Add to queue | **Play next** puts the video right after the one playing; a video already queued moves there. **Add to queue** adds it at the end, once ("Already in the queue"). Both show only while a video is open in the Player or the mini player, and not for that video itself; with no queue yet, one starts with the video playing. A toast confirms. `src/screens/library/hooks/useQueueSheetActions.ts`, `LibraryScreen.tsx` (one line), `play-queue.ts` (`playNextInQueue`, `addToPlayQueue`). |
+| #542 | Shuffle | Queue sheet; Options → Playback → Shuffle | On: the video playing keeps playing and comes first, and the rest are shuffled. Off: the original order comes back, with videos added meanwhile in their places and removed ones gone. The shuffle is seeded (mulberry32 plus Fisher–Yates), so the same seed gives the same order; tests use fixed seeds. `play-queue.ts` (`seededShuffle`, `shuffleAroundCurrent`, `setPlayQueueShuffle`, `unshuffledOrder`). |
+| #534 | Auto Play Next | Queue sheet; Options → Playback → Auto play next | **Off by default:** before P6 a finished video always stopped. On: when a video ends, the next one in the queue plays (no wrap; that's Repeat all). With no queue, the next video in the same library folder plays, by name ("Episode 2" before "Episode 10"), skipping missing files; library videos in no folder share the top level. MMKV `vidorax.mmkv.player.autoPlayNext.v1`. `end-of-playback.ts`, `queue-media-index.ts` (`nextInFolder`), `queue-media.ts`, `page/use-queue.ts`. |
+| #733 | Next Episode Prompt | Over the picture, bottom end; Options → Playback → Next episode card (on) | A card "Next: <title>", "Plays in 7 s", **Play now** and **Cancel**. It shows only when the end of the video is about to play the next one anyway (Auto Play Next or Repeat all), and the next video's name looks like the next episode: "S01E02" → "S01E03" (or "S02E01"), "1x02" → "1x03", "Ep 3" / "Episode 4" / "E04" / Urdu "قسط 5" → the next number of the same show, or the same name with one number one higher ("Drama 12" → "Drama 13"). Cancel hides it, and that video then stops at its end. `src/player/episode-name.ts`, `next-episode-prompt.ts`, `page/NextEpisodeCard.tsx`. |
+
+### What decides the end (one function, now complete)
+
+`decideEndOfPlayback` (`src/player/end-of-playback.ts`), in the order asked for:
+
+1. An A-B loop: back to A.
+2. Repeat one: the same video again.
+3. Repeat all (the queue): the next video, and the first after the last.
+4. Auto Play Next: the next video of the queue; with no queue, the next in the folder.
+5. The End of Playback Action: Stop.
+
+A "next" cancelled on the Next Episode card stops instead. A queue holding only this video counts as no queue.
+
+**Unchanged with the defaults:** the End of Playback Action is Stop and Auto Play Next is off. So a library list with a
+next video still stops at the end, as before; a test checks exactly that.
+
+### Timing of #733 (my choice: the checklist gives none)
+
+Checklist #733 says only "to move quickly through episodes", so the timing is mine:
+
+- The card shows in the **last 10 s** of a video at least **30 s** long, counting down the seconds left.
+- It follows the position, so pausing pauses the countdown and seeking back hides the card.
+- At 0 the video ends and the end decision plays the next one.
+- It never shows over Repeat one, an A-B loop or Stop.
+- It is hidden while the controls are locked and in picture-in-picture.
+
+### The existing play-queue functions (Faran's headset keys)
+
+- `usePlayQueueStore` keeps `ids` as the play order. So `queueNeighbours(ids, id)` and `usePlayQueueNeighbours` follow
+  Shuffle, Play next and reordering without any change on the caller's side (tested).
+- `setPlayQueue(x)` still leaves `ids` equal to a copy of `x` (or empty for `undefined`). **It now also ends a
+  shuffle**, because the list is a new one (tested).
+- New state fields beside `ids`: `original`, `shuffled`, `seed`, `currentId`. `play-queue.ts` still has no storage
+  import; saving lives in `play-queue-persistence.ts`.
+
+### Decisions
+
+- **`openPlayer` keeps the queue when it reopens the video the queue was playing without a list.** That covers the
+  mini player (it called `openPlayer(id)` and so emptied the queue: Previous / Next used to vanish) and the last video
+  after a restart. Every other open without a list still has no queue, as before.
+- **Opening a video from a list still replaces the queue,** as before. So a queue built with Play next / Add to queue
+  is replaced by the next tap on a library video.
+- **Device videos in a restored queue:** they play from a list kept in memory, so after a restart P6 lists the device
+  videos again, quietly. Without the permission that list is empty, and those entries fail to open as before.
+- **The queue sheet draws up to 100 rows** around the video playing, so a long library list stays quick.
+- **Up next on the page** still says "Auto play next" under it (the existing string). It opens the queue sheet.
+- The settings live in the options sheet (Playback) until screen 25 is built.
+- The in-app mini player still stops at the end (as in P5).
+
+### Files
+
+- Logic (unit-tested): `src/player/play-queue.ts` (extended), `end-of-playback.ts` (Auto Play Next, folder, cancel),
+  `episode-name.ts`, `next-episode-prompt.ts`, `queue-media-index.ts`.
+- Runtime: `play-queue-persistence.ts`, `auto-next-preference.ts`, `queue-media.ts`; `src/navigation/helpers/open-player.ts`
+  (keeps the queue for its own video, starts the saving).
+- Screen: `page/use-queue.ts`, `page/QueueSheet.tsx`, `page/NextEpisodeCard.tsx`, `page/use-repeat.ts` (takes the P6
+  inputs, exposes `upcoming`), `PlayerScreen.tsx`; `page/player-page-actions.ts` (`upNext` out of `NOT_YET_ACTIONS`).
+- Library: `src/screens/library/hooks/useQueueSheetActions.ts`, `LibraryScreen.tsx`.
+- Options: `src/player/options/p6-queue.ts` (+ one import), `player-options.ts` (optional `queue` context and four
+  optional `ui` commands). MMKV keys `playerQueue`, `playerAutoPlayNext`, `playerNextEpisodePrompt`. Strings: 31 new
+  `videoPlayer.*` keys (English and Urdu).
+
+### Gate
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | 0 errors |
+| Unit tests | 2198 / 2198 (40 new: `play-queue.test.ts` 15, `end-of-playback-precedence.test.ts` 9, `episode-name.test.ts` 8, `queue-media-index.test.ts` 5, `options/p6-queue.test.ts` 3) |
+| `npm run lint` | 0 errors; 91 warnings, none in a file P6 changed |
+| Against the base | none of Faran's files; `package.json` / lockfile, `android/`, `modules/`, manifests, `app.json` unchanged; no SQLite change |
+| Media3 | `1.9.0`, unchanged |
+
+### Device checks for Faran (release build; not possible here)
+
+1. Headset / Bluetooth Next and Previous (your P15 keys) with a library list, after Shuffle, after Play next and
+   after reordering: they follow the queue sheet's order.
+2. Queue sheet: tap a video, move up / down, remove; "Now playing" can't be removed; six themes and Urdu; TalkBack
+   reads "Move … up" and the rest.
+3. Library → long-press → Play next and Add to queue while a video plays in the mini player; reopen the Player:
+   the queue has them, Previous / Next are still there (they used to vanish after the mini player).
+4. Shuffle on and off: the video playing keeps playing; off restores the order.
+5. Restart the app (swipe it away) with a queue: open the last video from Continue watching, and the queue and
+   Shuffle are as they were. With a device video in the queue, it still plays.
+6. Auto Play Next off (default): a library list stops at the end, as before. On: the next one plays; the last one
+   stops. A video from download details (no queue) goes on to the next in its folder.
+7. Next Episode card: a folder with "Show S01E01.mp4", "Show S01E02.mp4" and Auto Play Next on. The card shows 10 s
+   before the end and counts down; Play now; Cancel (the video stops at its end); pause and seek back (it hides).
+   No card for "Holiday.mp4" → "Work.mp4". Check it's clear of the controls on the card and in full screen.
+8. Auto Play Next in picture-in-picture and with background play on and the screen off: the next video plays.
