@@ -885,9 +885,11 @@ seek. `resolveSwipeAxis` / `lockSwipeAxis` follow the gesture handler's order (a
 
 ### Decisions
 
-- **Swipe seek and the two-finger tap are on by default** (screen 20 shows them as part of the gestures). Two touches
-  that used to toggle the controls now do something else: a two-finger tap (now play / pause), and a quick sideways
-  flick of more than 16 dp under 250 ms (now a swipe seek). Switching either off gives exactly the old behaviour.
+- **Swipe seek and the two-finger tap are off by default** (Hamza, 2026-11-23), so nothing changes for existing users;
+  they are turned on in ⋮ → Playback → Gestures. Turned on, two touches that used to toggle the controls do something
+  else: a two-finger tap (play / pause), and a quick sideways flick of more than 16 dp under 250 ms (a swipe seek).
+  Every gesture threshold from before P8 is unchanged (10 / 16 dp edge swipes, 280 ms double tap, 250 ms single tap,
+  500 ms / 12 dp long press). The Gestures row reads "5 of 7 on" with the defaults.
 - **Swipe seek's scale:** 90 s for the picture's width at Normal, the same feel on the card and in full screen,
   whatever the video's length (the timeline is there for big jumps). Low 45 s, High 180 s.
 - **Sensitivity factors:** Low ×0.5, High ×2. They scale how far the value moves, not when a swipe starts. Zoom is not
@@ -940,10 +942,11 @@ seek. `resolveSwipeAxis` / `lockSwipeAxis` follow the gesture handler's order (a
 
 ### Device checks for Faran (release build; not possible here)
 
-1. **Nothing changed with P8's switches off.** Turn off swipe seek and the two-finger tap. Edge swipes (brightness,
+1. **Nothing changed with the defaults** (swipe seek and the two-finger tap start off). Edge swipes (brightness,
    volume), the double tap (thirds; reset while zoomed), long-press 2×, pinch zoom and pan, and the single tap behave
    exactly as on P4.
-2. **Axis lock on the left and right edges:** slightly diagonal up / down swipes still change brightness / volume (no
+2. **Turn swipe seek and the two-finger tap on** (⋮ → Playback → Gestures) for checks 2–6.
+   **Axis lock on the left and right edges:** slightly diagonal up / down swipes still change brightness / volume (no
    seek). Mostly sideways swipes seek. A fast diagonal flick does neither.
 3. **Swipe seek** on the card and in full screen: the pill shows "12:34 (+0:45)" and follows the finger. The video only
    moves when the finger lifts. Swipe to either end: the target stops at 0:00 / the length. A second finger during the
@@ -952,7 +955,7 @@ seek. `resolveSwipeAxis` / `lockSwipeAxis` follow the gesture handler's order (a
 5. **Long-press 2×** then moving the finger sideways: stays at 2×, no seek. **Pinch** started with one finger moving
    first: zooms or swipe-seeks, never both. While zoomed, one finger pans the picture (no seek).
 6. **Two-finger tap** pauses and plays, and doesn't also toggle the controls. A pinch is never taken for a two-finger
-   tap. With the switch off, a two-finger tap toggles the controls as before.
+   tap. With the switch off (the default), a two-finger tap toggles the controls as before.
 7. **Sensitivity:** Low / Normal / High for seek, brightness and volume (Normal identical to P4).
 8. **Gesture controls off:** no gesture works except the tap that shows the controls. Each gesture's own switch.
    Pinch zoom off while zoomed: the picture returns to fitted.

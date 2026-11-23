@@ -26,12 +26,16 @@ import { clampVolume } from './volume-state.ts';
 
 const volumeClamp = (value: number) => clampVolume(value) ?? 0;
 
+/** Every switch on, the two new gestures included (they are off by default). */
+const ALL_ON: GestureSettings = { ...DEFAULT_GESTURE_SETTINGS, swipeSeek: true, twoFingerTap: true };
+
 describe('gesture settings', () => {
-  it('starts with every gesture on and Normal sensitivity', () => {
+  it('starts with the gestures from before P8 on, swipe seek and the two-finger tap off, and Normal sensitivity', () => {
     assert.equal(DEFAULT_GESTURE_SETTINGS.enabled, true);
     assert.equal(DEFAULT_GESTURE_SETTINGS.sensitivity, 'normal');
     for (const gesture of SWITCHABLE_GESTURES) {
-      assert.equal(DEFAULT_GESTURE_SETTINGS[gesture], true, gesture);
+      const expected = gesture !== 'swipeSeek' && gesture !== 'twoFingerTap';
+      assert.equal(DEFAULT_GESTURE_SETTINGS[gesture], expected, gesture);
     }
     assert.deepEqual(
       [...SWITCHABLE_GESTURES],
@@ -51,12 +55,14 @@ describe('gesture settings', () => {
   });
 
   it('needs the master switch and the gesture\'s own switch', () => {
-    const off: GestureSettings = { ...DEFAULT_GESTURE_SETTINGS, enabled: false };
-    assert.equal(gestureOn(DEFAULT_GESTURE_SETTINGS, 'swipeSeek'), true);
+    const off: GestureSettings = { ...ALL_ON, enabled: false };
+    assert.equal(gestureOn(DEFAULT_GESTURE_SETTINGS, 'swipeSeek'), false, 'off by default');
+    assert.equal(gestureOn(ALL_ON, 'swipeSeek'), true);
     assert.equal(gestureOn(off, 'swipeSeek'), false);
     assert.equal(gestureOn({ ...DEFAULT_GESTURE_SETTINGS, volume: false }, 'volume'), false);
-    assert.equal(gesturesOnCount(DEFAULT_GESTURE_SETTINGS), 7);
-    assert.equal(gesturesOnCount({ ...DEFAULT_GESTURE_SETTINGS, doubleTap: false, longPress: false }), 5);
+    assert.equal(gesturesOnCount(DEFAULT_GESTURE_SETTINGS), 5);
+    assert.equal(gesturesOnCount(ALL_ON), 7);
+    assert.equal(gesturesOnCount({ ...ALL_ON, doubleTap: false, longPress: false }), 5);
     // The master switch keeps each gesture's own choice underneath.
     assert.equal(gesturesOnCount(off), 0);
     assert.equal(off.doubleTap, true);
@@ -134,9 +140,14 @@ describe('which recognisers are on', () => {
     return states;
   };
 
-  it('with every switch on, gives the recognisers that existed before P8 exactly their old values', () => {
+  it('with the defaults, and with every switch on, gives the recognisers from before P8 exactly their old values', () => {
     for (const state of everyState()) {
-      const flags = surfaceGestureFlags(DEFAULT_GESTURE_SETTINGS, state);
+      const defaults = surfaceGestureFlags(DEFAULT_GESTURE_SETTINGS, state);
+      // The defaults: nothing new runs, so nothing changes for existing users.
+      assert.equal(defaults.swipeSeek, false);
+      assert.equal(defaults.twoFingerTap, false);
+      for (const settings of [DEFAULT_GESTURE_SETTINGS, ALL_ON]) {
+      const flags = surfaceGestureFlags(settings, state);
       const { gesturesEnabled, brightnessAvailable, zoomed, hasLayout, hasLongPress } = state;
       // The expressions PlayerVideoSurface used before P8 (zoneWidth > 0 is hasLayout).
       const before = {
@@ -152,6 +163,7 @@ describe('which recognisers are on', () => {
         assert.equal(flags[key as keyof SurfaceGestureFlags], value, `${key} ${JSON.stringify(state)}`);
       }
       assert.equal(flags.doubleTapActions, true);
+      }
     }
   });
 
@@ -165,14 +177,17 @@ describe('which recognisers are on', () => {
       canSwipeSeek: true,
       hasTwoFingerTap: true,
     };
-    const on = surfaceGestureFlags(DEFAULT_GESTURE_SETTINGS, base);
+    const byDefault = surfaceGestureFlags(DEFAULT_GESTURE_SETTINGS, base);
+    assert.equal(byDefault.swipeSeek, false, 'off by default');
+    assert.equal(byDefault.twoFingerTap, false, 'off by default');
+    const on = surfaceGestureFlags(ALL_ON, base);
     assert.equal(on.swipeSeek, true);
     assert.equal(on.twoFingerTap, true);
-    assert.equal(surfaceGestureFlags(DEFAULT_GESTURE_SETTINGS, { ...base, canSwipeSeek: false }).swipeSeek, false);
-    assert.equal(surfaceGestureFlags(DEFAULT_GESTURE_SETTINGS, { ...base, zoomed: true }).swipeSeek, false);
-    assert.equal(surfaceGestureFlags(DEFAULT_GESTURE_SETTINGS, { ...base, hasLayout: false }).swipeSeek, false);
-    assert.equal(surfaceGestureFlags(DEFAULT_GESTURE_SETTINGS, { ...base, hasTwoFingerTap: false }).twoFingerTap, false);
-    const locked = surfaceGestureFlags(DEFAULT_GESTURE_SETTINGS, { ...base, gesturesEnabled: false });
+    assert.equal(surfaceGestureFlags(ALL_ON, { ...base, canSwipeSeek: false }).swipeSeek, false);
+    assert.equal(surfaceGestureFlags(ALL_ON, { ...base, zoomed: true }).swipeSeek, false);
+    assert.equal(surfaceGestureFlags(ALL_ON, { ...base, hasLayout: false }).swipeSeek, false);
+    assert.equal(surfaceGestureFlags(ALL_ON, { ...base, hasTwoFingerTap: false }).twoFingerTap, false);
+    const locked = surfaceGestureFlags(ALL_ON, { ...base, gesturesEnabled: false });
     assert.equal(Object.values(locked).filter((value) => value === true).length, 1); // doubleTapActions alone (inert)
     assert.equal(locked.doubleTapActions, true);
   });
@@ -188,7 +203,7 @@ describe('which recognisers are on', () => {
   };
 
   it('master switch off: only the single tap is left (it shows the controls)', () => {
-    const flags = surfaceGestureFlags({ ...DEFAULT_GESTURE_SETTINGS, enabled: false }, unzoomed);
+    const flags = surfaceGestureFlags({ ...ALL_ON, enabled: false }, unzoomed);
     assert.deepEqual(flags, {
       pinch: false,
       zoomPan: false,
@@ -204,7 +219,7 @@ describe('which recognisers are on', () => {
   });
 
   it('each switch turns off its own recogniser and nothing else', () => {
-    const all = surfaceGestureFlags(DEFAULT_GESTURE_SETTINGS, unzoomed);
+    const all = surfaceGestureFlags(ALL_ON, unzoomed);
     const expected: Record<(typeof SWITCHABLE_GESTURES)[number], (keyof SurfaceGestureFlags)[]> = {
       swipeSeek: ['swipeSeek'],
       brightness: ['brightnessPan'],
@@ -215,7 +230,7 @@ describe('which recognisers are on', () => {
       pinchZoom: ['pinch'],
     };
     for (const gesture of SWITCHABLE_GESTURES) {
-      const flags = surfaceGestureFlags({ ...DEFAULT_GESTURE_SETTINGS, [gesture]: false }, unzoomed);
+      const flags = surfaceGestureFlags({ ...ALL_ON, [gesture]: false }, unzoomed);
       const changed = (Object.keys(all) as (keyof SurfaceGestureFlags)[]).filter((key) => flags[key] !== all[key]);
       assert.deepEqual(changed, expected[gesture], gesture);
       for (const key of changed) {

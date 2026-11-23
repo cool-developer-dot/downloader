@@ -43,18 +43,25 @@ export type GestureSettings = {
   sensitivity: GestureSensitivity;
 } & Record<SwitchableGesture, boolean>;
 
-/** Everything on, Normal: the Player as it was before P8, plus swipe seek and the two-finger tap. */
+/**
+ * The Player as it was before P8: every gesture it had on, at Normal. The two new ones, swipe seek (#582) and the
+ * two-finger tap (#585), are off by default so nothing changes for existing users; they are turned on in
+ * ⋮ → Playback → Gestures.
+ */
 export const DEFAULT_GESTURE_SETTINGS: GestureSettings = {
   enabled: true,
   sensitivity: DEFAULT_GESTURE_SENSITIVITY,
-  swipeSeek: true,
+  swipeSeek: false,
   brightness: true,
   volume: true,
   doubleTap: true,
   longPress: true,
-  twoFingerTap: true,
+  twoFingerTap: false,
   pinchZoom: true,
 };
+
+/** The gestures P8 adds; off by default. */
+export const NEW_GESTURES_OFF_BY_DEFAULT: readonly SwitchableGesture[] = ['swipeSeek', 'twoFingerTap'];
 
 export function isGestureSensitivity(value: unknown): value is GestureSensitivity {
   return typeof value === 'string' && (GESTURE_SENSITIVITIES as readonly string[]).includes(value);
