@@ -13,6 +13,8 @@ android {
     versionName '1.0.0'
     // On-device instrumented E2E of the real engine (src/androidTest); JVM unit tests are unaffected.
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+    // P13 #667: keeps the Cast options provider the Cast SDK creates by reflection (consumer-rules.pro).
+    consumerProguardFiles "consumer-rules.pro"
   }
   // Robolectric tests read the module's own string resources (notification texts in values/ and values-ur/).
   testOptions {
@@ -51,6 +53,10 @@ dependencies {
   implementation "commons-net:commons-net:3.13.0"
   // P6 Remote control: the phone's LAN-only web server (BSD-3-Clause). No other dependencies.
   implementation "org.nanohttpd:nanohttpd:2.3.1"
+  // P13 #667 Chromecast: Google's Cast SDK from Google's Maven (device discovery through MediaRouter, Cast sessions,
+  // RemoteMediaClient on the Default Media Receiver). Not media3-cast: Media3 stays exactly as above. The files a TV
+  // plays come from cast/CastFileServer.kt (no HTTP library), which runs only while casting.
+  implementation "com.google.android.gms:play-services-cast-framework:22.3.1"
 
   testImplementation "junit:junit:4.13.2"
   testImplementation "com.squareup.okhttp3:mockwebserver:4.12.0"

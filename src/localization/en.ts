@@ -71,6 +71,7 @@ import { playlistsEn } from './catalogs/playlists.en';
 import { libraryStatsEn } from './catalogs/libraryStats.en';
 import { privacyBackupEn } from './catalogs/privacyBackup.en';
 import { playerEngineEn } from './catalogs/playerEngine.en';
+import { playerCastEn } from './catalogs/playerCast.en';
 
 export const en = {
   common: {
@@ -2989,4 +2990,6 @@ export const en = {
   // P11 Privacy & backup (Hamza): Block screenshots in Private, Move out of Private, back up / restore all data
   privacyBackup: privacyBackupEn,
   playerEngine: playerEngineEn,
+  // P13 Chromecast (Hamza): the Player's Cast button, device sheet and casting messages
+  playerCast: playerCastEn,
 } as const;

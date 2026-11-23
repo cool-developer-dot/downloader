@@ -112,5 +112,10 @@
       android:name="com.vidorax.media.files.GrowingFileProvider"
       android:authorities="${applicationId}.vidorax.growing"
       android:exported="false" />
+
+    <!-- P13 #667 Chromecast: the Cast SDK reads its options (Default Media Receiver, no Cast notification) here. -->
+    <meta-data
+      android:name="com.google.android.gms.cast.framework.OPTIONS_PROVIDER_CLASS_NAME"
+      android:value="com.vidorax.media.cast.CastOptionsProvider" />
   </application>
 </manifest>

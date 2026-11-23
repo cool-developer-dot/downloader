@@ -39,6 +39,8 @@ export type PlayerCardOverlayProps = {
   onClearLoop?: () => void;
   /** P9 #705: the video's bookmarks on the bar (small dots). */
   bookmarkMarkers?: readonly number[] | null;
+  /** P13 #667: the Cast button before ⋮, only once a Cast device is found (filled while casting). */
+  cast?: { active: boolean; onPress: () => void } | null;
 };
 
 /** Icon sizes measured on screen 19: 22.6 dp tall solid ⏮ ⏸ ⏭, 2.7 dp strokes, 51 dp apart. */
@@ -75,6 +77,7 @@ export const PlayerCardOverlay = memo(function PlayerCardOverlay({
   loopMarkers = null,
   onClearLoop,
   bookmarkMarkers = null,
+  cast = null,
 }: PlayerCardOverlayProps) {
   const theme = useTheme();
   const { t, rtl } = useTranslation();
@@ -106,6 +109,18 @@ export const PlayerCardOverlay = memo(function PlayerCardOverlay({
             </DsText>
           ) : null}
         </View>
+        {cast ? (
+          <Pressable
+            onPress={cast.onPress}
+            hitSlop={8}
+            accessibilityRole="button"
+            accessibilityLabel={t('playerCast.castButton')}
+            accessibilityState={{ selected: cast.active }}
+            style={styles.cornerButton}
+            testID="player-card-cast">
+            <DsIcon name="cast" size={17} color={white} strokeWidth={cast.active ? 2.8 : 2} />
+          </Pressable>
+        ) : null}
         <Pressable
           onPress={onOpenOptions}
           hitSlop={8}

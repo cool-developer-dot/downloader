@@ -182,6 +182,11 @@ import { useKidLock } from '@/player/engine/sleep-limits';
 import { KidLockOverlay } from './engine/KidLockOverlay';
 import { AudioOnlyCover } from './engine/AudioOnlyCover';
 import { PlayerEngineSheets } from './engine/PlayerEngineSheets';
+// P13 Chromecast: the Cast button, the device sheet, "Casting to <device>" and the phone's controls driving the TV.
+import { useCastDiscovery } from '@/player/cast/use-cast-discovery';
+import { usePlayerCast } from './page/use-player-cast';
+import { CastDeviceSheet } from './page/CastDeviceSheet';
+import { CastingOverlay } from './page/CastingOverlay';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -196,6 +201,8 @@ export const PlayerScreen = memo(function PlayerScreen() {
   const params = useLocalSearchParams<{ id?: string | string[] }>();
   const mediaId = parseRouteMediaId(params.id);
   const live = useFullPlayerSession(mediaId);
+  // P13 #667: Cast devices are looked for only while the Player screen is open.
+  useCastDiscovery();
   // Owned here, not by the session view: Previous / Next swap the session (the view remounts) and must keep the
   // Player fullscreen and locked as it was.
   const fullscreen = useFullscreenLifecycle();
@@ -322,6 +329,23 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const subtitles = usePlayerSubtitles(player, activeMediaId);
   // P4: the subtitle style (app-wide).
   const subtitleStyle = useSubtitleStyle();
+  // P13 #667 Chromecast: while the TV plays this video, the phone's controls below drive it.
+  const cast = usePlayerCast({
+    mediaId: activeMediaId,
+    isReady: session.isReady,
+    isPlaying: session.isPlaying,
+    isCompleted: session.isCompleted,
+    positionSeconds: session.positionSeconds,
+    durationSeconds: session.durationSeconds,
+    controller,
+    beginSeekPreview,
+    commitSeekPreview,
+    subtitleFile: subtitles.currentFile,
+    subtitleCues: subtitles.currentFile ? (subtitles.loaded?.index?.cues ?? null) : null,
+    subtitleOffsetMs: subtitles.offsetMs,
+  });
+  const castOn = cast.casting;
+  const { togglePlay: castTogglePlay, seekBy: castSeekBy, seekIfCasting, closeSheet: closeCastSheet } = cast;
   const [subtitleSheet, setSubtitleSheet] = useState<
     'subtitles' | 'tracks' | 'sync' | 'encoding' | 'style' | 'second' | null
   >(null);
@@ -665,6 +689,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
 
   const onPlayPause = useCallback(() => {
     bumpControls();
+    if (castOn) {
+      castTogglePlay();
+      return;
+    }
     if (!session.isReady || session.error) {
       return;
     }
@@ -675,6 +703,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
     }
   }, [
     bumpControls,
+    castOn,
+    castTogglePlay,
     controller,
     session.error,
     session.isPlaying,
@@ -683,19 +713,27 @@ const PlayerSessionView = memo(function PlayerSessionView({
 
   const onRewind = useCallback(() => {
     bumpControls();
+    if (castOn) {
+      castSeekBy(-seekStepSeconds);
+      return;
+    }
     if (!session.isReady) {
       return;
     }
     controller.seekBy(-seekStepSeconds);
-  }, [bumpControls, controller, seekStepSeconds, session.isReady]);
+  }, [bumpControls, castOn, castSeekBy, controller, seekStepSeconds, session.isReady]);
 
   const onForward = useCallback(() => {
     bumpControls();
+    if (castOn) {
+      castSeekBy(seekStepSeconds);
+      return;
+    }
     if (!session.isReady) {
       return;
     }
     controller.seekBy(seekStepSeconds);
-  }, [bumpControls, controller, seekStepSeconds, session.isReady]);
+  }, [bumpControls, castOn, castSeekBy, controller, seekStepSeconds, session.isReady]);
 
   const onReplay = useCallback(() => {
     bumpControls();
@@ -882,6 +920,12 @@ const PlayerSessionView = memo(function PlayerSessionView({
 
   const onDoubleTapSeek = useCallback(
     (side: DoubleTapSeekSide, delta: number) => {
+      if (castOn) {
+        castSeekBy(delta);
+        setDoubleTapSide(side);
+        bumpControls();
+        return;
+      }
       if (!session.isReady || session.error) {
         return;
       }
@@ -889,7 +933,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       setDoubleTapSide(side);
       bumpControls();
     },
-    [bumpControls, controller, session.error, session.isReady],
+    [bumpControls, castOn, castSeekBy, controller, session.error, session.isReady],
   );
 
   // Double tap in the middle third: same as the play/pause button (which also keeps the controls' timer fresh).
@@ -914,9 +958,13 @@ const PlayerSessionView = memo(function PlayerSessionView({
   );
 
   const onSeekCommit = useCallback(() => {
+    const target = seekPreviewSeconds;
     commitSeekPreview();
+    if (target != null) {
+      seekIfCasting(target);
+    }
     bumpControls();
-  }, [bumpControls, commitSeekPreview]);
+  }, [bumpControls, commitSeekPreview, seekIfCasting, seekPreviewSeconds]);
 
   const onSeekCancel = useCallback(() => {
     cancelSeekPreview();
@@ -956,8 +1004,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
     p10CloseSheets();
     p11ClosePrivate();
     p12CloseSheets();
+    closeCastSheet();
     setLocked(true);
-  }, [hud, endLongPress, setLocked, closeP9Sheets, p10CloseSheets, p11ClosePrivate, p12CloseSheets]);
+  }, [hud, endLongPress, setLocked, closeP9Sheets, p10CloseSheets, p11ClosePrivate, p12CloseSheets, closeCastSheet]);
   const onUnlock = useCallback(() => {
     setLocked(false);
     showControls();
@@ -970,8 +1019,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
     (seconds: number) => {
       beginSeekPreview(seconds);
       commitSeekPreview();
+      seekIfCasting(seconds);
     },
-    [beginSeekPreview, commitSeekPreview],
+    [beginSeekPreview, commitSeekPreview, seekIfCasting],
   );
   const canCommand = session.isReady && !session.error;
 
@@ -1674,7 +1724,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           onSingleTap={onSingleTap}
           onDoubleTapSeek={onDoubleTapSeek}
           onDoubleTapTogglePlay={onDoubleTapTogglePlay}
-          onLongPressStart={onLongPressStart}
+          onLongPressStart={castOn ? undefined : onLongPressStart}
           onLongPressEnd={endLongPress}
           onFirstFrameRender={markFirstFrameRendered}
           onSurfaceLayout={({ height }) => {
@@ -1701,7 +1751,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           onPictureInPictureStart={handlePictureInPictureStart}
           onPictureInPictureStop={handlePictureInPictureStop}
           gestureSettings={gestureSettings}
-          swipeSeekAvailable={swipeSeekAvailable}
+          swipeSeekAvailable={swipeSeekAvailable && !castOn}
           onSwipeSeekStart={swipeSeek.onStart}
           onSwipeSeekUpdate={swipeSeek.onUpdate}
           onSwipeSeekFinalize={swipeSeek.onFinalize}
@@ -1709,6 +1759,13 @@ const PlayerSessionView = memo(function PlayerSessionView({
         />
         {/* Faran's P17 #574: Audio only — no picture is decoded; its place shows the title. */}
         <AudioOnlyCover visible={engine.audioOnly && !pipActive} title={title} />
+        {/* P13 #667: the TV plays this video — "Casting to <device>" in place of the paused picture. */}
+        <CastingOverlay
+          visible={(castOn || cast.connecting) && !pipActive}
+          connecting={cast.connecting}
+          deviceName={cast.deviceName}
+          state={cast.mediaState}
+        />
         {/*
           Instant opaque cover (no FadeOut). FadeOut over a SurfaceView that
           just flipped alpha caused the remaining startup shimmer.
@@ -1738,7 +1795,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
                 title={title}
                 artist={artist}
                 quality={quality}
-                isPlaying={session.isPlaying}
+                isPlaying={castOn ? cast.isPlaying : session.isPlaying}
                 isReady={session.isReady}
                 isLoading={session.isLoading && session.hasFirstFrame}
                 isCompleted={session.isCompleted}
@@ -1749,13 +1806,14 @@ const PlayerSessionView = memo(function PlayerSessionView({
                 onNext={onNext}
                 onPlayPause={onPlayPause}
                 onReplay={onReplay}
-                positionSeconds={session.positionSeconds}
-                durationSeconds={session.durationSeconds}
+                positionSeconds={castOn ? cast.positionSeconds : session.positionSeconds}
+                durationSeconds={castOn ? cast.durationSeconds : session.durationSeconds}
                 previewSeconds={seekPreviewSeconds}
                 previewFrame={seekPreview.frame}
                 loopMarkers={repeat.markers}
                 onClearLoop={repeat.clear}
                 bookmarkMarkers={p9.markers}
+                cast={cast.button}
                 onSeekStart={onSeekStart}
                 onSeekChange={updateSeekPreview}
                 onSeekCommit={onSeekCommit}
@@ -1779,6 +1837,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
                   }}
                   onOpenOptions={openOptionsUnlocked}
                   buttons={topBarButtons}
+                  cast={cast.button}
                   save={
                     incomingToken
                       ? {
@@ -1794,7 +1853,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
               ) : null}
               {overlayVisible && !startupCoverVisible ? (
                 <PlayerControls
-                  isPlaying={session.isPlaying}
+                  isPlaying={castOn ? cast.isPlaying : session.isPlaying}
                   isReady={session.isReady}
                   isLoading={session.isLoading && session.hasFirstFrame}
                   isCompleted={session.isCompleted}
@@ -1824,7 +1883,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
             P3 / P4: subtitle files in the user's style. Clear of what shows over the picture: the card's timeline and
             top row, the full-screen top bar, and the info box at the top end.
           */}
-          {!showError && !startupCoverVisible ? (
+          {!showError && !startupCoverVisible && !castOn ? (
             <SubtitleOverlay
               primaryCues={subtitles.lines}
               secondaryCues={subtitles.secondaryLines}
@@ -1896,8 +1955,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
           gap={4}
           style={styles.timelineDock}>
           <PlayerTimeline
-            positionSeconds={session.positionSeconds}
-            durationSeconds={session.durationSeconds}
+            positionSeconds={castOn ? cast.positionSeconds : session.positionSeconds}
+            durationSeconds={castOn ? cast.durationSeconds : session.durationSeconds}
             previewSeconds={seekPreviewSeconds}
             previewFrame={seekPreview.frame}
             disabled={!session.isReady || Boolean(session.error)}
@@ -2232,6 +2291,18 @@ const PlayerSessionView = memo(function PlayerSessionView({
           announcePlayer(t('videoPlayer.queueRemoved'));
         }}
         onClose={() => setQueueSheetOpen(false)}
+      />
+      {/* P13 #667: the Cast button's sheet (devices on this Wi-Fi; while casting, the TV's volume and Stop casting). */}
+      <CastDeviceSheet
+        visible={cast.sheetOpen && !locked}
+        devices={cast.devices}
+        connection={cast.connection}
+        deviceName={cast.deviceName}
+        volume={cast.volume}
+        onPick={cast.pickDevice}
+        onStop={cast.stop}
+        onVolume={cast.changeVolume}
+        onClose={cast.closeSheet}
       />
       {/* P7: Add to playlist (the playing video). */}
       <AddToPlaylistSheet inputs={p7Playlists.inputs} onClose={p7Playlists.closeSheet} testID="player-add-to-playlist" />

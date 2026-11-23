@@ -25,6 +25,8 @@ export type PlayerTopBarProps = {
   } | null;
   /** P8 #692: the rotation-lock and full-screen buttons to show, in this order. Default: both, rotation lock first. */
   buttons?: readonly PlayerTopBarButton[];
+  /** P13 #667: the Cast button before ⋮, only once a Cast device is found (filled while casting). */
+  cast?: { active: boolean; onPress: () => void } | null;
 };
 
 export type PlayerTopBarButton = 'orientation' | 'fullscreen';
@@ -43,6 +45,7 @@ export const PlayerTopBar = memo(function PlayerTopBar({
   onOpenOptions,
   save = null,
   buttons = DEFAULT_BUTTONS,
+  cast = null,
 }: PlayerTopBarProps) {
   const { t, rtl } = useTranslation();
   if (!visible) {
@@ -118,6 +121,17 @@ export const PlayerTopBar = memo(function PlayerTopBar({
             />
           ),
         )}
+        {cast ? (
+          <IconButton
+            icon={cast.active ? 'cast-connected' : 'cast'}
+            size="medium"
+            variant="ghost"
+            color="inverse"
+            accessibilityLabel={t('playerCast.castButton')}
+            onPress={cast.onPress}
+            testID="player-cast"
+          />
+        ) : null}
         {onOpenOptions ? (
           <IconButton
             icon="dots-vertical"

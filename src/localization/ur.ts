@@ -73,6 +73,7 @@ import { playlistsUr } from './catalogs/playlists.ur';
 import { libraryStatsUr } from './catalogs/libraryStats.ur';
 import { privacyBackupUr } from './catalogs/privacyBackup.ur';
 import { playerEngineUr } from './catalogs/playerEngine.ur';
+import { playerCastUr } from './catalogs/playerCast.ur';
 
 export const ur: CatalogStrings<typeof en> = {
   common: {
@@ -2992,4 +2993,6 @@ export const ur: CatalogStrings<typeof en> = {
   // P11 Privacy & backup (Hamza): Block screenshots in Private, Move out of Private, back up / restore all data
   privacyBackup: privacyBackupUr,
   playerEngine: playerEngineUr,
+  // P13 Chromecast (Hamza): the Player's Cast button, device sheet and casting messages
+  playerCast: playerCastUr,
 };
