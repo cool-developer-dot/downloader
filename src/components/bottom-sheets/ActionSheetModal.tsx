@@ -1,5 +1,5 @@
 import { memo, useCallback } from 'react';
-import { Modal, Pressable as RNPressable, StyleSheet, View } from 'react-native';
+import { Modal, Pressable as RNPressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Box } from '@/components/base/Box';
@@ -97,7 +97,13 @@ export const ActionSheetModal = memo(function ActionSheetModal({
             </Box>
           ) : null}
 
-          <Box gap={4} px={16}>
+          {/* The actions scroll when they don't all fit (the sheet stops at 70 % of the screen); Cancel stays below. */}
+          <Box gap={4} px={16} style={styles.body}>
+            <ScrollView
+              style={styles.list}
+              contentContainerStyle={styles.listContent}
+              bounces={false}
+              showsVerticalScrollIndicator={false}>
             {actions.map((action, index) => (
               <Box key={action.id} gap={4}>
                 <Pressable
@@ -138,6 +144,7 @@ export const ActionSheetModal = memo(function ActionSheetModal({
                 {index < actions.length - 1 ? <Divider /> : null}
               </Box>
             ))}
+            </ScrollView>
 
             <Divider inset />
 
@@ -172,6 +179,16 @@ const styles = StyleSheet.create({
   sheet: {
     paddingTop: 8,
     maxHeight: '70%',
+  },
+  body: {
+    flexShrink: 1,
+  },
+  list: {
+    flexGrow: 0,
+    flexShrink: 1,
+  },
+  listContent: {
+    gap: 4,
   },
   handle: {
     alignSelf: 'center',
