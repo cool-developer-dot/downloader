@@ -30,6 +30,8 @@ import com.vidorax.media.library.TreeExport
 import com.vidorax.media.library.DeviceVideos
 import com.vidorax.media.library.ThumbnailExport
 import com.vidorax.media.library.FrameExport
+import com.vidorax.media.library.GifExport
+import com.vidorax.media.library.GifRequestRecord
 import android.graphics.Bitmap
 import expo.modules.kotlin.sharedobjects.SharedRef
 import com.vidorax.media.player.ActivityVisibility
@@ -526,6 +528,20 @@ class VidoraMediaModule : Module() {
 
     // The edit kinds this build's editor runs; JavaScript offers Compress only when "compress" is listed.
     Function("getEditKinds") { MediaEditor.kinds() }
+
+    // ── P12 Export extras (#676, #682, #684) ──
+    // Merge videos and Change speed are `startEdit` kinds ("merge", "speed" in getEditKinds). Create GIF runs under the
+    // same one-edit lock, progress and Cancel (getEditProgress, cancelEdit, the notification), but makes a GIF in
+    // Pictures/VidoraX instead of a library item; shareGif shares its private copy by the name the result gave.
+    AsyncFunction("startGifExport") Coroutine { request: GifRequestRecord ->
+      editor().gif(request.toModel(), ThumbnailExport(context, services.library)).toJs()
+    }
+
+    AsyncFunction("shareGif") Coroutine { shareName: String ->
+      val file = withContext(Dispatchers.IO) { GifExport.shareFile(services.paths, shareName) }
+      withContext(Dispatchers.Main) { GifExport.share(context, appContext.currentActivity, file) }
+    }
+    // ── end P12 ──
 
     AsyncFunction("openWith") Coroutine { id: String ->
       val item = services.library.requireFiles(listOf(id)).single()

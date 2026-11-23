@@ -13,6 +13,7 @@ import './p8-gestures';
 import './p9-library-stats';
 import './p10-edit-tools';
 import './p11-privacy';
+import './p12-export-extras';
 
 export {
   playerOptions,

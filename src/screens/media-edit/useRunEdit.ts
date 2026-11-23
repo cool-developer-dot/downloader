@@ -48,6 +48,10 @@ const LABEL_KEYS: Record<EditKind, TranslationKey> = {
   audio: 'mediaEdit.audioLabel',
   // P10: the Player's Compress runs through its own runner (src/media-edit/player-edit-run.ts) with this label too.
   compress: 'videoPlayer.compressedLabel',
+  // P12: the Player's Merge, Change speed and Create GIF run through src/media-edit/player-export-run.ts.
+  merge: 'videoPlayer.mergedLabel',
+  speed: 'videoPlayer.speedChangedLabel',
+  gif: 'videoPlayer.createGif',
 };
 
 /**

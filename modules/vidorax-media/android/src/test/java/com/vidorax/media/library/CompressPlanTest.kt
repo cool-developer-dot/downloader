@@ -68,7 +68,8 @@ class CompressPlanTest {
 
   @Test
   fun theEditorListsCompressAmongItsKinds() {
-    assertEquals(listOf("trim", "mp4", "audio", "compress"), MediaEditor.kinds())
+    // P12 lists Merge and Change speed after them.
+    assertEquals(listOf("trim", "mp4", "audio", "compress", "merge", "speed"), MediaEditor.kinds())
   }
 
   @Test

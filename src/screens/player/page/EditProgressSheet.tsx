@@ -12,6 +12,10 @@ const TITLES: Readonly<Record<EditKind, TranslationKey>> = {
   audio: 'videoPlayer.editingAudio',
   mp4: 'videoPlayer.editingMp4',
   compress: 'videoPlayer.editingCompress',
+  // P12 Export extras.
+  gif: 'videoPlayer.editingGif',
+  merge: 'videoPlayer.editingMerge',
+  speed: 'videoPlayer.editingSpeed',
 };
 
 export type EditProgressSheetProps = {
@@ -38,7 +42,8 @@ export const EditProgressSheet = memo(function EditProgressSheet({ visible, sour
       onClose={onClose}
       testID="player-edit-progress-sheet">
       <EditJobBanner sourceId={sourceId} testID="player-edit-job" />
-      <DsText variant="rowSub">{t('videoPlayer.editPausedNote')}</DsText>
+      {/* P12: a GIF goes to the Gallery, not the Library. */}
+      <DsText variant="rowSub">{t(kind === 'gif' ? 'videoPlayer.gifPausedNote' : 'videoPlayer.editPausedNote')}</DsText>
       <DsButton label={t('videoPlayer.editHide')} variant="secondary" onPress={onClose} fullWidth testID="player-edit-hide" />
     </PlayerSheetFrame>
   );

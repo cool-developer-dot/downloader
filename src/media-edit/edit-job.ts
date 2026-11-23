@@ -124,6 +124,30 @@ export function createEditJob(deps: EditJobDeps) {
       return current();
     },
 
+    /**
+     * P12: runs a job that isn't a `startEdit` request (Create GIF, `startGifExport`) under the same rules — one at a
+     * time ('busy'), progress polled from `getProgress`, Cancel through `cancelEdit` (the native side runs it as its one
+     * edit), the same end states. `run` resolves with the id `done` carries (the GIF's Gallery URI).
+     */
+    async startTask(task: { sourceId: string; kind: EditKind; run: () => Promise<string> }): Promise<EditJobState> {
+      const { sourceId, kind } = task;
+      if (isEditRunning(state)) {
+        return { phase: 'failed', sourceId, kind, reason: 'busy' };
+      }
+      set({ phase: 'running', sourceId, kind, progress: null });
+      pollProgress();
+      try {
+        const itemId = await task.run();
+        stopPolling();
+        set({ phase: 'done', sourceId, kind, itemId });
+      } catch (error) {
+        stopPolling();
+        const cancelled = current().phase === 'cancelling' || isEditCancelled(error);
+        set(cancelled ? { phase: 'cancelled', sourceId, kind } : { phase: 'failed', sourceId, kind, reason: editFailure(error) });
+      }
+      return current();
+    },
+
     /** Stops the running edit; does nothing when none runs or it is already stopping. */
     cancel(): void {
       if (state.phase !== 'running') {
