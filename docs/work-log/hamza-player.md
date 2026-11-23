@@ -733,6 +733,10 @@ Both ignore case and Unicode composition.
 
 ### Decisions
 
+- **The shared action sheet (`src/components/bottom-sheets/ActionSheetModal.tsx`) now scrolls its rows** when they
+  don't all fit. It stops at 70 % of the screen and had no scroll, so with P7's two rows, and P6's two while a video
+  plays, the Library menu's Delete and Cancel could fall off a short phone. Only the rows scroll; Cancel stays below.
+  When everything fits, nothing changes.
 - **New names, because "playlist" was taken** by Playlist Download (`/downloads/playlist`, `lightPlaylist`).
   - Strings: a new `playlists` namespace (`catalogs/playlists.en.ts` / `.ur.ts`). The Player row's label is
     `playlists.addToPlaylist`, so `videoPlayer.*` is untouched.
@@ -806,3 +810,6 @@ Both ignore case and Unicode composition.
     Windows-1256 .m3u with Urdu names. Web links are counted, and the not-found list shows.
 11. **Themes and Urdu.** All six themes, and Urdu (right to left): Playlists, a playlist, the add sheet, the selection
     bar, the import summary.
+12. **The long-press menu scrolls.** On a short phone, with a video open in the mini player (P6 adds Play next and Add
+    to queue, so about 12 rows), long-press a Library video: the rows scroll, and Delete and Cancel can be reached. A
+    short menu elsewhere (e.g. Downloads) looks as before.
