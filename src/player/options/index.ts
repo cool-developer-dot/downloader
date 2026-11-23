@@ -12,6 +12,7 @@ import './p7-playlists';
 import './p8-gestures';
 import './p9-library-stats';
 import './p10-edit-tools';
+import './p14-streams';
 
 export {
   playerOptions,

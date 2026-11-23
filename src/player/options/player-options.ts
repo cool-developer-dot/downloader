@@ -16,6 +16,7 @@ import type { GestureSensitivity } from '../gesture-settings';
 import type { OrientationMode } from '../orientation-mode';
 import type { PlayerController } from '../types';
 import type { MirrorMode, VideoFit } from '../video-display';
+import type { PlayerEngineOption } from '../engine/types';
 
 import { createPlayerOptionsRegistry, type PlayerOptionRow } from './registry';
 
@@ -160,6 +161,11 @@ export type PlayerOptionContext = {
     openConverter: () => void;
     openCompress: () => void;
   };
+  /**
+   * Faran's sound and engine packages (P14–P19): streams, keys, speed, audio, timers, effects. Optional, so the other
+   * packages' tests build their context without it; its rows hide when it is missing.
+   */
+  engine?: PlayerEngineOption;
   ui: PlayerOptionUi;
 };
 

@@ -41,7 +41,9 @@ export type PlayerDiagnosticEvent =
   | 'player.completed'
   | 'player.disposed'
   /** A file opened from another app: read at launch / on a new intent, held for App Lock, opened. */
-  | 'player.incoming';
+  | 'player.incoming'
+  /** Faran's P14–P19: a call into the VidoraPlayer native module failed (the player keeps expo-video's defaults). */
+  | 'player.engine_call_failed';
 
 function sanitize(fields?: Fields): Fields {
   if (!fields) {

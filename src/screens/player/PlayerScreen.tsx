@@ -168,6 +168,8 @@ import { BookmarkNameModal } from './page/BookmarkNameModal';
 // P10 Screenshot & edit tools: ⋮ → Tools → Screenshot, Trim video, Extract audio, Video converter, Compress video.
 import { PlayerEditToolsSheets } from './page/PlayerEditToolsSheets';
 import { usePlayerEditTools } from './page/use-player-edit-tools';
+import { usePlayerEngine } from '@/player/engine/use-player-engine';
+import { PlayerEngineSheets } from './engine/PlayerEngineSheets';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -1455,6 +1457,15 @@ const PlayerSessionView = memo(function PlayerSessionView({
   );
   const quality = qualityLabel(trackInfo.width, trackInfo.height);
   const gesturesEnabled = !locked && !anyModalOpen && !startupCoverVisible;
+  // Faran's P14–P19 (streams, keys, speed, audio, timers, effects): their native settings, rows and sheets.
+  const leaveToDownloads = useCallback(() => onPressTab(tabRouteNames.downloads), [onPressTab]);
+  const engine = usePlayerEngine({
+    player,
+    mediaId: activeMediaId,
+    isReady: session.isReady,
+    isPlaying: session.isPlaying,
+    leaveToDownloads,
+  });
   const optionsContext: PlayerOptionContext = {
     t,
     mediaId: activeMediaId,
@@ -1499,6 +1510,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       total: SWITCHABLE_GESTURES.length,
     },
     editTools: p10EditTools.option,
+    engine: engine.option,
     ui: optionsUi,
   };
 
@@ -2135,6 +2147,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       <BookmarkNameModal {...p9.nameModal} />
       {/* P10: Video converter, Compress video and the running edit's progress. */}
       <PlayerEditToolsSheets state={p10EditTools.sheets} />
+      <PlayerEngineSheets sheets={engine.sheets} />
     </SafeAreaScreen>
   );
 });

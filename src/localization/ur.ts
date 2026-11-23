@@ -71,6 +71,7 @@ import { archiveImportUr } from './catalogs/archiveImport.ur';
 import { settingsViewUr } from './catalogs/settingsView.ur';
 import { playlistsUr } from './catalogs/playlists.ur';
 import { libraryStatsUr } from './catalogs/libraryStats.ur';
+import { playerEngineUr } from './catalogs/playerEngine.ur';
 
 export const ur: CatalogStrings<typeof en> = {
   common: {
@@ -2987,4 +2988,5 @@ export const ur: CatalogStrings<typeof en> = {
   playlists: playlistsUr,
   // P9 Library stats & bookmarks (Hamza)
   libraryStats: libraryStatsUr,
+  playerEngine: playerEngineUr,
 };

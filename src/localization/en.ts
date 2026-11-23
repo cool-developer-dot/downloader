@@ -69,6 +69,7 @@ import { archiveImportEn } from './catalogs/archiveImport.en';
 import { settingsViewEn } from './catalogs/settingsView.en';
 import { playlistsEn } from './catalogs/playlists.en';
 import { libraryStatsEn } from './catalogs/libraryStats.en';
+import { playerEngineEn } from './catalogs/playerEngine.en';
 
 export const en = {
   common: {
@@ -2984,4 +2985,5 @@ export const en = {
   // P9 Library stats & bookmarks (Hamza): play counts, Most played, length filter, hidden folders, Quick Delete,
   // Disable History, video bookmarks (the browser's bookmarks are `browserBookmarks`)
   libraryStats: libraryStatsEn,
+  playerEngine: playerEngineEn,
 } as const;

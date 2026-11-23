@@ -9,6 +9,7 @@ import { useTabExitBackHandler } from '@/navigation/hooks';
 import { PasteLinkRequestHandler } from '@/screens/paste-link/PasteLinkRequestHandler';
 import { QualitySelectionProvider } from '@/screens/downloads/quality';
 import { renderMiniPlayerTabBar } from '@/screens/player/mini';
+import { StreamDownloadHandoff } from '@/player/engine/StreamDownloadHandoff';
 
 /**
  * The five tabs of the design: Browser · Downloads · Player · Files · Settings. The bar itself is `DsTabBar` (drawn
@@ -34,6 +35,8 @@ export default function TabsLayout() {
     <QualitySelectionProvider>
       {/* The app shortcut / widget "Paste link" runs the Paste link button's own action (H7). */}
       <PasteLinkRequestHandler />
+      {/* P14 #672: "Download this stream" from the Player or the Network stream screen. */}
+      <StreamDownloadHandoff />
       <Tabs
         initialRouteName={tabRouteNames.browser}
         screenOptions={screenOptions}

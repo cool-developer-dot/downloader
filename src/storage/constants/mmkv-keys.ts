@@ -84,6 +84,8 @@ export const mmkvKeys = {
   playerDisableHistory: 'vidorax.mmkv.player.disableHistory.v1',
   /** P9 #628: library folders hidden from the Library (folder ids; `unfiled` for videos in no folder). */
   libraryExcludedFolders: 'vidorax.mmkv.library.excludedFolders.v1',
+  /** Faran's P14 #670: the stream quality cap (`auto`, `saver`, `720`, `1080`), app-wide. */
+  playerStreamQuality: 'vidorax.mmkv.player.streamQuality.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

@@ -1,0 +1,45 @@
+import { memo, useMemo } from 'react';
+
+import { useTranslation } from '@/localization';
+import { STREAM_QUALITIES, type StreamQuality } from '@/player/engine/stream-quality';
+import { streamCapLabel, type PlayerEngineSheets as Sheets } from '@/player/engine/use-player-engine';
+
+import { EngineChoiceSheet, type EngineChoice } from './EngineChoiceSheet';
+
+export type PlayerEngineSheetsProps = { sheets: Sheets };
+
+/** The sheets of Faran's Player packages (P14–P19), drawn by the Player screen next to its own. */
+export const PlayerEngineSheets = memo(function PlayerEngineSheets({ sheets }: PlayerEngineSheetsProps) {
+  const { t } = useTranslation();
+
+  // P14 #670
+  const streamChoices = useMemo<EngineChoice<StreamQuality>[]>(
+    () =>
+      STREAM_QUALITIES.map((quality) => ({
+        value: quality,
+        label: streamCapLabel(t, quality),
+        subtitle:
+          quality === 'auto'
+            ? t('playerEngine.streamQualityAutoSub')
+            : quality === 'saver'
+              ? t('playerEngine.streamQualitySaverSub')
+              : undefined,
+      })),
+    [t],
+  );
+
+  return (
+    <>
+      <EngineChoiceSheet
+        visible={sheets.streamQuality.visible}
+        title={t('playerEngine.streamQuality')}
+        subtitle={t('playerEngine.streamQualitySubtitle')}
+        choices={streamChoices}
+        selected={sheets.streamQuality.selected}
+        onSelect={sheets.streamQuality.select}
+        onClose={sheets.streamQuality.close}
+        testID="player-stream-quality-sheet"
+      />
+    </>
+  );
+});
