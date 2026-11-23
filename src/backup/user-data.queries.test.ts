@@ -6,7 +6,12 @@ import { DATABASE_VERSION, TABLE_NAMES } from '@/storage/constants';
 import { migrateDatabase } from '@/storage/sqlite/migrations';
 import { MAX_BOOKMARKS_PER_VIDEO } from '@/player/video-bookmarks';
 import { addPlaylistItems, createPlaylist } from '@/storage/repositories/playlists.queries';
-import { addVideoBookmark, recordPlay } from '@/storage/repositories/library-stats.queries';
+import {
+  addVideoBookmark,
+  listMediaLengths,
+  recordPlay,
+  saveMediaLength,
+} from '@/storage/repositories/library-stats.queries';
 
 import { appBackupJson, parseAppBackup } from './backup-format.ts';
 import { readUserData, restoreUserData, type UserDataDb } from './user-data.queries.ts';
@@ -239,6 +244,38 @@ describe('P11 backup: the database part', () => {
     assert.equal(after.videoBookmarks.length, 2, 'no bookmarks section in the file: left as they were');
     const orphans = phone.sqlite.prepare(`SELECT COUNT(*) AS n FROM ${TABLE_NAMES.playlistItems}`).get() as { n: number };
     assert.equal(Number(orphans.n), 0, 'the old playlists’ videos went with them');
+  });
+
+  test('Replace resets play counts but keeps P9’s measured lengths (they are not in a backup)', async () => {
+    const phone = await phoneWithData();
+    await saveMediaLength(phone.db as never, 'measured-only', 61_000, NOW);
+    const playedBefore = (await readUserData(phone.db)).playStats[0]!;
+    await saveMediaLength(phone.db as never, playedBefore.mediaId, 42_000, NOW);
+    await restoreUserData(
+      phone.db,
+      { playStats: [{ mediaId: 'from-file', playCount: 3, lastPlayedAt: T3 }] },
+      'replace',
+      NOW,
+    );
+    const after = await readUserData(phone.db);
+    assert.deepEqual(after.playStats, [{ mediaId: 'from-file', playCount: 3, lastPlayedAt: T3 }]);
+    const lengths = await listMediaLengths(phone.db as never);
+    assert.deepEqual(
+      lengths.map((row) => [row.mediaId, row.durationMs]),
+      [
+        ['measured-only', 61_000],
+        [playedBefore.mediaId, 42_000],
+      ].sort((a, b) => String(a[0]).localeCompare(String(b[0]))),
+    );
+    // A file's play count for a video the phone measured lands in the same row, its length kept.
+    await restoreUserData(
+      phone.db,
+      { playStats: [{ mediaId: 'measured-only', playCount: 2, lastPlayedAt: T3 }] },
+      'replace',
+      NOW,
+    );
+    assert.deepEqual((await readUserData(phone.db)).playStats, [{ mediaId: 'measured-only', playCount: 2, lastPlayedAt: T3 }]);
+    assert.equal((await listMediaLengths(phone.db as never)).find((row) => row.mediaId === 'measured-only')?.durationMs, 61_000);
   });
 
   test('a restore that fails part-way writes nothing (one transaction)', async () => {

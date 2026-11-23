@@ -259,7 +259,9 @@ async function restorePlayStats(
   summary: UserDataRestoreSummary,
 ) {
   if (mode === 'replace') {
-    await db.runAsync(`DELETE FROM ${S}`);
+    // Every play count goes back to none; the rows stay, so P9's measured lengths (`duration_ms`, not in a backup:
+    // they are measured again from the files) are kept.
+    await db.runAsync(`UPDATE ${S} SET play_count = 0, last_played_at = NULL`);
   }
   for (const stat of stats) {
     const current =
@@ -268,7 +270,8 @@ async function restorePlayStats(
         : null;
     if (!current) {
       await db.runAsync(
-        `INSERT INTO ${S} (media_id, play_count, last_played_at) VALUES (?, ?, ?)`,
+        `INSERT INTO ${S} (media_id, play_count, last_played_at) VALUES (?, ?, ?)
+         ON CONFLICT(media_id) DO UPDATE SET play_count = excluded.play_count, last_played_at = excluded.last_played_at`,
         stat.mediaId,
         stat.playCount,
         stat.lastPlayedAt,
