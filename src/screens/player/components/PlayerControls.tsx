@@ -23,6 +23,10 @@ export type PlayerControlsProps = {
   onReplay: () => void;
   /** The chosen seek interval (P1 #527): the ⏪ / ⏩ icons and labels follow it. */
   seekStepSeconds?: number;
+  /** P8 #692: the ⏪ / ⏩ pair is shown (default). */
+  showSkipButtons?: boolean;
+  /** P8 #692: ⏮ / ⏭ are shown when there is a list (default). */
+  showPreviousNext?: boolean;
 };
 
 /** The icon font has numbered skip glyphs for these intervals only; others show the plain ⏪ / ⏩. */
@@ -43,6 +47,8 @@ export const PlayerControls = memo(function PlayerControls({
   onForward,
   onReplay,
   seekStepSeconds = 10,
+  showSkipButtons = true,
+  showPreviousNext = true,
 }: PlayerControlsProps) {
   const { t } = useTranslation();
   if (!visible) {
@@ -54,7 +60,7 @@ export const PlayerControls = memo(function PlayerControls({
   return (
     <View style={styles.wrap} pointerEvents="box-none">
       <Box row center gap={12} style={styles.row}>
-        {hasQueue ? (
+        {hasQueue && showPreviousNext ? (
           <IconButton
             icon="skip-previous"
             size="medium"
@@ -67,15 +73,17 @@ export const PlayerControls = memo(function PlayerControls({
             testID="player-previous"
           />
         ) : null}
-        <IconButton
-          icon={NUMBERED_SKIP_ICONS.has(seekStepSeconds) ? `rewind-${seekStepSeconds}` : 'rewind'}
-          size="large"
-          variant="ghost"
-          color={controlsDisabled ? 'disabled' : 'inverse'}
-          accessibilityLabel={t('videoPlayer.rewindSeconds', { seconds: seekStepSeconds })}
-          disabled={controlsDisabled}
-          onPress={onRewind}
-        />
+        {showSkipButtons ? (
+          <IconButton
+            icon={NUMBERED_SKIP_ICONS.has(seekStepSeconds) ? `rewind-${seekStepSeconds}` : 'rewind'}
+            size="large"
+            variant="ghost"
+            color={controlsDisabled ? 'disabled' : 'inverse'}
+            accessibilityLabel={t('videoPlayer.rewindSeconds', { seconds: seekStepSeconds })}
+            disabled={controlsDisabled}
+            onPress={onRewind}
+          />
+        ) : null}
         <View style={styles.playWrap}>
           {isLoading ? (
             <Loader size="large" accessibilityLabel={t('player.preparing')} />
@@ -98,16 +106,18 @@ export const PlayerControls = memo(function PlayerControls({
             />
           )}
         </View>
-        <IconButton
-          icon={NUMBERED_SKIP_ICONS.has(seekStepSeconds) ? `fast-forward-${seekStepSeconds}` : 'fast-forward'}
-          size="large"
-          variant="ghost"
-          color={controlsDisabled ? 'disabled' : 'inverse'}
-          accessibilityLabel={t('videoPlayer.forwardSeconds', { seconds: seekStepSeconds })}
-          disabled={controlsDisabled}
-          onPress={onForward}
-        />
-        {hasQueue ? (
+        {showSkipButtons ? (
+          <IconButton
+            icon={NUMBERED_SKIP_ICONS.has(seekStepSeconds) ? `fast-forward-${seekStepSeconds}` : 'fast-forward'}
+            size="large"
+            variant="ghost"
+            color={controlsDisabled ? 'disabled' : 'inverse'}
+            accessibilityLabel={t('videoPlayer.forwardSeconds', { seconds: seekStepSeconds })}
+            disabled={controlsDisabled}
+            onPress={onForward}
+          />
+        ) : null}
+        {hasQueue && showPreviousNext ? (
           <IconButton
             icon="skip-next"
             size="medium"

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 
 import { createAdjustmentHud, type AdjustmentHud } from './adjustment-hud';
 import { brightnessFromSwipe, levelToPercent } from './brightness-state';
+import { scaleSwipeDistance, type GestureSensitivity } from './gesture-settings';
 import { levelFromSwipeDelta } from './level-gesture';
 import type { PlayerBrightnessState } from './hooks/use-player-brightness';
 import type { PlayerVolumeState } from './hooks/use-player-volume';
@@ -21,6 +22,8 @@ type UsePlayerSideGesturesOptions = {
   brightness: PlayerBrightnessState;
   volume: PlayerVolumeState;
   volumeFallback?: VolumeFallback;
+  /** P8 #586: how far a swipe moves the level. Normal (or none) is the mapping these swipes always had. */
+  sensitivity?: GestureSensitivity;
 };
 
 export type PlayerSideGestures = {
@@ -106,11 +109,11 @@ export function usePlayerSideGestures(options: UsePlayerSideGesturesOptions): Pl
 
   const onBrightnessPanUpdate = useCallback(
     (translationY: number) => {
-      const { brightness, surfaceHeight } = optionsRef.current;
+      const { brightness, surfaceHeight, sensitivity } = optionsRef.current;
       if (!brightness.available || activeKindRef.current !== 'brightness') {
         return;
       }
-      const next = brightnessFromSwipe(startLevelRef.current, translationY, surfaceHeight);
+      const next = brightnessFromSwipe(startLevelRef.current, scaleSwipeDistance(translationY, sensitivity), surfaceHeight);
       brightness.setLevel(next);
       hud.show('brightness', levelToPercent(next));
     },
@@ -134,7 +137,7 @@ export function usePlayerSideGestures(options: UsePlayerSideGesturesOptions): Pl
       }
       const next = levelFromSwipeDelta(
         startLevelRef.current,
-        translationY,
+        scaleSwipeDistance(translationY, optionsRef.current.sensitivity),
         optionsRef.current.surfaceHeight,
         (value) => clampVolume(value) ?? 0,
       );

@@ -12,6 +12,7 @@ import type { VideoPlayer } from 'expo-video';
 import type { DsIconName } from '@/design';
 import type { TranslateFn, TranslationKey } from '@/localization';
 
+import type { GestureSensitivity } from '../gesture-settings';
 import type { OrientationMode } from '../orientation-mode';
 import type { PlayerController } from '../types';
 import type { MirrorMode, VideoFit } from '../video-display';
@@ -68,6 +69,14 @@ export type PlayerOptionUi = {
   setAutoPlayNext?: (on: boolean) => void;
   /** P6 #733: the Next Episode card (remembered, app-wide). */
   setNextEpisodePrompt?: (on: boolean) => void;
+  /** P8 #582–#587: the Gestures sheet (screen 20's card: the master switch, each gesture, the sensitivity). */
+  openGestures: () => void;
+  /** P8 #587: every gesture on / off at once (remembered; each gesture keeps its own switch). */
+  setGesturesEnabled: (on: boolean) => void;
+  /** P8 #586: the sensitivity sheet (Low, Normal, High). */
+  openGestureSensitivity: () => void;
+  /** P8 #692: the Customize controls sheet. */
+  openCustomizeControls: () => void;
 };
 
 export type PlayerOptionContext = {
@@ -112,6 +121,16 @@ export type PlayerOptionContext = {
    * app opened, a stream: their ids don't outlive the app). `openAddSheet` opens the Player's add sheet.
    */
   playlists?: { canAdd: boolean; openAddSheet: () => void };
+  /** P8: the gesture settings (app-wide). */
+  gestures: {
+    /** The master switch ("Gesture controls"). */
+    enabled: boolean;
+    sensitivity: GestureSensitivity;
+    /** How many gestures work now (0 while the master switch is off) … */
+    onCount: number;
+    /** … of how many. */
+    total: number;
+  };
   ui: PlayerOptionUi;
 };
 

@@ -1,10 +1,12 @@
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import { ScrollView } from 'react-native';
 
 import { DsChip, DsChipRow, DsRow, DsRowGroup, DsTile, DsTileGrid, ds } from '@/design';
 import { useTranslation, type TranslationKey } from '@/localization';
 import { formatPlaybackRateChip, formatPlaybackRateLabel } from '@/player';
+import { DEFAULT_CONTROLS_LAYOUT, type ControlsLayout } from '@/player/controls-layout';
 
+import { pageCardShown, pageChipsToDraw, pageTilesToDraw } from './player-controls-customize';
 import { PAGE_TILES, shownPageChips, type PageChip, type PageTile, type PlayerPageAction } from './player-page-actions';
 
 export type PlayerPageBodyProps = {
@@ -15,6 +17,8 @@ export type PlayerPageBodyProps = {
   /** Locked: everything here is hidden from TalkBack as well as covered. */
   accessibilityHidden?: boolean;
   onAction: (action: PlayerPageAction) => void;
+  /** P8 #692: the user's chips, tiles and cards (shown, hidden, order). Default: the design's page. */
+  layout?: ControlsLayout;
 };
 
 const CHIP_LABELS: Record<Exclude<PageChip, 'speed'>, { label: TranslationKey; a11y: TranslationKey }> = {
@@ -45,8 +49,13 @@ export const PlayerPageBody = memo(function PlayerPageBody({
   enabled,
   accessibilityHidden = false,
   onAction,
+  layout = DEFAULT_CONTROLS_LAYOUT,
 }: PlayerPageBodyProps) {
   const { t } = useTranslation();
+  // P8 #692: what the user chose to show, in their order. Nothing saved: SHOWN_CHIPS and PAGE_TILES, as before.
+  const chips = useMemo(() => (layout === DEFAULT_CONTROLS_LAYOUT ? SHOWN_CHIPS : pageChipsToDraw(layout)), [layout]);
+  const tiles = useMemo(() => (layout === DEFAULT_CONTROLS_LAYOUT ? PAGE_TILES : pageTilesToDraw(layout)), [layout]);
+  const upNextShown = pageCardShown(layout, 'upNext');
   return (
     <ScrollView
       style={{ flex: 1 }}
@@ -56,7 +65,7 @@ export const PlayerPageBody = memo(function PlayerPageBody({
       accessibilityElementsHidden={accessibilityHidden}
       testID="player-page-body">
       <DsChipRow testID="player-page-chips">
-        {SHOWN_CHIPS.map((chip) =>
+        {chips.map((chip) =>
           chip === 'speed' ? (
             <DsChip
               key={chip}
@@ -80,7 +89,7 @@ export const PlayerPageBody = memo(function PlayerPageBody({
         )}
       </DsChipRow>
       <DsTileGrid testID="player-page-tiles">
-        {PAGE_TILES.map((tile) => (
+        {tiles.map((tile) => (
           <DsTile
             key={tile.id}
             icon={tile.icon}
@@ -99,16 +108,18 @@ export const PlayerPageBody = memo(function PlayerPageBody({
           />
         ))}
       </DsTileGrid>
-      <DsRowGroup>
-        <DsRow
-          icon="skip-forward"
-          title={t('videoPlayer.upNext')}
-          subtitle={t('videoPlayer.upNextSubtitle')}
-          trailing="chevron"
-          onPress={() => onAction('upNext')}
-          testID="player-up-next"
-        />
-      </DsRowGroup>
+      {upNextShown ? (
+        <DsRowGroup>
+          <DsRow
+            icon="skip-forward"
+            title={t('videoPlayer.upNext')}
+            subtitle={t('videoPlayer.upNextSubtitle')}
+            trailing="chevron"
+            onPress={() => onAction('upNext')}
+            testID="player-up-next"
+          />
+        </DsRowGroup>
+      ) : null}
     </ScrollView>
   );
 });

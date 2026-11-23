@@ -23,6 +23,18 @@ import {
   type DoubleTapSeekSide,
 } from '@/player';
 import {
+  DEFAULT_GESTURE_SETTINGS,
+  gestureOn,
+  surfaceGestureFlags,
+  type GestureSettings,
+} from '@/player/gesture-settings';
+import {
+  SIDE_SWIPE_ACTIVE_OFFSET_Y,
+  SIDE_SWIPE_FAIL_OFFSET_X,
+  SWIPE_SEEK_ACTIVE_OFFSET_X,
+  SWIPE_SEEK_FAIL_OFFSET_Y,
+} from '@/player/gesture-zones';
+import {
   DEFAULT_VIDEO_FIT,
   mirrorScale,
   videoFitLayout,
@@ -44,6 +56,9 @@ import {
 
 const SETTLE = { duration: 180 };
 const LONG_PRESS_MS = 500;
+/** P8 #585: a two-finger tap is quick and still (a pinch moves, so it is never one). */
+const TWO_FINGER_TAP_MAX_MS = 300;
+const TWO_FINGER_TAP_MAX_DISTANCE = 12;
 
 export type PlayerVideoSurfaceProps = {
   player: VideoPlayer;
@@ -87,6 +102,21 @@ export type PlayerVideoSurfaceProps = {
   onFirstFrameRender?: () => void;
   /** False while VidoraX is stopped with background play on: the view lets go of the player (sound only). */
   surfaceAttached?: boolean;
+  /**
+   * P8 #586 / #587: the master switch and one switch per gesture. Default: everything on, which is the surface as it
+   * was before P8 (swipe seek and the two-finger tap also need their handlers below).
+   */
+  gestureSettings?: GestureSettings;
+  /** P8 #582: the video can seek by a swipe now (ready, its length known). */
+  swipeSeekAvailable?: boolean;
+  /** P8 #582: a sideways swipe was recognised. */
+  onSwipeSeekStart?: () => void;
+  /** P8 #582: how far the finger has moved sideways since then (dp, right positive), and the surface's width. */
+  onSwipeSeekUpdate?: (translationX: number, surfaceWidth: number) => void;
+  /** P8 #582: runs for every touch the swipe saw; `success` only when the finger lifted after a recognised swipe. */
+  onSwipeSeekFinalize?: (success: boolean) => void;
+  /** P8 #585: a quick tap with two fingers (play / pause). */
+  onTwoFingerTap?: () => void;
 };
 
 export const PlayerVideoSurface = memo(function PlayerVideoSurface({
@@ -118,6 +148,12 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
   onSurfaceLayout,
   onFirstFrameRender,
   surfaceAttached = true,
+  gestureSettings = DEFAULT_GESTURE_SETTINGS,
+  swipeSeekAvailable = false,
+  onSwipeSeekStart,
+  onSwipeSeekUpdate,
+  onSwipeSeekFinalize,
+  onTwoFingerTap,
 }: PlayerVideoSurfaceProps) {
   const theme = useTheme();
   const { t } = useTranslation();
@@ -209,6 +245,14 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
     resetZoom();
   }, [resetZoom, zoomResetKey]);
 
+  // P8 #587: pinch zoom switched off puts the picture back to fitted (nothing could zoom it out again otherwise).
+  const pinchZoomOn = gestureOn(gestureSettings, 'pinchZoom');
+  useEffect(() => {
+    if (!pinchZoomOn) {
+      resetZoom();
+    }
+  }, [pinchZoomOn, resetZoom]);
+
   const handleSingleTap = useCallback(() => {
     onSingleTap?.();
   }, [onSingleTap]);
@@ -259,11 +303,46 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
     [onVolumePanUpdate],
   );
 
+  // P8 #582 / #585: the swipe seek and the two-finger tap report to the Player screen.
+  const swipeSeekStart = useCallback(() => {
+    onSwipeSeekStart?.();
+  }, [onSwipeSeekStart]);
+  const swipeSeekUpdate = useCallback(
+    (translationX: number, width: number) => onSwipeSeekUpdate?.(translationX, width),
+    [onSwipeSeekUpdate],
+  );
+  const swipeSeekFinalize = useCallback(
+    (success: boolean) => onSwipeSeekFinalize?.(success),
+    [onSwipeSeekFinalize],
+  );
+  const twoFingerTap = useCallback(() => {
+    onTwoFingerTap?.();
+  }, [onTwoFingerTap]);
+
+  // P8 #587: which recognisers are on. With every switch on, the ones from before P8 get the values they always had.
+  const hasLayout = layout.width * SIDE_ZONE_RATIO > 0;
+  const hasLongPress = Boolean(onLongPressStart);
+  const canSwipeSeek = swipeSeekAvailable && Boolean(onSwipeSeekStart);
+  const hasTwoFingerTap = Boolean(onTwoFingerTap);
+  const flags = useMemo(
+    () =>
+      surfaceGestureFlags(gestureSettings, {
+        gesturesEnabled,
+        brightnessAvailable: brightnessGesturesEnabled,
+        zoomed,
+        hasLayout,
+        hasLongPress,
+        canSwipeSeek,
+        hasTwoFingerTap,
+      }),
+    [brightnessGesturesEnabled, canSwipeSeek, gestureSettings, gesturesEnabled, hasLayout, hasLongPress, hasTwoFingerTap, zoomed],
+  );
+
   const gesture = useMemo(() => {
     const zoneWidth = Math.max(0, layout.width * SIDE_ZONE_RATIO);
 
     const pinch = Gesture.Pinch()
-      .enabled(gesturesEnabled)
+      .enabled(flags.pinch)
       .onStart((event) => {
         cancelAnimation(scale);
         cancelAnimation(translateX);
@@ -321,7 +400,7 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
 
     // One finger moves the zoomed picture; it glides and stops at the picture's edges.
     const zoomPan = Gesture.Pan()
-      .enabled(gesturesEnabled && zoomed)
+      .enabled(flags.zoomPan)
       .maxPointers(1)
       .onStart(() => {
         cancelAnimation(translateX);
@@ -357,11 +436,11 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
     // Edge swipes (fitted picture only): left = brightness, right = volume. A tap or a sideways move never starts
     // them; `onFinalize` runs for every touch they saw, so the indicator can never be left behind.
     const brightnessPan = Gesture.Pan()
-      .enabled(gesturesEnabled && brightnessGesturesEnabled && !zoomed && zoneWidth > 0)
+      .enabled(flags.brightnessPan)
       .hitSlop({ left: 0, width: zoneWidth })
       .maxPointers(1)
-      .activeOffsetY([-10, 10])
-      .failOffsetX([-16, 16])
+      .activeOffsetY([-SIDE_SWIPE_ACTIVE_OFFSET_Y, SIDE_SWIPE_ACTIVE_OFFSET_Y])
+      .failOffsetX([-SIDE_SWIPE_FAIL_OFFSET_X, SIDE_SWIPE_FAIL_OFFSET_X])
       .onStart(() => {
         runOnJS(brightnessStart)();
       })
@@ -373,11 +452,11 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
       });
 
     const volumePan = Gesture.Pan()
-      .enabled(gesturesEnabled && !zoomed && zoneWidth > 0)
+      .enabled(flags.volumePan)
       .hitSlop({ right: 0, width: zoneWidth })
       .maxPointers(1)
-      .activeOffsetY([-10, 10])
-      .failOffsetX([-16, 16])
+      .activeOffsetY([-SIDE_SWIPE_ACTIVE_OFFSET_Y, SIDE_SWIPE_ACTIVE_OFFSET_Y])
+      .failOffsetX([-SIDE_SWIPE_FAIL_OFFSET_X, SIDE_SWIPE_FAIL_OFFSET_X])
       .onStart(() => {
         runOnJS(volumeStart)();
       })
@@ -388,11 +467,43 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
         runOnJS(volumeFinalize)();
       });
 
+    // P8 #582: one finger moved sideways anywhere on the fitted picture, with the edge swipes' two thresholds the other
+    // way round (see gesture-zones.ts), so the first clear movement picks the axis. The seek happens on release only;
+    // a cancelled swipe (a second finger, a lock, a sheet) ends with `success` false and seeks nowhere.
+    const swipeSeek = Gesture.Pan()
+      .enabled(flags.swipeSeek)
+      .maxPointers(1)
+      .activeOffsetX([-SWIPE_SEEK_ACTIVE_OFFSET_X, SWIPE_SEEK_ACTIVE_OFFSET_X])
+      .failOffsetY([-SWIPE_SEEK_FAIL_OFFSET_Y, SWIPE_SEEK_FAIL_OFFSET_Y])
+      .onStart(() => {
+        runOnJS(swipeSeekStart)();
+      })
+      .onUpdate((event) => {
+        runOnJS(swipeSeekUpdate)(event.translationX, surfaceWidth.value);
+      })
+      .onFinalize((_event, success) => {
+        runOnJS(swipeSeekFinalize)(success);
+      });
+
+    // P8 #585: two fingers down and up again quickly, without moving (a pinch moves): play / pause.
+    const twoFingerTapGesture = Gesture.Tap()
+      .minPointers(2)
+      .maxDuration(TWO_FINGER_TAP_MAX_MS)
+      .maxDistance(TWO_FINGER_TAP_MAX_DISTANCE)
+      .enabled(flags.twoFingerTap)
+      .onEnd((_event, success) => {
+        if (success) {
+          runOnJS(twoFingerTap)();
+        }
+      });
+
+    // P8 #587: with the double tap switched off it is on only while zoomed, and then only resets the zoom.
+    const doubleTapActions = flags.doubleTapActions;
     // Double tap: back to fitted while zoomed (and nothing else); otherwise by third — −10 s / play-pause / +10 s.
     const doubleTap = Gesture.Tap()
       .numberOfTaps(2)
       .maxDuration(280)
-      .enabled(gesturesEnabled)
+      .enabled(flags.doubleTap)
       .onEnd((event, success) => {
         if (!success) {
           return;
@@ -406,7 +517,7 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
           runOnJS(setZoomed)(false);
           return;
         }
-        if (action) {
+        if (action && doubleTapActions) {
           runOnJS(handleDoubleTap)(action);
         }
       });
@@ -414,7 +525,7 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
     const singleTap = Gesture.Tap()
       .numberOfTaps(1)
       .maxDuration(250)
-      .enabled(gesturesEnabled)
+      .enabled(flags.singleTap)
       .onEnd((_event, success) => {
         if (success) {
           runOnJS(handleSingleTap)();
@@ -427,7 +538,7 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
     const longPress = Gesture.LongPress()
       .minDuration(LONG_PRESS_MS)
       .maxDistance(12)
-      .enabled(gesturesEnabled && Boolean(onLongPressStart))
+      .enabled(flags.longPress)
       .onStart(() => {
         runOnJS(longPressStart)();
       })
@@ -435,21 +546,25 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
         runOnJS(longPressEnd)();
       });
 
+    // P8: the swipe seek races the edge swipes (the axis decides) and the two-finger tap races the taps. A two-finger
+    // tap is recognised when the fingers lift, before the single tap may be (it waits for the double tap to fail), so
+    // it wins and the controls stay as they were. Each is switched off until its switch and its handler are there.
     return Gesture.Race(
       Gesture.Simultaneous(pinch, zoomPan),
       brightnessPan,
       volumePan,
+      swipeSeek,
       longPress,
+      twoFingerTapGesture,
       Gesture.Exclusive(doubleTap, singleTap),
     );
   }, [
     brightnessFinalize,
-    brightnessGesturesEnabled,
     brightnessStart,
     brightnessUpdate,
     contentHeight,
     contentWidth,
-    gesturesEnabled,
+    flags,
     handleDoubleTap,
     handleSingleTap,
     handleZoomChange,
@@ -458,7 +573,6 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
     layout.width,
     longPressEnd,
     longPressStart,
-    onLongPressStart,
     pinching,
     scale,
     startFocalX,
@@ -468,13 +582,28 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
     startY,
     surfaceHeight,
     surfaceWidth,
+    swipeSeekFinalize,
+    swipeSeekStart,
+    swipeSeekUpdate,
     translateX,
     translateY,
+    twoFingerTap,
     volumeFinalize,
     volumeStart,
     volumeUpdate,
-    zoomed,
   ]);
+
+  // TalkBack's hint: the gestures as before, plus P8's when they are on; one short line when the user switched them off.
+  const seekHintSeconds = seekStepSeconds ?? DEFAULT_SEEK_STEP_SECONDS;
+  const surfaceHint = gestureSettings.enabled
+    ? [
+        t('videoPlayer.surfaceHint', { seconds: seekHintSeconds }),
+        flags.swipeSeek ? t('videoPlayer.surfaceHintSwipeSeek') : null,
+        flags.twoFingerTap ? t('videoPlayer.surfaceHintTwoFingerTap') : null,
+      ]
+        .filter(Boolean)
+        .join(' ')
+    : t('videoPlayer.surfaceHintGesturesOff');
 
   const zoomStyle = useAnimatedStyle(() => ({
     transform: [
@@ -537,7 +666,7 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
           style={styles.video}
           accessibilityRole="button"
           accessibilityLabel={t('player.videoSurfaceA11y')}
-          accessibilityHint={t('videoPlayer.surfaceHint', { seconds: seekStepSeconds ?? DEFAULT_SEEK_STEP_SECONDS })}
+          accessibilityHint={surfaceHint}
         />
       </GestureDetector>
     </View>
