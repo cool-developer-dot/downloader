@@ -40,6 +40,18 @@ export type PlayerOptionUi = {
   setFillCutout: (on: boolean) => void;
   /** P2 #721: the info overlay on the video (remembered). */
   setInfoOverlay: (on: boolean) => void;
+  /** P3 #598 / #602: the subtitle track sheet (Off, tracks inside the video, subtitle files). */
+  openSubtitleTracks: () => void;
+  /** P3 #589: the system file picker for a subtitle file. */
+  loadSubtitleFile: () => void;
+  /** P3 #590: look for subtitle files named like the video (remembered, app-wide). */
+  setSubtitleAutoDetect: (on: boolean) => void;
+  /** P3 #597: the sync sheet. */
+  openSubtitleSync: () => void;
+  /** P3 #601: the encoding sheet. */
+  openSubtitleEncoding: () => void;
+  /** P3 #602: subtitles off for this video. */
+  subtitlesOff: () => void;
 };
 
 export type PlayerOptionContext = {
@@ -62,6 +74,17 @@ export type PlayerOptionContext = {
   incoming: { saveState: 'idle' | 'saving' | 'saved' } | null;
   /** P2: how the picture is shown — the fit (per video), mirror (this video), notch area and info overlay. */
   display: { fit: VideoFit; mirror: MirrorMode; fillCutout: boolean; infoOverlay: boolean };
+  /** P3: the subtitles of this video. */
+  subtitles: {
+    /** What shows; null when subtitles are off. */
+    label: string | null;
+    /** A subtitle file shows (sync and encoding apply to files only). */
+    isFile: boolean;
+    offsetMs: number;
+    /** The showing file's encoding ("Automatic (UTF-8)"); null when no file shows. */
+    encodingLabel: string | null;
+    autoDetect: boolean;
+  };
   ui: PlayerOptionUi;
 };
 

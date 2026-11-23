@@ -48,7 +48,6 @@ are shortcuts to the same commands.
 
 | Chip / tile / row | Replaced by | Features there |
 | --- | --- | --- |
-| Subs (chip) | **P3** Subtitles: load & tracks (P4 adds the style rows) | #589 Load, #590 Auto detect, #598 Multiple tracks, #602 Off, #603 Formats, #601 Encoding, #597 Sync |
 | A–B repeat (tile) | **P5** Repeat & loops | #541 A-B repeat, #722 Save loop |
 | Up next (row) | **P6** Queue & auto-next | #534 Auto play next, #619 Play queue, #620 Play next, #733 Next episode prompt |
 | Audio (chip) | **Faran's P17** — hidden until P17 is merged (`PAGE_CHIP_FLAGS.audio = false`; P17 sets it to `true`) | screen 22, Audio & equalizer |
@@ -56,7 +55,8 @@ are shortcuts to the same commands.
 
 The package that builds one takes it out of `NOT_YET_ACTIONS` (`src/screens/player/page/player-page-actions.ts`) and
 handles it in `onPageAction` (`PlayerScreen.tsx`). The 1.0× chip is Faran's P16; P1 leaves it as it was. P2 built the
-Aspect ratio tile and turned the Filters tile into Mirror / Flip (see P2 below), so both rows are gone from this table.
+Aspect ratio tile and turned the Filters tile into Mirror / Flip (see P2 below), and P3 built the Subs chip (see P3),
+so those rows are gone from this table.
 
 **Faran's answers (2026-11-22):** `integration/player` created from the base (`9e9f343`); Stop as it is is fine for P1
 (real stop in P15); long-press 2× is fine as it is; Filters is not planned (the tile becomes Mirror / Flip in P2);
@@ -237,3 +237,99 @@ sheet. P1's rows are unchanged; Playback and Audio are untouched for Faran.
 6. Picture-in-picture after choosing Crop, 4:3 and a mirror: the window shows the whole picture, mirrored.
 7. All six themes and Urdu: both sheets, the switch rows in the options sheet, the "Mirror / Flip" tile label.
 8. Changing the fit or the mirror never blacks out or restarts the picture (the view is laid out again, not remounted).
+
+## P3 — Subtitles: load & tracks (#589, #590, #598, #602, #603, #601, #597)
+
+Built on `hamza/player` after P2 (PR #41) was merged into it; branch `hamza/P3-subtitles`. Its PR depends on #41.
+Local files only, no network, no new permission or dependency, no SQLite change.
+
+### How subtitles are drawn (checked in expo-video 57.0.2)
+
+- **Tracks inside the video** (MKV / MP4 text tracks, HLS / DASH subtitles): expo-video lists them
+  (`availableSubtitleTracks`) and draws the chosen one itself, in Media3's subtitle view inside the video view
+  (`SubtitleUtils.configureSubtitleView`: embedded styles off, Android's caption settings applied). It gives
+  JavaScript no cue text. So these tracks **cannot be styled by P4, take no sync offset, cannot be one of P4's two
+  tracks shown together, and are mirrored / cropped with the picture** (they live inside P2's frame). They follow
+  Settings → Accessibility → Caption preferences.
+- **Subtitle files** (loaded, or found next to the video): read, decoded, parsed and timed in JavaScript and drawn by
+  VidoraX's own overlay — the one rendering path P4 styles. The overlay sits outside P2's frame (never mirrored or
+  cropped) and is synced to `player.currentTime`, read ten times a second while a file shows.
+- When a file or Off is chosen, P3 sets `player.subtitleTrack = null`, so the player's own subtitles never show at the
+  same time. That is a player property set from P3's hook; no file of Faran's is edited.
+- **expo-video turns the player's own subtitles off** when the player starts and for every new video
+  (`VideoPlayer.kt`: "we want them disabled by default"), so nothing carries over between videos. With nothing chosen
+  for a video, P3 shows a track the video flags as its default, else the auto-detected file in the app's language,
+  else English, else one without a language.
+
+### What the user sees
+
+| # | Feature | Where | How (evidence) |
+| --- | --- | --- | --- |
+| #589 | Load Subtitle | Subs chip → Load subtitle; Options → Subtitles | The app's existing system file picker (`File.pickFileAsync`, as Download history and Settings import use; App Lock does not relock for it). The file must read as SRT / ASS / VTT with at least one cue and be at most 5 MB. Its bytes are copied to `<documents>/subtitles/` (a picked `content://` link does not survive a restart), it becomes the track, and a toast names it. While the picker is open, picture-in-picture is not armed. `src/player/subtitles/subtitle-files.ts` (`pickSubtitleFile`), `use-player-subtitles.ts` (`load`), `PlayerScreen.tsx` (`onLoadSubtitle`, `pipAutoEnter`). |
+| #590 | Auto Detect Subtitle | Subtitles → Auto-detect (a switch, on by default, remembered) | When a library download opens, its folder (`<documents>/library/<site>/`, VidoraX's own) is listed for `<video>.srt`, `<video>.<lang>.vtt`, `<video>.<lang>.2.vtt`, `.ass`, `.ssa` (H19 saves downloaded subtitles as `<video>.<lang>.vtt`). They join the track list; with nothing chosen, the best one shows. **Videos from the gallery or another app are skipped:** their folders can't be listed without a storage permission. `sidecar.ts`, `subtitle-files.ts` (`listSidecarFiles`). |
+| #598 | Multiple Tracks | Subtitles → Subtitle track | One list: Off, the tracks inside the video ("English · in the video", the player's label, else the language, else "Track 2"), then the files ("Urdu · Episode 1.ur.vtt"). Languages from the file name's tag; 20 common ones have names in English and Urdu, others show their tag. `subtitle-labels.ts`, `page/SubtitleSheets.tsx` (`SubtitleTrackSheet`). |
+| #602 | Subtitle Off | Subtitles → Subtitle off; Off in the track list | Off for this video, remembered (so an auto-detected file does not come back). |
+| #603 | Subtitle Formats | — | SRT, WebVTT, ASS / SSA (v4 and v4+). `parse-subtitles.ts`. Tags, entities and cue settings removed; ASS text kept with override blocks removed, `\N` a new line, drawings left out. **ASS features not drawn** (reported by the parser as `unsupported`): position (`\pos`, `\move`, `\org`), alignment (`\an`, `\a`), fade, animation (`\t`), karaoke, drawing (`\p`), colour and alpha, font name / size / spacing / scale, bold / italic / underline / strike, border / shadow / blur, rotation, clip, reset (`\r`), wrap (`\q`), the [V4+ Styles] section, the Effect field, layers (overlapping lines are stacked), per-line margins. |
+| #601 | Subtitle Encoding | Subtitles → Encoding (shown for a file) | Automatic: a byte-order mark (UTF-8, UTF-16 LE / BE); UTF-16 without one (zero bytes); valid UTF-8; else Windows-1256 when the high bytes form words (Arabic script), else Windows-1252. By hand: UTF-8, UTF-16 LE, UTF-16 BE, Windows-1256 (Arabic, Urdu), Windows-1252 (Western). Every decoder is built in (no `TextDecoder`, no dependency); the two code pages are tables generated from Python's codecs. Remembered per file and video. `subtitle-encoding.ts`. |
+| #597 | Subtitle Sync | Subtitles → Sync (for a file) | A sheet: −1 s, −0.1 s, +0.1 s, +1 s and Reset; the value ("+0.5 s") is spoken. Plus shows the subtitles later. 100 ms steps, ±5 minutes, remembered per video. A track inside the video can't be shifted (the row says "For subtitle files only"). `cues.ts` (`stepSubtitleOffset`, `subtitleTimeMs`), `SubtitleSyncSheet`. |
+
+**Remembered per video** (MMKV `vidorax.mmkv.player.subtitles.v1`, the last 300 videos; no SQLite): the chosen track
+(a track inside the video by id, then language and label, since ids may change between loads), the subtitle files
+(up to 8; a detected file is kept once chosen) with their encodings, and the sync offset. Copies of loaded files are
+deleted when their record or file is dropped. The reader ignores fields it does not know, so P4 adds its second track
+to the same record. `subtitle-record.ts`, `subtitle-preference.ts`.
+
+**Where:** the Subs chip (no longer "Not available yet") opens the options sheet's Subtitles section alone, titled
+"Subtitles"; the ⋮ options sheet shows the same rows under Subtitles. Rows (screen 21's order): Subtitle track 10,
+Load subtitle 20, Auto-detect 30 (switch), Sync 40, Encoding 50 (files only), Subtitle off 90 (when on).
+`src/player/options/p3-subtitles.ts`.
+
+### Decisions
+
+- **Screen 21's "Subtitle editor" row is left out:** it is in no package of the plan.
+- **"Auto-detect / download" is detect only:** no network.
+- **The overlay's look in P3** is plain (white on a dark box, about 5.5 % of the picture's height); P4 makes it the
+  user's style.
+- **TalkBack does not read subtitle lines** (the overlay is hidden from it); the sync value and the toasts are spoken.
+
+### Files
+
+- Logic (unit-tested): `src/player/subtitles/cues.ts` (cue lookup, offset), `parse-subtitles.ts`,
+  `subtitle-encoding.ts`, `sidecar.ts`, `subtitle-record.ts`; labels `subtitle-labels.ts`.
+- Runtime: `subtitle-files.ts` (picker, copies, folder listing), `subtitle-preference.ts` (store),
+  `use-player-subtitles.ts` (the hook).
+- Screen: `page/SubtitleOverlay.tsx`, `page/SubtitleSheets.tsx`, `page/PlayerSheetFrame.tsx`,
+  `page/PlayerOptionsSheet.tsx` (one section alone), `PlayerScreen.tsx`, `page/player-page-actions.ts`.
+- Options: `src/player/options/p3-subtitles.ts` (+ one import), `player-options.ts` (`ctx.subtitles`, six `ui`
+  commands). Kit: `DsIcon` `captions`, `palette`. MMKV keys: `playerSubtitles`, `playerSubtitleAutoDetect`.
+- Strings: 47 new `videoPlayer.*` keys (English and Urdu), at the end of both catalogs.
+
+### Gate
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | 0 errors |
+| Unit tests | 2118 / 2118 (29 new: `subtitles/subtitles.test.ts` 26, `options/p3-subtitles.test.ts` 3) |
+| `npm run lint` | 0 errors; 91 warnings, none in a file P3 changed |
+| Against the base | none of Faran's files; `package.json` / lockfile, `android/`, `modules/`, manifests, `app.json` unchanged |
+| Media3 | `1.9.0`, unchanged |
+
+### Device checks for Faran (release build; not possible here)
+
+1. Load subtitle with an SRT, a VTT, an ASS and an SSA file (from Downloads and from a cloud provider in the picker);
+   a `.txt` that is not a subtitle (refused, toast); a file over 5 MB (refused). The picker does not open a PiP window
+   while a video plays (PiP is disarmed before the picker opens, and armed again after); App Lock does not ask again
+   on return.
+2. A download with "Download subtitles" on (H19): open it, and the `<video>.<lang>.vtt` shows by itself (the app's
+   language first); turn Auto-detect off, and only chosen files remain.
+3. An MKV with two subtitle tracks and an HLS stream with subtitles: both appear as "… · in the video", switching works,
+   Off turns them off, a file in between hides them, and the choice is back after closing and reopening the video.
+4. A Windows-1256 Urdu SRT (no BOM), a UTF-16 SRT and a UTF-8 SRT with a BOM: automatic shows them right; choosing
+   Windows-1252 on the Urdu file shows the wrong letters, and choosing back fixes it.
+5. Sync: +0.5 s, −1 s and Reset while playing; the offset is back after reopening the video.
+6. Subtitles on the card (above the card's timeline when the controls show), in full screen, with a cutout (clear of
+   it), in PiP, mirrored (the text is not mirrored), with Crop.
+7. Six themes and Urdu: the Subtitles sheet (Subs chip), the track, encoding and sync sheets.
+8. Previous / Next with subtitles on: the next video starts with its own choice. A video with a track inside it, set
+   to Off, then Next to a video whose subtitle track is flagged default: that track shows. Previous / Next onto an MKV:
+   its tracks are in the list.

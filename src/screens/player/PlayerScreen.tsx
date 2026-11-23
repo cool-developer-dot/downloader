@@ -44,6 +44,9 @@ import {
 } from '@/player';
 import { setSeekStepSeconds, useSeekStepSeconds } from '@/player/seek-step-preference';
 import type { MirrorMode, VideoFit } from '@/player/video-display';
+import { MAX_SUBTITLE_BYTES, usePlayerSubtitles } from '@/player/subtitles/use-player-subtitles';
+import { subtitleEncodingLabel } from '@/player/subtitles/subtitle-labels';
+import type { SubtitleSource } from '@/player/subtitles/subtitle-record';
 import { mirrorModeLabel, videoFitLabel } from '@/player/video-display-labels';
 import {
   setFillCutout,
@@ -121,6 +124,8 @@ import { announcePlayer, usePlayerNotYet } from './page/use-player-not-yet';
 import { qualityLabel, useVideoTrackInfo } from './page/use-video-track-info';
 import { AspectRatioSheet, MirrorFlipSheet } from './page/VideoDisplaySheets';
 import { VideoInfoLine, VideoInfoOverlay } from './page/VideoInfoOverlay';
+import { SubtitleOverlay } from './page/SubtitleOverlay';
+import { SubtitleEncodingSheet, SubtitleSyncSheet, SubtitleTrackSheet } from './page/SubtitleSheets';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -256,6 +261,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const trackInfo = useVideoTrackInfo(player);
   // P2: fit (per video), mirror (this video), notch area and info overlay.
   const display = useVideoDisplay(activeMediaId);
+  // P3: the subtitles of this video (tracks, the file showing, its lines now) and which subtitle sheet is open.
+  const subtitles = usePlayerSubtitles(player, activeMediaId);
+  const [subtitleSheet, setSubtitleSheet] = useState<'subtitles' | 'tracks' | 'sync' | 'encoding' | null>(null);
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const notYet = usePlayerNotYet();
@@ -365,11 +373,14 @@ const PlayerSessionView = memo(function PlayerSessionView({
     hasError: Boolean(session.error),
     isSurfaceRevealed: session.isSurfaceRevealed,
   });
-  const pipAutoEnter = pipActive || pipArmedNow;
+  // P3: the subtitle file picker sends VidoraX to the background; that is not "leaving", so no PiP window meanwhile.
+  const pipAutoEnter = pipActive || (pipArmedNow && !subtitles.picking);
+  const subtitlePicking = subtitles.picking;
   useEffect(() => {
     setPictureInPictureArmed(pipAutoEnter);
     armNativePictureInPicture(pipAutoEnter, contentSize);
-  }, [contentSize, pipAutoEnter, setPictureInPictureArmed]);
+    // `subtitlePicking`: armed again after the subtitle picker, which disarms directly (see onLoadSubtitle).
+  }, [contentSize, pipAutoEnter, setPictureInPictureArmed, subtitlePicking]);
   // Only the full Player opens a PiP window: once it is gone (the session may go on in the mini player), leaving the
   // app pauses instead.
   useEffect(
@@ -452,7 +463,14 @@ const PlayerSessionView = memo(function PlayerSessionView({
     isPlaying: session.isPlaying,
     isSeeking: session.isSeeking,
     // The P1 / P2 sheets and the frame panel hold the controls up like the speed sheet does.
-    isSpeedSheetOpen: speedSheetOpen || optionsOpen || seekIntervalOpen || jumpOpen || frameMode || displaySheet != null,
+    isSpeedSheetOpen:
+      speedSheetOpen ||
+      optionsOpen ||
+      seekIntervalOpen ||
+      jumpOpen ||
+      frameMode ||
+      displaySheet != null ||
+      subtitleSheet != null,
     isOrientationSheetOpen: orientationSheetOpen,
     isLoading: session.isLoading || startupCoverVisible,
     hasError: Boolean(session.error),
@@ -481,11 +499,12 @@ const PlayerSessionView = memo(function PlayerSessionView({
   }, [restorePresentation, router, sessionFailed, sessionKey]);
 
   const onChromeBack = useCallback(() => {
-    if (jumpOpen || seekIntervalOpen || optionsOpen || displaySheet) {
+    if (jumpOpen || seekIntervalOpen || optionsOpen || displaySheet || subtitleSheet) {
       setJumpOpen(false);
       setSeekIntervalOpen(false);
       setOptionsOpen(false);
       setDisplaySheet(null);
+      setSubtitleSheet(null);
       return;
     }
     if (speedSheetOpen) {
@@ -516,6 +535,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     orientationSheetOpen,
     seekIntervalOpen,
     speedSheetOpen,
+    subtitleSheet,
   ]);
 
   useEffect(() => {
@@ -524,11 +544,12 @@ const PlayerSessionView = memo(function PlayerSessionView({
         // A locked screen ignores Back too (pocket / child presses); the lock pill unlocks.
         return true;
       }
-      if (jumpOpen || seekIntervalOpen || optionsOpen || displaySheet) {
+      if (jumpOpen || seekIntervalOpen || optionsOpen || displaySheet || subtitleSheet) {
         setJumpOpen(false);
         setSeekIntervalOpen(false);
         setOptionsOpen(false);
         setDisplaySheet(null);
+        setSubtitleSheet(null);
         return true;
       }
       if (speedSheetOpen) {
@@ -562,6 +583,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     orientationSheetOpen,
     seekIntervalOpen,
     speedSheetOpen,
+    subtitleSheet,
   ]);
 
   const onPlayPause = useCallback(() => {
@@ -654,7 +676,13 @@ const PlayerSessionView = memo(function PlayerSessionView({
   );
 
   const anyModalOpen =
-    speedSheetOpen || orientationSheetOpen || optionsOpen || seekIntervalOpen || jumpOpen || displaySheet != null;
+    speedSheetOpen ||
+    orientationSheetOpen ||
+    optionsOpen ||
+    seekIntervalOpen ||
+    jumpOpen ||
+    displaySheet != null ||
+    subtitleSheet != null;
 
   const onSingleTap = useCallback(() => {
     if (anyModalOpen || session.isSeeking) {
@@ -729,6 +757,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     setSeekIntervalOpen(false);
     setJumpOpen(false);
     setDisplaySheet(null);
+    setSubtitleSheet(null);
     setFrameMode(false);
     setLocked(true);
   }, [hud, endLongPress, setLocked]);
@@ -816,6 +845,64 @@ const PlayerSessionView = memo(function PlayerSessionView({
     },
     [activeMediaId, bumpControls, t],
   );
+
+  // ── P3 Subtitles ───────────────────────────────────────────────────────────────────────────────────────────────
+  const openSubtitleSheet = useCallback(
+    (sheet: 'subtitles' | 'tracks' | 'sync' | 'encoding') => {
+      endLongPress();
+      showControls();
+      setSubtitleSheet(sheet);
+    },
+    [endLongPress, showControls],
+  );
+
+  const selectSubtitles = subtitles.select;
+  /** #598 / #602: a track (or Off) for this video, remembered. */
+  const onSelectSubtitle = useCallback(
+    (source: SubtitleSource) => {
+      setSubtitleSheet(null);
+      selectSubtitles(source);
+      bumpControls();
+      if (source.kind === 'off') {
+        announcePlayer(t('videoPlayer.subtitleOff'));
+      }
+    },
+    [bumpControls, selectSubtitles, t],
+  );
+
+  const loadSubtitles = subtitles.load;
+  /** #589: the file picker; a toast says what happened. */
+  const onLoadSubtitle = useCallback(async () => {
+    endLongPress();
+    // Disarmed now, before the picker opens: the `picking` state reaches the arming effect only after a render, and
+    // the picker may already be in front by then. The effect arms again once picking is over.
+    armNativePictureInPicture(false, null);
+    setPictureInPictureArmed(false);
+    const result = await loadSubtitles();
+    switch (result.kind) {
+      case 'loaded':
+        announcePlayer(t('videoPlayer.subtitleLoaded', { name: result.name ?? '' }));
+        return;
+      case 'too_big':
+        announcePlayer(t('videoPlayer.subtitleTooBig', { size: `${Math.round(MAX_SUBTITLE_BYTES / 1024 / 1024)} MB` }));
+        return;
+      case 'not_subtitle':
+        announcePlayer(t('videoPlayer.subtitleNotSubtitle'));
+        return;
+      case 'failed':
+        announcePlayer(t('videoPlayer.subtitleLoadFailed'));
+        return;
+      default:
+    }
+  }, [endLongPress, loadSubtitles, setPictureInPictureArmed, t]);
+
+  // A remembered file that can no longer be read (deleted, moved): said once.
+  const subtitleFailed = subtitles.loaded?.failed === true;
+  useEffect(() => {
+    if (subtitleFailed) {
+      announcePlayer(t('videoPlayer.subtitleUnreadable'));
+    }
+  }, [subtitleFailed, t]);
 
   /** The player's own clock (the session's position lags by up to a third of a second). */
   const positionRef = useRef(session.positionSeconds);
@@ -919,6 +1006,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
         case 'mirrorFlip':
           openDisplaySheet('mirrorFlip');
           return;
+        case 'subs':
+          openSubtitleSheet('subtitles');
+          return;
         default:
           notYet();
       }
@@ -932,6 +1022,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       onRewind,
       openDisplaySheet,
       openFrameMode,
+      openSubtitleSheet,
       toggleFullscreen,
     ],
   );
@@ -960,17 +1051,29 @@ const PlayerSessionView = memo(function PlayerSessionView({
       openMirrorFlip: () => openDisplaySheet('mirrorFlip'),
       setFillCutout,
       setInfoOverlay,
+      openSubtitleTracks: () => openSubtitleSheet('tracks'),
+      loadSubtitleFile: () => {
+        void onLoadSubtitle();
+      },
+      setSubtitleAutoDetect: subtitles.setAutoDetect,
+      openSubtitleSync: () => openSubtitleSheet('sync'),
+      openSubtitleEncoding: () => openSubtitleSheet('encoding'),
+      subtitlesOff: () => onSelectSubtitle({ kind: 'off' }),
     }),
     [
       endLongPress,
       notYet,
+      onLoadSubtitle,
       onOpenOrientation,
       onOpenSpeed,
       onSaveToLibrary,
+      onSelectSubtitle,
       onStop,
       openDisplaySheet,
       openFrameMode,
+      openSubtitleSheet,
       seekExact,
+      subtitles.setAutoDetect,
     ],
   );
 
@@ -1060,6 +1163,15 @@ const PlayerSessionView = memo(function PlayerSessionView({
     orientationMode,
     incoming: incomingToken ? { saveState } : null,
     display,
+    subtitles: {
+      label: subtitles.currentLabel,
+      isFile: subtitles.currentFile != null,
+      offsetMs: subtitles.offsetMs,
+      encodingLabel: subtitles.currentFile
+        ? subtitleEncodingLabel(t, subtitles.currentFile.encoding, subtitles.loaded?.encoding ?? null)
+        : null,
+      autoDetect: subtitles.autoDetect,
+    },
     ui: optionsUi,
   };
 
@@ -1235,6 +1347,14 @@ const PlayerSessionView = memo(function PlayerSessionView({
         </View>
         {/* The feedback, the info overlay and the lock pill, clear of the camera cutout in full screen (P2 #576). */}
         <View style={[StyleSheet.absoluteFill, cutoutInsets, styles.overlayLayer]} pointerEvents="box-none">
+          {/* P3: a subtitle file's lines (above the card's timeline while it shows). */}
+          {!showError && !startupCoverVisible ? (
+            <SubtitleOverlay
+              lines={subtitles.lines}
+              areaHeight={surfaceHeight}
+              bottom={pageLayout && overlayVisible ? 48 : 10}
+            />
+          ) : null}
           {/* #721, full screen with the controls hidden (with them showing it is a line in the dock). */}
           <VideoInfoOverlay
             visible={showInfo && !pageLayout && !overlayVisible && !session.isSeeking && !startupCoverVisible}
@@ -1473,6 +1593,40 @@ const PlayerSessionView = memo(function PlayerSessionView({
         selected={display.mirror}
         onSelect={onSelectMirror}
         onClose={() => setDisplaySheet(null)}
+      />
+      {/* P3: the Subs chip opens the options sheet's Subtitles section alone. */}
+      <PlayerOptionsSheet
+        visible={subtitleSheet === 'subtitles'}
+        context={optionsContext}
+        onClose={() => setSubtitleSheet(null)}
+        only="subtitles"
+        title={t('videoPlayer.chipSubsA11y')}
+        testID="player-subtitles-sheet"
+      />
+      <SubtitleTrackSheet
+        visible={subtitleSheet === 'tracks'}
+        title={t('videoPlayer.subtitleTrack')}
+        options={subtitles.options}
+        selectedKey={subtitles.currentKey}
+        onSelect={onSelectSubtitle}
+        onClose={() => setSubtitleSheet(null)}
+      />
+      <SubtitleSyncSheet
+        visible={subtitleSheet === 'sync'}
+        offsetMs={subtitles.offsetMs}
+        onStep={subtitles.stepOffset}
+        onReset={subtitles.resetOffset}
+        onClose={() => setSubtitleSheet(null)}
+      />
+      <SubtitleEncodingSheet
+        visible={subtitleSheet === 'encoding'}
+        selected={subtitles.currentFile?.encoding ?? 'auto'}
+        detected={subtitles.loaded?.encoding ?? null}
+        onSelect={(encoding) => {
+          setSubtitleSheet(null);
+          subtitles.setEncoding(encoding);
+        }}
+        onClose={() => setSubtitleSheet(null)}
       />
     </SafeAreaScreen>
   );

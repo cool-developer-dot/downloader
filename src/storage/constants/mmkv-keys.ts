@@ -24,6 +24,10 @@ export const mmkvKeys = {
   playerFillCutout: 'vidorax.mmkv.player.fillCutout.v1',
   /** P2 #721: the info overlay (codec, size, frame rate, bit rate, speed) is on. */
   playerInfoOverlay: 'vidorax.mmkv.player.infoOverlay.v1',
+  /** P3: per video, `[mediaId, record][]` (chosen subtitle track, subtitle files, sync offset), last 300 (local only). */
+  playerSubtitles: 'vidorax.mmkv.player.subtitles.v1',
+  /** P3 #590: look for subtitle files named like the video next to it (default on). */
+  playerSubtitleAutoDetect: 'vidorax.mmkv.player.subtitleAutoDetect.v1',
   firstLaunch: 'vidorax.mmkv.flags.firstLaunch',
   onboardingComplete: 'vidorax.mmkv.flags.onboardingComplete',
   analyticsEnabled: 'vidorax.mmkv.flags.analyticsEnabled',
