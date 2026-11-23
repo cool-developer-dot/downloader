@@ -23,9 +23,16 @@ import {
   type DoubleTapSeekSide,
 } from '@/player';
 import {
+  DEFAULT_VIDEO_FIT,
+  mirrorScale,
+  videoFitLayout,
+  type Insets,
+  type MirrorMode,
+  type VideoFit,
+} from '@/player/video-display';
+import {
   anchoredTranslation,
   clampTranslation,
-  fittedContentSize,
   isZoomed,
   maxTranslation,
   rubberBandScale,
@@ -65,6 +72,12 @@ export type PlayerVideoSurfaceProps = {
   zoomResetKey?: string | number;
   /** The picture as displayed (rotation applied), when known; otherwise the playing track's size is used. */
   contentSize?: Size | null;
+  /** P2 #564–#566: fit, crop to fill, stretch, or a forced ratio. Default: fit (the whole picture, its own shape). */
+  fit?: VideoFit;
+  /** P2 #573: the picture mirrored left ↔ right, flipped upside down, or both. */
+  mirror?: MirrorMode;
+  /** P2 #576: insets the picture keeps clear of (the camera cutout in full screen); null to use the whole surface. */
+  pictureInsets?: Insets | null;
   /** Arms the automatic picture-in-picture window for when the user leaves VidoraX. */
   pictureInPictureAutoEnter?: boolean;
   onPictureInPictureStart?: () => void;
@@ -96,6 +109,9 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
   onZoomFinalize,
   zoomResetKey,
   contentSize,
+  fit = DEFAULT_VIDEO_FIT,
+  mirror = 'none',
+  pictureInsets = null,
   pictureInPictureAutoEnter = false,
   onPictureInPictureStart,
   onPictureInPictureStop,
@@ -138,10 +154,17 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
     [onSurfaceLayout],
   );
 
-  // Geometry the gestures clamp against: the surface, and the picture as fitted in it.
+  // Geometry the gestures clamp against: the surface, and the picture as the fit draws it (P2: crop draws it bigger
+  // than the surface, stretch and a forced ratio fill their frame, the cutout insets shrink the frame).
   const picture = contentSize ?? trackSize;
+  const fitLayout = useMemo(
+    () => videoFitLayout(layout, picture, fit, pictureInsets),
+    [fit, layout, picture, pictureInsets],
+  );
+  const fittedWidth = fitLayout.content.width;
+  const fittedHeight = fitLayout.content.height;
   useEffect(() => {
-    const fitted = fittedContentSize(layout, picture);
+    const fitted = { width: fittedWidth, height: fittedHeight };
     surfaceWidth.value = layout.width;
     surfaceHeight.value = layout.height;
     contentWidth.value = fitted.width;
@@ -160,8 +183,9 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
   }, [
     contentHeight,
     contentWidth,
+    fittedHeight,
+    fittedWidth,
     layout,
-    picture,
     scale,
     surfaceHeight,
     surfaceWidth,
@@ -460,28 +484,52 @@ export const PlayerVideoSurface = memo(function PlayerVideoSurface({
     ],
   }));
 
+  // The picture's frame inside the zoomed layer: the whole surface (as before P2) unless a forced ratio or the cutout
+  // insets make it smaller. It clips (a cropped picture never spills past it, e.g. into the cutout strip). Mirror / flip
+  // is applied here, inside the zoom, so pinching and panning still follow the fingers on screen.
+  const { scaleX, scaleY } = mirrorScale(mirror);
+  const frameStyle = useMemo(
+    () => [
+      fitLayout.fullSurface || layout.width <= 0
+        ? styles.frame
+        : {
+            position: 'absolute' as const,
+            overflow: 'hidden' as const,
+            left: fitLayout.frame.x,
+            top: fitLayout.frame.y,
+            width: fitLayout.frame.width,
+            height: fitLayout.frame.height,
+          },
+      scaleX === 1 && scaleY === 1 ? null : { transform: [{ scaleX }, { scaleY }] },
+    ],
+    [fitLayout.frame, fitLayout.fullSurface, layout.width, scaleX, scaleY],
+  );
+
   return (
     <View
       style={[styles.surface, { backgroundColor: theme.colors.black }]}
       onLayout={onLayout}>
       <Animated.View style={[styles.video, zoomStyle]} pointerEvents="none">
-        {surfaceAttached ? (
-        <VideoView
-          player={player}
-          style={styles.video}
-          contentFit="contain"
-          nativeControls={false}
-          fullscreenOptions={{ enable: false }}
-          // Drawn in the view hierarchy, so zoom transforms and the surface's clipping apply exactly.
-          surfaceType="textureView"
-          allowsPictureInPicture
-          startsPictureInPictureAutomatically={pictureInPictureAutoEnter}
-          onPictureInPictureStart={onPictureInPictureStart}
-          onPictureInPictureStop={onPictureInPictureStop}
-          pointerEvents="none"
-          onFirstFrameRender={onFirstFrameRender}
-        />
-        ) : null}
+        {/* Never flattened away: mirroring or a new frame must not re-parent (and so restart) the video view. */}
+        <View style={frameStyle} collapsable={false} pointerEvents="none" testID="player-video-frame">
+          {surfaceAttached ? (
+          <VideoView
+            player={player}
+            style={styles.video}
+            contentFit={fitLayout.contentFit}
+            nativeControls={false}
+            fullscreenOptions={{ enable: false }}
+            // Drawn in the view hierarchy, so zoom and mirror transforms and the surface's clipping apply exactly.
+            surfaceType="textureView"
+            allowsPictureInPicture
+            startsPictureInPictureAutomatically={pictureInPictureAutoEnter}
+            onPictureInPictureStart={onPictureInPictureStart}
+            onPictureInPictureStop={onPictureInPictureStop}
+            pointerEvents="none"
+            onFirstFrameRender={onFirstFrameRender}
+          />
+          ) : null}
+        </View>
       </Animated.View>
 
       <GestureDetector gesture={gesture}>
@@ -504,5 +552,9 @@ const styles = StyleSheet.create({
   },
   video: {
     ...StyleSheet.absoluteFill,
+  },
+  frame: {
+    ...StyleSheet.absoluteFill,
+    overflow: 'hidden',
   },
 });

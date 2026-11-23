@@ -3,6 +3,7 @@
  * in package order (the import is the registration).
  */
 import './p1-playback-basics';
+import './p2-video-fit';
 
 export {
   playerOptions,

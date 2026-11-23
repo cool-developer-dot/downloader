@@ -111,7 +111,7 @@ export const PlayerTopBar = memo(function PlayerTopBar({
             variant="ghost"
             color="inverse"
             accessibilityLabel={t('videoPlayer.moreOptions')}
-            accessibilityHint={t('videoPlayer.moreOptionsHint')}
+            accessibilityHint={t('videoPlayer.moreOptionsSectionsHint')}
             onPress={onOpenOptions}
             testID="player-options"
           />

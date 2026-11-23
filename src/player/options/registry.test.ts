@@ -99,6 +99,25 @@ describe('options sheet registry', () => {
   });
 });
 
+describe('options sheet registry: on / off rows', () => {
+  it("reports a toggle row's state (null for a command row) and keeps its subtitle", () => {
+    const registry = createPlayerOptionsRegistry<Ctx>();
+    registry.register('P2', [
+      row('p2.info', 'video', 20, { toggle: (ctx) => ctx.ready, subtitle: 'p2.info.hint' }),
+      row('p2.fit', 'video', 10, { value: () => 'Fit' }),
+    ]);
+    const rows = registry.sections({ ready: true, incoming: false })[0]!.rows;
+    assert.deepEqual(
+      rows.map((entry) => [entry.row.id, entry.toggle, entry.value, entry.row.subtitle ?? null]),
+      [
+        ['p2.fit', null, 'Fit', null],
+        ['p2.info', true, null, 'p2.info.hint'],
+      ],
+    );
+    assert.equal(registry.sections({ ready: false, incoming: false })[0]!.rows[1]!.toggle, false);
+  });
+});
+
 describe('P1 rows in the options sheet', () => {
   const calls: string[] = [];
   const ui: PlayerOptionUi = {
@@ -111,6 +130,10 @@ describe('P1 rows in the options sheet', () => {
     saveToLibrary: () => calls.push('save'),
     seekTo: () => calls.push('seek'),
     notAvailableYet: () => calls.push('notYet'),
+    openAspectRatio: () => calls.push('aspectRatio'),
+    openMirrorFlip: () => calls.push('mirrorFlip'),
+    setFillCutout: (on) => calls.push(`fillCutout:${on}`),
+    setInfoOverlay: (on) => calls.push(`infoOverlay:${on}`),
   };
   const context = (overrides: Partial<PlayerOptionContext> = {}): PlayerOptionContext => ({
     t: ((key: string, params?: Record<string, string | number>) =>
@@ -122,6 +145,7 @@ describe('P1 rows in the options sheet', () => {
     seekStepSeconds: 10,
     orientationMode: 'auto',
     incoming: null,
+    display: { fit: 'fit', mirror: 'none', fillCutout: false, infoOverlay: false },
     ui,
     ...overrides,
   });

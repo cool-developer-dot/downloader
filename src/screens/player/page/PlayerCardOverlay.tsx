@@ -103,7 +103,7 @@ export const PlayerCardOverlay = memo(function PlayerCardOverlay({
           hitSlop={8}
           accessibilityRole="button"
           accessibilityLabel={t('videoPlayer.moreOptions')}
-          accessibilityHint={t('videoPlayer.moreOptionsHint')}
+          accessibilityHint={t('videoPlayer.moreOptionsSectionsHint')}
           style={styles.cornerButton}
           testID="player-card-options">
           <DsIcon name="ellipsis-vertical" size={17} color={white} strokeWidth={2} />

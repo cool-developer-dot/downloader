@@ -26,7 +26,8 @@ export type PlayerOptionsSheetProps = {
 /**
  * The ⋮ options sheet (page header, video card, full-screen top bar): the registry's sections — Playback, Video,
  * Audio, Subtitles, Tools — each with the rows the packages registered (src/player/options). A section with no rows
- * is left out. A row runs once the sheet has closed, so a sheet it opens comes up on its own.
+ * is left out. A row runs once the sheet has closed, so a sheet it opens comes up on its own; an on / off row is a
+ * switch and leaves the sheet open.
  */
 export const PlayerOptionsSheet = memo(function PlayerOptionsSheet({ visible, context, onClose }: PlayerOptionsSheetProps) {
   const theme = useTheme();
@@ -73,20 +74,38 @@ export const PlayerOptionsSheet = memo(function PlayerOptionsSheet({ visible, co
                   {t(SECTION_LABELS[view.section])}
                 </DsSectionLabel>
                 <DsRowGroup>
-                  {view.rows.map(({ row, enabled, value }) => (
-                    <DsRow
-                      key={row.id}
-                      icon={row.icon}
-                      title={t(row.label)}
-                      value={value ?? undefined}
-                      disabled={!enabled}
-                      onPress={() => {
-                        onClose();
-                        requestAnimationFrame(() => row.onPress(context));
-                      }}
-                      testID={`player-option-${row.id}`}
-                    />
-                  ))}
+                  {view.rows.map(({ row, enabled, value, toggle }) =>
+                    toggle != null ? (
+                      // An on / off row: the switch flips it and the sheet stays open.
+                      <DsRow
+                        key={row.id}
+                        icon={row.icon}
+                        title={t(row.label)}
+                        subtitle={row.subtitle ? t(row.subtitle) : undefined}
+                        toggle={{
+                          value: toggle,
+                          onValueChange: () => row.onPress(context),
+                          accessibilityHint: row.subtitle ? t(row.subtitle) : undefined,
+                        }}
+                        disabled={!enabled}
+                        testID={`player-option-${row.id}`}
+                      />
+                    ) : (
+                      <DsRow
+                        key={row.id}
+                        icon={row.icon}
+                        title={t(row.label)}
+                        subtitle={row.subtitle ? t(row.subtitle) : undefined}
+                        value={value ?? undefined}
+                        disabled={!enabled}
+                        onPress={() => {
+                          onClose();
+                          requestAnimationFrame(() => row.onPress(context));
+                        }}
+                        testID={`player-option-${row.id}`}
+                      />
+                    ),
+                  )}
                 </DsRowGroup>
               </Fragment>
             ))}

@@ -21,20 +21,27 @@ export type PlayerOptionRow<Ctx, Label extends string = string, Icon extends str
   order: number;
   /** The row's title (a string-catalog key, resolved by the sheet). */
   label: Label;
+  /** A line under the title (a string-catalog key), for a row whose title needs explaining. */
+  subtitle?: Label;
   icon: Icon;
   /** The current value shown at the row's end (10 seconds, Auto, 1.0×); null for none. */
   value?: (ctx: Ctx) => string | null;
+  /**
+   * An on / off row: the sheet draws a switch showing this, and `onPress` flips it with the sheet left open (the
+   * row's own state must change, so the sheet redraws). Without it the row is a command that closes the sheet.
+   */
+  toggle?: (ctx: Ctx) => boolean;
   /** Hidden when false (a row for some videos only). Default: shown. */
   visible?: (ctx: Ctx) => boolean;
   /** Greyed and not pressable when false (the video is not ready). Default: enabled. */
   enabled?: (ctx: Ctx) => boolean;
-  /** Runs after the sheet has closed. */
+  /** Runs after the sheet has closed (a toggle row: at once, the sheet stays open). */
   onPress: (ctx: Ctx) => void;
 };
 
 export type PlayerOptionsSectionView<Ctx, Label extends string, Icon extends string> = {
   section: PlayerOptionSection;
-  rows: { row: PlayerOptionRow<Ctx, Label, Icon>; enabled: boolean; value: string | null }[];
+  rows: { row: PlayerOptionRow<Ctx, Label, Icon>; enabled: boolean; value: string | null; toggle: boolean | null }[];
 };
 
 export type PlayerOptionsRegistry<Ctx, Label extends string = string, Icon extends string = string> = {
@@ -114,6 +121,7 @@ export function createPlayerOptionsRegistry<
           row: entry.row,
           enabled: entry.row.enabled?.(ctx) ?? true,
           value: entry.row.value?.(ctx) ?? null,
+          toggle: entry.row.toggle ? entry.row.toggle(ctx) : null,
         }));
       if (rows.length > 0) {
         views.push({ section, rows });

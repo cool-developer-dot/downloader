@@ -41,7 +41,7 @@ describe('screen 19 mapping', () => {
         ['frameByFrame', 'film'],
         ['abRepeat', 'repeat'],
         ['aspectRatio', 'sliders-vertical'],
-        ['filters', 'moon'],
+        ['mirrorFlip', 'flip-horizontal-2'],
       ],
     );
   });
@@ -59,10 +59,18 @@ describe('screen 19 mapping', () => {
     assert.equal(byId.frameByFrame, 'frameByFrame');
   });
 
+  it("gives P2 its tiles: Aspect ratio opens the fit sheet, Filters' place is Mirror / Flip", () => {
+    const byId = Object.fromEntries(PAGE_TILES.map((tile) => [tile.id, tile.action]));
+    assert.equal(byId.aspectRatio, 'aspectRatio');
+    assert.equal(byId.mirrorFlip, 'mirrorFlip');
+    assert.equal(PAGE_TILES.length, 6);
+  });
+
   it('marks only later packages as not available yet', () => {
-    assert.deepEqual([...NOT_YET_ACTIONS].sort(), ['abRepeat', 'aspectRatio', 'audio', 'filters', 'subs', 'upNext']);
-    for (const p1 of ['speed', 'rotate', 'lock', 'skipBack', 'seekInterval', 'frameByFrame'] as const) {
-      assert.equal(NOT_YET_ACTIONS.has(p1), false, p1);
+    assert.deepEqual([...NOT_YET_ACTIONS].sort(), ['abRepeat', 'audio', 'subs', 'upNext']);
+    const built = ['speed', 'rotate', 'lock', 'skipBack', 'seekInterval', 'frameByFrame', 'aspectRatio', 'mirrorFlip'] as const;
+    for (const action of built) {
+      assert.equal(NOT_YET_ACTIONS.has(action), false, action);
     }
   });
 });

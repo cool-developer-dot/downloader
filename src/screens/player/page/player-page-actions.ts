@@ -6,6 +6,8 @@
  * - "Custom seek" (⏩) chooses the seek interval (#527 Custom Seek Interval).
  * - Stop (#520), Jump to time (#532) and the orientation lock are rows of the ⋮ options sheet (src/player/options):
  *   the frame draws no tile for them. The tiles here are shortcuts to the same commands.
+ * - "Aspect ratio" opens P2's fit sheet (#564 Aspect ratio, #565 Crop to fill, #566 Stretch).
+ * - The design's "Filters" tile is "Mirror / Flip" (#573): Filters (#571, #572) is not planned.
  */
 
 import type { DsIconName } from '@/design';
@@ -21,7 +23,7 @@ export type PlayerPageAction =
   | 'frameByFrame'
   | 'abRepeat'
   | 'aspectRatio'
-  | 'filters'
+  | 'mirrorFlip'
   | 'upNext';
 
 /** The chip row, in the design's order (1.0× · Subs · Audio · Rotate · Lock). */
@@ -48,32 +50,29 @@ export function shownPageChips(flags: Readonly<Record<PageChip, boolean>> = PAGE
 }
 
 export type PageTile = {
-  id: 'skipBack' | 'customSeek' | 'frameByFrame' | 'abRepeat' | 'aspectRatio' | 'filters';
+  id: 'skipBack' | 'customSeek' | 'frameByFrame' | 'abRepeat' | 'aspectRatio' | 'mirrorFlip';
   icon: DsIconName;
   action: PlayerPageAction;
 };
 
-/** The tile grid, in the design's order, with the design's icons. */
+/** The tile grid, in the design's order, with the design's icons (Mirror / Flip, in Filters' place, has its own). */
 export const PAGE_TILES: readonly PageTile[] = [
   { id: 'skipBack', icon: 'rewind', action: 'skipBack' },
   { id: 'customSeek', icon: 'fast-forward', action: 'seekInterval' },
   { id: 'frameByFrame', icon: 'film', action: 'frameByFrame' },
   { id: 'abRepeat', icon: 'repeat', action: 'abRepeat' },
   { id: 'aspectRatio', icon: 'sliders-vertical', action: 'aspectRatio' },
-  { id: 'filters', icon: 'moon', action: 'filters' },
+  { id: 'mirrorFlip', icon: 'flip-horizontal-2', action: 'mirrorFlip' },
 ];
 
 /**
- * Drawn by the design but built by a later package, so they say "Not available yet" for now: Subs (P3), Aspect ratio
- * (P2), A–B repeat (P5), Up next (P6), Audio (Faran's P17; its chip is also hidden, see `PAGE_CHIP_FLAGS`). Filters
- * (#571, #572) is not planned: P2 turns that tile into Mirror / Flip (#573). The package that builds one removes it
- * from this set.
+ * Drawn by the design but built by a later package, so they say "Not available yet" for now: Subs (P3), A–B repeat
+ * (P5), Up next (P6), Audio (Faran's P17; its chip is also hidden, see `PAGE_CHIP_FLAGS`). The package that builds
+ * one removes it from this set.
  */
 export const NOT_YET_ACTIONS: ReadonlySet<PlayerPageAction> = new Set<PlayerPageAction>([
   'subs',
   'audio',
   'abRepeat',
-  'aspectRatio',
-  'filters',
   'upNext',
 ]);
