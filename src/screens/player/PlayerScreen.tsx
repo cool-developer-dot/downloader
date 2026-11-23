@@ -263,6 +263,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
     setVolume,
     toggleMute,
     replay,
+    stop: stopSession,
     retry,
     setPictureInPictureArmed,
     onPictureInPictureStart,
@@ -1010,17 +1011,17 @@ const PlayerSessionView = memo(function PlayerSessionView({
     [activeMediaId, t],
   );
 
-  /** #520 Stop: pause and go back to the start. */
+  /** #520 Stop: pause, go back to the start and (P15) end the background session: no notification until it plays. */
   const onStop = useCallback(() => {
     endLongPress();
     if (!canCommand) {
       return;
     }
-    controller.pause();
+    stopSession();
     seekExact(0);
     showControls();
     announcePlayer(t('videoPlayer.stopped'));
-  }, [canCommand, controller, endLongPress, seekExact, showControls, t]);
+  }, [canCommand, endLongPress, seekExact, showControls, stopSession, t]);
 
   /** #532 Jump to time. */
   const onJump = useCallback(
@@ -1459,13 +1460,43 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const gesturesEnabled = !locked && !anyModalOpen && !startupCoverVisible;
   // Faran's P14–P19 (streams, keys, speed, audio, timers, effects): their native settings, rows and sheets.
   const leaveToDownloads = useCallback(() => onPressTab(tabRouteNames.downloads), [onPressTab]);
+  const engineHandlers = useMemo(
+    () => ({
+      togglePlay: onPlayPause,
+      seekBy: (deltaSeconds: number) => (deltaSeconds < 0 ? onRewind() : onForward()),
+      restart: () => seekExact(0),
+      next: onNext,
+      previous: onPrevious,
+      toggleFullscreen: () => void toggleFullscreen(),
+      exitFullscreen: () => void exitFullscreen(),
+      toggleMute: onToggleMute,
+    }),
+    [exitFullscreen, onForward, onNext, onPlayPause, onPrevious, onRewind, onToggleMute, seekExact, toggleFullscreen],
+  );
   const engine = usePlayerEngine({
     player,
     mediaId: activeMediaId,
     isReady: session.isReady,
     isPlaying: session.isPlaying,
+    positionSeconds: session.positionSeconds,
+    seekStepSeconds,
+    isFullscreen,
+    pipActive,
+    inputBlocked: anyModalOpen || locked,
+    handlers: engineHandlers,
+    volume,
+    hud,
+    volumeFallback: { level: session.volume, set: setVolume },
     leaveToDownloads,
   });
+  // P15 #703: over the lock screen, the options and the tab bar ask for the phone's unlock first.
+  const { whenUnlocked } = engine.keys;
+  const openOptionsUnlocked = useCallback(() => whenUnlocked(openOptions), [openOptions, whenUnlocked]);
+  const onChromeBackUnlocked = useCallback(() => whenUnlocked(onChromeBack), [onChromeBack, whenUnlocked]);
+  const onPressTabUnlocked = useCallback(
+    (route: string) => whenUnlocked(() => onPressTab(route)),
+    [onPressTab, whenUnlocked],
+  );
   const optionsContext: PlayerOptionContext = {
     t,
     mediaId: activeMediaId,
@@ -1534,12 +1565,12 @@ const PlayerSessionView = memo(function PlayerSessionView({
           accessibilityElementsHidden={pageA11yHidden}>
           <DsHeader
             title={t('videoPlayer.title')}
-            onBack={onChromeBack}
+            onBack={onChromeBackUnlocked}
             action={{
               icon: 'ellipsis-vertical',
               accessibilityLabel: t('videoPlayer.moreOptions'),
               accessibilityHint: t('videoPlayer.moreOptionsSectionsHint'),
-              onPress: openOptions,
+              onPress: openOptionsUnlocked,
               testID: 'player-page-options',
             }}
             testID="player-page-header"
@@ -1628,8 +1659,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
                 isLoading={session.isLoading && session.hasFirstFrame}
                 isCompleted={session.isCompleted}
                 disabled={Boolean(session.error)}
-                onBack={onChromeBack}
-                onOpenOptions={openOptions}
+                onBack={onChromeBackUnlocked}
+                onOpenOptions={openOptionsUnlocked}
                 onPrevious={onPrevious}
                 onNext={onNext}
                 onPlayPause={onPlayPause}
@@ -1656,13 +1687,13 @@ const PlayerSessionView = memo(function PlayerSessionView({
                   isFullscreen={isFullscreen}
                   visible
                   orientationIcon={orientationIcon}
-                  onBack={onChromeBack}
+                  onBack={onChromeBackUnlocked}
                   onOpenOrientation={onOpenOrientation}
                   onToggleFullscreen={() => {
                     bumpControls();
                     void toggleFullscreen();
                   }}
-                  onOpenOptions={openOptions}
+                  onOpenOptions={openOptionsUnlocked}
                   buttons={topBarButtons}
                   save={
                     incomingToken
@@ -1839,7 +1870,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
           <DsTabBarView
             activeRoute={tabRouteNames.library}
             routes={DS_TAB_ROUTES}
-            onPressTab={onPressTab}
+            onPressTab={onPressTabUnlocked}
             bottomInset={insets.bottom}
           />
         </View>

@@ -95,6 +95,11 @@ export type UsePlayerSessionResult = {
   unmute: () => void;
   toggleMute: () => void;
   replay: () => void;
+  /**
+   * #520 Stop, completed by Faran's P15: pauses and ends the background session — the media notification goes and
+   * the playback service stops (P1's Stop also goes back to 0:00). Playing again brings them back.
+   */
+  stop: () => void;
   /** Explicit user retry for recoverable errors. */
   retry: () => void;
   /** The screen says whether leaving the app now opens a PiP window (keeps playback going instead of pausing). */
@@ -646,11 +651,23 @@ export function usePlayerSession(
 
   // Background play: expo-video's media session and its foreground service while a video is ready and not finished.
   // Reaching the end (or an error) turns them off, which removes the notification; Replay turns them on again.
+  // #520 Stop ends it too, until the video plays again.
+  const [stopped, setStopped] = useState(false);
   const backgroundSessionActive =
-    backgroundPlayback && session.isReady && !session.isCompleted && session.error == null;
+    backgroundPlayback && session.isReady && !session.isCompleted && session.error == null && !stopped;
   useEffect(() => {
     applyBackgroundPlayback(player, backgroundSessionActive);
   }, [backgroundSessionActive, player]);
+
+  const stop = useCallback(() => {
+    controller.pause();
+    setStopped(true);
+  }, [controller]);
+  useEventListener(player, 'playingChange', ({ isPlaying }) => {
+    if (isPlaying) {
+      setStopped(false);
+    }
+  });
 
   useEventListener(player, 'statusChange', ({ status, error }) => {
     if (!mountedRef.current) {
@@ -1012,6 +1029,7 @@ export function usePlayerSession(
     unmute,
     toggleMute,
     replay,
+    stop,
     retry,
     setPictureInPictureArmed,
     onPictureInPictureStart,

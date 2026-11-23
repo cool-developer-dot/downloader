@@ -36,3 +36,77 @@ export async function readPlayingVideoSize(player: VideoPlayer): Promise<Playing
     return null;
   }
 }
+
+/** P15 #661 / #701: what the media session's ⏭ / ⏮ may do (the Player's queue). */
+export function applyQueueNavigation(
+  player: VideoPlayer,
+  navigation: { enabled: boolean; hasNext: boolean; hasPrevious: boolean },
+): void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return;
+  }
+  native
+    .setQueueNavigation(player, navigation.enabled, navigation.hasNext, navigation.hasPrevious)
+    .catch((error: unknown) => warn('setQueueNavigation', error));
+}
+
+/** P15 #661 / #701: a media session's ⏭ / ⏮ for the Player's queue. Returns the unsubscribe. */
+export function subscribeQueueCommands(listener: (command: 'next' | 'previous') => void): () => void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return () => undefined;
+  }
+  const subscription = native.addListener('onQueueCommand', (event) => {
+    if (event?.command === 'next' || event?.command === 'previous') {
+      listener(event.command);
+    }
+  });
+  return () => subscription.remove();
+}
+
+/** P15 #560: pause when headphones are unplugged or a Bluetooth headset disconnects. */
+export function applyPauseWhenAudioBecomesNoisy(player: VideoPlayer, enabled: boolean): void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return;
+  }
+  native.setPauseWhenAudioBecomesNoisy(player, enabled).catch((error: unknown) => warn('setPauseWhenAudioBecomesNoisy', error));
+}
+
+/** P15 #703: show the window over the lock screen (only while the Player is in front). */
+export function applyShowWhenLocked(show: boolean): void {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return;
+  }
+  native.setShowWhenLocked(show).catch((error: unknown) => warn('setShowWhenLocked', error));
+}
+
+/** P15 #703: the phone is locked; false when it can't be told. */
+export async function readDeviceLocked(): Promise<boolean> {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return false;
+  }
+  try {
+    return await native.isDeviceLocked();
+  } catch (error) {
+    warn('isDeviceLocked', error);
+    return false;
+  }
+}
+
+/** P15 #703: asks for the phone's unlock; true once it is unlocked. */
+export async function requestDeviceUnlock(): Promise<boolean> {
+  const native = getVidoraPlayer();
+  if (!native) {
+    return true;
+  }
+  try {
+    return await native.requestUnlock();
+  } catch (error) {
+    warn('requestUnlock', error);
+    return false;
+  }
+}

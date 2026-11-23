@@ -5,6 +5,7 @@ import { STREAM_QUALITIES, type StreamQuality } from '@/player/engine/stream-qua
 import { streamCapLabel, type PlayerEngineSheets as Sheets } from '@/player/engine/use-player-engine';
 
 import { EngineChoiceSheet, type EngineChoice } from './EngineChoiceSheet';
+import { HeadsetKeysSheet } from './HeadsetKeysSheet';
 
 export type PlayerEngineSheetsProps = { sheets: Sheets };
 
@@ -40,6 +41,7 @@ export const PlayerEngineSheets = memo(function PlayerEngineSheets({ sheets }: P
         onClose={sheets.streamQuality.close}
         testID="player-stream-quality-sheet"
       />
+      <HeadsetKeysSheet visible={sheets.headsetKeys.visible} onClose={sheets.headsetKeys.close} />
     </>
   );
 });

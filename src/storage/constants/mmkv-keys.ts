@@ -86,6 +86,8 @@ export const mmkvKeys = {
   libraryExcludedFolders: 'vidorax.mmkv.library.excludedFolders.v1',
   /** Faran's P14 #670: the stream quality cap (`auto`, `saver`, `720`, `1080`), app-wide. */
   playerStreamQuality: 'vidorax.mmkv.player.streamQuality.v1',
+  /** Faran's P15: headphones, headset buttons, volume and remote keys, showing over the lock screen (app-wide). */
+  playerHeadsetKeys: 'vidorax.mmkv.player.headsetKeys.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

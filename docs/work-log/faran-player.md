@@ -26,3 +26,55 @@ reviewed and merged (PRs downloader#40–#49, 2026-11-23: security scan clean, t
 
 Tests: `stream-quality.test.ts`, `network-stream.test.ts`, `stream-download-handoff.test.ts`,
 `p14-streams.test.ts` (rows, English/Urdu parity), `PlayerTrackLimitsTest.kt` (JVM, Robolectric).
+
+### P14 device test (release build, Pixel_8 AVD, 2026-11-23)
+
+| Check | Result |
+| --- | --- |
+| Player tab header → Network stream icon → screen 52 | Opens; Download instead, Stream quality (Auto), formats note |
+| `https://youtu.be/abc123` → Play | Refused: "YouTube videos can’t be played or saved in VidoraX." (no request made) |
+| Mux HLS `x36xhzz.m3u8` → Play | Plays in the Player (media session PLAYING) |
+| ⋮ → Video → Stream quality | "Auto · 720p now"; the stream then adapted to 1080p (overlay "· 1080p") |
+| Stream quality → Data saver | "Data saver · 480p now" a few seconds later (the cap moved ExoPlayer from 1080p to 480p) |
+| ⋮ → Tools → Download this stream | The Player steps aside to the Downloads tab; the downloader's own sheet opens with the stream's 1080/720/480/288/184p variants |
+
+## P15 Headset, keys & remotes (#560, #562, #661, #701, #703, and #520's full stop)
+
+| # | Feature | Where | How |
+| --- | --- | --- | --- |
+| #560 | Headphone Detection | ⋮ → Playback → Headset, keys & lock screen (on by default) | ExoPlayer's `setHandleAudioBecomingNoisy`: the video pauses when headphones are unplugged or a Bluetooth headset disconnects, so the sound never moves to the speaker. |
+| #661 | Headset Button Control | same sheet (on) | Each media session of the player controls a `QueueSessionPlayer` (Media3 `ForwardingSimpleBasePlayer`, through the expo-video hook): ⏭ / ⏮ from a headset, a Bluetooth remote, the media notification or a double press go to the Player's queue (next; previous within 3 s, else back to the start). One press plays / pauses (Media3's own). |
+| #562 | Hardware Key Control | same sheet: Volume keys | Player volume (default: one of 15 steps per press, with the Player's own level on the video instead of Android's panel), Skip back / forward by the seek interval, or Android volume. Only while the Player is in front with no sheet open. |
+| #701 | External Remote | same sheet (on) | Keyboard / TV remote / game pad: Space, Enter, OK (D-pad centre), K play / pause; ← → J L skip; ↑ ↓ volume; N / P next / previous; F full screen; M mute; Esc leaves full screen. Media keys go through the session (#661). |
+| #703 | Show on Lock Screen | same sheet (off) | While the Player is in front, its window shows over the lock screen (`setShowWhenLocked`), so a video playing when the phone locks is still there on wake. Over the lock screen, Back, ⋮, the header ← and the tab bar ask for the phone's unlock first (`requestDismissKeyguard`); leaving the Player turns it off. |
+| #520 | Stop (P1's, completed) | ⋮ → Playback → Stop | P1 pauses and goes to 0:00; the session's new `stop()` also ends the background session: the media notification and the playback service go until the video plays again. |
+
+**Shared changes (reviewed for the Browser):** the key channel routes keys by owner (`key-capture-routing.ts`): the
+volume keys go to the owner that asked most recently, a combo only to owners that asked for it, so the Player's keys
+never reach the Browser's listeners. `useVolumeKeyScroll` and `useKeyboardShortcuts` pass their owners. The native key
+channel names the D-pad centre (`center`) and the keypad's Enter.
+
+**expo-video patch:** `scripts/patch-expo-video.js` (postinstall) adds `VideoPlayerHooks`: the media-session player
+(P15) and PCM audio processors for the sink (used by P17 / P19). Exact text replacements; it fails the install when
+expo-video changes instead of shipping without them.
+
+Tests: `player-keys.test.ts`, `headset-keys.test.ts`, `key-capture-routing.test.ts`, `p15-headset-keys.test.ts`;
+JVM `QueueNavigationTest.kt` (Robolectric), `KeyCaptureTest.kt` (new key names).
+
+### P15 device test (release build, Pixel_8 AVD, 2026-11-23)
+
+| Check | Result |
+| --- | --- |
+| Opening a video with a queue | The session's actions gain "skip to next" (7339995 → 7340027) |
+| Space / OK / K, → → ←, from the key channel | Play / pause, +10 s twice, −10 s (session position 14.5 → 34.6 → 24.6 s) |
+| Volume Down / Up | Media volume 6 → 5 → 7 (of 15); the Player's own "27%" level shows, not Android's panel |
+| `media_session dispatch next` | Next video of the queue (two-audio → left-only) |
+| previous after 3 s / two quick previous | Back to 0:00 / the previous video (two-audio) |
+| headset hook ×2 / ×1 | Next video / pause |
+| Headphone detection | ExoPlayer's AUDIO_BECOMING_NOISY receiver registered in the app's process while playing (the broadcast itself is protected: the shell can't send it) |
+| Background play on → Stop | Notification and foreground service gone; Play brings them back |
+| Show on lock screen on, PIN set, power off / on | The Player shows over the lock screen (keyguard showing, occluded), video still playing |
+| Tab bar over the lock screen | Android's "Enter PIN"; after the PIN the Browser opens |
+
+Note: Android consumes the first navigation key (Space, Enter, arrows) after a touch to leave touch mode, so after
+tapping the screen the first key press does nothing; this is the platform's behaviour for every app.

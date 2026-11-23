@@ -15,4 +15,6 @@ export type PlayerEngineStreamOption = {
 export type PlayerEngineOption = {
   /** P14: present while an online stream plays. */
   stream: PlayerEngineStreamOption | null;
+  /** P15: the Headset, keys & lock screen sheet. */
+  headsetKeys: { open: () => void };
 };

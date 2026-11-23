@@ -28,6 +28,14 @@ class KeyCaptureTest {
   }
 
   @Test
+  fun remoteOkAndNumpadEnterHaveNames() {
+    // Faran's P15 #701: a TV remote's OK plays / pauses the Player; the keypad's Enter is Enter.
+    assertEquals("center", combo(KeyEvent.KEYCODE_DPAD_CENTER))
+    assertEquals("enter", combo(KeyEvent.KEYCODE_NUMPAD_ENTER))
+    assertEquals("enter", combo(KeyEvent.KEYCODE_ENTER))
+  }
+
+  @Test
   fun keysWithoutANameAreNeverCaptured() {
     assertNull(combo(KeyEvent.KEYCODE_BACK))
     assertNull(combo(KeyEvent.KEYCODE_HOME))
