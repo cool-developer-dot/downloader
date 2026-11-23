@@ -210,3 +210,12 @@ Bugs found and fixed before commit:
 The Speed button rows (P16) and the Sleep timer and Daily limit choices (P18) showed the selected one only with a
 check icon. Like the other choice sheets (stream quality, volume keys, audio track), their TalkBack label now ends in
 "Selected".
+
+## Integration fixes (found while testing the merged build, 2026-11-23)
+
+| Fix | Why | Device check |
+| --- | --- | --- |
+| P15 #701: ⏩ reaches the media session | React Native 0.86 takes `KEYCODE_MEDIA_FAST_FORWARD`'s key down for its developer menu even in a release build (`ReactDelegate.onKeyDown` only checks that a dev-support manager exists). Only the key up reached the session, so a remote's or headset's ⏩ did nothing while VidoraX was in front. `MainActivity.onKeyDown` now passes it on in release builds (debug keeps the developer menu). | ⏩ with the Player in front: +15 s (the session's key log shows DOWN and UP); ⏪ −5 s as before |
+| A player's native parts go with it | `useVideoPlayer` releases the player in its own unmount cleanup, before the session's `releasePlayer` call ran, so every switch logged `engine_call_failed` and the audio effects were never released explicitly. A third expo-video hook, `VideoPlayerHooks.onRelease` (`scripts/patch-expo-video.js`), runs on the main thread just before the ExoPlayer is released; the module drops the effects, countdown and session player there. JavaScript marks the player in a layout-effect cleanup and skips it from then on. | EQ on, mini player closed: no failed calls, `audio_flinger` shows no effects left; switching videos logs nothing |
+| P18 runs with the session | The countdown, counting and the limit lived in the Player screen's view: leaving it for the mini player cancelled the countdown and let Play go past the limit. `useSleepLimitSession` now runs in PlayerSessionHost's runner (full Player, mini player, screen off); the limit sheet and Kid Lock's keys stay on the screen (`useSleepLimitsView`). | At the limit, Play in the mini player is refused at once with the toast; "End of this video" stops at the end and the timer turns Off |
+
