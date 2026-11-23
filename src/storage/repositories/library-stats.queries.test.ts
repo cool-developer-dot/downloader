@@ -13,10 +13,12 @@ import {
   deleteVideoBookmark,
   forgetLibraryStats,
   getPlayStats,
+  listMediaLengths,
   listPlayStats,
   listVideoBookmarks,
   recordPlay,
   renameVideoBookmark,
+  saveMediaLength,
   VideoBookmarkError,
   type LibraryStatsDb,
 } from './library-stats.queries.ts';
@@ -170,6 +172,9 @@ describe('P9 database v10 (play counts, video bookmarks)', () => {
         ['media_id', 'TEXT', 1, null, 1],
         ['play_count', 'INTEGER', 1, '0', 0],
         ['last_played_at', 'TEXT', 0, null, 0],
+        // #711 backfill: the measured length, and when it was looked at (in the same 9 → 10 table, no new bump).
+        ['duration_ms', 'INTEGER', 0, null, 0],
+        ['duration_checked_at', 'TEXT', 0, null, 0],
       ],
     );
     const marks = columns(sqlite, TABLE_NAMES.videoBookmarks);
@@ -367,5 +372,54 @@ describe('P9 video bookmarks (real SQLite)', () => {
     assert.equal((await getPlayStats(db, 'd2'))?.playCount, 1);
     assert.deepEqual((await listVideoBookmarks(db, 'd2')).map((b) => b.id), ['k2']);
     assert.deepEqual(snapshot(sqlite, P9_TABLES), others);
+  });
+});
+
+describe('P9 lengths (#711 background backfill, real SQLite)', () => {
+  test('a measured length is kept with when it was looked at; a row made for a length is not a play', async () => {
+    const { db } = await freshDb();
+    await saveMediaLength(db, 'v1', 61_400.6, NOW);
+    await saveMediaLength(db, 'v2', null, NOW);
+    assert.deepEqual(await listMediaLengths(db), [
+      { mediaId: 'v1', durationMs: 61_401, checkedAt: NOW },
+      { mediaId: 'v2', durationMs: null, checkedAt: NOW },
+    ]);
+    // Not a play: Most played and the counts don't see it.
+    assert.deepEqual(await listPlayStats(db), []);
+    assert.deepEqual(await getPlayStats(db, 'v1'), { mediaId: 'v1', playCount: 0, lastPlayedAt: null });
+  });
+
+  test('a known length is never replaced by "unknown"; a later reading updates it; blank ids are ignored', async () => {
+    const { db } = await freshDb();
+    await saveMediaLength(db, 'v1', 61_000, NOW);
+    await saveMediaLength(db, 'v1', null, LATER);
+    assert.deepEqual(await listMediaLengths(db), [{ mediaId: 'v1', durationMs: 61_000, checkedAt: LATER }]);
+    await saveMediaLength(db, 'v1', 62_000, LATER);
+    assert.equal((await listMediaLengths(db))[0]!.durationMs, 62_000);
+    await saveMediaLength(db, '  ', 5_000, NOW);
+    await saveMediaLength(db, 'v3', -4, NOW);
+    assert.deepEqual(
+      (await listMediaLengths(db)).map((row) => [row.mediaId, row.durationMs]),
+      [
+        ['v1', 62_000],
+        ['v3', null],
+      ],
+    );
+  });
+
+  test('plays and lengths share the row without touching each other', async () => {
+    const { db } = await freshDb();
+    await saveMediaLength(db, 'v1', 30_000, NOW);
+    assert.deepEqual(await recordPlay(db, 'v1', LATER), { mediaId: 'v1', playCount: 1, lastPlayedAt: LATER });
+    await saveMediaLength(db, 'v1', 31_000, LATER);
+    assert.equal((await getPlayStats(db, 'v1'))?.playCount, 1);
+    assert.deepEqual(await listMediaLengths(db), [{ mediaId: 'v1', durationMs: 31_000, checkedAt: LATER }]);
+    // Counted first, measured later: the same.
+    await recordPlay(db, 'v2', NOW);
+    await saveMediaLength(db, 'v2', 9_000, LATER);
+    assert.equal((await getPlayStats(db, 'v2'))?.playCount, 1);
+    // A deleted video's length goes with its row.
+    await forgetLibraryStats(db, ['v1']);
+    assert.deepEqual((await listMediaLengths(db)).map((row) => row.mediaId), ['v2']);
   });
 });

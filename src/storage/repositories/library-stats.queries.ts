@@ -90,6 +90,55 @@ export async function listPlayStats(db: LibraryStatsDb): Promise<PlayStats[]> {
   return rows.map(toStats);
 }
 
+// ── Lengths (#711 backfill) ─────────────────────────────────────────────────────────────────────────────────────
+
+export type MediaLength = {
+  mediaId: string;
+  /** Null: looked at, but no length could be read. */
+  durationMs: number | null;
+  checkedAt: string;
+};
+
+type LengthRow = { media_id: string; duration_ms: number | null; duration_checked_at: string };
+
+/**
+ * Keeps a video's measured length (null: none could be read) and when it was looked at. A length already known is
+ * never replaced by "unknown"; the play count is never touched (a new row starts at 0, which isn't a play).
+ */
+export async function saveMediaLength(
+  db: LibraryStatsDb,
+  mediaId: string,
+  durationMs: number | null,
+  nowIso: string,
+): Promise<void> {
+  const id = mediaId.trim();
+  if (!id) {
+    return;
+  }
+  const length = durationMs != null && Number.isFinite(durationMs) && durationMs > 0 ? Math.round(durationMs) : null;
+  await db.runAsync(
+    `INSERT INTO ${S} (media_id, play_count, duration_ms, duration_checked_at) VALUES (?, 0, ?, ?)
+     ON CONFLICT(media_id) DO UPDATE SET
+       duration_ms = COALESCE(excluded.duration_ms, duration_ms),
+       duration_checked_at = excluded.duration_checked_at`,
+    id,
+    length,
+    nowIso,
+  );
+}
+
+/** Every video the backfill has looked at, with its length (or null). */
+export async function listMediaLengths(db: LibraryStatsDb): Promise<MediaLength[]> {
+  const rows = await db.getAllAsync<LengthRow>(
+    `SELECT media_id, duration_ms, duration_checked_at FROM ${S} WHERE duration_checked_at IS NOT NULL ORDER BY media_id`,
+  );
+  return rows.map((row) => ({
+    mediaId: row.media_id,
+    durationMs: row.duration_ms != null && Number(row.duration_ms) > 0 ? Math.trunc(Number(row.duration_ms)) : null,
+    checkedAt: row.duration_checked_at,
+  }));
+}
+
 // ── Video bookmarks (#705) ──────────────────────────────────────────────────────────────────────────────────────
 
 /** A video's bookmarks by time (two at the same time: the order they were added in). */

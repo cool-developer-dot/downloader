@@ -997,7 +997,9 @@ One bump, in `src/storage/constants/database.ts`: `DATABASE_VERSION = 10`, a v10
 CREATE TABLE IF NOT EXISTS media_play_stats (
   media_id TEXT PRIMARY KEY NOT NULL,
   play_count INTEGER NOT NULL DEFAULT 0,
-  last_played_at TEXT
+  last_played_at TEXT,
+  duration_ms INTEGER,          -- #711 backfill: the length measured from the file (null: none could be read)
+  duration_checked_at TEXT      -- when the backfill last looked
 );
 
 CREATE TABLE IF NOT EXISTS video_bookmarks (
@@ -1040,9 +1042,23 @@ unchanged, then runs the migration and the DDL again.
   when the file is added), but `projectV2Download` drops it. P9 doesn't change the projection (its tests compare
   projected rows). Instead, while a length filter is chosen, `loadLibraryDurations` asks the engine
   (`getLibraryItems`, 200 ids at a time, once per video per run) for the videos with no length, and the playback
-  record's length is the fallback. **In practice:** v2 library videos get a length (null only when the file's metadata
-  can't be read); older (v1) downloads the engine doesn't own get one only once they've been played. I can't count them
-  without a device. Unknown lengths show only under Any length.
+  record's length is the fallback. Unknown lengths show only under Any length.
+- **Lengths backfill (added before the push).** Every Library video is a native library item with its own file
+  (older v1 downloads included: `LegacyImport` moves them in under their old ids with `MediaInfo`). What was missing
+  was a length for items whose record has none. So a **background backfill** fills them in:
+  - **The probe already existed:** `MediaInfo.read(file)` (`library/MediaInfo.kt`, Android's `MediaMetadataRetriever`,
+    the reading a download, an import or an edit makes). It wasn't reachable from JavaScript, so a small new Kotlin
+    class beside MediaEditor, **`library/LengthProbe.kt`**, looks the id up in the library and reads only the file its
+    record points to, if it is there and readable (at most 10 ids per call). One new bridge function,
+    `probeLibraryLengths(ids)` in `VidoraMediaModule.kt`, and its optional type in `VidoraMedia.types.ts`. Nothing is
+    written natively.
+  - **JS** (`src/library/length-backfill.ts`, pure; `library-stats-store.ts` `backfillLibraryLengths`): starts 3 s
+    after the Library's list settles, whatever the filter; lengths kept from earlier runs first, then the native
+    library's own, then the rest measured **5 at a time with a 1.5 s pause**. Gallery (`device:`) videos are never
+    sent. A file that can't be read is left alone for 7 days, never retried in a loop.
+  - **Kept in P9's own table:** `media_play_stats.duration_ms` and `duration_checked_at`, in the same 9 → 10 table
+    creation (P9 wasn't released, so no new bump). A row made only for a length has `play_count` 0, which Most played
+    and the counts ignore; a known length is never replaced by "unknown".
 - **Play counts are counted app-wide** (`ensureLibraryStats` at startup, next to the playback persistence binder), not
   in a Player-screen hook, because the session keeps playing in the mini player after the Player closes.
 - **Video time, not wall time:** at 2× speed, 30 s of the video takes 15 s.
@@ -1100,6 +1116,7 @@ unchanged, then runs the migration and the DDL again.
 | Against `1ba7714` | `git diff --check` clean; none of Faran's files; nothing under `transfer/` or `engine/`; `package.json` / lockfile, `android/`, `modules/`, manifests, `app.json` unchanged; no new dependency or permission |
 | Schema | `DATABASE_VERSION` 9 → 10, once; `BROWSER_PROFILE_DATABASE_VERSION` unchanged |
 | Media3 | `1.9.0`, unchanged |
+| Lengths backfill (after review) | JS: typecheck 0, lint 0 errors (91 older warnings), 2362 / 2362 tests (10 new: `length-backfill.test.ts` 7, `library-stats.queries.test.ts` +3 for the stored lengths, the column list updated). Gradle `:vidorax-media:compileDebugKotlin` BUILD SUCCESSFUL; `testDebugUnitTest` (DownloadRunnerTest left out locally): 1118 tests, 1114 passed, 2 failed (`StoragePathsTest`, `IncomingImportTest`: Windows path separators, already there before), 2 skipped; new `LengthProbeTest` 4 / 4 |
 
 ### Device checks for Faran (release build; not possible here)
 
@@ -1111,8 +1128,9 @@ unchanged, then runs the migration and the DDL again.
    15 s. Repeat one: one count per opening. Close into the mini player and keep watching: still one.
 3. **Most played.** Library → Sort → Most played: the most-played first, never-played last; together with Favorites, a
    folder, a length and a search.
-4. **Length filter.** The chip and its five choices; videos right at 5:00, 20:00 and 60:00; downloads from before v2
-   that were never played (they show only under Any length). How many videos lack a length on a real library?
+4. **Length filter.** The chip and its five choices; videos right at 5:00, 20:00 and 60:00. **Backfill:** on a library
+   with older downloads, open the Library and wait a few seconds; their lengths fill in (5 at a time) without playing
+   them, the Library stays smooth, and they are still there after a restart. A damaged file stays under Any length.
 5. **Hidden folders.** Filter → Include / exclude folders: hide a folder and Unfiled; the Library, Most played, search
    and Continue watching leave them out; Folder → that folder still shows it; close and reopen the app: kept. Files and
    folder assignments are unchanged.

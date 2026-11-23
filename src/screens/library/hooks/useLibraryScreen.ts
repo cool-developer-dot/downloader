@@ -22,6 +22,7 @@ import { UNFILED_FOLDER_SELECTION_ID } from '@/library/constants';
 import type { DurationBucket } from '@/library/duration-buckets';
 import { applyFolderExclusion, countExcluded } from '@/library/folder-exclusion';
 import {
+  backfillLibraryLengths,
   loadLibraryDurations,
   resetLibraryDurationBucket,
   setLibraryDurationBucket,
@@ -48,6 +49,9 @@ import { useFavoritesStore } from '@/store/favorites';
 import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 import { useLibraryStore } from '@/store/library';
+
+/** P9 #711: the background length backfill starts this long after the Library's list last changed. */
+const LENGTH_BACKFILL_START_DELAY_MS = 3000;
 
 function localizeCompletedActionError(
   code: Parameters<typeof completedActionErrorMessageKey>[0],
@@ -203,12 +207,18 @@ export function useLibraryScreen() {
     }
     return { ...merged, ...nativeDurations };
   }, [nativeDurations, playbackById]);
-  // Lengths are asked for only while a length filter is chosen (once per video per run).
+  // Lengths: asked for at once while a length filter is chosen (once per video per run), and filled in the background
+  // a few seconds after the list settles, whatever the filter (P9 backfill: the existing MediaInfo probe, a few at a
+  // time, kept in media_play_stats).
   useEffect(() => {
-    if (durationBucket === 'any') {
-      return;
+    const missing = enrichedCanonical.filter((item) => item.duration == null).map((item) => item.id);
+    if (durationBucket !== 'any') {
+      void loadLibraryDurations(missing);
     }
-    void loadLibraryDurations(enrichedCanonical.filter((item) => item.duration == null).map((item) => item.id));
+    const timer = setTimeout(() => {
+      void backfillLibraryLengths(missing);
+    }, LENGTH_BACKFILL_START_DELAY_MS);
+    return () => clearTimeout(timer);
   }, [durationBucket, enrichedCanonical]);
   const hiddenFolderVideoCount = useMemo(
     () => countExcluded(enrichedCanonical, excludedFolderIds),

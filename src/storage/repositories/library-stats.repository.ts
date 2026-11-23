@@ -8,16 +8,19 @@ import {
   deleteVideoBookmark,
   forgetLibraryStats,
   getPlayStats,
+  listMediaLengths,
   listPlayStats,
   listVideoBookmarks,
   recordPlay,
   renameVideoBookmark,
+  saveMediaLength,
   VideoBookmarkError,
+  type MediaLength,
   type PlayStats,
   type VideoBookmark,
 } from './library-stats.queries';
 
-export type { PlayStats, VideoBookmark } from './library-stats.queries';
+export type { MediaLength, PlayStats, VideoBookmark } from './library-stats.queries';
 export { VideoBookmarkError } from './library-stats.queries';
 
 /** P9 #708 / #626 / #705 — play counts and video bookmarks in the app database; SQL in library-stats.queries.ts. */
@@ -43,6 +46,15 @@ export class LibraryStatsRepository {
 
   allPlayStats(): Promise<PlayStats[]> {
     return this.run('read play counts', (db) => listPlayStats(db));
+  }
+
+  /** #711 backfill: a measured length (null: none could be read). */
+  saveLength(mediaId: string, durationMs: number | null, atIso: string = nowIso()): Promise<void> {
+    return this.run('keep a length', (db) => saveMediaLength(db, mediaId, durationMs, atIso));
+  }
+
+  lengths(): Promise<MediaLength[]> {
+    return this.run('read lengths', (db) => listMediaLengths(db));
   }
 
   bookmarks(mediaId: string): Promise<VideoBookmark[]> {
