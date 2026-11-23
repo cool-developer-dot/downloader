@@ -40,7 +40,10 @@ export function useSpeedEngine(input: {
     }
     restoredFor.current = mediaId;
     const target = (settings.rememberPerVideo ? rememberedSpeedFor(mediaId) : null) ?? DEFAULT_PLAYBACK_RATE;
-    restoring.current = setPlaybackRate(target) ? target : null;
+    // Wait for the session to show the restored speed only when it changes it: an unchanged speed re-renders
+    // nothing, so the wait would never end and the next speed the user picks would not be kept (found on the device).
+    const changes = Math.abs(target - playbackRate) > 1e-6;
+    restoring.current = setPlaybackRate(target) && changes ? target : null;
     // Only when the video changes: later speed changes are the user's.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isReady, mediaId]);
