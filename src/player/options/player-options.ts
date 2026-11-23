@@ -160,6 +160,14 @@ export type PlayerOptionContext = {
     openConverter: () => void;
     openCompress: () => void;
   };
+  /**
+   * P11 Privacy (#686): "Move to Private" for the playing video. `available` only for a library video on a build with
+   * the vault (hidden for videos on this device, files from other apps and streams). `run` opens Private's own move
+   * dialog (App Lock check, the data-loss warning); after the move the Player goes to the next video, or closes.
+   */
+  privacy?: {
+    moveToPrivate: { available: boolean; run: () => void };
+  };
   ui: PlayerOptionUi;
 };
 

@@ -1361,3 +1361,214 @@ and `TransformerUtil.shouldTranscodeVideo` re-encodes when that is true. So an H
     there).
 15. **Six themes and Urdu:** the Compress sheet, the progress sheet, the converter sheet and the dialog. TalkBack reads
     the presets with their sizes.
+
+## P11 — Privacy & backup (#686, #689, #700)
+
+Built from `hamza/P10-edit-tools` (`4ea8612`, P1–P10) in its own worktree, on the local branch `wip/P11-privacy`, while
+P9's duration backfill and P12 were built in parallel. **Its PR depends on P10's PR.** **No SQLite change, no native
+code**, no new dependency, permission, manifest or `build.gradle` line; none of Faran's files. Everything is a service
+outside the Player (`src/privacy/`, `src/backup/`) that the Player, the Library and Settings call, so the File Manager's
+Secure Vault (#908) and Backup (#930) can use it later.
+
+### What existed before P11
+
+- **Private (Downloader H21, #459 / #460 / #463 / #413).** Native `library/PrivateVault.kt`: `moveIn` encrypts a
+  library item into `noBackupFilesDir/vault` (AES-256-GCM per file, with a per-file key sealed by an Android Keystore
+  master key), verifies the copy (every chunk authenticated, the same SHA-256 as the source) and only then commits it;
+  `list`, `thumbnail`, `openForPlayback` (one decrypted temp file in `cacheDir/vault-play`), `clearPlayback`,
+  `cleanUp`, `delete`, `exportToGallery` (Movies/VidoraX) and `exportToFolder`. The vault keeps **its own random ids**
+  and never the library id. JavaScript (`src/private-vault/*`): `moveToPrivate` (encrypt → delete the original through
+  the app's delete path → forget the stored playback position; a copy too many rather than none if the delete can't be
+  confirmed), `vault-gate.ts` (the section relocks on every leave and background), `data-loss.ts`, `gallery-copy.ts`
+  ("Also remove the Gallery copy", off by default), `vault-export.ts`. Screens `src/screens/private/*`:
+  `PrivateScreen` (asks for the App Lock PIN every time, `PrivatePinGate` with the biometric option), the list with
+  Play, Export to Gallery, Export to folder and Delete, its **own player** (`VaultPlayerModal`, not the app's Player:
+  no position, history, mini player, PiP or notification), and `PrivateMoveDialog` (App Lock check, the data-loss
+  notice on every move and "I understand" before the first). Entry: the Library's header lock button and its
+  long-press "Move to Private". **It already encrypts; P11 adds no encryption and removes none.**
+- **The secure window (B11 #106).** `modules/vidorax-web/.../security/SecureWindow.kt` sets `FLAG_SECURE` on the
+  activity's window; JavaScript calls `VidoraWeb.setWindowSecure(secure)`; incognito called it directly from
+  `applySecure`. The native side keeps **one owner** (`ownsFlag`): a "clear" from anyone clears it.
+- **Settings Backup (#471).** `src/store/settings/backup.ts` (`vidorax.settings` v1: `SettingsState` only, validated
+  key by key), Settings → Backup & reset → Export / Import settings (`useSettingsBackupReset.ts`,
+  `importSettingsValues`), through `exportTextFile` / `importTextFile` inside `withExpectedSystemScreen`. B20's
+  browser backup (`vidorax.backup`) is separate.
+
+### What the user sees
+
+| # | Feature | Where | How (evidence) |
+| --- | --- | --- | --- |
+| #686 | Move to Private from the Player | Player: ⋮ → Tools → **Move to Private** (85) | Library videos only: a finished download the native library keeps (`canMoveMediaToPrivate`: not `device:` videos, files from other apps, streams, or a build without the vault). It opens **Private's own move dialog** (`usePrivateMove` + `PrivateMoveDialog`, reused): without App Lock it offers to set it up; the confirm always shows the data-loss notice ("If VidoraX is uninstalled or its data is cleared, they are lost for good") and **the first move needs "I understand" ticked**; "Also remove the Gallery copy" when there is one. **The video pauses when the move starts.** Then, as P9's Quick Delete, the next video in the queue plays (`queueNeighbours`), or the Player closes with its session. Evidence: `src/screens/player/page/use-player-private-move.ts`, `src/player/options/p11-privacy.ts`, `src/privacy/private-folder.ts` (`canMoveMediaToPrivate`), `PlayerScreen.tsx` (one P11 block). |
+| #686 | Hidden everywhere | — | What the move already removed, and what P11 adds, is in the next table. One choke point: H21's `forgetHistory` now also calls `hidePrivateTracesNow` (`src/privacy/private-traces.runtime.ts`), so **a move from the Library gets the same**. Evidence: `src/privacy/private-traces.ts`, `private-media-guard.ts`, `src/player/playback-events.ts` (one `if`), `src/playback/bind-playback-persistence.ts` (`dropPlaybackSessionFor`). |
+| #686 | Move out of Private | Private → ⋮ on a video → **Move out of Private** (before Delete) | A confirm, then **a copy to the Gallery first** (the existing export, with its storage prompt on Android 9 and older), and **only after it was saved is the private copy deleted**. A cancelled, refused or failed copy leaves the private copy as it was; copied but not deleted says "It was saved to your Gallery, but couldn't be removed from Private". An item whose key was lost can only be deleted (no Move out). The video lands in **Movies/VidoraX**: VidoraX lists it under Device videos (`DeviceVideos.kt` lists every
+MediaStore video it may read, its own folder included; with Android 14's "selected videos only" it must be
+selected); it doesn't return to the Downloads library, and its play count and bookmarks don't come back (they were forgotten on the way in). Evidence: `src/privacy/private-folder.ts` (`moveOutOfPrivate`, `privateFolderItemActions`), `private-folder.runtime.ts`, `src/screens/private/PrivateVaultList.tsx`. |
+| #686 | Open only through App Lock; warning before the first move | Private | Unchanged and reused: `PrivateScreen` → `PrivatePinGate` (PIN, or fingerprint / face when App Lock's biometric unlock is on), every time it opens; `PrivateMoveDialog`'s data-loss notice and "I understand". |
+| #689 | Block Screen Capture | Settings → Privacy → **Block screenshots in Private** (off by default) | With it on, **no screenshots, no screen recording and a blank recent-apps preview while a Private screen is in front**: its PIN gate, its list, its dialogs and its own player of a private video. Not app-wide, not other videos (the checklist row says "private videos"). Held from the screen's **focus** until it loses focus (`useFocusEffect`), not from unlock: React Native 0.86's `ReactModalHostView` copies `FLAG_SECURE` into a dialog's window only when the dialog is created (read in `node_modules/react-native/.../modal/ReactModalHostView.kt`), so the flag must be on before `VaultPlayerModal` or a confirm opens; and the app going to the background doesn't release it, so the recents picture taken then is blank. **The API is B11's `VidoraWeb.setWindowSecure`**, through a new arbiter: owners `incognito` and `private-folder`, secure while either holds it, the native call made only when the answer changes. Incognito's `applySecure` now calls the arbiter instead of the native function (one line), so neither clears the flag under the other. MMKV `privacyBlockScreenCapture`. Evidence: `src/privacy/secure-window.ts`, `secure-window.runtime.ts`, `screen-capture-preference.ts`, `use-private-folder-capture-block.ts`, `PrivateScreen.tsx` (one line), `src/browser/incognito/incognito.service.ts`, `src/screens/settings/components/BlockScreenCaptureRow.tsx`. |
+| #700 | Back up all data | Settings → Backup & reset → **Back up all data** | One JSON file, `vidorax-all-data-<date>.json`, saved in a folder the user picks or shared (the existing `exportTextFile`). What is in it and what never is: "The backup file" below. Evidence: `src/backup/backup-format.ts`, `backup-preferences.ts`, `user-data.queries.ts`, `backup.service.ts`, `src/screens/settings/backup-reset/FullBackupRows.tsx`. |
+| #700 | Restore from backup | Settings → Backup & reset → **Restore from backup** | The file is read first and nothing is written: **a preview** lists each section with its count ("Playlists: 3 (41 videos)", "Video bookmarks: 12", "Play counts: 30 videos", settings, Player and Library choices, saved loops, hidden folders), when it was made, and what is never in a backup. **Merge** or **Replace** (or Cancel), then **a confirm** that says what each deletes (Replace is red). A **file from a newer VidoraX is refused** ("Update VidoraX to restore it"); an older Settings Backup file restores its settings; B20's browser backup is sent to the browser's own restore. Evidence: `useFullBackup.ts`, `BackupPreviewModal.tsx`, `backup-restore.ts`, `backup.service.ts` (`restoreAppBackup`). |
+
+### What is hidden where, for a private video
+
+| Place | Before P11 (H21's move) | P11 |
+| --- | --- | --- |
+| Library list, Downloads, favourites, search | Gone with the library row and the download record (`deleteCompletedFileFromVidoraX`) | Unchanged |
+| Watch history, Continue watching, resume | The stored position deleted once | Deleted again after the session is dealt with, **and the session's later events are dropped** (`emitPlaybackEvent` skips ids in `private-media-guard`), **and the coordinator's in-memory session is dropped** (`dropPlaybackSessionFor`). Without that, the next video's start wrote the moved one back (`flushSync('media_change')`; a test shows the gap and the fix) |
+| P9 play counts and Most played | Forgotten by P9's listener on the library's "deleted" event | Also forgotten by the move itself, and **no play can be counted after it** (its events are dropped) |
+| P9 video bookmarks | Same listener | Also forgotten by the move |
+| P7 playlists | **Kept, shown by title as a missing entry** | Taken out of every playlist (`playlistIdsWith` / `removeItem`), silently; open playlist screens reload |
+| P6 play queue | **Kept** | Taken out; as the current one, the queue forgets it (the full Player moves on first, as Quick Delete) |
+| P5 saved loops, P2 fit, P3 subtitle choices and loaded subtitle copies | **Kept** (per video, MMKV) | Removed (`restoreSavedLoopRecords`, `setVideoFit(…, 'fit')`, `updateVideoSubtitleRecord(…, EMPTY, picked copies)`) |
+| H12 tags and notes, artist tag | Forgotten by their listeners | Also forgotten by the move |
+| The mini player playing it | Played on with a deleted file | Stops (only when no full Player shows it) |
+| The phone's Gallery (and VidoraX's Device videos, which lists every MediaStore video, Movies/VidoraX included) | The Gallery copy stays unless "Also remove the Gallery copy" is ticked (off by default) | **Unchanged: not met by default** — the box is offered in the Player too; see Decisions |
+| Backups | — | Never: P11's backup has no Private section, and the moved video's rows are gone before any backup |
+
+### The backup file
+
+`{"format": "vidorax.appBackup", "version": 1, "exportedAt": "…", "sections": {…}}`, pretty-printed JSON.
+
+| Section | What | From |
+| --- | --- | --- |
+| `settings` | Exactly what Settings Backup (#471) carries, written by `settingsBackupJson`, read back by `parseSettingsBackup` | `SettingsState` |
+| `preferences` | An **explicit allow-list** of MMKV keys, each through its own package's normalizer: P1 duration label, seek step; P2 fit per video, notch area, info overlay; P3 / P4 per-video subtitle choices (track, second track, sync offset — **without the subtitle files and their paths**), auto-detect, subtitle style; P5 End of Playback, saved A-B loops; P6 Auto Play Next, Next Episode Prompt; P8 gestures, custom controls; P9 Disable History, hidden folders; the Library's list / grid; P11 Block screenshots in Private | `BACKUP_PREFERENCES` in `backup-preferences.ts` |
+| `playlists` | P7 playlists with their videos (id, name, dates; per video: media id, position, the title and file name kept when added, length, date added) | `playlists`, `playlist_items` |
+| `videoBookmarks` | P9 (id, media id, position, name, date) | `video_bookmarks` |
+| `playStats` | P9 (media id, count, last played) | `media_play_stats` |
+
+**Never in it** (`NEVER_IN_BACKUP`, and a test that no key or value in a file matches App Lock / vault words): media
+files; anything of Private (its videos, names, ids, where they are; `vidorax.privateVault.v1`); App Lock (the PIN
+and recovery code are in SecureStore, `vidorax.appLock.v1`, never read; fingerprint unlock `vidorax.appLockBiometric.v1`);
+the play queue (what is playing now); first-run and migration flags; the downloads and the library themselves; the
+browser's data (B20 has its own backup). The theme isn't in it either, as in Settings Backup.
+
+**Versions.** Version 1. A higher version is refused, never half-read. A version below 1, a non-integer, a missing
+`sections`: "isn't a VidoraX backup". A Settings Backup file (`vidorax.settings` v1) is the older version: read as a
+backup with settings only (the preview says so); one of its newer versions is refused too. Everything in a file is
+checked (ids, names by P7's rules, dates, counts, 100 bookmarks per video, 20 MB at most); unknown sections and keys
+are ignored, never applied.
+
+**Merge and Replace**
+
+| | Merge | Replace |
+| --- | --- | --- |
+| Settings | The file's values | The file's values; every other backed-up setting back to its default; the language kept unless the file has one (as Reset Settings) |
+| One-value choices | The file's | The file's, or the default when the file lacks it |
+| Fit per video | The file's for the videos it names, the phone's for the rest | The file's list |
+| Saved loops | The phone's plus the file's it lacks (same id, or same A and B, is the same loop) | The file's |
+| Subtitle choices | The file's choice and offset for the videos it names; a subtitle file chosen on the phone stays chosen | The same for the named videos; other videos lose their choices; **subtitle files are never deleted by a restore** |
+| Hidden folders | Both lists | The file's |
+| Playlists | Same id, else same name (case aside) = the same playlist: the file's videos it lacks go at its end; others are added with their own dates | Every playlist and its videos replaced by the file's |
+| Video bookmarks | Added unless the phone has the id, or one at the same moment of the same video, or the video has 100 | Replaced by the file's |
+| Play counts | The higher count and the later date (never the sum) | Replaced by the file's |
+
+Both: a section the file doesn't have is left alone; nothing of App Lock or Private is touched; **merging the same file
+twice changes nothing the second time**. The database part runs first, in one transaction: if it fails, nothing at all
+was changed. Then each preference through its own setter (the stores read MMKV only at start, so writing MMKV alone
+would leave the screens stale and the next change would write the old list back), then the settings through
+`importSettingsValues`.
+
+### Schema
+
+**No change.** `DATABASE_VERSION` stays 10. The backup reads and writes P7's and P9's tables with named columns only;
+nothing about privacy is stored in SQLite (the vault keeps it, and the moved-ids guard is memory only).
+
+### Native code
+
+**None.** The secure window is B11's existing `setWindowSecure`; the vault's existing functions do everything else.
+Gradle wasn't run (no Kotlin changed).
+
+### Decisions
+
+- **Block Screen Capture covers the Private Folder only** (its screens and its own player), because #689 says
+  "private videos". The app's Player never plays a private video (the vault plays in `VaultPlayerModal`, inside the
+  Private screen), so the route's hold covers "the Player while it plays a private video". `isPrivatePlaybackUri` is
+  there for a later caller (the File Manager) that would hand a vault file to another player.
+- **Move out goes to the Gallery**, not back into the Downloads library: there is no native "back into the library"
+  call, and adding one needs `VidoraMediaModule.kt`, which is being changed in parallel. **Stopped there** — for a
+  real "back to the library", `PrivateVault.kt` would need a `moveOut(vaultId)` that decrypts into
+  `StoragePaths.newLibraryFile` and inserts a `LibraryStore` row (title, mime type, length, size from its metadata),
+  plus one `AsyncFunction` in `VidoraMediaModule.kt`.
+- **"Is private" for a library id** can only be told for ids moved in this run: the vault never keeps the library id
+  (H21's design), and P11 doesn't add a lasting map. After a restart such an id exists nowhere.
+- **"Also remove the Gallery copy" stays off by default**, as H21 has it: deleting a public Gallery item is outside
+  VidoraX and needs Android's own consent dialog on Android 11+. With it off, the Gallery copy stays visible in the
+  phone's Gallery (and in Device videos). Faran may want it on by default for #686.
+- **Trailing events are dropped where they are sent** (`emitPlaybackEvent`), one `if` that covers both listeners
+  (Watch history and play counts), instead of a gate in each listener; `ensure-library-stats.ts` isn't touched.
+- **The backup wraps Settings Backup** rather than replacing it: the settings section is Settings Backup's own format
+  and checks, Export / Import settings stay as they are, and a Settings Backup file restores in the new restore.
+- **The play queue isn't backed up** (it is what is playing now, not a choice). **The theme isn't** either, as in
+  Settings Backup.
+- **Replace keeps the phone's subtitle files**: a backup can't carry them, and deleting them would lose them for good.
+- **Strings:** 45 new keys in a new namespace `privacyBackup` (English and Urdu), wired at the end of `en.ts` /
+  `ur.ts`. The Player row and its dialogs reuse `privateVault.*`.
+
+### Files
+
+- Privacy (pure, tested): `src/privacy/private-folder.ts`, `private-traces.ts`, `private-media-guard.ts`,
+  `secure-window.ts`.
+- Privacy (app side): `private-folder.runtime.ts`, `private-traces.runtime.ts`, `secure-window.runtime.ts`,
+  `screen-capture-preference.ts`, `use-private-folder-capture-block.ts`.
+- Backup (pure, tested): `src/backup/backup-format.ts`, `backup-preferences.ts`, `backup-restore.ts`,
+  `user-data.queries.ts`. App side: `user-data.repository.ts`, `apply-preferences.runtime.ts`, `backup.service.ts`.
+- Screens: `src/screens/player/page/use-player-private-move.ts`; `src/screens/settings/components/BlockScreenCaptureRow.tsx`;
+  `src/screens/settings/backup-reset/FullBackupRows.tsx`, `BackupPreviewModal.tsx`, `useFullBackup.ts`.
+- Changed, additively: `PlayerScreen.tsx` (one fenced P11 block, plus `anyModalOpen`, `onLock`,
+  `optionsContext.privacy` and the dialog at the end); `src/screens/private/PrivateScreen.tsx` (one hook line),
+  `PrivateVaultList.tsx` (Move out); `src/private-vault/move-to-private.runtime.ts` (one call in `forgetHistory`);
+  `src/player/playback-events.ts` (one `if`); `src/playback/bind-playback-persistence.ts` (`dropPlaybackSessionFor`);
+  `src/player/repeat-preference.ts` (`getSavedLoopRecords`, `restoreSavedLoopRecords`);
+  `src/browser/incognito/incognito.service.ts` (`applySecure` through the arbiter); `PrivacySection.tsx` and
+  `BackupResetSection.tsx` (one row each); `src/storage/constants/mmkv-keys.ts` (`privacyBlockScreenCapture`).
+- Options: `src/player/options/p11-privacy.ts` (+ one import line), `player-options.ts` (optional `privacy`).
+- Strings: `src/localization/catalogs/privacyBackup.en.ts` / `.ur.ts`, wired in `en.ts` / `ur.ts`.
+- Tests: `src/privacy/private-traces.test.ts` 13, `private-folder.test.ts` 10, `secure-window.test.ts` 6,
+  `src/backup/backup-format.test.ts` 11, `backup-restore.test.ts` 8, `user-data.queries.test.ts` 9,
+  `src/player/options/p11-privacy.test.ts` 6.
+
+### Gate
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | 0 errors (both configs) |
+| Unit tests (JS), stacked on P10 with P9's backfill (`1ad7865`) | 2466 / 2466 (2455 on `4ea8612`); 64 new, the last one added when stacking (`user-data.queries.test.ts`: a Replace restore resets play counts with `UPDATE … play_count = 0` instead of deleting the rows, so P9's measured `duration_ms` stay) |
+| Unit tests (JS), on `4ea8612` | 2455 / 2455 (2392 before; 63 new: `privacy/private-traces.test.ts` 13, `privacy/private-folder.test.ts` 10, `privacy/secure-window.test.ts` 6, `backup/backup-format.test.ts` 11, `backup/backup-restore.test.ts` 8, `backup/user-data.queries.test.ts` 9, `player/options/p11-privacy.test.ts` 6). `row-revision.test.ts` passed in the full run |
+| `npm run lint` | 0 errors; 91 warnings, the same older ones, none in a file P11 changed |
+| Gradle | Not run: no Kotlin changed |
+| Against `4ea8612` | `git diff --check` clean; none of Faran's files; nothing in `transfer/` or `engine/`; `package.json` / lockfile, `build.gradle`, manifests and `app.json` unchanged; no new dependency or permission; no SQLite change (`DATABASE_VERSION` still 10); Media3 untouched |
+
+### Device checks for Faran (release build; not possible here)
+
+1. **Move to Private from the Player:** a library video → ⋮ → Tools → Move to Private. Without App Lock: "Set up App
+   Lock first". With it, the first time: the data-loss notice and "I understand" must be ticked. The video pauses,
+   "Encrypting… 45%", "Moved to Private", then the next video in the queue plays; with none, the Player closes and no
+   mini player stays. A video on this device, a file opened from another app and a stream have no such row.
+2. **Hidden everywhere**, after moving a video that was in a playlist, the queue, Continue watching, Most played and
+   had bookmarks, a saved loop and a non-default fit: it is in none of them (Library, search, Watch history, Continue
+   watching, Home's lists, Most played, its play count, playlists, the queue). Then **play the next video and close the
+   Player**: the moved one doesn't come back in Watch history or Continue watching. Restart the app: still nowhere.
+3. **Move from the Library while it plays in the mini player:** the mini player stops; nothing of it comes back.
+4. **The Gallery copy:** with "Also remove the Gallery copy" ticked, Android's dialog, then the copy is gone from the
+   Gallery and Device videos; unticked, it stays (as H21).
+5. **Move out of Private:** Private → ⋮ → Move out → confirm. It appears in Gallery → Movies/VidoraX (and in VidoraX's
+   Device videos) and is gone from Private. On Android 9 or older, refusing storage access keeps it in Private
+   ("needs the storage permission"). An unreadable item has no Move out.
+6. **Block screenshots in Private**, on: in Private (PIN gate, list, an action sheet, a confirm, and while a private
+   video plays in its own player) the power + volume screenshot is refused and a screen recording is black; the
+   recent-apps preview of VidoraX in Private is blank. Leave Private: screenshots work again everywhere. Off (the
+   default): screenshots work in Private as before.
+7. **With incognito:** an incognito tab open in the browser, then go to the Library → Private and back, and the other
+   way round: incognito stays protected the whole time, and Private too (with the setting on). After closing incognito
+   and leaving Private, screenshots work.
+8. **Back up all data:** save to a folder (and share). Open the file: no PIN, recovery code, "appLock", "vault" or a
+   private video's name in it. **Share a large backup** (hundreds of playlist videos and bookmarks, several MB): the
+   share fallback of `exportTextFile` sends the text as an intent extra, which may hit Android's ~1 MB limit.
+9. **Restore:** the preview's counts match; Merge onto the same phone changes nothing; Merge onto a phone with other
+   playlists keeps them and adds; Replace removes playlists, bookmarks and play counts not in the file and resets the
+   other settings (language kept). The Player's seek step, gestures, subtitle style, loops and hidden folders apply at
+   once (no restart). App Lock still asks for the same PIN; Private still has its videos.
+10. **Versions:** an old Settings Backup file restores its settings ("An older settings backup"); a file with
+    `"version": 2` says "made by a newer version of VidoraX"; a browser backup is sent to the browser's restore.
+11. **Six themes and Urdu (RTL):** the Settings rows, the restore preview, the confirms, the Move out sheet and dialog;
+    TalkBack reads the switch and the preview.

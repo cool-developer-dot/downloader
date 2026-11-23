@@ -9,6 +9,7 @@ import type { TranslationKey } from '@/localization/types';
 import { SettingsRow } from '@/screens/settings/components/SettingsRow';
 import { SettingsSection } from '@/screens/settings/components/SettingsSection';
 
+import { FullBackupRows } from './FullBackupRows';
 import { useSettingsBackupReset } from './useSettingsBackupReset';
 
 const TAB_LABELS: Record<DefaultTab, TranslationKey> = {
@@ -66,6 +67,8 @@ export const BackupResetSection = memo(function BackupResetSection({
         onPress={screen.busy ? undefined : screen.importSettings}
         testID={`${testID}-import`}
       />
+      {/* P11 #700: everything in one file (settings, Player choices, playlists, bookmarks, play counts), and restore. */}
+      <FullBackupRows testID={`${testID}-all-data`} />
       <SettingsRow
         title={t('settingsBackup.reset')}
         description={t('settingsBackup.resetHint')}

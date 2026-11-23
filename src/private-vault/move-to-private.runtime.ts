@@ -7,6 +7,7 @@ import {
 import { useAppLockStore } from '@/security/app-lock';
 import { queryClient } from '@/services/query-client';
 import { useDownloadsStore } from '@/store/downloads';
+import { hidePrivateTracesNow } from '@/privacy/private-traces.runtime';
 
 import { hideHistoryPlan } from './hide-history';
 import { moveToPrivate, type MoveSource, type MoveToPrivateResult } from './move-to-private';
@@ -33,6 +34,9 @@ function forgetHistory(id: string): void {
   if (plan.refreshPlaybackLists) {
     invalidatePlaybackUiQueries(queryClient);
   }
+  // P11 #686: and everything else it left outside Private — playlists, the queue, the Player's memory of it, its play
+  // count and bookmarks, and the playing session (its later playback events are dropped). Never rejects.
+  void hidePrivateTracesNow(id);
 }
 
 /** Move to Private with the app's real stores, the native vault and the existing delete path. */

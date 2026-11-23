@@ -126,6 +126,19 @@ export function getPlaybackCoordinator(): PlaybackPersistenceCoordinator | null 
   return coordinator;
 }
 
+/**
+ * P11 #686: when the session the coordinator holds in memory is `mediaId`'s (a video just moved to Private), it is
+ * dropped without being written, so the next video's start (or the app going to the background) can't write that
+ * video's position back. True when one was dropped.
+ */
+export function dropPlaybackSessionFor(mediaId: string): boolean {
+  if (!coordinator || !mediaId || coordinator.getActiveState()?.mediaId !== mediaId) {
+    return false;
+  }
+  coordinator.resetForLogout();
+  return true;
+}
+
 export function unbindPlaybackPersistenceForTests(): void {
   unsubEvents?.();
   unsubEvents = null;

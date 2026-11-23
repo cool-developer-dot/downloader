@@ -84,6 +84,8 @@ export const mmkvKeys = {
   playerDisableHistory: 'vidorax.mmkv.player.disableHistory.v1',
   /** P9 #628: library folders hidden from the Library (folder ids; `unfiled` for videos in no folder). */
   libraryExcludedFolders: 'vidorax.mmkv.library.excludedFolders.v1',
+  /** P11 #689: Block screenshots and screen recording inside Private (default off). */
+  privacyBlockScreenCapture: 'vidorax.mmkv.privacy.blockScreenCapture.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

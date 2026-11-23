@@ -18,21 +18,22 @@ import { dataLossNotice } from '@/private-vault/data-loss';
 import {
   findVaultItem,
   vaultIndexFrom,
-  vaultItemActions,
   withoutVaultItem,
   type VaultItem,
-  type VaultItemAction,
 } from '@/private-vault/vault-index';
 import { IDLE_PLAYBACK, reduceVaultPlayback, type VaultPlayback, type VaultPlaybackEvent } from '@/private-vault/vault-playback';
 import { clearVaultPlayback, getVaultPort, pickExportFolder } from '@/private-vault/vault-port';
 import { usePrivateVaultPrefs } from '@/private-vault/vault-prefs-store';
+import { privateFolderItemActions, type PrivateFolderAction } from '@/privacy/private-folder';
+import { moveOutOfPrivateFolder } from '@/privacy/private-folder.runtime';
 import { formatUsagePercent } from '@/storage-manager/utils/format-bytes';
 
 import { PrivateDataLossNotice } from './PrivateDataLossNotice';
 import { VaultItemRow } from './VaultItemRow';
 import { VaultPlayerModal } from './VaultPlayerModal';
 
-type Confirm = { kind: 'delete' | 'export-gallery' | 'export-folder'; id: string };
+// P11 #686: 'move-out' — to the Gallery, then out of Private.
+type Confirm = { kind: 'delete' | 'export-gallery' | 'export-folder' | 'move-out'; id: string };
 type Busy = { id: string; kind: Confirm['kind']; percent: string | null };
 
 /** How often a long decryption's progress is read (memory only on the native side). */
@@ -202,6 +203,32 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
           });
         }
         announce(t('privateVault.deleted'));
+      } else if (pending.kind === 'move-out') {
+        // P11: the Gallery copy first (its permission prompt never relocks Private); the private copy goes only after.
+        const result = await moveOutOfPrivateFolder(pending.id, itemsRef.current);
+        if (result.ok) {
+          const next = withoutVaultItem(itemsRef.current, pending.id) as VaultItem[];
+          itemsRef.current = next;
+          if (liveRef.current) {
+            setItems(next);
+            setThumbnails((current) => {
+              const copy = { ...current };
+              delete copy[pending.id];
+              return copy;
+            });
+          }
+          announce(t('privacyBackup.movedOut'));
+        } else if (result.reason !== 'cancelled') {
+          announce(
+            result.reason === 'corrupt'
+              ? t('privateVault.corrupt')
+              : result.reason === 'permission'
+                ? t('privateVault.galleryPermissionNeeded')
+                : result.reason === 'still-in-private'
+                  ? t('privacyBackup.moveOutKept')
+                  : t('privacyBackup.moveOutFailed'),
+          );
+        }
       } else {
         // Runs to the end even if the section locks meanwhile; its picker or permission prompt never relocks it.
         const result = await exportVaultItem(pending.kind === 'export-gallery' ? 'gallery' : 'folder', pending.id, {
@@ -248,7 +275,7 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
       return [];
     }
     const id = item.id;
-    const all: Record<VaultItemAction, ActionSheetItem> = {
+    const all: Record<PrivateFolderAction, ActionSheetItem> = {
       play: {
         id: 'play',
         label: t('common.play'),
@@ -273,6 +300,14 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
           setConfirm({ kind: 'export-folder', id });
         },
       },
+      'move-out': {
+        id: 'move-out',
+        label: t('privacyBackup.moveOut'),
+        onPress: () => {
+          setSheetId(null);
+          setConfirm({ kind: 'move-out', id });
+        },
+      },
       delete: {
         id: 'delete',
         label: t('common.delete'),
@@ -282,8 +317,8 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
         },
       },
     };
-    // An item that cannot be opened offers only Delete.
-    return vaultItemActions(item).map((action) => all[action]);
+    // An item that cannot be opened offers only Delete. P11 adds Move out (before Delete) for one that opens.
+    return privateFolderItemActions(item).map((action) => all[action]);
   }, [items, play, sheetId, t]);
 
   const confirmItem = confirm ? findVaultItem(items, confirm.id) : null;
@@ -333,6 +368,10 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
           <Text variant="caption" color="textSecondary" accessibilityLiveRegion="polite">
             {busy.kind === 'delete'
               ? t('privateVault.deleting')
+              : busy.kind === 'move-out'
+                ? busy.percent
+                  ? t('privacyBackup.movingOut', { percent: busy.percent })
+                  : t('privacyBackup.movingOutPlain')
               : busy.percent
                 ? t('privateVault.exporting', { percent: busy.percent })
                 : t('privateVault.exportingPlain')}
@@ -377,6 +416,8 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
             ? t('privateVault.deleteUnreadableTitle')
             : confirm?.kind === 'delete'
               ? t('privateVault.deleteTitle')
+            : confirm?.kind === 'move-out'
+              ? t('privacyBackup.moveOutTitle')
             : confirm?.kind === 'export-folder'
               ? t('privateVault.exportFolderTitle')
               : t('privateVault.exportGalleryTitle')
@@ -386,11 +427,19 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
             ? t('privateVault.deleteUnreadableMessage', { size: formatFileSize(confirmItem?.sizeBytes ?? 0) ?? '' })
             : confirm?.kind === 'delete'
               ? t('privateVault.deleteMessage', { title: confirmTitle })
+            : confirm?.kind === 'move-out'
+              ? t('privacyBackup.moveOutMessage', { title: confirmTitle })
             : confirm?.kind === 'export-folder'
               ? t('privateVault.exportFolderMessage', { title: confirmTitle })
               : t('privateVault.exportGalleryMessage', { title: confirmTitle })
         }
-        confirmLabel={confirm?.kind === 'delete' ? t('common.delete') : t('privateVault.export')}
+        confirmLabel={
+          confirm?.kind === 'delete'
+            ? t('common.delete')
+            : confirm?.kind === 'move-out'
+              ? t('privacyBackup.moveOutConfirm')
+              : t('privateVault.export')
+        }
         cancelLabel={t('common.cancel')}
         onConfirm={() => {
           void runConfirmed();
