@@ -11,7 +11,8 @@ import type { EditRequest, LibraryItem } from '@modules/vidorax-media/src/Vidora
 
 import { formatPlaybackTime } from '@/player/format-time';
 
-export type EditKind = 'trim' | 'mp4' | 'audio';
+/** P10 adds `compress` (#680, src/media-edit/compress-plan.ts): an MP4 with the video re-encoded smaller. */
+export type EditKind = 'trim' | 'mp4' | 'audio' | 'compress';
 export type VideoPlan = EditRequest['video'];
 export type AudioPlan = EditRequest['audio'];
 export type TrackPlan = { video: VideoPlan; audio: AudioPlan };
@@ -92,6 +93,10 @@ export function trackPlan(kind: EditKind, source: Pick<EditSource, 'videoCodec' 
   if (kind === 'audio') {
     return { video: 'drop', audio };
   }
+  // P10 Compress always re-encodes the video (that is what makes it smaller); the sound goes as for MP4.
+  if (kind === 'compress') {
+    return { video: 'h264', audio };
+  }
   const copyable = isMp4Video(source.videoCodec);
   if (kind === 'mp4') {
     return { video: copyable ? 'copy' : 'h264', audio };
@@ -108,6 +113,12 @@ export function editAvailability(kind: EditKind, source: EditSource): EditAvaila
   }
   if (isAudioOnlySource(source)) {
     return 'audio-source';
+  }
+  // P10 Compress needs the length for its target size; whether a preset makes it smaller is compress-plan.ts's.
+  if (kind === 'compress') {
+    return typeof source.durationMs === 'number' && Number.isFinite(source.durationMs) && source.durationMs > 0
+      ? 'ok'
+      : 'no-duration';
   }
   if (kind === 'trim') {
     const check = clampTrimRange({ startMs: 0, endMs: source.durationMs ?? 0 }, source.durationMs);

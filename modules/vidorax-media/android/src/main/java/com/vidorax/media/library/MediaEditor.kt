@@ -50,7 +50,8 @@ class EditNoSpaceException(message: String) : CodedException("ERR_NO_SPACE", mes
 /** The edit was stopped (Cancel in the app or in its notification); nothing partial was kept. */
 class EditCancelledException : CodedException("ERR_EDIT_CANCELLED", "The edit was cancelled", null)
 
-internal enum class EditKind(val wire: String) { TRIM("trim"), MP4("mp4"), AUDIO("audio") }
+/** P10 adds COMPRESS (#680): an MP4 with the video re-encoded smaller ([CompressPlan]). */
+internal enum class EditKind(val wire: String) { TRIM("trim"), MP4("mp4"), AUDIO("audio"), COMPRESS("compress") }
 
 /** How one track goes into the output: copied as it is (transmuxed), re-encoded, or left out. */
 internal enum class TrackPlan(val wire: String) { COPY("copy"), H264("h264"), AAC("aac"), DROP("drop") }
@@ -65,6 +66,8 @@ internal data class EditRequest(
   val video: TrackPlan,
   val audio: TrackPlan,
   val title: String,
+  /** COMPRESS only: the target bitrate and size. */
+  val compress: CompressSettings? = null,
 )
 
 /** What JavaScript sends to `startEdit` (src/media-edit/edit-plan.ts decides the plan). */
@@ -77,6 +80,9 @@ data class EditRequestRecord(
   @Field val video: String = "copy",
   @Field val audio: String = "copy",
   @Field val title: String = "",
+  /** P10 COMPRESS only (src/media-edit/compress-plan.ts): bits per second, and the short side at most (pixels). */
+  @Field val videoBitrate: Double? = null,
+  @Field val maxShortSide: Double? = null,
 ) : Record {
   internal fun toModel(): EditRequest {
     val editKind = EditKind.values().firstOrNull { it.wire == kind } ?: throw InvalidRequestException("Unknown edit $kind")
@@ -88,6 +94,8 @@ data class EditRequestRecord(
       throw InvalidRequestException("Audio only keeps the audio and drops the video")
     }
     if (editKind != EditKind.AUDIO && videoPlan == TrackPlan.DROP) throw InvalidRequestException("A video edit keeps the video")
+    if (editKind == EditKind.COMPRESS && videoPlan != TrackPlan.H264) throw InvalidRequestException("Compress re-encodes the video")
+    val compressSettings = if (editKind == EditKind.COMPRESS) CompressPlan.settings(videoBitrate, maxShortSide) else null
     return EditRequest(
       sourceId = sourceId,
       kind = editKind,
@@ -97,6 +105,7 @@ data class EditRequestRecord(
       video = videoPlan,
       audio = audioPlan,
       title = Titles.clamp(title),
+      compress = compressSettings,
     )
   }
 }
@@ -111,6 +120,7 @@ data class EditRequestRecord(
  * before it is added: it must read back with the tracks asked for and about the expected length. Free space is checked
  * before starting. A long edit (a conversion, or a trim keeping 30 s or more) runs with [MediaEditService] in the
  * foreground, with its progress and Cancel in a notification; if Android refuses that service, it runs as before.
+ * P10 Compress video (#680) is one more kind, run the same way; [CompressPlan] holds what it changes.
  */
 @OptIn(UnstableApi::class)
 internal class MediaEditor(
@@ -242,7 +252,9 @@ internal class MediaEditor(
     }
     val fraction = if (end != null) (end - start).toDouble() / durationMs else 1.0
     val reencodes = request.video == TrackPlan.H264
-    val estimate = (source.sizeBytes * fraction * (if (reencodes) REENCODE_FACTOR else COPY_FACTOR)).toLong()
+    // P10 COMPRESS: its own size comes from the target bitrate (twice the source would refuse it on a full phone).
+    val estimate = request.compress?.let { (CompressPlan.estimateBytes(durationMs, it, hasAudio) * COPY_FACTOR).toLong() }
+      ?: (source.sizeBytes * fraction * (if (reencodes) REENCODE_FACTOR else COPY_FACTOR)).toLong()
     if (paths.workRoot.apply { mkdirs() }.usableSpace < estimate + FREE_SPACE_MARGIN_BYTES) {
       throw EditNoSpaceException("Not enough free space for this edit")
     }
@@ -285,6 +297,8 @@ internal class MediaEditor(
             val builder = Transformer.Builder(context).setLooper(thread.looper).addListener(listener)
             videoMime(source, request.video)?.let { builder.setVideoMimeType(it) }
             audioMime(source, request.audio)?.let { builder.setAudioMimeType(it) }
+            // P10 COMPRESS: the encoder's target bitrate (this alone makes Transformer re-encode the video).
+            request.compress?.let { builder.setEncoderFactory(CompressPlan.encoderFactory(context, it)) }
             val built = builder.build()
             transformer = built
             built.start(editedItem(source, request, plan), output.path)
@@ -320,6 +334,8 @@ internal class MediaEditor(
     return EditedMediaItem.Builder(media.build())
       .setRemoveVideo(request.kind == EditKind.AUDIO)
       .setRemoveAudio(request.audio == TrackPlan.DROP)
+      // P10 COMPRESS: scaled down (never up) when the video is bigger than asked.
+      .apply { request.compress?.let { setEffects(CompressPlan.effects(it, source.width, source.height)) } }
       .build()
   }
 
@@ -373,6 +389,9 @@ internal class MediaEditor(
 
     /** 0..1 while an edit runs; null when none does. */
     fun progress(): Double? = progressValue
+
+    /** P10: the edit kinds this build runs (JavaScript offers Compress only when "compress" is listed). */
+    fun kinds(): List<String> = EditKind.values().map { it.wire }
 
     /** Stops the running edit (its partial output is deleted); does nothing when none runs. */
     fun cancel() {

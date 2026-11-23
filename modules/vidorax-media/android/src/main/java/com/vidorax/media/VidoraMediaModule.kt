@@ -29,6 +29,9 @@ import com.vidorax.media.incoming.IncomingMediaReader
 import com.vidorax.media.library.TreeExport
 import com.vidorax.media.library.DeviceVideos
 import com.vidorax.media.library.ThumbnailExport
+import com.vidorax.media.library.FrameExport
+import android.graphics.Bitmap
+import expo.modules.kotlin.sharedobjects.SharedRef
 import com.vidorax.media.player.ActivityVisibility
 import com.vidorax.media.library.PrivateVault
 import com.vidorax.media.player.PictureInPictureAutoEnter
@@ -508,6 +511,21 @@ class VidoraMediaModule : Module() {
     AsyncFunction("saveThumbnailToGallery") Coroutine { id: String ->
       ThumbnailExport(context, services.library).save(id)
     }
+
+    // P10 Screenshot & edit tools (#675, #680). `frame` is expo-video's VideoThumbnail from generateThumbnailsAsync: a
+    // native Bitmap passed by reference (never through JavaScript), at the video's own size when no maxWidth/maxHeight
+    // was asked. Saved like a cover image (a JPEG in Pictures/VidoraX); Share writes one private copy for the share sheet.
+    AsyncFunction("saveFrameToGallery") Coroutine { frame: SharedRef<Bitmap>, title: String ->
+      ThumbnailExport(context, services.library).saveFrame(frame.ref, title)
+    }
+
+    AsyncFunction("shareFrame") Coroutine { frame: SharedRef<Bitmap>, title: String ->
+      val file = withContext(Dispatchers.IO) { FrameExport.writeShareCopy(services.paths, frame.ref, title) }
+      withContext(Dispatchers.Main) { FrameExport.share(context, appContext.currentActivity, file) }
+    }
+
+    // The edit kinds this build's editor runs; JavaScript offers Compress only when "compress" is listed.
+    Function("getEditKinds") { MediaEditor.kinds() }
 
     AsyncFunction("openWith") Coroutine { id: String ->
       val item = services.library.requireFiles(listOf(id)).single()

@@ -1148,3 +1148,216 @@ unchanged, then runs the migration and the DDL again.
    name.
 10. **Themes and Urdu.** All six themes, and Urdu (right to left): the length chip and sheet, the folder sheet, the
     bookmark sheet and name dialog, the confirms, the Settings row.
+
+## P10 — Screenshot & edit tools (#675, #677, #678, #679, #680)
+
+Built in its own worktree from `hamza/player` at P8 (`1ba7714`), on the local branch `wip/P10-edit-tools`, while P9
+was built in parallel from the same base; it was cherry-picked on top of P9 (`d628a8a`) as `hamza/P10-edit-tools`.
+**Its PR depends on P9 (`hamza/P9-library-stats`)**: P10 goes on top of it,
+and both use the Tools section (P9 has 40–45 and 90, P10 has 50–70). **P10 adds native code** to the media module
+(see Native code). It doesn't change the SQLite schema, and it adds no dependency or permission.
+
+### MediaEditor: what it supports
+
+What the Downloader's edits (#374 Trim, #376 Convert) already did, read from `library/MediaEditor.kt`,
+`MediaEditService.kt`, `VidoraMediaModule.kt` (`getTrimStart`, `startEdit`, `getEditProgress`, `cancelEdit`),
+`src/media-edit/edit-plan.ts`, `edit-job.ts`, `edit-port.ts` and `src/screens/media-edit/`:
+
+- **Edit kinds** (`EditKind`): `trim` (a part, at least 1 s), `mp4` (Convert to MP4), `audio` (audio only, `.m4a`).
+- **Track plans** (`TrackPlan`), one per track:
+  - `copy`: transmuxed, no quality loss;
+  - `h264`: the video re-encoded to H.264;
+  - `aac`: the sound re-encoded to AAC;
+  - `drop`: left out (the video of an audio-only edit; no sound).
+- **Formats and codecs.** The output is always an MP4 container: `video/mp4`, or `audio/mp4` (`.m4a`) for audio only.
+  - Video: H.264 or H.265 is copied, anything else is re-encoded to H.264.
+  - Sound: AAC is copied, anything else is re-encoded to AAC.
+  - A trim copies the video only when it starts on a keyframe. `getTrimStart` finds the keyframe at or before a
+    position (`MediaExtractor`, `SEEK_TO_PREVIOUS_SYNC`), and the Trim screen offers "Keep the original quality" (start
+    at that keyframe) or "Start exactly here" (re-encode).
+- **Bitrate or resolution: not settable before P10.** The Transformer was built with its default encoder factory and
+  no effects. P10 adds both, for Compress only (see Native code).
+- **Progress:** 0…1 from `Transformer.getProgress`, polled every 500 ms (capped at 0.99 until the file is verified).
+  JavaScript polls `getEditProgress()` every 500 ms (`edit-job.ts`).
+- **Cancel:** `cancelEdit()` cancels the coroutine, and the edit rejects with `ERR_EDIT_CANCELLED`. Cancel in the edit's
+  notification does the same. The partial file is always deleted.
+- **One edit at a time**, app-wide: a native `AtomicBoolean` (`ERR_INVALID_STATE`), and one JavaScript job on
+  `globalThis` (`edit-job-store.ts`).
+- **Storage pre-check:** JavaScript checks `getStorageStats().freeBytes` against the estimate plus 64 MB
+  (`hasRoomForEdit`). The native side checks again before writing: the part kept × 1.1 when copied, × 2 when re-encoded,
+  plus 64 MB of free space in the work folder → `ERR_NO_SPACE`.
+- **Error codes:**
+  - `ERR_INVALID_STATE`: another edit runs.
+  - `ERR_EDIT_REFUSED`: the verifier rejects the file, or it is protected, unreadable, of unknown length, has no sound
+    (audio only) or no video.
+  - `ERR_NO_SPACE`.
+  - `ERR_EDIT_CANCELLED`.
+  - `ERR_NOT_FOUND`: an unknown item, or its file is gone.
+  - `ERR_INVALID_REQUEST`: an unknown kind or plan, plans that don't match their kind, a trim under 1 s.
+  - `ERR_STORAGE`: the export failed or couldn't start, or the output didn't read back with the tracks and length asked.
+- **Sources: library items only.** `MediaEditor.edit` reads `library.get(sourceId)`. A video on the device (MediaStore),
+  a file another app opened (until it is saved with "Save to VidoraX" and opened from the Library) and a stream can't
+  be edited.
+- **Outputs:** always a **new file**, `files/library/<site>/<Safe title>_<short id>.mp4|.m4a` (`StoragePaths.newLibraryFile`,
+  unique). It gets a thumbnail (video) and a new library row with the source's site and page, titled
+  "<title> (<label>)" (`editOutputTitle`). `library.insert` announces it as `added`, **so it appears in the Library by
+  itself**. The original file and its row are only read.
+- **Long edits** (any conversion, a trim keeping 30 s or more) run with `MediaEditService` in the foreground, with
+  progress and Cancel in a notification.
+- **Where the Downloader opens them:** Download details → Edit (`src/screens/downloads/components/DownloadEditActions.tsx`:
+  Trim → `/edit-trim?id=…`, Convert → MP4 / audio sheet, Title & artist) and Live convert
+  (`screens/downloads/extras/live-convert/LiveConvertScreen.tsx`).
+
+### What the user sees
+
+| # | Feature | Where | How (evidence) |
+| --- | --- | --- | --- |
+| #675 | Screenshot | ⋮ → Tools → **Screenshot** (library videos, videos on this device, files from other apps; not streams, not audio) | Takes the frame at the moment playing with expo-video's `player.generateThumbnailsAsync(seconds)`, **without `maxWidth` / `maxHeight`**. In the installed expo-video 57.0.2 that is `MediaMetadataRetriever.getFrameAtTime(us, OPTION_CLOSEST)` on the player's own source (`node_modules/expo-video/android/.../MediaMetadataRetriever.kt`), so **the frame comes at the video's own decoded size**, not scaled (the size is in the dialog: "full size (1920 × 1080)"). The `VideoThumbnail` is a native `Bitmap` that JavaScript can't read. It is passed **by reference** (a `SharedRef<Bitmap>`) to the new `saveFrameToGallery`, which saves it as a JPEG (quality 92) in **Pictures/VidoraX** through **the Save-thumbnail path** (`ThumbnailExport`: MediaStore on Android 10+; the public folder and a media scan on 7–9). Then a dialog: "Screenshot saved … Share it?" → **Share** opens the share sheet (one private JPEG copy through the app's FileProvider, as subtitle files are shared). Subtitles aren't in the picture. Name: "<video title> 12m05.4s.jpg" (never the file's name; the Gallery keeps two apart). `src/screens/player/page/use-player-edit-tools.ts` (`screenshot`), `src/player/edit-tools.ts` (`canScreenshot`, `screenshotTitle`), `src/media-edit/player-tools-port.ts`, native `library/ThumbnailExport.kt` (`saveFrame`), `library/FrameExport.kt`. |
+| #677 | Trim Video | ⋮ → Tools → **Trim video** (library videos) | Pauses the video, leaves full screen and opens the **Downloader's Trim screen** with `startMs` = the moment playing. The range starts there and ends at the video's end, kept valid by `clampTrimRange` (at least 1 s; near the end the start moves back). The preview starts at the same place. Everything else is the Trim screen as it is: handles, "Set start / end here", keyframe or exact start, progress and Cancel, Save trimmed copy, back to the Player when done. `edit-tools.ts` (`trimRangeFromPosition`, `parseTrimStartParam`), `src/screens/media-edit/TrimScreen.tsx` (optional `startMs`; without it nothing changes). |
+| #678 | Extract Audio | ⋮ → Tools → **Extract audio** (library videos) | The `audio` edit at once: the sound alone as a new `.m4a` (AAC copied, other sound re-encoded to AAC), "<title> (audio)". A video with no sound: "This video has no sound". Progress sheet (below). `src/media-edit/player-edit-run.ts`. |
+| #679 | Video Converter | ⋮ → Tools → **Video converter** (library videos) | The Downloader's Convert choices in a sheet: **MP4 video** (H.264 / H.265 kept, anything else re-encoded to H.264; AAC sound) or **Audio only (.m4a)**. A choice that doesn't apply says why ("Already an MP4 that plays everywhere"). `page/VideoConverterSheet.tsx`. |
+| #680 | Compress Video (new) | ⋮ → Tools → **Compress video** (library videos) | A sheet with **High / Medium / Small**, each with **the output's resolution and estimated size before anything starts** ("720p · about 162.8 MB"), and the video's size now ("Now: 572.2 MB · 1080p"). A preset that wouldn't save 10 % is greyed: "Not smaller than the original". Tap one to start. The new `compress` edit re-encodes the video to H.264 at the preset's bitrate and scales it down (never up); the sound is copied when it is AAC. "<title> (compressed)". `src/media-edit/compress-plan.ts`, `page/CompressVideoSheet.tsx`; native `library/CompressPlan.kt`. |
+| all | Progress, Cancel, storage, pause | The edit's sheet | Every edit **writes a new file and never changes or deletes the original**. Before it starts: the item is still in the library, the edit makes sense, and there is room (`hasRoomForEdit`: the estimate + 64 MB; Compress needs its estimate + 10 % + 64 MB, as the native check, not twice the original). Then **the video is paused** and the sheet shows **Extracting audio / Converting to MP4 / Compressing** with the Downloader's `EditJobBanner` (progress %, **Cancel edit**, keep VidoraX open) and **Hide**. **While it runs the Player keeps the video paused**: play again and it pauses with "Paused while the edit runs". The edit rows show its progress and reopen the sheet. One edit at a time, also against an edit started in Download details ("Another edit is running"). The end is announced: "Saved as a new item in Player" (it is in the Library at once), "Edit cancelled. Nothing was saved.", "Not enough free space for this edit." (`ERR_NO_SPACE` too), "The edit failed. The original is unchanged." `player-edit-run.ts` (`runPlayerEdit`, `playerEditMessageKey`), `page/EditProgressSheet.tsx`, `use-player-edit-tools.ts` (the pause hold, `shouldHoldPause`). |
+
+### Compress presets and the size estimate
+
+| Preset | Video | Short side at most | Sound |
+| --- | --- | --- | --- |
+| High | H.264, 4 Mbit/s | 1080 (1080p) | AAC copied, or re-encoded |
+| Medium | H.264, 2 Mbit/s | 720 (720p) | same |
+| Small | H.264, 1 Mbit/s | 480 (480p) | same |
+
+- **Estimated size** = ⌈(video bitrate + 128 kbit/s for the sound) × length in seconds ÷ 8 × 1.02⌉ bytes. The 1.02 is
+  the MP4 container. Without sound the 128 kbit/s is left out.
+  - Example: 10 minutes at Medium = (2 000 000 + 128 000) × 600 ÷ 8 × 1.02 = 162 792 000 bytes (162.8 MB).
+  - The same operations run in JavaScript (`compressEstimateBytes`) and Kotlin (`CompressPlan.estimateBytes`), checked
+    with the same numbers in both test files.
+- **Offered** when the estimate is at most 90 % of the original's size; otherwise greyed.
+- **Never scaled up.** The short side shrinks to the preset's only when it is bigger (`Presentation.createForShortSide`,
+  which keeps portrait video portrait). A 480p video at Medium keeps 480p and only gets the lower bitrate.
+- The encoder may land a little off the target (the platform's encoders, VBR), so the sheet says "about" and notes
+  that sizes are estimates.
+
+### Native code
+
+P10 adds Kotlin to `modules/vidorax-media` only, with nothing in `transfer/` or `engine/`. It uses only
+`media3-transformer` 1.9.0, already a dependency, and `media3-effect` 1.9.0, which comes with it.
+`gradle :vidorax-media:dependencies --configuration debugCompileClasspath` lists
+`androidx.media3:media3-effect:1.9.0` under `media3-transformer:1.9.0`. `build.gradle` is unchanged.
+
+| File | New / changed | What |
+| --- | --- | --- |
+| `library/CompressPlan.kt` | **new** | `CompressSettings` (bitrate, short side), `settings()` (checks 100 kbit/s – 50 Mbit/s and 144 – 4320 px → `ERR_INVALID_REQUEST`), `scaledShortSide` (down only), `estimateBytes` (as JavaScript), `encoderFactory` (`DefaultEncoderFactory` + `VideoEncoderSettings.setBitrate`), `effects` (`Presentation.createForShortSide`). |
+| `library/FrameExport.kt` | **new** | Screenshot's Share: writes the frame as one private JPEG, `files/library/.frame-exports/<title>.jpg` (only the latest kept), and opens the share sheet through the module's FileProvider (`SubtitleExport.share`). |
+| `library/MediaEditor.kt` | changed, additive | `EditKind.COMPRESS("compress")`; an optional `EditRequest.compress` and `EditRequestRecord.videoBitrate` / `maxShortSide` (with defaults). `toModel()` requires `video = h264` and valid settings for compress. Three one-line hooks run only when `request.compress` is set: the space estimate (bitrate × length), `builder.setEncoderFactory(...)` and `setEffects(...)`. `kinds()` lists the kinds. Trim, MP4 and audio take exactly the paths they took before. |
+| `library/ThumbnailExport.kt` | changed, additive | `saveFrame(bitmap, title)`: the Save-thumbnail path (`publish` / `writeLegacy`) for a frame. It never recycles the bitmap, which belongs to expo-video. |
+| `VidoraMediaModule.kt` | changed, additive | `saveFrameToGallery(frame: SharedRef<Bitmap>, title)`, `shareFrame(frame, title)`, `getEditKinds()`. |
+| `test/.../library/CompressPlanTest.kt` | **new** | 9 Robolectric tests: the request checks, kinds, scaling down only (portrait too), the effects, the estimate (same numbers as JavaScript), and that the encoder factory asks for an encode (`videoNeedsEncoding()`). |
+| `test/.../library/FrameExportTest.kt` | **new** | 3 Robolectric tests (native graphics): the share copy is a JPEG at the frame's full size (1920 × 1080 in, 1920 × 1080 out), only the latest copy stays, the title can't make a path, a released frame is refused (also by `saveFrame`), and the bitmap is never recycled. |
+
+**How the frame reaches Kotlin:** a JavaScript shared object (expo-video's `VideoThumbnail`) passed as an argument is
+turned into its id by `SharedObjectIdConverter` (`expo-modules-core/android/src/main/cpp/types/FrontendConverter.cpp`,
+it reads `__expo_shared_object_id__`). Then `SharedRefTypeConverter` (`kotlin/sharedobjects/SharedObjectTypeConverter.kt`)
+looks it up in the app's one shared-object registry and checks that its ref is a `Bitmap`. expo-image takes its own
+`Image` refs as `AsyncFunction` arguments the same way (`generateBlurhashAsync`). One module handing another its
+object has not been run here: device check 1.
+
+**Why a requested bitrate is enough to force an encode:** `javap` on `media3-transformer-1.9.0` shows
+`DefaultEncoderFactory.videoNeedsEncoding()` returning `requestedVideoEncoderSettings != VideoEncoderSettings.DEFAULT`,
+and `TransformerUtil.shouldTranscodeVideo` re-encodes when that is true. So an H.264 source isn't simply copied.
+
+### Decisions
+
+- **Compress is a new edit kind in MediaEditor** rather than a separate class. It then gets the one-edit lock, the
+  progress, Cancel, the notification (`MediaEditService` reads `MediaEditor.progress()`), the output check and the new
+  library row for free. What it changes lives in the new `CompressPlan.kt`.
+- **The presets** (4 / 2 / 1 Mbit/s at 1080p / 720p / 480p) are my choice; the checklist names no numbers.
+- **The sound in Compress** is copied when it is AAC and re-encoded otherwise, as in Convert. Asking for an audio
+  bitrate would re-encode AAC as well, so it isn't set; the estimate counts 128 kbit/s.
+- **"Not offered" below a 10 % saving**, so Compress never makes a copy that isn't smaller.
+- **The screenshot is saved as a JPEG at quality 92**, the same as Save thumbnail, through that same code. A PNG would be
+  lossless but about ten times bigger. The numbers to change: `ThumbnailExport.JPEG_QUALITY` (the Gallery copy, shared
+  with Save thumbnail) and `FrameExport.JPEG_QUALITY` (the share copy).
+- **Share copies the frame into a private file** instead of sharing the Gallery item: on Android 7–9 the media scan
+  can return a `file://` URI, which Android refuses to share. It is the share path subtitle files already use.
+- **Pause while an edit runs:** paused when it starts, and paused again (with a toast) if anything plays a video in
+  the full Player while an edit started there runs. The editor and the player would share the phone's video decoders.
+  The mini player isn't held. `shouldHoldPause` is the one place to change this.
+- **The editors are hidden, not greyed**, where they can't work: videos on this device, files from other apps (until
+  "Save to VidoraX" and opened from the Library), streams, audio files, a download still being played from its partial
+  file. Within a library video, a choice that doesn't apply says why when pressed, as in the Downloader.
+- **Extract audio starts at once**, like Convert → Audio only in Download details; Video converter shows the same two
+  choices, so audio is reachable from both rows.
+- **Strings:** 33 new `videoPlayer.*` keys, English and Urdu, at the end of both catalogs. The messages after an edit
+  reuse the Downloader's `mediaEdit.*` strings, and the permission message reuses `thumbnailSave.needsPermission`.
+  "720p" is built in code (`compressResolutionLabel`), not translated.
+- **Icons:** camera, scissors, music, refresh-cw, archive (existing design-kit names).
+
+### Files
+
+- Logic (unit-tested, pure): `src/media-edit/compress-plan.ts`, `src/media-edit/player-edit-run.ts`,
+  `src/player/edit-tools.ts`; `src/media-edit/edit-plan.ts` (`EditKind` + `compress`, two branches).
+- Ports and state: `src/media-edit/player-tools-port.ts` (frame export, `getEditKinds`, the edit's origin).
+- Screen: `src/screens/player/page/use-player-edit-tools.ts`, `PlayerEditToolsSheets.tsx`, `VideoConverterSheet.tsx`,
+  `CompressVideoSheet.tsx`, `EditProgressSheet.tsx`. `PlayerScreen.tsx`: one fenced P10 block, plus `anyModalOpen`,
+  `onLock`, `optionsContext.editTools` and the sheets at the end.
+- Reused, changed additively: `src/screens/media-edit/TrimScreen.tsx` (optional `startMs`),
+  `src/screens/media-edit/useRunEdit.ts` (one label for `compress`).
+- Options: `src/player/options/p10-edit-tools.ts` (+ one import line), `player-options.ts` (optional `editTools`).
+- Types: `modules/vidorax-media/src/VidoraMedia.types.ts` (`EditRequest.kind` + `compress`, `videoBitrate`,
+  `maxShortSide`; `saveFrameToGallery`, `shareFrame`, `getEditKinds`).
+- Native: see Native code.
+- Strings: `src/localization/catalogs/videoPlayer.en.ts` / `.ur.ts`, 33 keys.
+
+### Gate
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | 0 errors |
+| Unit tests (JS) | 2402 / 2402 on top of P9 with its lengths backfill (2392 / 2392 before the backfill), the whole stack P1–P10 (2335 / 2335 on P8 `1ba7714` alone, 2295 before; 40 new: `media-edit/compress-plan.test.ts` 12, `player/edit-tools.test.ts` 13, `media-edit/player-edit-run.test.ts` 10, `player/options/p10-edit-tools.test.ts` 5). `row-revision.test.ts` passed in the full run |
+| `npm run lint` | 0 errors; 91 warnings, none in a file P10 changed |
+| Gradle `:vidorax-media:compileDebugKotlin` | BUILD SUCCESSFUL (Windows, JDK 17) |
+| Gradle `:vidorax-media:testDebugUnitTest --continue` | As expected on Windows, the test compile fails on `DownloadRunnerTest` (a backtick name with `"` is not a legal class-file path). Run again with only that file left out of the test compile (an init script in the scratchpad, not committed): **1126 tests, 1121 passed, 3 failed, 2 skipped**. **New: `CompressPlanTest` 9 / 9, `FrameExportTest` 3 / 3**; `MediaEditorTest` 6 / 6, `MediaEditServiceTest` 4 / 4. The 3 failures are Windows-only, in code P10 doesn't touch: `StoragePathsTest.storedPathsAreRelativeToFilesDir` and `IncomingImportTest.aFileIsCopiedIntoTheLibraryUnderDevice` (both expect `/` in a path; line 113 checks `"/library/device/"`), and `HlsTransferTest.pausedAndResumedThreeTimesInParallelIsByteIdenticalToAnUninterruptedDownload` (`AccessDeniedException`: Windows can't replace a checkpoint file that's still open; in `transfer/`) |
+| Gradle, re-run on the stacked branch (P1–P10, `c3cee83`) | `compileDebugKotlin`: BUILD SUCCESSFUL. `testDebugUnitTest` (same init script): 1126 tests, 1121 passed, 3 failed, 2 skipped; `CompressPlanTest` 9 / 9, `FrameExportTest` 3 / 3, `MediaEditorTest` 6 / 6, `MediaEditServiceTest` 4 / 4. Failures: `StoragePathsTest` and `IncomingImportTest` (Windows paths, as above) and `ParallelTransferTest.withTheWriteCacheOnEveryPartStillLandsExactlyAndAPauseClaimsOnlyWhatIsOnDisk` (`Required value was null`, in `transfer/`); that suite passes 25 / 25 run on its own, and `HlsTransferTest` passed this time: the transfer tests are timing-sensitive on Windows, and P9 / P10 don't touch `transfer/` |
+| Gradle, on the stack rebuilt on P9's lengths backfill (P1–P10, `3f114d2`) | `compileDebugKotlin`: BUILD SUCCESSFUL. `testDebugUnitTest` (same init script): 1130 tests (P9's `LengthProbeTest` 4 added), 1127 passed, 3 failed, 2 skipped; `CompressPlanTest` 9 / 9, `FrameExportTest` 3 / 3, `LengthProbeTest` 4 / 4, `MediaEditorTest` 6 / 6, `MediaEditServiceTest` 4 / 4. Failures: `StoragePathsTest`, `IncomingImportTest` (Windows paths) and `DownloadEngineLiveTest.aRecordingInterruptedByAProcessDeathIsFinalizedOnTheNextStart` (in `engine/`, untouched), which passes 8 / 8 run on its own: one more timing-sensitive test on Windows |
+| Against `1ba7714` | `git diff --check` clean; none of Faran's files; nothing in `transfer/` or `engine/`; `package.json` / lockfile, `build.gradle`, manifests and `app.json` unchanged; no new dependency or permission; no SQLite change (`DATABASE_VERSION` still 9) |
+| Media3 | `1.9.0`, unchanged |
+
+### Device checks for Faran (release build; not possible here)
+
+1. **Screenshot, full size:** first, that saving works at all (expo-video's frame handed to VidoraMedia's
+   `saveFrameToGallery`: "Screenshot saved to Gallery", not "Couldn't save the screenshot"). Then a 1080p and a 4K
+   library video, paused and playing. The dialog shows the video's size
+   (1920 × 1080 / 3840 × 2160), and the picture in Gallery → Pictures/VidoraX is that size and is the frame on screen
+   (OPTION_CLOSEST). A **portrait phone recording** (rotation metadata) comes out upright. Two screenshots of the same
+   second are both kept.
+2. **Screenshot sources:** a video on this device and a file opened from another app (Files → Open with VidoraX) both
+   work. A stream and an audio file have no Screenshot row. Library files whose names have spaces or Urdu letters work
+   (expo-video opens `file://` paths as the seek preview does).
+3. **Screenshot on Android 9 or older:** the storage permission is asked once; refusing gives "Allow storage access to
+   save to the Gallery".
+4. **Share:** Share opens the share sheet with the JPEG, and WhatsApp / Gmail / Quick Share receive it. Done closes the
+   dialog.
+5. **Trim video** from 1:23 in full screen: the Player leaves full screen and pauses; the Trim screen's range starts at
+   1:23 and its preview shows 1:23. Keyframe / exact choices, Save, Cancel. Back returns to the Player. The trimmed copy
+   is in the Library.
+6. **Extract audio:** the progress sheet, then "Saved as a new item in Player". The `.m4a` plays. A video without sound
+   says "This video has no sound".
+7. **Video converter:** a WebM / VP9 video → MP4 (re-encoded); an H.264 MP4 says "Already an MP4 that plays
+   everywhere"; Audio only works.
+8. **Compress:** a 1080p video at High / Medium / Small. The sizes in the sheet against the files made (expect within
+   about ±15 %), the resolution (1080p / 720p / 480p; a 720p source at High stays 720p), a portrait video stays portrait.
+   A low-bitrate video greys High ("Not smaller than the original"). The copy plays, with sound.
+9. **Cancel** during each edit (in the sheet, and in the notification): "Edit cancelled. Nothing was saved."; no partial
+   file appears in the Library.
+10. **Low storage:** fill the phone so that less than the estimate + 64 MB is free (Compress: its estimate + 10 % +
+    64 MB): "Not enough free space for this edit." before anything starts.
+11. **The pause hold:** during an edit, press play (button, double tap, headset): the video pauses again with "Paused
+    while the edit runs". Hide the sheet; the edit rows show "45%" and reopen it. After the edit ends, play works.
+12. **One at a time:** start an edit in Download details, then try one in the Player: "Another edit is running".
+13. **The rows' visibility:** library video (all five), video on this device and file from another app (Screenshot
+    only), stream and audio file (none), an unfinished download played from its partial file (Screenshot only).
+14. **Long edits in the background:** a 30-minute compress with VidoraX in the background (the notification, Cancel
+    there).
+15. **Six themes and Urdu:** the Compress sheet, the progress sheet, the converter sheet and the dialog. TalkBack reads
+    the presets with their sizes.

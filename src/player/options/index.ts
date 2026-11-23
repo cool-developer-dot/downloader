@@ -11,6 +11,7 @@ import './p6-queue';
 import './p7-playlists';
 import './p8-gestures';
 import './p9-library-stats';
+import './p10-edit-tools';
 
 export {
   playerOptions,
