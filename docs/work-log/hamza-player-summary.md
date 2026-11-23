@@ -16,16 +16,35 @@ Hamza's Player work for Faran: what was built, what is open, what to test. Detai
 | P8 | Gestures & custom controls | Horizontal Swipe Seek #582, Two Finger Tap #585, Gesture Sensitivity #586, Disable Gestures #587, Customize Controls #692 | 4 | #47 | Merged |
 | P9 | Library stats & bookmarks | Most Played #626, Play Count #708, Duration Filter #711, Include/Exclude Folders #628, Quick Delete #726, Disable History #687, Video Bookmarks #705 | 4 | #48 | Merged |
 | P10 | Screenshot & edit tools | Screenshot #675, Trim Video #677, Extract Audio #678, Video Converter #679, Compress Video #680 | 5 | #49 | Merged |
-| P11 | Privacy & backup | Private Folder #686, Block Screen Capture #689, Backup/Restore #700 | 4 | #50 | Open (depends on #49) |
-| P12 | Export extras | Create GIF #676, Merge Videos #682, Change Speed Export #684 | 4 | #51 | Open (depends on #50) |
-| P13 | Chromecast | Chromecast #667 | 4 | — | Not started (waiting for Faran's OK) |
-| | **Total** | **61 features** | **52** | | P1–P10 merged, P11–P12 open, P13 not started |
+| P11 | Privacy & backup | Private Folder #686, Block Screen Capture #689, Backup/Restore #700 | 4 | #50 | Merged |
+| P12 | Export extras | Create GIF #676, Merge Videos #682, Change Speed Export #684 | 4 | #51 | Merged |
+| P13 | Chromecast | Chromecast #667 | 4 | #59 | Open |
+| | **Total** | **61 features** | **52** | | P1–P12 merged, P13 open (#59) |
 
-Checklist status of the 61 features (from the tick file): **Built 37, Built with limitation 23, Not planned 0, Not started 1** (#667 Chromecast). Filters #571 / #572 are Not planned and not among the 61: their tile became Mirror / Flip #573.
+Checklist status of the 61 features (from the tick file): **Built 38, Built with limitation 23, Not planned 0, Not started 0** (#667 Chromecast is Built in P13). Filters #571 / #572 are Not planned and not among the 61: their tile became Mirror / Flip #573.
+
+**P6 fix (#60, draft): device videos that don't switch.** From Device videos, Up next or ⏮ restarted the same video
+instead of switching to the one picked. The cause isn't found yet: every JavaScript step handles `device:<id>` like a
+library id (`docs/work-log/p6-device-next-trace.md`, with `node:test` cases in `src/player/p6-device-next.test.ts`).
+#60 adds `[P6-DEVNEXT]` log lines (development builds only) for Faran's repro. The fix follows once those lines show
+where the switch is lost. Device check 145.
 
 ## Open decisions for Faran
 
-1. **P13 Chromecast:** approve it (it needs the Google Cast SDK, a new dependency, and a small local HTTP server for local files)? Not started until you say so.
+1. **P13 Chromecast (#59):** built with your rules: the Google Cast SDK (`play-services-cast-framework` 22.3.1 from
+   Google's Maven, not media3-cast; Media3 stays 1.9.0), no npm package, and a local server that runs only while a local
+   file is cast (one file and its subtitles, 128-bit random tokens, Wi-Fi address only). No new permission. Open for you:
+   - **Media session while casting:** the local notification (and lock screen) still controls the paused phone player.
+     Needed in `use-player-session.ts` (yours, not edited): while `useCastStore`'s `connection === 'connected'` and its
+     `castMediaId` is this session's media, hide the media notification, or forward its play / pause / seek to
+     `castPlay` / `castPause` / `castSeek` in `src/player/cast/cast.runtime.ts`.
+   - **Streams that need the page's headers** (cookies, referrer) are not cast: the receiver can't send them, and a
+     proxy would mean changing your P14 stream files. Streams that open without headers go by their own URL, without
+     subtitles.
+   - **The Cast SDK brings Google's own logging libraries** (`com.google.android.datatransport:transport-backend-cct`,
+     `firebase-encoders`), as every Cast app does. VidoraX sends nothing itself. Keep it, or drop Chromecast?
+   - Closing the mini player doesn't end a cast; Repeat / Auto Play Next don't run when the TV reaches the end; speed,
+     the sleep timer and Kid Lock act on the phone's player only.
 2. **P11 Private Folder, Gallery copy:** remove the Gallery copy by default when a video moves to Private? Today it is removed only when "Also remove the Gallery copy" is ticked (H21's default is off, because removing a public file needs Android's consent dialog), so the video stays in the phone's Gallery and in Device videos.
 3. **P11 Move out:** back into the Library instead of the Gallery? That needs a small native `moveOut` in `PrivateVault.kt` plus one bridge function.
 4. **P11 Block screenshots:** keep it to the Private Folder (as #689 says), or also app-wide / the whole Player? Should the backup also hold the theme and the play queue (both left out)?
@@ -39,6 +58,8 @@ Checklist status of the 61 features (from the tick file): **Built 37, Built with
 12. **P10 / P12 Media3 effect:** `Presentation` and `FrameDropEffect` come from `media3-effect` 1.9.0, pulled in by the existing `media3-transformer`, with no `build.gradle` line of its own. Keep it that way, or add the explicit line (a build.gradle change)?
 13. **P12 speed:** the pitch changes with the speed (Transformer's default); keeping the pitch would mean a `SonicAudioProcessor`. And if `FrameDropEffect` fails on a device (device checks), the frame-rate cap can be dropped (`frameRateCap` returns null).
 14. **P7 shared menu:** the app-wide `ActionSheetModal` now scrolls its rows when they don't fit (nothing changes when they do). Please check it on a short phone.
+15. **P6 device videos (#60):** please run the repro on a development build and paste the `[P6-DEVNEXT]` lines
+    (device check 145 says how). The trace's last table says what each pattern means and where the fix goes.
 
 ## Limitations and Not planned
 
@@ -52,12 +73,17 @@ Checklist status of the 61 features (from the tick file): **Built 37, Built with
 - **#711 lengths** for older downloads are filled in in the background (5 at a time); until then they show only under Any length.
 - **Edit and export tools** (#677–#680, #676, #682, #684) take library videos only (the native editor's sources). Screenshot (#675) also works for device videos and files from other apps.
 - **Device videos in a restored queue or a playlist** play only once the device video list has been read (first 500).
+- **Device videos don't switch (P6, open):** from Device videos, Up next and ⏮ may restart the same video instead of
+  switching. The cause is open; diagnostics are in #60.
 - **Playlists:** deep links to `/playlists/<id>` aren't registered, and the typed routes weren't regenerated (needs a dev server).
 - **Screen 21's "RTL support" switch** isn't built: direction is detected per line.
+- **#667 Chromecast:** streams that need the website's headers aren't cast (a proxy would change P14's stream files);
+  streams go without subtitles; only subtitle files reach the TV (as WebVTT, text only), not tracks inside the video; the
+  media notification still controls the paused phone player while casting (needs P15's session, logged for Faran).
 
 ## Device checks (one pass, grouped by package)
 
-Release build, emulator and one real phone, all six themes and Urdu. 127 checks, numbered across packages; each package's section of the work log has the context.
+Release build, emulator and one real phone, all six themes and Urdu. 144 checks, numbered across packages; each package's section of the work log has the context.
 
 ### P1 Playback basics (#40)
 
@@ -222,9 +248,57 @@ Release build, emulator and one real phone, all six themes and Urdu. 127 checks,
 126. **Long exports in the background:** a 30-minute merge with VidoraX in the background (the notification, Cancel there).
 127. **Six themes and Urdu (right to left):** the three sheets, the picker, the progress sheet and the dialog; TalkBack reads the chips, the ↑ / ↓ / ✕ buttons and the picker's "Adds it to the merge".
 
+### P13 Chromecast (#59)
+
+A Chromecast (or a TV with Chromecast built in) on the phone's Wi-Fi; a release build too (R8: the Cast options provider
+is created by reflection).
+
+128. **The button:** with no Cast device on the Wi-Fi there is no Cast button (card top row, full-screen bar). Switch the
+     Chromecast on: the button appears within a few seconds, before ⋮. Leave the Player: discovery stops.
+129. **Start:** a library video at 2:00, Cast → the device. "Connecting to …", then "Casting to <device>" on the video
+     area, the phone's player paused, and the TV starts at 2:00 with the title.
+130. **Phone controls drive the TV:** play / pause (card, full screen, headset), the timeline, ⏪ / ⏩, double-tap seek,
+     Jump to time, a bookmark. The timeline shows the TV's position. Long-press 2× and swipe seek do nothing meanwhile.
+131. **Volume:** the sheet's − / + change the TV's volume and show the percentage.
+132. **Stop casting:** seek on the TV to 5:00, then the sheet's Stop casting → the TV stops, "Stopped casting. Playing on
+     this phone.", and the phone plays on from 5:00.
+133. **Dropped:** switch the phone's Wi-Fi off while casting → "Lost the connection to the TV. Paused on this phone.",
+     paused at the TV's last position; Wi-Fi back on: nothing reconnects by itself.
+134. **Previous / Next while casting:** the next video is loaded on the TV (the phone stays paused); Up next too.
+135. **Subtitles:** an SRT and an ASS file with a sync offset of +1.5 s: the TV shows them at the same moments as the phone
+     (text only). Subtitles off, or a track inside the video: the TV shows none.
+136. **Sources:** a video on this device (Device videos), a file opened with VidoraX from another app, a 4 GB file with
+     many TV seeks (ranges), an MKV (the TV may refuse it: "The TV couldn't play this video." and the phone takes over).
+137. **Blocked:** a video moved to the Private Folder from the Player ("Videos in the Private Folder are never cast."), a
+     download still in progress (play while downloading), a stream that needs the website's headers: each with its
+     message, and nothing reaches the TV.
+138. **A stream without headers** (P14 network stream, an MP4 or HLS link): the TV opens it itself; the phone's server
+     doesn't start.
+139. **The server:** while casting, `curl -I http://<phone-ip>:<port>/<token>` from a laptop on the Wi-Fi answers 200 with
+     `Accept-Ranges: bytes`; a wrong token, another path, or POST → 404. After Stop casting the port is closed.
+140. **Only Wi-Fi:** on mobile data only → "Connect this phone to the same Wi-Fi as the TV.", nothing is served.
+141. **Leaving the app while casting** (Back to the launcher until the activity closes, then swipe it away): the TV stops
+     and the server is gone.
+142. **No Google Play services** (an emulator without them): no Cast button, nothing else changes.
+143. **Six themes and Urdu (right to left):** the device sheet (devices, connected state, volume, Stop casting), the
+     "Casting to …" cover and every message; TalkBack reads the Cast button and the device rows.
+144. **The media notification while casting:** note what it shows and does (logged for Faran: it still controls the paused
+     phone player).
+
+### P6 fix: device videos switch (#60)
+
+Check 145 brings the list to 145 checks.
+
+145. **Device videos switch** (a development build first, for #60's `[P6-DEVNEXT]` lines; then the build with the fix):
+     Device videos → quiet.mp4 → Up next → two-audio.mp4 plays (not quiet.mp4 again). Then, from a device video with one
+     before it, ⏮ at about 1 s goes to the previous video; with none before it, ⏮ restarts (P15, by design). Then ⏭,
+     Auto Play Next at the end, Repeat all wrapping from the last device video to the first, a playlist with a device video
+     in it, and the next-episode card's Play now: each switches. A library video and a playlist of library videos still
+     do exactly as before.
+
 ## Files changed outside the Player
 
-Everything under `src/player/`, `src/screens/player/` and `modules/` is left out here (native files are below). Against the base `9e9f343`, up to P12.
+Everything under `src/player/`, `src/screens/player/` and `modules/` is left out here (native files are below). Against the base `9e9f343`, up to P13.
 
 **Existing files changed (all additive):**
 
@@ -238,8 +312,8 @@ Everything under `src/player/`, `src/screens/player/` and `modules/` is left out
 - `src/library/types.ts` (P9)
 - `src/localization/catalogs/videoPlayer.en.ts` (P1, P2, P3, P4, P5, P6, P8, P10, P12)
 - `src/localization/catalogs/videoPlayer.ur.ts` (P1, P2, P3, P4, P5, P6, P8, P10, P12)
-- `src/localization/en.ts` (P7, P9, P11)
-- `src/localization/ur.ts` (P7, P9, P11)
+- `src/localization/en.ts` (P7, P9, P11, P13)
+- `src/localization/ur.ts` (P7, P9, P11, P13)
 - `src/media-edit/edit-job.ts` (P12)
 - `src/media-edit/edit-plan.ts` (P10, P12)
 - `src/navigation/components/DsTabBar.tsx` (P1)
@@ -281,7 +355,7 @@ Everything under `src/player/`, `src/screens/player/` and `modules/` is left out
 - `src/app/(app)/playlists/`: `[id].tsx`, `index.tsx`
 - `src/backup/`: `apply-preferences.runtime.ts`, `backup-format.test.ts`, `backup-format.ts`, `backup-preferences.ts`, `backup-restore.test.ts`, `backup-restore.ts`, `backup.service.ts`, `user-data.queries.test.ts`, `user-data.queries.ts`, `user-data.repository.ts`
 - `src/library/`: `duration-buckets.ts`, `ensure-library-stats.ts`, `folder-exclusion.ts`, `length-backfill.test.ts`, `length-backfill.ts`, `library-stats-query.test.ts`, `library-stats-store.ts`, `play-count.test.ts`, `play-count.ts`
-- `src/localization/catalogs/`: `libraryStats.en.ts`, `libraryStats.ur.ts`, `playlists.en.ts`, `playlists.ur.ts`, `privacyBackup.en.ts`, `privacyBackup.ur.ts`
+- `src/localization/catalogs/`: `libraryStats.en.ts`, `libraryStats.ur.ts`, `playerCast.en.ts`, `playerCast.ur.ts` (P13), `playlists.en.ts`, `playlists.ur.ts`, `privacyBackup.en.ts`, `privacyBackup.ur.ts`
 - `src/media-edit/`: `compress-plan.test.ts`, `compress-plan.ts`, `export-extras-port.ts`, `gif-plan.test.ts`, `gif-plan.ts`, `merge-plan.test.ts`, `merge-plan.ts`, `player-edit-run.test.ts`, `player-edit-run.ts`, `player-export-run.test.ts`, `player-export-run.ts`, `player-tools-port.ts`, `speed-plan.test.ts`, `speed-plan.ts`
 - `src/playback/`: `history-pause-preference.ts`, `history-pause.test.ts`
 - `src/playlists/`: `import-match.ts`, `m3u.test.ts`, `m3u.ts`, `play-plan.ts`, `play-playlist.ts`, `playlist-changes.ts`, `playlist-entries.ts`, `playlist-library.ts`, `playlist-names.ts`, `playlists-service.ts`, `playlists.test.ts`, `use-playlists.ts`
@@ -319,5 +393,11 @@ All in `modules/vidorax-media` (nothing in `transfer/` or `engine/`), no new dep
 - **new** `test/java/com/vidorax/media/library/MergePlanTest.kt` (P12)
 - **new** `test/java/com/vidorax/media/library/SpeedPlanTest.kt` (P12)
 - changed `modules/vidorax-media/src/VidoraMedia.types.ts` (P9, P10, P12)
+- P13 Chromecast: changed `android/build.gradle` (the Cast SDK, `consumerProguardFiles`), `android/src/main/AndroidManifest.xml`
+  (the Cast options meta-data), `expo-module.config.json` (`VidoraCastModule`); **new** `android/consumer-rules.pro`,
+  `main/java/com/vidorax/media/cast/` (`CastController.kt`, `CastFileServer.kt`, `CastOptionsProvider.kt`,
+  `CastServing.kt`, `CastSources.kt`, `CastUrls.kt`, `HttpRange.kt`, `VidoraCastModule.kt`, `WifiAddress.kt`),
+  `test/java/com/vidorax/media/cast/` (`CastFileServerTest.kt`, `CastServingTest.kt`, `CastSourcesTest.kt`,
+  `CastUrlsTest.kt`, `HttpRangeTest.kt`), `src/VidoraCast.types.ts`, `src/VidoraCastModule.ts`
 
 Known older Kotlin test failures on Windows (not from these packages): `StoragePathsTest`, `IncomingImportTest` (path separators), a timing-sensitive `ParallelTransferTest` / `HlsTransferTest` / `DownloadEngineLiveTest` that passes on its own, and `DownloadRunnerTest` left out locally (its test name is illegal on Windows).
