@@ -67,6 +67,7 @@ import { fileSafetyEn } from './catalogs/fileSafety.en';
 import { sourceCheckEn } from './catalogs/sourceCheck.en';
 import { archiveImportEn } from './catalogs/archiveImport.en';
 import { settingsViewEn } from './catalogs/settingsView.en';
+import { playlistsEn } from './catalogs/playlists.en';
 
 export const en = {
   common: {
@@ -2977,4 +2978,6 @@ export const en = {
   sourceCheck: sourceCheckEn,
   archiveImport: archiveImportEn,
   settingsView: settingsViewEn,
+  // P7 Playlists (Hamza): the user's own playlists (`lightPlaylist` is Playlist Download)
+  playlists: playlistsEn,
 } as const;

@@ -11,11 +11,14 @@ import { useTranslation } from '@/localization';
 
 import { useLibraryTokens } from '../theme/library-tokens';
 import { buildLibraryMetaLine } from '../utils/library-format';
+import { LibrarySelectMark } from './LibrarySelectMark';
 
 export type LibraryCardProps = {
   item: MediaLibraryItem;
   onPress?: (id: string) => void;
   onLongPress?: (id: string) => void;
+  /** P7 selection mode: set (true / false) while selecting; a tap then selects instead of playing. */
+  selected?: boolean;
   testID?: string;
 };
 
@@ -23,6 +26,7 @@ export const LibraryCard = memo(function LibraryCard({
   item,
   onPress,
   onLongPress,
+  selected,
   testID,
 }: LibraryCardProps) {
   const libraryTokens = useLibraryTokens();
@@ -59,7 +63,9 @@ export const LibraryCard = memo(function LibraryCard({
       accessibilityRole={onPress && canPlay ? 'button' : undefined}
       accessibilityLabel={accessibilityParts.join('. ')}
       accessibilityHint={
-        onPress && canPlay
+        selected !== undefined && canPlay
+          ? t('playlists.selectHint')
+          : onPress && canPlay
           ? onLongPress
             ? t('library.longPressHint')
             : t('library.playHint')
@@ -67,13 +73,13 @@ export const LibraryCard = memo(function LibraryCard({
             ? t('library.fileUnavailable')
             : undefined
       }
-      accessibilityState={{ disabled: !canPlay }}
+      accessibilityState={{ disabled: !canPlay, selected: selected === true }}
       testID={testID}
       style={({ pressed }) => ({
         paddingHorizontal: libraryTokens.spacing.screenX,
         paddingVertical: libraryTokens.spacing.rowY,
         backgroundColor:
-          pressed && onPress && canPlay ? libraryTokens.rowPressed : 'transparent',
+          selected || (pressed && onPress && canPlay) ? libraryTokens.rowPressed : 'transparent',
         opacity: item.localAvailability === 'missing' ? 0.72 : 1,
       })}>
       <Box row gap={12} style={{ alignItems: 'flex-start', minWidth: 0 }}>
@@ -102,6 +108,7 @@ export const LibraryCard = memo(function LibraryCard({
           ) : (
             <Icon name="video-outline" size="md" color="secondary" />
           )}
+          {selected !== undefined ? <LibrarySelectMark selected={selected} /> : null}
         </Box>
 
         <Box flex={1} gap={6} style={{ minWidth: 0 }}>

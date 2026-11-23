@@ -110,6 +110,9 @@ export default function AppLayout() {
               name={appStackRouteNames.watchHistory}
               options={createHiddenHeaderOptions()}
             />
+            {/* P7: the user's playlists, and one playlist (their own DsHeader). */}
+            <Stack.Screen name={appStackRouteNames.playlists} options={createHiddenHeaderOptions()} />
+            <Stack.Screen name={appStackRouteNames.playlist} options={createHiddenHeaderOptions()} />
             <Stack.Screen
               name={appStackRouteNames.appLockSetup}
               options={appLockSetupHeaderOptions}

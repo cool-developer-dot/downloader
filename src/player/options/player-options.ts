@@ -107,6 +107,11 @@ export type PlayerOptionContext = {
   repeat?: { endActionLabel: string; abLabel: string };
   /** P6: the queue ("12 videos"), its shuffle, Auto Play Next and the Next Episode card. */
   queue?: { countLabel: string; size: number; shuffled: boolean; autoPlayNext: boolean; nextEpisodePrompt: boolean };
+  /**
+   * P7 #617: "Add to playlist" for the playing video. `canAdd` is false for what can't be in a playlist (a file another
+   * app opened, a stream: their ids don't outlive the app). `openAddSheet` opens the Player's add sheet.
+   */
+  playlists?: { canAdd: boolean; openAddSheet: () => void };
   ui: PlayerOptionUi;
 };
 

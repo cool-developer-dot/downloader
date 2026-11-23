@@ -11,12 +11,15 @@ import { useTranslation } from '@/localization';
 
 import { useLibraryTokens } from '../theme/library-tokens';
 import { buildLibraryGridMeta } from '../utils/library-format';
+import { LibrarySelectMark } from './LibrarySelectMark';
 
 export type LibraryGridTileProps = {
   item: MediaLibraryItem;
   width: number;
   onPress?: (id: string) => void;
   onLongPress?: (id: string) => void;
+  /** P7 selection mode: set (true / false) while selecting; a tap then selects instead of playing. */
+  selected?: boolean;
   testID?: string;
 };
 
@@ -25,6 +28,7 @@ export const LibraryGridTile = memo(function LibraryGridTile({
   width,
   onPress,
   onLongPress,
+  selected,
   testID,
 }: LibraryGridTileProps) {
   const libraryTokens = useLibraryTokens();
@@ -60,7 +64,9 @@ export const LibraryGridTile = memo(function LibraryGridTile({
         .filter(Boolean)
         .join('. ')}
       accessibilityHint={
-        onPress && canPlay
+        selected !== undefined && canPlay
+          ? t('playlists.selectHint')
+          : onPress && canPlay
           ? onLongPress
             ? t('library.longPressHint')
             : t('library.playHint')
@@ -68,7 +74,7 @@ export const LibraryGridTile = memo(function LibraryGridTile({
             ? t('library.fileUnavailable')
             : undefined
       }
-      accessibilityState={{ disabled: !canPlay }}
+      accessibilityState={{ disabled: !canPlay, selected: selected === true }}
       testID={testID}
       style={({ pressed }) => ({
         width,
@@ -118,6 +124,7 @@ export const LibraryGridTile = memo(function LibraryGridTile({
               <Icon name="heart" size="sm" color="error" accessibilityLabel={t('library.favoriteA11y')} />
             </Box>
           ) : null}
+          {selected !== undefined ? <LibrarySelectMark selected={selected} /> : null}
         </Box>
         <Box p={8} gap={4}>
           <Text variant="label" numberOfLines={2}>

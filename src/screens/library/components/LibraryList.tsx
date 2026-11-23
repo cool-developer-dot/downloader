@@ -20,6 +20,8 @@ export type LibraryListProps = {
   onRefresh: () => void;
   onPressItem: (id: string) => void;
   onLongPressItem?: (id: string) => void;
+  /** P7 selection mode: the selected ids while selecting (undefined otherwise). */
+  selectedIds?: ReadonlySet<string>;
   listEmptyComponent?: ReactElement | null;
   testID?: string;
 };
@@ -33,6 +35,7 @@ export const LibraryList = memo(function LibraryList({
   onRefresh,
   onPressItem,
   onLongPressItem,
+  selectedIds,
   listEmptyComponent,
   testID = 'library-list',
 }: LibraryListProps) {
@@ -53,10 +56,11 @@ export const LibraryList = memo(function LibraryList({
         item={item}
         onPress={onPressItem}
         onLongPress={onLongPressItem}
+        selected={selectedIds ? selectedIds.has(item.id) : undefined}
         testID={`library-card-${item.id}`}
       />
     ),
-    [onLongPressItem, onPressItem],
+    [onLongPressItem, onPressItem, selectedIds],
   );
 
   const renderGridItem: ListRenderItem<MediaLibraryItem> = useCallback(
@@ -66,10 +70,11 @@ export const LibraryList = memo(function LibraryList({
         width={tileWidth}
         onPress={onPressItem}
         onLongPress={onLongPressItem}
+        selected={selectedIds ? selectedIds.has(item.id) : undefined}
         testID={`library-tile-${item.id}`}
       />
     ),
-    [onLongPressItem, onPressItem, tileWidth],
+    [onLongPressItem, onPressItem, selectedIds, tileWidth],
   );
 
   const keyExtractor = useCallback((item: MediaLibraryItem) => item.id, []);
@@ -95,7 +100,7 @@ export const LibraryList = memo(function LibraryList({
       renderItem={isGrid ? renderGridItem : renderListItem}
       numColumns={isGrid ? GRID_COLUMNS : 1}
       columnWrapperStyle={columnWrapperStyle}
-      extraData={viewMode}
+      extraData={selectedIds ?? viewMode}
       refreshing={refreshing}
       onRefresh={onRefresh}
       keyboardShouldPersistTaps="handled"
