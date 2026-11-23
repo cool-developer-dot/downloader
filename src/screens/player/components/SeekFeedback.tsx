@@ -2,7 +2,8 @@ import { memo } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { Text } from '@/components/base/Text';
-import { formatPlaybackTime } from '@/player';
+import { useTranslation } from '@/localization';
+import { DEFAULT_SEEK_STEP_SECONDS, formatPlaybackTime } from '@/player';
 
 export type SeekFeedbackOverlayProps = {
   previewSeconds: number | null;
@@ -35,11 +36,15 @@ export const SeekFeedbackOverlay = memo(function SeekFeedbackOverlay({
 
 export type DoubleTapSeekFeedbackProps = {
   side: 'left' | 'right' | null;
+  /** The chosen seek interval (P1 #527). */
+  seconds?: number;
 };
 
 export const DoubleTapSeekFeedback = memo(function DoubleTapSeekFeedback({
   side,
+  seconds = DEFAULT_SEEK_STEP_SECONDS,
 }: DoubleTapSeekFeedbackProps) {
+  const { t } = useTranslation();
   if (!side) {
     return null;
   }
@@ -50,11 +55,13 @@ export const DoubleTapSeekFeedback = memo(function DoubleTapSeekFeedback({
       pointerEvents="none"
       accessibilityLiveRegion="polite"
       accessibilityLabel={
-        side === 'left' ? 'Rewound 10 seconds' : 'Forwarded 10 seconds'
+        side === 'left'
+          ? t('videoPlayer.rewoundSeconds', { seconds })
+          : t('videoPlayer.forwardedSeconds', { seconds })
       }>
       <View style={styles.pill}>
         <Text variant="title" color="white">
-          {side === 'left' ? '↶ 10' : '10 ↷'}
+          {side === 'left' ? `↶ ${seconds}` : `${seconds} ↷`}
         </Text>
       </View>
     </View>

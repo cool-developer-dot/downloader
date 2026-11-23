@@ -42,4 +42,12 @@ describe('resolveDoubleTapAction', () => {
     assert.equal(doubleTapSeekDelta('left'), -10);
     assert.equal(doubleTapSeekDelta('right'), 10);
   });
+
+  it('uses the chosen seek interval, and 10 s for a missing or broken one (P1 #527)', () => {
+    assert.equal(doubleTapSeekDelta('left', 30), -30);
+    assert.equal(doubleTapSeekDelta('right', 5), 5);
+    assert.equal(doubleTapSeekDelta('right', 0), 10);
+    assert.equal(doubleTapSeekDelta('left', -15), -10);
+    assert.equal(doubleTapSeekDelta('left', Number.NaN), -10);
+  });
 });

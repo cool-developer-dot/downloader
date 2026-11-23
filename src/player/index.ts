@@ -45,6 +45,7 @@ export {
 export {
   DEFAULT_PLAYBACK_RATE,
   PLAYBACK_RATES,
+  formatPlaybackRateChip,
   formatPlaybackRateLabel,
   isValidPlaybackRate,
   normalizePlaybackRate,
@@ -162,3 +163,23 @@ export {
 export { isCurrentPlayerSession } from './session-generation';
 
 // Hooks with native deps are NOT exported from the barrel (Node verify safety).
+export {
+  DEFAULT_SEEK_STEP_SECONDS,
+  SEEK_STEP_OPTIONS,
+  isSeekStepSeconds,
+  normalizeSeekStepSeconds,
+  type SeekStepSeconds,
+} from './seek-step';
+export {
+  FALLBACK_FRAME_RATE,
+  FRAME_STEP_CHAIN_MS,
+  formatFrameTime,
+  frameAt,
+  frameDurationSeconds,
+  frameStep,
+  frameStepBase,
+  type FrameStep,
+  type FrameStepDirection,
+} from './frame-step';
+export { formatJumpTime, parseJumpTime, type JumpTimeResult } from './jump-to-time';
+export { LONG_PRESS_PLAYBACK_RATE, LongPressSpeed, type LongPressSpeedPorts } from './long-press-speed';

@@ -21,7 +21,12 @@ export type PlayerControlsProps = {
   onRewind: () => void;
   onForward: () => void;
   onReplay: () => void;
+  /** The chosen seek interval (P1 #527): the ⏪ / ⏩ icons and labels follow it. */
+  seekStepSeconds?: number;
 };
+
+/** The icon font has numbered skip glyphs for these intervals only; others show the plain ⏪ / ⏩. */
+const NUMBERED_SKIP_ICONS = new Set([5, 10, 15, 30, 45, 60]);
 
 export const PlayerControls = memo(function PlayerControls({
   isPlaying,
@@ -37,6 +42,7 @@ export const PlayerControls = memo(function PlayerControls({
   onRewind,
   onForward,
   onReplay,
+  seekStepSeconds = 10,
 }: PlayerControlsProps) {
   const { t } = useTranslation();
   if (!visible) {
@@ -62,11 +68,11 @@ export const PlayerControls = memo(function PlayerControls({
           />
         ) : null}
         <IconButton
-          icon="rewind-10"
+          icon={NUMBERED_SKIP_ICONS.has(seekStepSeconds) ? `rewind-${seekStepSeconds}` : 'rewind'}
           size="large"
           variant="ghost"
           color={controlsDisabled ? 'disabled' : 'inverse'}
-          accessibilityLabel={t('player.rewind')}
+          accessibilityLabel={t('videoPlayer.rewindSeconds', { seconds: seekStepSeconds })}
           disabled={controlsDisabled}
           onPress={onRewind}
         />
@@ -93,11 +99,11 @@ export const PlayerControls = memo(function PlayerControls({
           )}
         </View>
         <IconButton
-          icon="fast-forward-10"
+          icon={NUMBERED_SKIP_ICONS.has(seekStepSeconds) ? `fast-forward-${seekStepSeconds}` : 'fast-forward'}
           size="large"
           variant="ghost"
           color={controlsDisabled ? 'disabled' : 'inverse'}
-          accessibilityLabel={t('player.forward')}
+          accessibilityLabel={t('videoPlayer.forwardSeconds', { seconds: seekStepSeconds })}
           disabled={controlsDisabled}
           onPress={onForward}
         />

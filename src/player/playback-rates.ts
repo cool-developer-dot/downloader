@@ -28,3 +28,12 @@ export function formatPlaybackRateLabel(rate: number): string {
   const text = Number.isInteger(rate) ? String(rate) : String(rate);
   return `${text}x`;
 }
+
+/** The Player page's speed chip (screen 19): always one decimal at least — 1.0×, 1.5×, 0.75×, 2.0×. */
+export function formatPlaybackRateChip(rate: number): string {
+  if (!Number.isFinite(rate) || rate <= 0) {
+    return '1.0×';
+  }
+  const text = Number.isInteger(rate * 10) ? rate.toFixed(1) : String(Number(rate.toFixed(2)));
+  return `${text}×`;
+}

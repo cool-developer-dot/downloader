@@ -50,6 +50,7 @@ import {
   FileArchive,
   FileDown,
   FileText,
+  FastForward,
   Film,
   FlaskConical,
   Folder,
@@ -97,6 +98,7 @@ import {
   Radio,
   RefreshCw,
   Repeat,
+  Rewind,
   RotateCw,
   Save,
   Scan,
@@ -109,6 +111,8 @@ import {
   Shield,
   ShieldCheck,
   Shuffle,
+  SkipBack,
+  SkipForward,
   SlidersHorizontal,
   SlidersVertical,
   Smartphone,
@@ -117,6 +121,8 @@ import {
   SquareCheck,
   SquarePen,
   Star,
+  StepBack,
+  StepForward,
   Sun,
   Tag,
   Tags,
@@ -197,6 +203,7 @@ const ICONS = {
   'file-archive': FileArchive,
   'file-down': FileDown,
   'file-text': FileText,
+  'fast-forward': FastForward,
   film: Film,
   'flask-conical': FlaskConical,
   folder: Folder,
@@ -244,6 +251,7 @@ const ICONS = {
   radio: Radio,
   'refresh-cw': RefreshCw,
   repeat: Repeat,
+  rewind: Rewind,
   'rotate-cw': RotateCw,
   save: Save,
   scan: Scan,
@@ -256,6 +264,8 @@ const ICONS = {
   shield: Shield,
   'shield-check': ShieldCheck,
   shuffle: Shuffle,
+  'skip-back': SkipBack,
+  'skip-forward': SkipForward,
   'sliders-horizontal': SlidersHorizontal,
   'sliders-vertical': SlidersVertical,
   smartphone: Smartphone,
@@ -264,6 +274,8 @@ const ICONS = {
   'square-check': SquareCheck,
   'square-pen': SquarePen,
   star: Star,
+  'step-back': StepBack,
+  'step-forward': StepForward,
   sun: Sun,
   tag: Tag,
   tags: Tags,
@@ -293,6 +305,8 @@ export type DsIconProps = {
   /** A theme colour token (default: the accent), or an explicit colour string. */
   color?: ColorTokenKey | (string & {});
   strokeWidth?: number;
+  /** Fills the shape too (the Player card's solid ⏮ ⏭); a theme token or a colour. Default: outline only. */
+  fill?: ColorTokenKey | (string & {});
   accessibilityLabel?: string;
   testID?: string;
 };
@@ -306,12 +320,14 @@ export const DsIcon = memo(function DsIcon({
   size = 18,
   color = 'primary',
   strokeWidth = 1.8,
+  fill,
   accessibilityLabel,
   testID,
 }: DsIconProps) {
   const theme = useTheme();
   const Component = ICONS[name];
   const resolved = color in theme.colors ? theme.colors[color as ColorTokenKey] : (color as string);
+  const resolvedFill = fill == null ? undefined : fill in theme.colors ? theme.colors[fill as ColorTokenKey] : (fill as string);
   return (
     <View
       testID={testID}
@@ -319,7 +335,7 @@ export const DsIcon = memo(function DsIcon({
       accessibilityLabel={accessibilityLabel}
       accessibilityRole={accessibilityLabel ? 'image' : undefined}
       style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-      <Component size={size} color={resolved} strokeWidth={strokeWidth} />
+      <Component size={size} color={resolved} strokeWidth={strokeWidth} fill={resolvedFill ?? 'none'} />
     </View>
   );
 });

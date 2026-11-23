@@ -1,5 +1,5 @@
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
-import { memo, useCallback } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { Pressable, View } from 'react-native';
 
 import { DsIcon, DsText, ds, type DsIconName } from '@/design';
@@ -39,17 +39,19 @@ type TabButtonProps = {
   focused: boolean;
   onPress: () => void;
   onLongPress: () => void;
+  /** Only the navigator's bar is a tour target; a copy drawn elsewhere must not take the targets over. */
+  tourTarget: boolean;
   testID: string;
 };
 
-const TabButton = memo(function TabButton({ spec, focused, onPress, onLongPress, testID }: TabButtonProps) {
+const TabButton = memo(function TabButton({ spec, focused, onPress, onLongPress, tourTarget, testID }: TabButtonProps) {
   const theme = useTheme();
   const { t } = useTranslation();
   const tourRef = useTourTargetRef(spec.tour ?? 'downloadsTab');
   const color = focused ? theme.colors.bottomNavActive : theme.colors.bottomNavInactive;
   const keys = LABEL_KEYS[spec.label];
   return (
-    <View ref={spec.tour ? tourRef : undefined} collapsable={false} style={{ flex: 1 }}>
+    <View ref={spec.tour && tourTarget ? tourRef : undefined} collapsable={false} style={{ flex: 1 }}>
       <Pressable
         testID={testID}
         onPress={onPress}
@@ -81,26 +83,31 @@ const TabButton = memo(function TabButton({ spec, focused, onPress, onLongPress,
   );
 });
 
-export const DsTabBar = memo(function DsTabBar({ state, navigation, insets }: BottomTabBarProps) {
+export type DsTabBarViewProps = {
+  /** The tab drawn as active (a `tabRouteNames` value). */
+  activeRoute: string;
+  /** The tabs to draw, in any order (the bar's own order is used); missing ones are left out. */
+  routes: readonly string[];
+  onPressTab: (route: string, focused: boolean) => void;
+  onLongPressTab?: (route: string) => void;
+  bottomInset: number;
+  /** True for the navigator's bar only (see `TabButton`). */
+  tourTargets?: boolean;
+};
+
+/**
+ * The bar itself, without a navigator: the tab navigator draws it through `DsTabBar`, and the Player page (a screen
+ * above the tabs, drawn with the bar as in the design's screen 19) draws it directly.
+ */
+export const DsTabBarView = memo(function DsTabBarView({
+  activeRoute,
+  routes,
+  onPressTab,
+  onLongPressTab,
+  bottomInset,
+  tourTargets = false,
+}: DsTabBarViewProps) {
   const theme = useTheme();
-
-  const press = useCallback(
-    (routeName: string, routeKey: string, focused: boolean) => {
-      const event = navigation.emit({ type: 'tabPress', target: routeKey, canPreventDefault: true });
-      if (!focused && !event.defaultPrevented) {
-        navigation.navigate(routeName);
-      }
-    },
-    [navigation],
-  );
-
-  const longPress = useCallback(
-    (routeKey: string) => {
-      navigation.emit({ type: 'tabLongPress', target: routeKey });
-    },
-    [navigation],
-  );
-
   return (
     <View
       accessibilityRole="tablist"
@@ -108,28 +115,70 @@ export const DsTabBar = memo(function DsTabBar({ state, navigation, insets }: Bo
         backgroundColor: theme.colors.bottomNavBackground,
         borderTopWidth: 1,
         borderTopColor: theme.colors.bottomNavBorder,
-        paddingBottom: insets.bottom,
+        paddingBottom: bottomInset,
         flexDirection: 'row',
-        height: ds.size.tabBar + 1 + insets.bottom,
+        height: ds.size.tabBar + 1 + bottomInset,
       }}>
       {TABS.map((spec) => {
-        const index = state.routes.findIndex((route) => route.name === spec.route);
-        if (index < 0) {
+        if (!routes.includes(spec.route)) {
           return null;
         }
-        const route = state.routes[index]!;
-        const focused = state.index === index;
+        const focused = spec.route === activeRoute;
         return (
           <TabButton
             key={spec.route}
             spec={spec}
             focused={focused}
-            onPress={() => press(route.name, route.key, focused)}
-            onLongPress={() => longPress(route.key)}
+            onPress={() => onPressTab(spec.route, focused)}
+            onLongPress={() => onLongPressTab?.(spec.route)}
+            tourTarget={tourTargets}
             testID={`tab-${spec.label}`}
           />
         );
       })}
     </View>
+  );
+});
+
+/** Every tab of the bar, in order (for a bar drawn outside the navigator). */
+export const DS_TAB_ROUTES: readonly string[] = TABS.map((spec) => spec.route);
+
+export const DsTabBar = memo(function DsTabBar({ state, navigation, insets }: BottomTabBarProps) {
+  const routeNames = useMemo(() => state.routes.map((route) => route.name), [state.routes]);
+  const activeRoute = state.routes[state.index]?.name ?? '';
+
+  const press = useCallback(
+    (routeName: string, focused: boolean) => {
+      const route = state.routes.find((candidate) => candidate.name === routeName);
+      if (!route) {
+        return;
+      }
+      const event = navigation.emit({ type: 'tabPress', target: route.key, canPreventDefault: true });
+      if (!focused && !event.defaultPrevented) {
+        navigation.navigate(routeName);
+      }
+    },
+    [navigation, state.routes],
+  );
+
+  const longPress = useCallback(
+    (routeName: string) => {
+      const route = state.routes.find((candidate) => candidate.name === routeName);
+      if (route) {
+        navigation.emit({ type: 'tabLongPress', target: route.key });
+      }
+    },
+    [navigation, state.routes],
+  );
+
+  return (
+    <DsTabBarView
+      activeRoute={activeRoute}
+      routes={routeNames}
+      onPressTab={press}
+      onLongPressTab={longPress}
+      bottomInset={insets.bottom}
+      tourTargets
+    />
   );
 });

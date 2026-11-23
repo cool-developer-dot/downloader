@@ -16,6 +16,8 @@ export type PlayerTopBarProps = {
   onBack: () => void;
   onOpenOrientation: () => void;
   onToggleFullscreen: () => void;
+  /** P1: the ⋮ Video options menu (Stop, Jump to time, Frame by frame, Seek interval, Orientation). */
+  onOpenOptions?: () => void;
   /** A file opened from another app: "Save to VidoraX". Omitted for library videos. */
   save?: {
     state: 'idle' | 'saving' | 'saved';
@@ -32,6 +34,7 @@ export const PlayerTopBar = memo(function PlayerTopBar({
   onBack,
   onOpenOrientation,
   onToggleFullscreen,
+  onOpenOptions,
   save = null,
 }: PlayerTopBarProps) {
   const { t, rtl } = useTranslation();
@@ -101,6 +104,18 @@ export const PlayerTopBar = memo(function PlayerTopBar({
           }
           onPress={onToggleFullscreen}
         />
+        {onOpenOptions ? (
+          <IconButton
+            icon="dots-vertical"
+            size="medium"
+            variant="ghost"
+            color="inverse"
+            accessibilityLabel={t('videoPlayer.moreOptions')}
+            accessibilityHint={t('videoPlayer.moreOptionsHint')}
+            onPress={onOpenOptions}
+            testID="player-options"
+          />
+        ) : null}
       </Box>
     </View>
   );
