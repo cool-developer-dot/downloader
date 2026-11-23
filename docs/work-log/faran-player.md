@@ -78,3 +78,17 @@ JVM `QueueNavigationTest.kt` (Robolectric), `KeyCaptureTest.kt` (new key names).
 
 Note: Android consumes the first navigation key (Space, Enter, arrows) after a touch to leave touch mode, so after
 tapping the screen the first key press does nothing; this is the platform's behaviour for every app.
+
+## P16 Speed & pitch (#537, #538, #544, #736)
+
+| # | Feature | Where | How |
+| --- | --- | --- | --- |
+| #537 | Fine Speed Control | The speed sheet (1.0× chip, full-screen speed button, ⋮ → Playback → Playback speed) | Any speed from 0.25× to 4× on a 0.05 grid (`playback-rates.ts`: rejects, never clamps, anything else). − / + move 0.1 and keep the sheet open; TalkBack adjusts it with swipe up / down. The presets (0.5×–2×) stay one tap. |
+| #538 | Pitch Correction | Speed sheet → Natural voice (on) | expo-video's `preservesPitch`, which its Android player leaves off unless told: at 1.5× or 2× voices keep their pitch. |
+| #544 | Speed Shortcut | Speed sheet → Speed button | "Opens this list" (default, as before) or "Switches 1.0× ↔ 1.5×" (shortcut 1.25×–2×): one tap on the chip / button changes the speed and says it; a long press on the full-screen button, or ⋮ → Playback speed, opens the sheet. |
+| #736 | Per-book Speed | Speed sheet → Remember each video's speed (on) | Each video, audiobook or lecture opens at its own speed (MMKV, the latest 300; 1.0× is not stored). Online streams are never remembered. This also fixes a mismatch: the session showed 1.0× for the next video while the native player kept the previous one's speed — every video now starts at its own speed or 1.0×. |
+
+The Player's old speed list (`PlaybackSpeedSheet`) is replaced by `SpeedSheet`. Long-press 2× (P1 #545) is still a
+temporary rate on the player only: it never reaches the session's speed, the chip or the remembered speeds.
+
+Tests: `playback-rates.test.ts`, `speed-settings.test.ts`, `p16-speed.test.ts`.

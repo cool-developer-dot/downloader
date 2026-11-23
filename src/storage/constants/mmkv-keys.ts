@@ -88,6 +88,10 @@ export const mmkvKeys = {
   playerStreamQuality: 'vidorax.mmkv.player.streamQuality.v1',
   /** Faran's P15: headphones, headset buttons, volume and remote keys, showing over the lock screen (app-wide). */
   playerHeadsetKeys: 'vidorax.mmkv.player.headsetKeys.v1',
+  /** Faran's P16: pitch correction, remembering each video's speed, the speed button's one-tap shortcut (app-wide). */
+  playerSpeedSettings: 'vidorax.mmkv.player.speedSettings.v1',
+  /** Faran's P16 #736: each video's (or book's) own speed, `{ [mediaId]: { rate, at } }`, the most recent 300. */
+  playerSpeedPerVideo: 'vidorax.mmkv.player.speedPerVideo.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

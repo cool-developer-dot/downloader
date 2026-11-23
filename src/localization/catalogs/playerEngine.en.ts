@@ -61,4 +61,20 @@ export const playerEngineEn = {
   keysLockScreen: 'Show on lock screen',
   keysLockScreenSub:
     'When the phone locks while the Player is open, the video stays on the lock screen. Leaving the Player asks for your unlock.',
+  // P16 Speed & pitch
+  speedTitle: 'Playback speed',
+  speedSubtitle: 'Now {rate}',
+  speedFineA11y: 'Speed {rate}. Swipe up or down to change it by 0.1.',
+  speedSlower: 'Slower',
+  speedFaster: 'Faster',
+  speedPitch: 'Natural voice',
+  speedPitchSub: 'Keep voices at their normal pitch at any speed',
+  speedPerVideo: 'Remember each video’s speed',
+  speedPerVideoSub: 'For audiobooks and lectures: each one opens at its own speed. A new video starts at 1.0×.',
+  speedButton: 'Speed button',
+  speedButtonSheet: 'Opens this list',
+  speedButtonSwitch: 'Switches 1.0× ↔ {rate}',
+  speedButtonSwitchSub: 'One tap changes the speed. Long-press it, or ⋮ → Playback speed, for this list.',
+  speedShortcutA11y: 'Switch to {rate}',
+  speedSwitched: 'Speed {rate}',
 };

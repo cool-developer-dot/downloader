@@ -110,3 +110,15 @@ export async function requestDeviceUnlock(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * P16 #538: voices keep their pitch at any speed. expo-video's Android player leaves it uncorrected unless told (its
+ * own property, not a VidoraPlayer call).
+ */
+export function applyPitchCorrection(player: { preservesPitch: boolean }, on: boolean): void {
+  try {
+    player.preservesPitch = on;
+  } catch {
+    // A released player.
+  }
+}

@@ -26,6 +26,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { localizePlayerError, useTranslation, type TranslationKey } from '@/localization';
 import { completedActionErrorMessageKey } from '@/downloads/completed-file/action-errors';
 import {
+  formatPlaybackRateChip,
   formatPlaybackRateLabel,
   formatPlaybackTime,
   frameAt,
@@ -123,7 +124,7 @@ import { routePaths, tabRouteNames } from '@/navigation/constants';
 import { PlayerControls } from './components/PlayerControls';
 import { PlayerLockButton, PlayerLockedOverlay } from './components/PlayerLockControl';
 import { PlayerAdjustmentHud } from './components/PlayerAdjustmentHud';
-import { PlaybackSpeedSheet } from './components/PlaybackSpeedSheet';
+import { SpeedSheet } from './engine/SpeedSheet';
 import { OrientationSheet } from './components/OrientationSheet';
 import { PlayerTimeline } from './components/PlayerTimeline';
 import { PlayerTopBar } from './components/PlayerTopBar';
@@ -169,6 +170,7 @@ import { BookmarkNameModal } from './page/BookmarkNameModal';
 import { PlayerEditToolsSheets } from './page/PlayerEditToolsSheets';
 import { usePlayerEditTools } from './page/use-player-edit-tools';
 import { usePlayerEngine } from '@/player/engine/use-player-engine';
+import { getSpeedSettings, speedButtonTarget } from '@/player/engine/speed-settings';
 import { PlayerEngineSheets } from './engine/PlayerEngineSheets';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
@@ -740,6 +742,29 @@ const PlayerSessionView = memo(function PlayerSessionView({
     [bumpControls, setPlaybackRate],
   );
 
+  /** P16 #537: the speed sheet's − / + (the sheet stays open). */
+  const onAdjustSpeed = useCallback(
+    (rate: PlaybackRate) => {
+      setPlaybackRate(rate);
+      bumpControls();
+    },
+    [bumpControls, setPlaybackRate],
+  );
+
+  /** P16 #544: the 1.0× chip and the full-screen speed button — the speed sheet, or a one-tap switch to 1.0× / back. */
+  const onSpeedButton = useCallback(() => {
+    const target = speedButtonTarget(session.playbackRate, getSpeedSettings());
+    if (target == null) {
+      onOpenSpeed();
+      return;
+    }
+    endLongPress();
+    if (setPlaybackRate(target)) {
+      bumpControls();
+      announcePlayer(t('playerEngine.speedSwitched', { rate: formatPlaybackRateChip(target) }));
+    }
+  }, [bumpControls, endLongPress, onOpenSpeed, session.playbackRate, setPlaybackRate, t]);
+
   // ── P7 Playlists ───────────────────────────────────────────────────────────────────────────────────────────────
   // ⋮ → Tools → Add to playlist: the playing video into one of the user's playlists (src/playlists).
   const p7Playlists = usePlayerPlaylistAdd({ mediaId: activeMediaId, title: session.displayName, endLongPress });
@@ -1253,7 +1278,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       }
       switch (action) {
         case 'speed':
-          onOpenSpeed();
+          onSpeedButton();
           return;
         case 'rotate':
           endLongPress();
@@ -1303,7 +1328,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       endLongPress,
       notYet,
       onLock,
-      onOpenSpeed,
+      onSpeedButton,
       onRewind,
       openDisplaySheet,
       openFrameMode,
@@ -1488,6 +1513,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
     hud,
     volumeFallback: { level: session.volume, set: setVolume },
     leaveToDownloads,
+    playbackRate: session.playbackRate,
+    setPlaybackRate,
   });
   // P15 #703: over the lock screen, the options and the tab bar ask for the phone's unlock first.
   const { whenUnlocked } = engine.keys;
@@ -1842,7 +1869,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
                     />
                   ) : (
                     <Pressable
-                      onPress={onOpenSpeed}
+                      onPress={onSpeedButton}
+                      onLongPress={onOpenSpeed}
                       disabled={Boolean(session.error)}
                       accessibilityRole="button"
                       accessibilityLabel={t('player.playbackSpeedSelected', {
@@ -1980,10 +2008,11 @@ const PlayerSessionView = memo(function PlayerSessionView({
         body
       )}
 
-      <PlaybackSpeedSheet
+      <SpeedSheet
         visible={speedSheetOpen}
-        selectedRate={session.playbackRate}
+        rate={session.playbackRate}
         onSelect={onSelectSpeed}
+        onAdjust={onAdjustSpeed}
         onClose={onCloseSpeed}
       />
       <OrientationSheet

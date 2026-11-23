@@ -14,6 +14,7 @@ import type { PlayerVolumeState } from '../hooks/use-player-volume';
 import { applyTrackLimits } from './native-player';
 import type { PlayerEngineOption } from './types';
 import { useHeadsetKeys, type HeadsetKeys, type PlayerKeyHandlers } from './use-headset-keys';
+import { useSpeedEngine } from './use-speed-engine';
 import { useStreamEngine, type StreamQualitySheetState } from './use-stream-engine';
 
 export { streamCapLabel } from './use-stream-engine';
@@ -35,6 +36,9 @@ export type UsePlayerEngineInput = {
   volumeFallback: { level: number; set: (level: number) => void };
   /** Leaves the Player for the Downloads tab (the video carries on in the mini player). */
   leaveToDownloads: () => void;
+  /** P16: the session's speed, and how to set it (the session's own, so the chip and the notification follow). */
+  playbackRate: number;
+  setPlaybackRate: (rate: number) => boolean;
 };
 
 export type PlayerEngineSheets = {
@@ -84,6 +88,15 @@ export function usePlayerEngine(input: UsePlayerEngineInput): PlayerEngine {
     hud: input.hud,
     volumeFallback: input.volumeFallback,
   });
+  // P16
+  useSpeedEngine({
+    player,
+    mediaId: input.mediaId,
+    isReady,
+    playbackRate: input.playbackRate,
+    setPlaybackRate: input.setPlaybackRate,
+  });
+
   const [headsetKeysOpen, setHeadsetKeysOpen] = useState(false);
   const openHeadsetKeys = useCallback(() => setHeadsetKeysOpen(true), []);
   const closeHeadsetKeys = useCallback(() => setHeadsetKeysOpen(false), []);

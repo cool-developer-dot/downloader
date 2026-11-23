@@ -14,6 +14,7 @@ import './p9-library-stats';
 import './p10-edit-tools';
 import './p14-streams';
 import './p15-headset-keys';
+import './p16-speed';
 
 export {
   playerOptions,
