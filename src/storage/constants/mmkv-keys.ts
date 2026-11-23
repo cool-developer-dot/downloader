@@ -80,6 +80,10 @@ export const mmkvKeys = {
   playerGestures: 'vidorax.mmkv.player.gestures.v1',
   /** P8 #692: the Player's customized controls, `{ [group]: { order, hidden } }`, app-wide. */
   playerControlsLayout: 'vidorax.mmkv.player.controlsLayout.v1',
+  /** P9 #687: Disable History — while true nothing is added to watch history, Continue watching or play counts. */
+  playerDisableHistory: 'vidorax.mmkv.player.disableHistory.v1',
+  /** P9 #628: library folders hidden from the Library (folder ids; `unfiled` for videos in no folder). */
+  libraryExcludedFolders: 'vidorax.mmkv.library.excludedFolders.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

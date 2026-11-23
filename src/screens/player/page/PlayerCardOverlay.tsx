@@ -37,6 +37,8 @@ export type PlayerCardOverlayProps = {
   /** P5 #541: the A-B repeat points on the bar, and its clear button. */
   loopMarkers?: { a: number | null; b: number | null } | null;
   onClearLoop?: () => void;
+  /** P9 #705: the video's bookmarks on the bar (small dots). */
+  bookmarkMarkers?: readonly number[] | null;
 };
 
 /** Icon sizes measured on screen 19: 22.6 dp tall solid ⏮ ⏸ ⏭, 2.7 dp strokes, 51 dp apart. */
@@ -72,6 +74,7 @@ export const PlayerCardOverlay = memo(function PlayerCardOverlay({
   onSeekCancel,
   loopMarkers = null,
   onClearLoop,
+  bookmarkMarkers = null,
 }: PlayerCardOverlayProps) {
   const theme = useTheme();
   const { t, rtl } = useTranslation();
@@ -187,6 +190,7 @@ export const PlayerCardOverlay = memo(function PlayerCardOverlay({
           onSeekCancel={onSeekCancel}
           loopMarkers={loopMarkers}
           onClearLoop={onClearLoop}
+          bookmarkMarkers={bookmarkMarkers}
         />
       </View>
     </View>

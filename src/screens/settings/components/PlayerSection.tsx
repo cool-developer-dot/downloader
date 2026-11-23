@@ -2,6 +2,7 @@ import { memo, useCallback } from 'react';
 
 import { Switch } from '@/components/inputs/Switch';
 import { useTranslation } from '@/localization';
+import { setWatchHistoryPaused, useWatchHistoryPaused } from '@/playback/history-pause-preference';
 import { selectBackgroundPlayback, useSettingsStore } from '@/store/settings';
 
 import { SettingsRow } from './SettingsRow';
@@ -12,7 +13,10 @@ export type PlayerSectionProps = {
   testID?: string;
 };
 
-/** How the player behaves: background play (with a media notification), off by default. */
+/**
+ * How the player behaves: background play (with a media notification), off by default; P9 #687: Disable History
+ * ("Don't save watch history"), off by default.
+ */
 export const PlayerSection = memo(function PlayerSection({
   disabled = false,
   testID = 'settings-player',
@@ -22,6 +26,8 @@ export const PlayerSection = memo(function PlayerSection({
   const onValueChange = useCallback((value: boolean) => {
     useSettingsStore.getState().updateSetting('backgroundPlayback', value);
   }, []);
+  // P9 #687 Disable History (also ⋮ → Playback in the Player).
+  const historyPaused = useWatchHistoryPaused();
 
   return (
     <SettingsSection
@@ -43,8 +49,24 @@ export const PlayerSection = memo(function PlayerSection({
             testID="settings-background-playback-switch"
           />
         }
-        showDivider={false}
         testID={`${testID}-background-playback`}
+      />
+      <SettingsRow
+        title={t('libraryStats.disableHistory')}
+        description={t('libraryStats.disableHistoryHint')}
+        icon="eye-off-outline"
+        trailing={
+          <Switch
+            value={historyPaused}
+            onValueChange={setWatchHistoryPaused}
+            disabled={disabled}
+            accessibilityLabel={t('libraryStats.disableHistory')}
+            accessibilityHint={t('libraryStats.disableHistoryHint')}
+            testID="settings-disable-history-switch"
+          />
+        }
+        showDivider={false}
+        testID={`${testID}-disable-history`}
       />
     </SettingsSection>
   );

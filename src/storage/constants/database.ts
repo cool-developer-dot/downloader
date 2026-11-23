@@ -11,8 +11,10 @@ export const DATABASE_NAME = 'vidorax.db';
  * v8 (B17): saved (offline) pages (`applyBrowserTables` → saved-pages-schema; a new table only).
  * v9 (P7): playlists and their videos (`applyPlaylistTables` → playlist-schema; new tables only, app database only —
  * not part of `applyBrowserTables`, so browser-profile databases never get them).
+ * v10 (P9): play counts and video bookmarks (`applyLibraryStatsTables` → library-stats-schema; new tables only, app
+ * database only, like v9).
  */
-export const DATABASE_VERSION = 9;
+export const DATABASE_VERSION = 10;
 
 export const TABLE_NAMES = {
   browserHistory: 'browser_history',
@@ -43,6 +45,9 @@ export const TABLE_NAMES = {
   // P7 (Hamza)
   playlists: 'playlists',
   playlistItems: 'playlist_items',
+  // P9 (Hamza): `bookmarks` is the browser's, so video bookmarks have their own name.
+  mediaPlayStats: 'media_play_stats',
+  videoBookmarks: 'video_bookmarks',
 } as const;
 
 export const RECENT_SEARCH_LIMIT = 50;

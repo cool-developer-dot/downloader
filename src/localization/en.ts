@@ -68,6 +68,7 @@ import { sourceCheckEn } from './catalogs/sourceCheck.en';
 import { archiveImportEn } from './catalogs/archiveImport.en';
 import { settingsViewEn } from './catalogs/settingsView.en';
 import { playlistsEn } from './catalogs/playlists.en';
+import { libraryStatsEn } from './catalogs/libraryStats.en';
 
 export const en = {
   common: {
@@ -2980,4 +2981,7 @@ export const en = {
   settingsView: settingsViewEn,
   // P7 Playlists (Hamza): the user's own playlists (`lightPlaylist` is Playlist Download)
   playlists: playlistsEn,
+  // P9 Library stats & bookmarks (Hamza): play counts, Most played, length filter, hidden folders, Quick Delete,
+  // Disable History, video bookmarks (the browser's bookmarks are `browserBookmarks`)
+  libraryStats: libraryStatsEn,
 } as const;

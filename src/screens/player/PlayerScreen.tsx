@@ -161,6 +161,10 @@ import { SwipeSeekHud } from './components/SwipeSeekHud';
 import { CustomizeControlsSheet } from './page/CustomizeControlsSheet';
 import { GestureSensitivitySheet, GesturesSheet } from './page/GestureSheets';
 import { fullscreenDockButtons, fullscreenTopButtons, fullscreenVideoButtons } from './page/player-controls-customize';
+// P9 Library stats & bookmarks: Disable History, video bookmarks (sheet, name dialog, timeline dots), Quick Delete.
+import { usePlayerLibraryStats } from './page/use-player-library-stats';
+import { VideoBookmarksSheet } from './page/VideoBookmarksSheet';
+import { BookmarkNameModal } from './page/BookmarkNameModal';
 
 /** The bar's tabs as paths: pressing one on the Player page leaves the Player (into the mini player) for that tab. */
 const TAB_PATHS: Readonly<Record<string, string>> = {
@@ -735,6 +739,29 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const p7Playlists = usePlayerPlaylistAdd({ mediaId: activeMediaId, title: session.displayName, endLongPress });
   // ── end P7 ─────────────────────────────────────────────────────────────────────────────────────────────────────
 
+  // ── P9 Library stats & bookmarks ───────────────────────────────────────────────────────────────────────────────
+  // ⋮ → Playback → Don't save watch history (#687); ⋮ → Tools → Add bookmark / Bookmarks (#705, dots on the timeline)
+  // and Delete video (#726: the Library's delete, then the next video or the Player closes). Play counts (#708) are
+  // counted app-wide from the playback events (src/library/ensure-library-stats.ts), not here.
+  const p9 = usePlayerLibraryStats({
+    mediaId: activeMediaId,
+    title: session.displayName,
+    player,
+    controller,
+    positionSeconds: session.positionSeconds,
+    durationSeconds: session.durationSeconds,
+    ready: session.isReady && !session.error,
+    beginSeekPreview,
+    commitSeekPreview,
+    bumpControls,
+    endLongPress,
+    sessionKey,
+    restorePresentation,
+    router,
+  });
+  const closeP9Sheets = p9.closeSheets;
+  // ── end P9 ─────────────────────────────────────────────────────────────────────────────────────────────────────
+
   const anyModalOpen =
     speedSheetOpen ||
     orientationSheetOpen ||
@@ -747,7 +774,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
     loopNaming != null ||
     queueSheetOpen ||
     p7Playlists.sheetOpen ||
-    p8Sheet != null;
+    p8Sheet != null ||
+    p9.sheetOpen;
 
   const onSingleTap = useCallback(() => {
     if (anyModalOpen || session.isSeeking) {
@@ -827,9 +855,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
     setLoopNaming(null);
     setQueueSheetOpen(false);
     setP8Sheet(null);
+    closeP9Sheets();
     setFrameMode(false);
     setLocked(true);
-  }, [hud, endLongPress, setLocked]);
+  }, [hud, endLongPress, setLocked, closeP9Sheets]);
   const onUnlock = useCallback(() => {
     setLocked(false);
     showControls();
@@ -1439,6 +1468,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       nextEpisodePrompt: queueCtx.nextEpisodePrompt,
     },
     playlists: p7Playlists.option,
+    p9: p9.option,
     gestures: {
       enabled: gestureSettings.enabled,
       sensitivity: gestureSettings.sensitivity,
@@ -1574,6 +1604,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
                 previewFrame={seekPreview.frame}
                 loopMarkers={repeat.markers}
                 onClearLoop={repeat.clear}
+                bookmarkMarkers={p9.markers}
                 onSeekStart={onSeekStart}
                 onSeekChange={updateSeekPreview}
                 onSeekCommit={onSeekCommit}
@@ -1725,6 +1756,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
             onSeekCancel={onSeekCancel}
             loopMarkers={repeat.markers}
             onClearLoop={repeat.clear}
+            bookmarkMarkers={p9.markers}
           />
           {session.isSeeking ? null : (
             <Box row style={styles.dockActions}>
@@ -2074,6 +2106,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
         onReset={resetControlsLayout}
         onClose={closeP8Sheet}
       />
+      {/* P9 #705: the video's bookmarks, and a bookmark's name (adding or renaming). */}
+      <VideoBookmarksSheet {...p9.listSheet} />
+      <BookmarkNameModal {...p9.nameModal} />
     </SafeAreaScreen>
   );
 });

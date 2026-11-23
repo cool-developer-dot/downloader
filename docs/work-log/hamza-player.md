@@ -968,3 +968,165 @@ seek. `resolveSwipeAxis` / `lockSwipeAxis` follow the gesture handler's order (a
 11. **Edge swipes with gesture navigation:** a sideways swipe starting within about 24 dp of the left or right edge.
     Check it in the landscape stage (system bars showing: does Back close the Player instead of seeking?) and in
     immersive full screen (the system bars come back). Then check a swipe starting a little further in: it seeks.
+
+## P9 — Library stats & bookmarks (#708, #626, #711, #628, #726, #687, #705)
+
+Built from `hamza/player` at P8 (`1ba7714`) in its own worktree, on the local branch `wip/P9-library-stats`, while P10
+was built in parallel from the same base. **Its PR depends on P8 (#47).** **P9 bumps the SQLite schema once, 9 → 10**
+(see Schema). No native change, no new dependency or permission; none of Faran's files.
+
+### What the user sees
+
+| # | Feature | Where | How (evidence) |
+| --- | --- | --- | --- |
+| #708 | Play Count | Download details → Info: "Played · 3 times", "Last played"; the Library's long-press menu line ("Open, share, save, or delete · Played 3 times") | **A play counts once per session, after 30 s of the video actually played, or, for a video shorter than 30 s, when it was watched to its end (its length minus 1 s).** "Actually played" is the position moving forward between two of the Player's playback events by at most 3 s (they come about once a second, so 2× speed is about 2.1 s); a seek forward or back is a jump and adds nothing. `paused`, `completed` (at the video's end) and `playerExited` are samples too, so "pause, seek, resume" is also a jump. A session runs from `playbackStarted` (or the video's first event) to `playerExited` or another video's events; the mini player is the same session; Replay and Repeat one don't start a new one, so a looping video counts once. Unknown length: the 30 s rule; when it ends, where it ended is its length. Not counted: streams, files another app opened, and anything while Disable History is on. It listens app-wide to `subscribePlaybackEvents` (`src/player/playback-events.ts`), so nothing in the Player or its session code changed. Evidence: `src/library/play-count.ts` (`createPlayCountTracker`, `playCountReached`), `src/library/ensure-library-stats.ts`, `src/storage/repositories/library-stats.queries.ts` (`recordPlay`), `src/screens/downloads/components/DownloadPlayCountRows.tsx`, `LibraryScreen.tsx` (the menu line). |
+| #626 | Most Played | Library → Sort → **Most played** | A Library sort (`LIBRARY_SORTS` gains `most_played`; the sort sheet lists it last). Play count first; ties by the last counted play, then the last time played at all, then the newest download; never-played videos after every played one. It is part of `applyLibraryQuery`, so it combines with the filters, Quality, the length filter, hidden folders and search. Evidence: `src/library/query.ts` (`sortLibraryItems(items, sort, playCounts?)`), `src/library/library-stats-store.ts` (`playCounts`), `library.constants.ts`, `LibraryHeaderControls.tsx` (`SORT_LABEL_KEYS`). |
+| #711 | Duration Filter | Library: a **length chip** after Sort ("Any length", "Under 5 min", "5 to 20 min", "20 to 60 min", "60 min or more") | Its own dimension (a store field, not a `LibraryFilter` value), so it combines with Favorites, Folder, Quality, Most played and search. Buckets include their lower end, on whole seconds (floored, as the Player shows the time): exactly 5:00 is "5 to 20", 20:00 is "20 to 60", 60:00 is "60 min or more"; 4:59.9 is "under 5". **A video whose length isn't known shows only under Any length** (the sheet says so). Reset clears it; it isn't remembered, like the other filters. Evidence: `src/library/duration-buckets.ts`, `query.ts` (`applyLibraryQuery`), `library-stats-store.ts` (`loadLibraryDurations`), `useLibraryScreen.ts`, `LibraryHeaderControls.tsx`. |
+| #628 | Include/Exclude Folders | Library → Filter → **Include / exclude folders** (last row; "(2 hidden)" when some are) | A sheet with one switch per folder, "Unfiled / Downloads" first; on = shown. Hidden folders leave the Library list, Most played, search and the Library's Continue watching row. **Choosing a hidden folder in the Folder filter still shows it** (the user asked for that folder). Remembered in MMKV (`libraryExcludedFolders`). It never deletes, moves or re-files a video. When hidden folders leave the list empty, it reads "No videos found" (not "No downloads yet"). Evidence: `src/library/folder-exclusion.ts`, `query.ts`, `library-stats-store.ts` (`setLibraryFolderHidden`), `src/screens/library/components/LibraryFolderVisibilitySheet.tsx`, `useLibraryScreen.ts`, `LibraryHeaderControls.tsx`. |
+| #726 | Quick Delete | Player: ⋮ → Tools → **Delete video** (90) | A confirm ("Delete “…” from VidoraX?"; it says whether the next video plays or the Player closes), then **the Library's own delete**, `deleteCompletedFileFromVidoraX` (loaded the same way). Then the next video in the queue plays (`queueNeighbours`, the play order, shuffle included) and the deleted one leaves the queue through P6's `removeFromPlayQueue`; with no next video the session is closed (so the mini player doesn't go on with a deleted file) and the Player closes. A failed delete says "Unable to delete this download" and the video stays. **Offered only for a finished library video**: hidden for gallery videos, files another app opened, streams and videos still downloading. Evidence: `src/player/quick-delete.ts`, `src/screens/player/page/use-player-library-stats.ts`, `src/player/options/p9-library-stats.ts`. |
+| #687 | Disable History | Player: ⋮ → Playback → **Don't save watch history** (200, a switch); Settings → Player | **While on, nothing new is recorded: no Watch history entry, no Continue watching, no resume point and no play count.** What was recorded before stays until the user clears it. The gate is in `src/playback/bind-playback-persistence.ts` (not Faran's): its listener drops the event before the coordinator, which is the only writer of the playback records that Watch history, Continue watching, Home's lists, the Library's "Recently watched" and resume all read. The play counter has its own gate. Off by default; MMKV `playerDisableHistory`. Evidence: `src/playback/history-pause-preference.ts`, `bind-playback-persistence.ts` (`isHistoryPaused`), `src/library/play-count.ts`, `src/screens/settings/components/PlayerSection.tsx`. |
+| #705 | Video Bookmarks | Player: ⋮ → Tools → **Add bookmark** (40), **Bookmarks** (45; its value is how many); dots on the timeline | **Add** takes the time playing now (the player's own clock) and asks for an optional name ("At 1:23"). **The list** (a bottom sheet) is by time, each row the name or the time; tap one to jump to it (the session's exact seek), ✎ renames it (empty: back to the time), the bin deletes it after a confirm. "Add a bookmark at 1:23" is at the top. Positions are whole milliseconds inside 0 … the length; names up to 80 characters, Urdu kept; up to 100 per video. **The timeline shows each bookmark as a small amber dot with a dark rim**, on the card's bar and the full-screen dock, separate from P5's A-B ticks. For library and phone videos, not for files another app opened or streams. A video deleted from the library takes its bookmarks and play count with it. Evidence: `src/player/video-bookmarks.ts`, `video-bookmarks-store.ts`, `library-stats.queries.ts`, `src/screens/player/page/VideoBookmarksSheet.tsx`, `BookmarkNameModal.tsx`, `components/TimelineBookmarkMarks.tsx`, `PlayerTimeline.tsx` / `PlayerCardOverlay.tsx` (`bookmarkMarkers`). |
+
+### Schema (DATABASE_VERSION 9 → 10)
+
+One bump, in `src/storage/constants/database.ts`: `DATABASE_VERSION = 10`, a v10 line in the comment above it, and
+`TABLE_NAMES.mediaPlayStats` / `TABLE_NAMES.videoBookmarks`. The DDL is in `src/storage/sqlite/library-stats-schema.ts`
+(`applyLibraryStatsTables`):
+
+```sql
+CREATE TABLE IF NOT EXISTS media_play_stats (
+  media_id TEXT PRIMARY KEY NOT NULL,
+  play_count INTEGER NOT NULL DEFAULT 0,
+  last_played_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS video_bookmarks (
+  id TEXT PRIMARY KEY NOT NULL,
+  media_id TEXT NOT NULL,
+  position_ms INTEGER NOT NULL,
+  name TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_video_bookmarks_media ON video_bookmarks(media_id, position_ms);
+```
+
+**How it runs**
+- Upgrade: `migrateDatabase` has `if (currentVersion < 10) { await applyLibraryStatsTables(db); PRAGMA user_version = 10 }`.
+- Fresh install: `applySchema` calls `applyLibraryStatsTables` before it sets the version.
+- Both only create new tables (`IF NOT EXISTS`). No table is altered and no row is touched, so running it twice changes
+  nothing. App database only, like P7: not part of `applyBrowserTables`; `BROWSER_PROFILE_DATABASE_VERSION` unchanged.
+
+**Why a new table for play counts, not columns on `downloads_catalog`**
+- `downloads_catalog` doesn't hold every library video. Only the older store path writes it
+  (`persistDownloadCatalogItem` in `src/store/downloads/actions.ts`). The v2 engine's videos come in through
+  `applyEngineEntries` / `reduceEngineEntries`, which never write the catalog; their rows live in the native library
+  database. Phone videos (`device:<MediaStore id>`) are never in it.
+- So `media_play_stats` is keyed by the media id the Player plays, whatever its source. `play_count` and
+  `last_played_at` are the two asked-for columns; `recordPlay` is `INSERT … ON CONFLICT(media_id) DO UPDATE SET
+  play_count = play_count + 1, last_played_at = excluded.last_played_at`.
+- `video_bookmarks`, because `bookmarks` is the browser's (`TABLE_NAMES.bookmarks`). `media_id` is plain text in both
+  tables, never a foreign key (as P7's `playlist_items`). The index serves "this video's bookmarks, by time".
+
+**The upgrade test** builds a v9 phone (fresh migrate, drop every table that isn't a v9 one, `user_version = 9`) and
+puts one real row in **every** table it has, P7's `playlists` and `playlist_items` included. The 21 v9 tables are a
+list frozen in the test, so P11's tables won't enter it; the test checks that `sqlite_master` lists exactly those and
+that each has a row. It snapshots every row, migrates, checks the version, the new tables (empty) and every old row
+unchanged, then runs the migration and the DDL again.
+
+### Decisions
+
+- **Lengths for #711.** Today every Library item's `duration` is null: `useLibraryScreen` assembles with `remoteById:
+  {}`, and `enrichLibraryWithPlayback` never sets it. The native library row has `durationMs` (MediaMetadataRetriever
+  when the file is added), but `projectV2Download` drops it. P9 doesn't change the projection (its tests compare
+  projected rows). Instead, while a length filter is chosen, `loadLibraryDurations` asks the engine
+  (`getLibraryItems`, 200 ids at a time, once per video per run) for the videos with no length, and the playback
+  record's length is the fallback. **In practice:** v2 library videos get a length (null only when the file's metadata
+  can't be read); older (v1) downloads the engine doesn't own get one only once they've been played. I can't count them
+  without a device. Unknown lengths show only under Any length.
+- **Play counts are counted app-wide** (`ensureLibraryStats` at startup, next to the playback persistence binder), not
+  in a Player-screen hook, because the session keeps playing in the mini player after the Player closes.
+- **Video time, not wall time:** at 2× speed, 30 s of the video takes 15 s.
+- **Disable History and resume points:** not recorded while on (they feed Continue watching), as suggested. A video
+  watched while it is on resumes from the point saved before, if any. **Not gated:** P6's play queue (its last video,
+  so the mini player can come back after a restart) and per-video settings (fit, subtitles, loops). They are settings,
+  not history.
+- **The play count shows in Download details → Info** (the video's details) and in the Library's long-press menu line,
+  because the Library has no details screen of its own. Phone videos (`device:` ids) are counted and stored too, but
+  nothing shows their count yet (they have no details screen); Most played covers the Library, which has only
+  downloads.
+- **Gallery videos can't be deleted from the Player.** The app's delete (`deleteCompletedFileFromVidoraX`) only deletes
+  VidoraX's own downloads, and `GalleryCopyRemoval.kt`'s `createDeleteRequest` only removes copies VidoraX recorded
+  making. Deleting any other gallery video would need new native code, so the action is hidden for `device:` ids.
+- **Hidden folders and the header count:** the Library header's "48 videos" still counts every playable video
+  (`playableCount` keeps its meaning). The folder sheet is under Filter, where screen 18 puts "Include / exclude
+  folders"; Settings has no folder list.
+- **Bookmarks under Tools** (screen 25 is "Player settings" and draws none). Up to 100 per video. Deleting asks first,
+  like P5's saved loops.
+- **Strings:** a new `libraryStats` namespace (`catalogs/libraryStats.en.ts` / `.ur.ts`), so `videoPlayer.*` and
+  `library.*` are untouched. "Unable to delete this download" is the Library's existing `library.deleteFailed`.
+- **MMKV keys** `playerDisableHistory` and `libraryExcludedFolders` (both `.v1`) are added at the end of `mmkvKeys`.
+
+### Files
+
+- Logic (unit-tested): `src/library/play-count.ts`, `duration-buckets.ts`, `folder-exclusion.ts`, `query.ts` (Most
+  played, the length filter, hidden folders), `types.ts` (`most_played`, optional `LibraryQueryInput` fields,
+  `LibraryPlayCount`); `src/player/video-bookmarks.ts`, `quick-delete.ts`;
+  `src/storage/repositories/library-stats.queries.ts`; `src/storage/sqlite/library-stats-schema.ts`;
+  `src/playback/bind-playback-persistence.ts` (the `isHistoryPaused` gate).
+- Storage: `src/storage/constants/database.ts` (v10, table names), `sqlite/schema.ts` (`applySchema`),
+  `sqlite/migrations.ts` (the v10 block), `repositories/library-stats.repository.ts`, `constants/mmkv-keys.ts`.
+- Runtime: `src/library/ensure-library-stats.ts` (+ two lines in `src/bootstrap/app-initializer.ts`),
+  `library-stats-store.ts`, `src/player/video-bookmarks-store.ts`, `src/playback/history-pause-preference.ts`.
+- Player: `src/player/options/p9-library-stats.ts` (+ one import in `index.ts`), `player-options.ts` (the optional `p9`
+  field), `src/screens/player/page/use-player-library-stats.ts`, `VideoBookmarksSheet.tsx`, `BookmarkNameModal.tsx`,
+  `components/TimelineBookmarkMarks.tsx`, `components/PlayerTimeline.tsx` and `page/PlayerCardOverlay.tsx` (optional
+  `bookmarkMarkers`). In `PlayerScreen.tsx`: the fenced `// ── P9 Library stats & bookmarks ──` block, three imports,
+  one token in `anyModalOpen`, one call in `onLock`, one context line, two timeline props and the two sheets.
+- Library: `LibraryScreen.tsx` (the props, the folder sheet, the menu line), `hooks/useLibraryScreen.ts` (a fenced P9
+  section, the query fields, Continue watching, `filterActive`, `controlsDirty`, Reset),
+  `components/LibraryHeaderControls.tsx` (the length chip and sheet, the folder row, the sort label),
+  `components/LibraryFolderVisibilitySheet.tsx`, `constants/library.constants.ts` (the sort option).
+- Elsewhere: `src/screens/settings/components/PlayerSection.tsx` (the switch),
+  `src/screens/downloads/DownloadDetailsScreen.tsx` (one line in Info) + `components/DownloadPlayCountRows.tsx`.
+- Strings: 54 new `libraryStats.*` keys (English and Urdu), in a new catalog wired into `en.ts` / `ur.ts`.
+
+### Gate
+
+| Check | Result |
+| --- | --- |
+| `npm run typecheck` | 0 errors |
+| Unit tests | 2352 / 2352 on `1ba7714` + P9 (2295 / 2295 before; 57 new: `library-stats.queries.test.ts` 14 — fresh install, a v9 upgrade with a row in all 21 tables, idempotent, not in a browser-profile database, play counts, bookmark operations; `play-count.test.ts` 14; `library-stats-query.test.ts` 13 — buckets and their boundaries, hidden folders, Most played, all combined; `video-bookmarks.test.ts` 5; `quick-delete.test.ts` 3; `history-pause.test.ts` 2; `options/p9-library-stats.test.ts` 6) |
+| `npm run lint` | 0 errors; 91 warnings, none new (the two in `LibraryHeaderControls.tsx` / `useLibraryScreen.ts` are older) |
+| Against `1ba7714` | `git diff --check` clean; none of Faran's files; nothing under `transfer/` or `engine/`; `package.json` / lockfile, `android/`, `modules/`, manifests, `app.json` unchanged; no new dependency or permission |
+| Schema | `DATABASE_VERSION` 9 → 10, once; `BROWSER_PROFILE_DATABASE_VERSION` unchanged |
+| Media3 | `1.9.0`, unchanged |
+
+### Device checks for Faran (release build; not possible here)
+
+1. **Upgrade.** Install the P8 build (database v9) with downloads, folders, bookmarks, notes, a saved page and a
+   playlist, then this build: everything is still there. Check a fresh install too.
+2. **Play count.** Watch a long video for 30 s (no seeking): Download details → Info says "Played · Once", and the
+   Library's long-press menu line says "Played once". Open another and only seek around (less than 30 s actually
+   played): no count. A 10 s clip played to the end counts; a seek to its end doesn't. 2× speed: counted after about
+   15 s. Repeat one: one count per opening. Close into the mini player and keep watching: still one.
+3. **Most played.** Library → Sort → Most played: the most-played first, never-played last; together with Favorites, a
+   folder, a length and a search.
+4. **Length filter.** The chip and its five choices; videos right at 5:00, 20:00 and 60:00; downloads from before v2
+   that were never played (they show only under Any length). How many videos lack a length on a real library?
+5. **Hidden folders.** Filter → Include / exclude folders: hide a folder and Unfiled; the Library, Most played, search
+   and Continue watching leave them out; Folder → that folder still shows it; close and reopen the app: kept. Files and
+   folder assignments are unchanged.
+6. **Quick delete.** ⋮ → Tools → Delete video, in a queue: confirm → the next video plays, and the deleted one is gone
+   from the Library and the queue. The last video in the queue (and a video opened alone): the Player closes, and no
+   mini player stays. Cancel changes nothing. Hidden for a gallery video, a file from another app, a stream and a
+   video still downloading.
+7. **Disable History.** Turn it on (⋮ → Playback, or Settings → Player): watch a new video and an old one; Watch
+   history, Continue watching, Home and play counts don't change, and the old video resumes from its earlier point.
+   Turn it off: recorded again.
+8. **Bookmarks.** Add with and without a name, in Urdu too; the list is by time; tap one to jump; rename (and clear the
+   name); delete with the confirm. The dots on the card's bar and the full-screen dock, next to an A-B loop. Close and
+   reopen: kept. Delete the video: its bookmarks go.
+9. **TalkBack:** the bookmark rows (jump) and their ✎ / bin buttons are separate; the folder switches read the folder's
+   name.
+10. **Themes and Urdu.** All six themes, and Urdu (right to left): the length chip and sheet, the folder sheet, the
+    bookmark sheet and name dialog, the confirms, the Settings row.
