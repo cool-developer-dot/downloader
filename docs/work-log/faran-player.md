@@ -219,3 +219,26 @@ check icon. Like the other choice sheets (stream quality, volume keys, audio tra
 | A player's native parts go with it | `useVideoPlayer` releases the player in its own unmount cleanup, before the session's `releasePlayer` call ran, so every switch logged `engine_call_failed` and the audio effects were never released explicitly. A third expo-video hook, `VideoPlayerHooks.onRelease` (`scripts/patch-expo-video.js`), runs on the main thread just before the ExoPlayer is released; the module drops the effects, countdown and session player there. JavaScript marks the player in a layout-effect cleanup and skips it from then on. | EQ on, mini player closed: no failed calls, `audio_flinger` shows no effects left; switching videos logs nothing |
 | P18 runs with the session | The countdown, counting and the limit lived in the Player screen's view: leaving it for the mini player cancelled the countdown and let Play go past the limit. `useSleepLimitSession` now runs in PlayerSessionHost's runner (full Player, mini player, screen off); the limit sheet and Kid Lock's keys stay on the screen (`useSleepLimitsView`). | At the limit, Play in the mini player is refused at once with the toast; "End of this video" stops at the end and the timer turns Off |
 
+
+## Integration 2 (Hamza's P13, the P6 fix and the review items, 2026-11-24)
+
+Merged into `integration/player`: Hamza's P13 Chromecast (#59), the P6 trace and tests (#60) and handover 2 (#61).
+Malware scan clean (no `init` file, no package.json or config change; long lines are doc tables). The Cast SDK adds no
+permission: the release APK's 38 permissions are the same as 1.2.0's.
+
+| Change | Why | Device check |
+| --- | --- | --- |
+| P6 fix: the end of a video counts only once it is loaded (`isRealPlayToEnd`) | Root cause of #60's "Up next restarts the same video", found with the `[P6-DEVNEXT]` lines on a release build: a new session's empty player reports an end before the video loads, and P5's end of playback acted on it (with Auto Play Next or Repeat all on, a video that had just opened moved on to the next one; Repeat one restarted it). See `docs/work-log/p6-device-next-trace.md`. The logger is removed. | Auto Play Next on: opening two-audio.mp4 from Device videos plays two-audio.mp4 (before: it jumped to left-only.mp4, then quiet.mp4 from the start) |
+| Repeat, Auto Play Next and ⏭ / ⏮ in the mini player | They ran only in the full Player: a queue stopped after one video in the mini player, and the notification's ⏭ / ⏮ did nothing there (Hamza's open decision 8). The session runner now makes the same end decision while no full Player shows the session (`session-end-of-playback.ts`), moves through the queue on ⏭ / ⏮ (`session-queue-commands.ts`), sets the notification's buttons for the video's place in the queue, and starts the video it moved to even with the app in the background. The A-B loop and the Next Episode card stay with the screen. | Auto Play Next on, two-audio.mp4 ends in the mini player: left-only.mp4 plays there; the notification's ⏭ / ⏮ move through the queue |
+| P13: the phone's notification goes while a TV plays the video | While casting, the phone's player waits paused, and its notification and lock-screen controls would drive that paused player, not the TV (logged by Hamza in #59). The background session is off while this session's video is cast. | Can't be checked without a Cast device; unit-tested by the cast store's `isCastingMedia` |
+
+Decisions on #59's open items:
+- **Streams that need the website's headers** are not cast (Hamza's rule stays). A proxy in the P14 stream files isn't worth it.
+- **Google's logging libraries:** the Cast SDK sends anonymous logs of interactions with Cast devices to Google, and
+  neither the app nor the user can opt out
+  ([Cast SDK data disclosure](https://developers.google.com/cast/docs/android_sender/data_disclosure)). VidoraX
+  sends nothing itself. Kept, but **the Play Console's Data safety form must be updated before a release with P13**.
+- **Not checked here:** a real Cast session (no Chromecast on this network). Hamza's device checks 128–144 need one.
+
+Checks on the merged code: type check clean, lint 0 errors, JS tests all pass, native 1252 + 178 tests pass, release
+build OK.
