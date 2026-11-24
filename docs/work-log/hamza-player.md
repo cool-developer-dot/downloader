@@ -1768,3 +1768,76 @@ used `Presentation` the same way). The GIF encoder is the app's own code; no GIF
     there).
 17. **Six themes and Urdu (right to left):** the three sheets, the picker, the progress sheet and the dialog; TalkBack
     reads the chips, the ↑ / ↓ / ✕ buttons and the picker's "Adds it to the merge".
+
+## P13 — Chromecast (#667)
+
+Faran's rules: the Cast SDK from Google's Maven, no npm package, and a local server only while casting, serving one
+file with a random token. Branch `hamza/P13-chromecast` from `integration/player` (`9fa1db3`), PR #59.
+
+**Dependency.** `com.google.android.gms:play-services-cast-framework:22.3.1` in `modules/vidorax-media/android/build.gradle`
+(not media3-cast). The Gradle dependency tree before and after: every `androidx.media3` artifact stays 1.9.0, none moved.
+It brings `androidx.mediarouter` 1.8.0-beta01, `androidx.media` 1.6.0 (the old media-compat, not Media3), Play services
+base / basement / tasks, and Google's logging transport (`datatransport` `transport-backend-cct`, `firebase-encoders`),
+which every Cast app carries. VidoraX itself sends nothing.
+
+**Manifest.** The options provider's meta-data is in the module's own `AndroidManifest.xml`. The merged manifest (debug and
+release) gains no permission; it gains the meta-data, the Cast SDK's `MediaIntentReceiver` and `ReconnectionService`
+(both `exported="false"`) and a `<queries>` package entry for `com.google.android.gms.policy_cast_dynamite`.
+`consumer-rules.pro` keeps the provider's constructor (the SDK creates it by reflection; R8's full mode could drop it).
+
+**Native** (`modules/vidorax-media/android/src/main/java/com/vidorax/media/cast/`, a separate `VidoraCast` Expo module):
+
+- `CastOptionsProvider.kt`: Google's Default Media Receiver; the SDK's own notification, lock-screen controls and media
+  session off; no reconnection service, no saved-session resume.
+- `CastController.kt`: MediaRouter discovery (only between `startCastDiscovery` / `stopCastDiscovery`, which the Player
+  screen calls when it opens and closes), session start / stop, RemoteMediaClient load / play / pause / seek / stop, the
+  TV's volume, and the events `onCastDevices`, `onCastConnected`, `onCastDisconnected`, `onCastPosition`, `onCastState`,
+  `onCastError`. Main thread only.
+- `CastFileServer.kt` (no library): bound to the Wi-Fi address only (`WifiAddress.kt`), on a port Android picks;
+  `/<token>` and `/<token>.vtt` with 128-bit `SecureRandom` tokens (`CastUrls.kt`), compared in constant time; any other
+  path, token or method is a 404; single byte ranges (`HttpRange.kt`), 206 / 416; the file's content type; CORS for the
+  receiver page; no request data logged.
+- `CastServing.kt`: the server's lifecycle. It starts only when a local file is loaded on the TV, is replaced (new tokens)
+  for the next video, and stops when the cast is stopped, the session ends or drops, and when the activity or the
+  JavaScript runtime is destroyed.
+- `CastSources.kt`: `file://` only inside VidoraX's storage and never the Private Folder (`noBackupFilesDir/vault`,
+  `cacheDir/vault-play`); `content://` (MediaStore, files from other apps) but not a download still growing.
+
+**JS.** `src/player/cast/`: `cast-rules.ts` (what may be cast), `cast-handover.ts` (positions both ways), `webvtt.ts`
+(SRT / ASS / VTT → WebVTT with the P3 sync offset), `cast-store.ts` (state from the events), `cast.runtime.ts` (the
+calls), `use-cast-discovery.ts`. `src/screens/player/page/`: `use-player-cast.ts`, `CastDeviceSheet.tsx`,
+`CastingOverlay.tsx`. Strings: `playerCast` (en / ur).
+
+**The Player screen** (`PlayerScreen.tsx`, additive): discovery while it is open; the Cast button in the card's top row
+and the full-screen bar (`cast` prop on `PlayerCardOverlay` / `PlayerTopBar`, shown only when a device is found); the
+"Casting to <device>" cover over the video area; while casting, play / pause, ⏪ / ⏩, double-tap seek, the timeline and
+exact seeks (Jump to time, bookmarks) go to the TV, the timeline shows the TV's position, the phone's player stays
+paused, long-press 2× and swipe seek are off and the subtitle overlay is hidden. Faran's headset keys reach the TV
+through the same handlers.
+
+**Hand-over.** Starting continues from the phone's position (a finished video starts at 0:00). Stop casting: the phone
+seeks to the TV's position and plays. A dropped connection: it seeks there and stays paused. A video the TV finished is
+left as it is (seeking to the end would start Repeat / Auto Play Next).
+
+**Blocked, each with its message:** Private Folder videos (checked before connecting, and again natively); a download
+still in progress; a stream that needs the website's headers.
+
+**Logged for Faran (not changed):**
+
+- `use-player-session.ts`: while casting this session's media (`useCastStore`: `connection === 'connected'` and
+  `castMediaId === mediaId`), the media notification / lock screen still control the paused phone player. Hide it, or
+  forward play / pause / seek to `castPlay` / `castPause` / `castSeek` (`src/player/cast/cast.runtime.ts`).
+- P14 streams: a stream that needs headers (cookies, referrer) would need a proxy in the stream files; it is not cast.
+  Streams go by their own URL, without subtitles.
+- Closing the mini player doesn't end a cast; Repeat / Auto Play Next don't run when the TV reaches the end; speed, the
+  sleep timer and Kid Lock act on the phone's player only.
+
+**Tests.** Kotlin (`src/test/java/com/vidorax/media/cast/`, 45): `HttpRangeTest` (9), `CastUrlsTest` (7),
+`CastFileServerTest` (13, real sockets on loopback: whole file, ranges, 416, HEAD, subtitles, every wrong path / token /
+method a 404, nothing listening after close), `CastServingTest` (7: nothing runs before a cast, begin / end, new tokens
+per video, no Wi-Fi), `CastSourcesTest` (9, Robolectric: Private Folder and outside paths refused, a climbing path
+refused, growing downloads refused). JS (`src/player/cast/cast.test.ts`, 26): WebVTT from SRT / ASS / VTT with the
+offset, the Private / stream / growing rules, the hand-over both ways, the cast state. The controller's wiring to the
+Cast SDK (session end and app destroy stopping the server) needs a device: device checks 128–144 in the summary.
+
+**Results** (the whole tree): typecheck passes; lint 0 errors, 91 warnings (the same as the base); JS 2600 tests, all pass (the base's 2574 + 26 new); Gradle `:app:compileDebugKotlin` passes (autolinking lists `VidoraCastModule`); `:vidorax-media` 1229 tests (the base's 1184 + 45 new), 3 fail exactly as on the untouched base: `StoragePathsTest` and `IncomingImportTest` (Windows paths, known) and `DownloadEngineHlsTest.pauseStopsNewSegments…` (timing: it passed twice when rerun on its own); `:vidorax-web` 178, 1 fails as on the base (`WebViewSnapshotsTest`, Windows). `DownloadRunnerTest` is left out locally (its name is illegal on Windows).
