@@ -34,19 +34,26 @@ export const TimersPage = memo(function TimersPage({ visible, context, onBack, o
         context={context}
         ids={['p18.sleepTimer', 'p18.dailyLimit', 'p18.kidLock', 'p9.addBookmark']}
         titles={{ 'p9.addBookmark': 'playerDesign.rowBookmarkNow' }}
+        icons={{ 'p18.sleepTimer': 'clock', 'p18.dailyLimit': 'timer' }}
         onClosePage={onBack}>
         <DsRow
           icon="headphones"
           title={t('playerDesign.rowHeadsetButtons')}
-          subtitle={t('playerEngine.keysHeadsetSub')}
-          toggle={{ value: keys.headsetButtons, onValueChange: (on) => setHeadsetKeySettings({ headsetButtons: on }) }}
+          toggle={{
+            value: keys.headsetButtons,
+            onValueChange: (on) => setHeadsetKeySettings({ headsetButtons: on }),
+            accessibilityHint: t('playerEngine.keysHeadsetSub'),
+          }}
           testID="player-timers-headset"
         />
         <DsRow
           icon="headphones"
           title={t('playerDesign.rowHeadphoneDetection')}
-          subtitle={t('playerDesign.rowHeadphoneDetectionSub')}
-          toggle={{ value: keys.pauseOnUnplug, onValueChange: (on) => setHeadsetKeySettings({ pauseOnUnplug: on }) }}
+          toggle={{
+            value: keys.pauseOnUnplug,
+            onValueChange: (on) => setHeadsetKeySettings({ pauseOnUnplug: on }),
+            accessibilityHint: t('playerDesign.rowHeadphoneDetectionSub'),
+          }}
           testID="player-timers-unplug"
         />
       </PlayerOptionRows>

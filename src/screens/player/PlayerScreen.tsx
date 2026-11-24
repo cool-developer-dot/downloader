@@ -184,6 +184,7 @@ import { AudioOnlyCover } from './engine/AudioOnlyCover';
 import { PlayerEngineSheets } from './engine/PlayerEngineSheets';
 // The 65-screen design's pages inside the Player (screens 20, 21, 22, 24, 51).
 import { AudioPage } from './design-pages/AudioPage';
+import { ConvertPage, type ConvertTab } from './design-pages/ConvertPage';
 import { GesturesPage } from './design-pages/GesturesPage';
 import { SubtitlesPage } from './design-pages/SubtitlesPage';
 import { TimersPage } from './design-pages/TimersPage';
@@ -363,7 +364,10 @@ const PlayerSessionView = memo(function PlayerSessionView({
   // P8: the Gestures, Gesture sensitivity or Customize controls sheet.
   const [p8Sheet, setP8Sheet] = useState<'gestures' | 'sensitivity' | 'customize' | null>(null);
   // The design's pages over the video (screens 20 Gestures, 21 Subtitles, 22 Audio, 24 Video tools, 51 Timers).
-  const [designPage, setDesignPage] = useState<'gestures' | 'subtitles' | 'audio' | 'tools' | 'timers' | null>(null);
+  const [designPage, setDesignPage] = useState<
+    'gestures' | 'subtitles' | 'audio' | 'tools' | 'timers' | 'convert' | null
+  >(null);
+  const [convertTab, setConvertTab] = useState<ConvertTab>('convert');
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const notYet = usePlayerNotYet();
@@ -2217,6 +2221,21 @@ const PlayerSessionView = memo(function PlayerSessionView({
         visible={designPage === 'tools'}
         context={optionsContext}
         cast={cast.button ? { deviceName: cast.deviceName, casting: cast.casting, onPress: cast.button.onPress } : null}
+        onOpenConvert={(tab) => {
+          setConvertTab(tab);
+          setDesignPage('convert');
+        }}
+        onBack={closeDesignPage}
+        onSettings={openPlayerSettings}
+      />
+      <ConvertPage
+        visible={designPage === 'convert'}
+        tab={convertTab}
+        videoTitle={session.displayName ?? null}
+        edit={p10EditTools.sheets}
+        extractAudio={p10EditTools.option.canEdit ? p10EditTools.option.extractAudio : null}
+        openMerge={p12Export.option.canMerge ? p12Export.option.openMerge : null}
+        openSpeed={p12Export.option.canSpeed ? p12Export.option.openSpeed : null}
         onBack={closeDesignPage}
         onSettings={openPlayerSettings}
       />

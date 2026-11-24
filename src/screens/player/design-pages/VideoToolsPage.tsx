@@ -5,7 +5,16 @@ import { useTranslation, type TranslationKey } from '@/localization';
 import type { PlayerOptionContext } from '@/player/options';
 
 import { PlayerDesignPage } from './PlayerDesignPage';
+import type { ConvertTab } from './ConvertPage';
 import { CLOSES_PAGE_IDS, PlayerOptionRows, playerOptionEntry } from './PlayerOptionRows';
+
+/** Design 24's tiles that open design 54 "Convert & compress" at their tab. */
+const CONVERT_TABS: Readonly<Record<string, ConvertTab>> = {
+  'p10.converter': 'convert',
+  'p10.compress': 'compress',
+  'p10.extractAudio': 'extract',
+  'p12.mergeVideos': 'merge',
+};
 
 /**
  * Design 24's tiles, each one of the ⋮ sheet's tool rows. Its Screen rec and Watermark tiles are features the owner
@@ -28,12 +37,21 @@ export type VideoToolsPageProps = {
   context: PlayerOptionContext;
   /** P13: the Cast row, when a Cast device is around (or the video is casting). */
   cast: { deviceName: string | null; casting: boolean; onPress: () => void } | null;
+  /** Design 54: Convert, Compress, Extract audio and Merge open "Convert & compress" at their tab. */
+  onOpenConvert: (tab: ConvertTab) => void;
   onBack: () => void;
   onSettings: () => void;
 };
 
 /** Design 24: the edit tools as tiles, then Change speed, Cast, the stream rows and the video's other tools. */
-export const VideoToolsPage = memo(function VideoToolsPage({ visible, context, cast, onBack, onSettings }: VideoToolsPageProps) {
+export const VideoToolsPage = memo(function VideoToolsPage({
+  visible,
+  context,
+  cast,
+  onOpenConvert,
+  onBack,
+  onSettings,
+}: VideoToolsPageProps) {
   const { t } = useTranslation();
   const tiles = TILES.flatMap((tile) => {
     const entry = playerOptionEntry(context, tile.id);
@@ -59,7 +77,10 @@ export const VideoToolsPage = memo(function VideoToolsPage({ visible, context, c
               onPress={
                 entry.enabled
                   ? () => {
-                      if (CLOSES_PAGE_IDS.has(id)) {
+                      const convertTab = CONVERT_TABS[id];
+                      if (convertTab) {
+                        onOpenConvert(convertTab);
+                      } else if (CLOSES_PAGE_IDS.has(id)) {
                         onBack();
                         requestAnimationFrame(() => entry.row.onPress(context));
                       } else {

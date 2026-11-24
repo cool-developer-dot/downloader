@@ -95,8 +95,7 @@ export const PlayerSettingsScreen = memo(function PlayerSettingsScreen() {
         <DsRow
           icon="play"
           title={t('playerDesign.resumePlayback')}
-          subtitle={t('playerDesign.resumePlaybackSub')}
-          toggle={{ value: resume, onValueChange: setResumePlayback }}
+          toggle={{ value: resume, onValueChange: setResumePlayback, accessibilityHint: t('playerDesign.resumePlaybackSub') }}
           testID="player-settings-resume"
         />
         <DsRow
@@ -120,10 +119,10 @@ export const PlayerSettingsScreen = memo(function PlayerSettingsScreen() {
         <DsRow
           icon="headphones"
           title={t('playerDesign.backgroundPlay')}
-          subtitle={t('settings.backgroundPlaybackHint')}
           toggle={{
             value: background,
             onValueChange: (on) => useSettingsStore.getState().updateSetting('backgroundPlayback', on),
+            accessibilityHint: t('settings.backgroundPlaybackHint'),
           }}
           testID="player-settings-background"
         />
@@ -136,8 +135,11 @@ export const PlayerSettingsScreen = memo(function PlayerSettingsScreen() {
         <DsRow
           icon="sliders-horizontal"
           title={t('playerDesign.rowHeadsetButtons')}
-          subtitle={t('playerEngine.keysHeadsetSub')}
-          toggle={{ value: keys.headsetButtons, onValueChange: (on) => setHeadsetKeySettings({ headsetButtons: on }) }}
+          toggle={{
+            value: keys.headsetButtons,
+            onValueChange: (on) => setHeadsetKeySettings({ headsetButtons: on }),
+            accessibilityHint: t('playerEngine.keysHeadsetSub'),
+          }}
           testID="player-settings-headset"
         />
         <DsRow
@@ -152,7 +154,7 @@ export const PlayerSettingsScreen = memo(function PlayerSettingsScreen() {
       <DsSectionLabel>{t('playerDesign.sectionDisplay')}</DsSectionLabel>
       <DsRowGroup testID="player-settings-display">
         <DsRow
-          icon="sliders-horizontal"
+          icon="hand"
           title={t('videoPlayer.gestureControls')}
           toggle={{ value: gestures.enabled, onValueChange: setGesturesEnabled }}
           testID="player-settings-gestures"
@@ -194,8 +196,11 @@ export const PlayerSettingsScreen = memo(function PlayerSettingsScreen() {
         <DsRow
           icon="eye-off"
           title={t('libraryStats.disableHistory')}
-          subtitle={t('libraryStats.disableHistoryHint')}
-          toggle={{ value: historyPaused, onValueChange: setWatchHistoryPaused }}
+          toggle={{
+            value: historyPaused,
+            onValueChange: setWatchHistoryPaused,
+            accessibilityHint: t('libraryStats.disableHistoryHint'),
+          }}
           testID="player-settings-history"
         />
       </DsRowGroup>

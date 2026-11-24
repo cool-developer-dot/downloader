@@ -75,9 +75,9 @@ export type LibraryHeaderControlsProps = {
 };
 
 /**
- * The Player tab's controls as design 18 draws them: Videos · Audio · Playlists · Network, then All · Folders ·
- * Recent · Most played (and the Player tab's other filters: Favorites, Newly downloaded, Quality, Length, Tag). Search,
- * sort (with Reset) and the grid / list switch are the plain buttons at the end of the second row, as on Downloads.
+ * The Player tab's controls as design 18 draws them: Videos · Audio · Playlists · Network (with the search button at
+ * that row's end), then All · Folders · Recent · Most played, scrolling on to the Player tab's other filters
+ * (Favorites, Newly downloaded, Quality, Length, Tag) and Sort, whose sheet also switches grid / list and resets.
  */
 export const LibraryHeaderControls = memo(function LibraryHeaderControls({
   kind,
@@ -155,6 +155,14 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
       selected: option.id === sort,
       onPress: () => onSelectSort(option.id),
     }));
+    items.push({
+      id: 'view-mode',
+      label: viewMode === 'grid' ? t('playerDesign.viewList') : t('playerDesign.viewGrid'),
+      onPress: () => {
+        onCloseSort();
+        onToggleViewMode();
+      },
+    });
     if (controlsDirty) {
       items.push({
         id: 'reset',
@@ -168,7 +176,7 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
       });
     }
     return items;
-  }, [controlsDirty, onCloseSort, onReset, onSelectSort, sort, t]);
+  }, [controlsDirty, onCloseSort, onReset, onSelectSort, onToggleViewMode, sort, t, viewMode]);
 
   const qualityActions = useMemo<ActionSheetItem[]>(
     () => [
@@ -190,66 +198,22 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
 
   return (
     <View testID={testID} style={{ gap: 10 }}>
-      <DsChipRow testID={`${testID}-kinds`}>
-        <DsChip
-          label={t('playerDesign.kindVideos')}
-          selected={kind === 'video'}
-          onPress={() => onSelectKind('video')}
-          testID={`${testID}-kind-video`}
-        />
-        <DsChip
-          label={t('playerDesign.kindAudio')}
-          selected={kind === 'audio'}
-          onPress={() => onSelectKind('audio')}
-          testID={`${testID}-kind-audio`}
-        />
-        <DsChip label={t('playerDesign.kindPlaylists')} onPress={onOpenPlaylists} testID={`${testID}-kind-playlists`} />
-        <DsChip label={t('playerDesign.kindNetwork')} onPress={onOpenNetwork} testID={`${testID}-kind-network`} />
-      </DsChipRow>
-
       <View style={{ flexDirection: rtl.rowDirection, alignItems: 'center' }}>
-        <DsChipRow style={{ flex: 1, marginEnd: 0 }} testID={`${testID}-chips`}>
-          {FILTER_CHIPS.map((chip) => (
-            <DsChip
-              key={chip.id}
-              label={t(chip.label)}
-              selected={filter === chip.id}
-              onPress={() => pickFilter(chip.id)}
-              testID={`${testID}-chip-${chip.id}`}
-            />
-          ))}
+        <DsChipRow style={{ flex: 1, marginEnd: 0 }} testID={`${testID}-kinds`}>
           <DsChip
-            label={t('playerDesign.chipMostPlayed')}
-            selected={sort === 'most_played'}
-            onPress={toggleMostPlayed}
-            testID={`${testID}-chip-most-played`}
+            label={t('playerDesign.kindVideos')}
+            selected={kind === 'video'}
+            onPress={() => onSelectKind('video')}
+            testID={`${testID}-kind-video`}
           />
-          {MORE_FILTER_CHIPS.map((chip) => (
-            <DsChip
-              key={chip.id}
-              label={t(chip.label)}
-              selected={filter === chip.id}
-              onPress={() => pickFilter(chip.id)}
-              testID={`${testID}-chip-${chip.id}`}
-            />
-          ))}
-          {qualities.length > 0 ? (
-            <DsChip
-              label={quality ?? t('library.qualityTitle')}
-              selected={Boolean(quality)}
-              onPress={onOpenQuality}
-              testID={`${testID}-quality-chip`}
-            />
-          ) : null}
-          {onSelectDuration ? (
-            <DsChip
-              label={t(DURATION_LABEL_KEYS[durationBucket] ?? 'libraryStats.durationAny')}
-              selected={durationBucket !== 'any'}
-              onPress={() => setDurationSheetVisible(true)}
-              testID={`${testID}-duration-chip`}
-            />
-          ) : null}
-          <PlayerTagFilterChip testID={testID} />
+          <DsChip
+            label={t('playerDesign.kindAudio')}
+            selected={kind === 'audio'}
+            onPress={() => onSelectKind('audio')}
+            testID={`${testID}-kind-audio`}
+          />
+          <DsChip label={t('playerDesign.kindPlaylists')} onPress={onOpenPlaylists} testID={`${testID}-kind-playlists`} />
+          <DsChip label={t('playerDesign.kindNetwork')} onPress={onOpenNetwork} testID={`${testID}-kind-network`} />
         </DsChipRow>
         <DsIconButton
           variant="plain"
@@ -259,21 +223,58 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
           onPress={toggleSearch}
           testID={`${testID}-search-toggle`}
         />
-        <DsIconButton
-          variant="plain"
-          icon="arrow-up-down"
-          accessibilityLabel={t('playerDesign.sortA11y')}
+      </View>
+
+      <DsChipRow testID={`${testID}-chips`}>
+        {FILTER_CHIPS.map((chip) => (
+          <DsChip
+            key={chip.id}
+            label={t(chip.label)}
+            selected={filter === chip.id}
+            onPress={() => pickFilter(chip.id)}
+            testID={`${testID}-chip-${chip.id}`}
+          />
+        ))}
+        <DsChip
+          label={t('playerDesign.chipMostPlayed')}
+          selected={sort === 'most_played'}
+          onPress={toggleMostPlayed}
+          testID={`${testID}-chip-most-played`}
+        />
+        {MORE_FILTER_CHIPS.map((chip) => (
+          <DsChip
+            key={chip.id}
+            label={t(chip.label)}
+            selected={filter === chip.id}
+            onPress={() => pickFilter(chip.id)}
+            testID={`${testID}-chip-${chip.id}`}
+          />
+        ))}
+        {qualities.length > 0 ? (
+          <DsChip
+            label={quality ?? t('library.qualityTitle')}
+            selected={Boolean(quality)}
+            onPress={onOpenQuality}
+            testID={`${testID}-quality-chip`}
+          />
+        ) : null}
+        {onSelectDuration ? (
+          <DsChip
+            label={t(DURATION_LABEL_KEYS[durationBucket] ?? 'libraryStats.durationAny')}
+            selected={durationBucket !== 'any'}
+            onPress={() => setDurationSheetVisible(true)}
+            testID={`${testID}-duration-chip`}
+          />
+        ) : null}
+        <PlayerTagFilterChip testID={testID} />
+        <DsChip
+          label={sort === 'newest' || sort === 'most_played' ? t('playerDesign.chipSort') : t(SORT_LABEL_KEYS[sort])}
+          selected={sort !== 'newest' && sort !== 'most_played'}
           onPress={onOpenSort}
+          accessibilityLabel={t('playerDesign.sortA11y')}
           testID={`${testID}-sort-button`}
         />
-        <DsIconButton
-          variant="plain"
-          icon={viewMode === 'grid' ? 'list' : 'layout-grid'}
-          accessibilityLabel={viewMode === 'grid' ? t('playerDesign.viewList') : t('playerDesign.viewGrid')}
-          onPress={onToggleViewMode}
-          testID={`${testID}-view-mode`}
-        />
-      </View>
+      </DsChipRow>
 
       {searchVisible ? (
         <DsSearchField

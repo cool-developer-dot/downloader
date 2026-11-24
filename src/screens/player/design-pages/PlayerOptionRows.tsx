@@ -1,6 +1,6 @@
 import { memo, type ReactNode } from 'react';
 
-import { DsRow, DsRowGroup } from '@/design';
+import { DsRow, DsRowGroup, type DsIconName } from '@/design';
 import { useTranslation, type TranslationKey } from '@/localization';
 import { playerOptions, type PlayerOptionContext } from '@/player/options';
 
@@ -17,6 +17,8 @@ export type PlayerOptionRowsProps = {
   onClosePage: () => void;
   /** The design's own title for a row (screen 22's "Night mode audio"). */
   titles?: Readonly<Record<string, TranslationKey>>;
+  /** The design's own icon for a row (screen 20's hand for Gesture controls). */
+  icons?: Readonly<Record<string, DsIconName>>;
   /** Design-only rows after the registry's. */
   children?: ReactNode;
   testID?: string;
@@ -31,6 +33,7 @@ export const PlayerOptionRows = memo(function PlayerOptionRows({
   ids,
   onClosePage,
   titles,
+  icons,
   children,
   testID,
 }: PlayerOptionRowsProps) {
@@ -56,7 +59,7 @@ export const PlayerOptionRows = memo(function PlayerOptionRows({
         return toggle != null ? (
           <DsRow
             key={row.id}
-            icon={row.icon}
+            icon={icons?.[row.id] ?? row.icon}
             title={title}
             subtitle={subtitle}
             toggle={{ value: toggle, onValueChange: () => row.onPress(context), accessibilityHint: subtitle }}
@@ -66,7 +69,7 @@ export const PlayerOptionRows = memo(function PlayerOptionRows({
         ) : (
           <DsRow
             key={row.id}
-            icon={row.icon}
+            icon={icons?.[row.id] ?? row.icon}
             title={title}
             subtitle={subtitle}
             value={value ?? undefined}

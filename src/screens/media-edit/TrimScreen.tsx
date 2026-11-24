@@ -1,17 +1,13 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useVideoPlayer, VideoView, type VideoPlayer } from 'expo-video';
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Text } from '@/components/base/Text';
-import { Button } from '@/components/buttons/Button';
 import { EmptyState } from '@/components/common/EmptyState';
-import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
-import { ScreenHeader } from '@/components/headers/ScreenHeader';
+import { ds, DsButton, DsButtonRow, DsCard, DsHeader, DsIcon, DsRow, DsRowGroup, DsScreen, DsText } from '@/design';
 import { getV2Engine } from '@/downloads/v2/engine-port';
 import { useTheme } from '@/hooks/use-theme';
-import { useTranslation } from '@/localization';
+import { useRtl, useTranslation } from '@/localization';
 import { isEditRunning } from '@/media-edit/edit-job';
 import { useEditJobStore } from '@/media-edit/edit-job-store';
 import { clampTrimRange, formatTrimTime, trackPlan, type TrimRange } from '@/media-edit/edit-plan';
@@ -62,62 +58,15 @@ function TrimPreview({
   );
 }
 
-function ModeOption({
-  selected,
-  title,
-  hint,
-  onPress,
-  disabled,
-  testID,
-}: {
-  selected: boolean;
-  title: string;
-  hint: string;
-  onPress: () => void;
-  disabled?: boolean;
-  testID: string;
-}) {
-  const theme = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      accessibilityRole="radio"
-      accessibilityState={{ checked: selected, disabled: Boolean(disabled) }}
-      testID={testID}>
-      <Box row rtlRow gap={10} py={6} style={{ alignItems: 'flex-start' }}>
-        <View
-          style={{
-            width: 20,
-            height: 20,
-            marginTop: 2,
-            borderRadius: 10,
-            borderWidth: 2,
-            borderColor: selected ? theme.colors.primary : theme.colors.border,
-            alignItems: 'center',
-            justifyContent: 'center',
-          }}>
-          {selected ? <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: theme.colors.primary }} /> : null}
-        </View>
-        <Box flex={1} gap={2}>
-          <Text variant="body">{title}</Text>
-          <Text variant="caption" color="textSecondary">
-            {hint}
-          </Text>
-        </Box>
-      </Box>
-    </Pressable>
-  );
-}
-
 /**
  * Trim (#374): start and end handles over the video's timeline, a preview, and the choice between keeping the
  * original quality (the trim starts at the nearest keyframe before the chosen start) and an exact start (the video is
- * re-encoded). Saves a new item; the original is never changed.
+ * re-encoded). Saves a new item; the original is never changed. Drawn as design 53 "Trim video" (the design kit).
  */
 export const TrimScreen = memo(function TrimScreen() {
   const { t } = useTranslation();
   const theme = useTheme();
+  const rtl = useRtl();
   const params = useLocalSearchParams<{ id?: string | string[]; startMs?: string | string[] }>();
   const id = typeof params.id === 'string' ? params.id : '';
   // P10: the Player opens Trim at the moment playing (`startMs`); without it the range starts at 0 as before.
@@ -251,100 +200,102 @@ export const TrimScreen = memo(function TrimScreen() {
     }
   }, [choice, id, keyframeMs, range.endMs, range.startMs, runEdit, running, source]);
 
+  const modeRow = (value: 'keyframe' | 'exact', title: string, hint: string, testID: string) => (
+    <DsRow
+      icon={value === 'keyframe' ? 'film' : 'scissors'}
+      title={title}
+      subtitle={hint}
+      trailing={choice === value ? <DsIcon name="check" size={18} color="primary" /> : 'none'}
+      onPress={() => setMode(value)}
+      disabled={running}
+      accessibilityLabel={`${title}${choice === value ? `, ${t('common.selected')}` : ''}`}
+      testID={testID}
+    />
+  );
+
   return (
-    <SafeAreaScreen
-      testID="trim-screen"
-      padded={false}
-      edges={['top', 'left', 'right', 'bottom']}
-      style={{ backgroundColor: theme.colors.background }}>
-      <ScreenHeader title={t('mediaEdit.trimTitle')} showBack onBackPress={() => navigation.back()} />
+    <DsScreen testID="trim-screen" edges={['top', 'bottom']}>
+      <DsHeader
+        title={t('playerDesign.trimTitle')}
+        subtitle={source?.title || source?.fileName || undefined}
+        onBack={() => navigation.back()}
+        testID="trim-header"
+      />
       {status === 'loading' ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ paddingVertical: 48, alignItems: 'center' }}>
           <ActivityIndicator color={theme.colors.primary} accessibilityLabel={t('common.loading')} />
         </View>
       ) : status === 'missing' || !source ? (
         <EmptyState icon="file-alert-outline" title={t('mediaEdit.missing')} />
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 14 }}>
+        <>
           <View
-            style={{ aspectRatio: 16 / 9, backgroundColor: theme.colors.black, borderRadius: 12, overflow: 'hidden' }}
+            style={{ aspectRatio: 16 / 9, backgroundColor: theme.colors.black, borderRadius: ds.radius.card, overflow: 'hidden' }}
             accessibilityLabel={t('mediaEdit.previewA11y')}>
             <TrimPreview uri={source.fileUri} onPlayer={onPlayer} startSeconds={previewStartMs / 1000} />
           </View>
-          <Text variant="bodySmall" color="textSecondary">
-            {t('mediaEdit.trimHint')}
-          </Text>
-          <RangeTrack
-            durationMs={source.durationMs ?? 0}
-            range={range}
-            onChange={setRange}
-            onRelease={seekTo}
-            disabled={running}
-          />
-          <Box row rtlRow style={{ justifyContent: 'space-between' }}>
-            <Text variant="caption">{`${t('mediaEdit.start')} ${formatTrimTime(range.startMs)}`}</Text>
-            <Text variant="caption">{`${t('mediaEdit.length')} ${formatTrimTime(range.endMs - range.startMs)}`}</Text>
-            <Text variant="caption">{`${t('mediaEdit.end')} ${formatTrimTime(range.endMs)}`}</Text>
-          </Box>
-          <Box row rtlRow gap={8} style={{ flexWrap: 'wrap' }}>
-            <Button
-              title={t('mediaEdit.setStartHere')}
-              variant="outline"
-              size="small"
+          <DsCard style={{ gap: 10 }}>
+            <DsText variant="rowSub">{t('mediaEdit.trimHint')}</DsText>
+            <RangeTrack
+              durationMs={source.durationMs ?? 0}
+              range={range}
+              onChange={setRange}
+              onRelease={seekTo}
+              disabled={running}
+            />
+            <View style={{ flexDirection: rtl.rowDirection, justifyContent: 'space-between' }}>
+              <DsText variant="rowSub">{formatTrimTime(range.startMs)}</DsText>
+              <DsText variant="rowSub">{formatTrimTime(range.endMs - range.startMs)}</DsText>
+              <DsText variant="rowSub">{formatTrimTime(range.endMs)}</DsText>
+            </View>
+          </DsCard>
+          <DsButtonRow>
+            <DsButton
+              label={t('mediaEdit.setStartHere')}
+              variant="secondary"
+              flex
               onPress={() => setFromPlayer('start')}
               disabled={running}
               testID="trim-set-start"
             />
-            <Button
-              title={t('mediaEdit.setEndHere')}
-              variant="outline"
-              size="small"
+            <DsButton
+              label={t('mediaEdit.setEndHere')}
+              variant="secondary"
+              flex
               onPress={() => setFromPlayer('end')}
               disabled={running}
               testID="trim-set-end"
             />
-          </Box>
+          </DsButtonRow>
           {!copyable || (current && keyframeMs === null) ? (
-            <Text variant="caption" color="textSecondary">
-              {t('mediaEdit.noKeyframeInfo')}
-            </Text>
+            <DsText variant="rowSub">{t('mediaEdit.noKeyframeInfo')}</DsText>
           ) : onKeyframe ? (
-            <Text variant="caption" color="textSecondary">
-              {t('mediaEdit.keyframeExact')}
-            </Text>
+            <DsText variant="rowSub">{t('mediaEdit.keyframeExact')}</DsText>
           ) : current && keyframeMs !== null ? (
-            <Box gap={4}>
-              <ModeOption
-                selected={choice === 'keyframe'}
-                title={t('mediaEdit.keyframeMode')}
-                hint={t('mediaEdit.keyframeModeHint', { time: formatTrimTime(keyframeMs) })}
-                onPress={() => setMode('keyframe')}
-                disabled={running}
-                testID="trim-mode-keyframe"
-              />
-              <ModeOption
-                selected={choice === 'exact'}
-                title={t('mediaEdit.exactMode')}
-                hint={t('mediaEdit.exactModeHint')}
-                onPress={() => setMode('exact')}
-                disabled={running}
-                testID="trim-mode-exact"
-              />
-            </Box>
+            <DsRowGroup testID="trim-modes">
+              {modeRow(
+                'keyframe',
+                t('mediaEdit.keyframeMode'),
+                t('mediaEdit.keyframeModeHint', { time: formatTrimTime(keyframeMs) }),
+                'trim-mode-keyframe',
+              )}
+              {modeRow('exact', t('mediaEdit.exactMode'), t('mediaEdit.exactModeHint'), 'trim-mode-exact')}
+            </DsRowGroup>
           ) : null}
           <EditJobBanner sourceId={id} />
-          <Button
-            title={t('mediaEdit.saveTrim')}
+          <DsButton
+            label={t('playerDesign.saveAsNew')}
+            icon="scissors"
+            fullWidth
             onPress={() => {
               void save();
             }}
             disabled={running || (copyable && !current)}
             loading={running}
-            fullWidth
             testID="trim-save"
           />
-        </ScrollView>
+        </>
       )}
-    </SafeAreaScreen>
+    </DsScreen>
   );
 });

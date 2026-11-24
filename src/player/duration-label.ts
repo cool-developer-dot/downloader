@@ -7,7 +7,8 @@ import { formatPlaybackTime } from './format-time';
 
 export type DurationLabelMode = 'total' | 'remaining';
 
-export const DEFAULT_DURATION_LABEL_MODE: DurationLabelMode = 'total';
+/** Design 19 shows the time left ("−02:38") until the user taps the label for the total. */
+export const DEFAULT_DURATION_LABEL_MODE: DurationLabelMode = 'remaining';
 
 /** U+2212 MINUS SIGN, the typographic minus (a hyphen looks like a dash next to the digits). */
 const MINUS = '−';

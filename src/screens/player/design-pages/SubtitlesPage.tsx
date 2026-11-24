@@ -69,7 +69,7 @@ export const SubtitlesPage = memo(function SubtitlesPage({
           onPress={onOpenStyle}
           style={{ margin: -ds.space.cardPad, padding: ds.space.cardPad, gap: 10 }}
           testID="player-subtitles-style">
-          <DsText variant="bodyStrong">{t('playerDesign.styleTitle')}</DsText>
+          <DsText variant="rowTitle">{t('playerDesign.styleTitle')}</DsText>
           <View style={{ flexDirection: rtl.rowDirection, gap: 10 }}>
             {SWATCHES.map((swatch) => {
               const selected = swatch === color;
@@ -97,7 +97,7 @@ export const SubtitlesPage = memo(function SubtitlesPage({
           <DsText variant="rowSub">{t('playerDesign.styleLine')}</DsText>
         </Pressable>
       </DsCard>
-      <PlayerOptionRows context={context} ids={['p4.style', 'p3.encoding', 'p3.off']} onClosePage={onBack} />
+      <PlayerOptionRows context={context} ids={['p3.encoding', 'p3.off']} onClosePage={onBack} />
     </PlayerDesignPage>
   );
 });

@@ -11,8 +11,8 @@ import {
 const MINUS = '−';
 
 describe('formatDurationLabel', () => {
-  it('shows the total length by default', () => {
-    assert.equal(DEFAULT_DURATION_LABEL_MODE, 'total');
+  it('shows the time left by default (design 19), the total in total mode', () => {
+    assert.equal(DEFAULT_DURATION_LABEL_MODE, 'remaining');
     assert.equal(formatDurationLabel(12, 634.6, 'total'), '10:34');
   });
 

@@ -27,20 +27,20 @@ export const GesturesPage = memo(function GesturesPage({ visible, context, onBac
       onSettings={onSettings}
       testID="player-gestures-page">
       <DsCard>
-        <View style={{ alignItems: 'center', gap: 4, paddingVertical: 6 }} accessible accessibilityRole="text">
+        <View style={{ alignItems: 'center', gap: 4, paddingVertical: 14 }} accessible accessibilityRole="text">
           <View style={{ flexDirection: 'row', gap: 14, marginBottom: 6 }} importantForAccessibility="no-hide-descendants">
-            <DsIcon name="sun" size={20} color="textPrimary" />
-            <DsIcon name="arrow-left" size={20} color="textPrimary" />
-            <DsIcon name="chevron-right" size={20} color="textPrimary" />
-            <DsIcon name="volume-2" size={20} color="textPrimary" />
+            <DsIcon name="sun" size={26} color="textPrimary" />
+            <DsIcon name="arrow-left" size={26} color="textPrimary" />
+            <DsIcon name="chevron-right" size={26} color="textPrimary" />
+            <DsIcon name="volume-2" size={26} color="textPrimary" />
           </View>
-          <DsText variant="rowSub" color="textPrimary" align="center">
+          <DsText variant="body" color="textPrimary" align="center">
             {t('playerDesign.gestureLine1')}
           </DsText>
-          <DsText variant="rowSub" color="textPrimary" align="center">
+          <DsText variant="body" color="textPrimary" align="center">
             {t('playerDesign.gestureLine2')}
           </DsText>
-          <DsText variant="rowSub" color="textPrimary" align="center">
+          <DsText variant="body" color="textPrimary" align="center">
             {t('playerDesign.gestureLine3')}
           </DsText>
         </View>
@@ -49,6 +49,7 @@ export const GesturesPage = memo(function GesturesPage({ visible, context, onBac
         context={context}
         ids={['p8.gestureControls', 'p8.gestureSensitivity', 'p8.gestures', 'p19.volumeBoost', 'p15.headsetKeys', 'p8.customizeControls']}
         titles={{ 'p15.headsetKeys': 'playerDesign.rowHardwareKeys' }}
+        icons={{ 'p8.gestureControls': 'hand', 'p19.volumeBoost': 'volume-2' }}
         onClosePage={onBack}
       />
     </PlayerDesignPage>

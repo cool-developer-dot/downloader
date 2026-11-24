@@ -29,9 +29,13 @@ const PRESET_LABELS: Record<BuiltInPreset, TranslationKey> = {
   jazz: 'playerEngine.eqPresetJazz',
 };
 
-/** Design 22's band labels: 60 · 230 · 910 · 3k · 14k. */
+/** Design 22's band labels: 60 · 230 · 910 · 3.6k · 14k (the bands Faran's P19 equalizer really has). */
 function bandLabel(hz: number): string {
-  return hz >= 1000 ? `${Math.round(hz / 1000)}k` : String(hz);
+  if (hz < 1000) {
+    return String(hz);
+  }
+  const k = hz / 1000;
+  return `${Number.isInteger(k) ? k : k.toFixed(1)}k`;
 }
 
 /** "Bass boost · Virtualizer" on: both at half strength (the Audio sheet sets each exactly). */

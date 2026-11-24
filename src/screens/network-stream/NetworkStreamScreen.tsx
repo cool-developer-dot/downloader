@@ -134,7 +134,7 @@ export const NetworkStreamScreen = memo(function NetworkStreamScreen() {
   return (
     <DsScreen testID="network-stream-screen">
       <DsHeader
-        title={t('playerEngine.streamTitle')}
+        title={t('playerDesign.openStreamTitle')}
         subtitle={t('playerEngine.streamSubtitle')}
         onBack={() => navigation.back()}
         testID="network-stream-header"
@@ -187,8 +187,8 @@ export const NetworkStreamScreen = memo(function NetworkStreamScreen() {
           testID="network-stream-download"
         />
         <DsRow
-          icon="gauge"
-          title={t('playerEngine.streamQuality')}
+          icon="globe"
+          title={t('playerDesign.rowAdaptive')}
           subtitle={t('playerEngine.streamQualitySubtitle')}
           value={streamCapLabel(t, quality)}
           onPress={() => setQualityOpen(true)}
