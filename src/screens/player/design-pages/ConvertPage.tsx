@@ -93,8 +93,11 @@ export const ConvertPage = memo(function ConvertPage({
       : null;
 
   let body: React.ReactNode = null;
+  // The format picked, or the first one this video can take; none when it can take neither.
+  const chosenFormat: 'mp4' | 'audio' | null =
+    formatAvailability(format) === 'ok' ? format : (['mp4', 'audio'] as const).find((kind) => formatAvailability(kind) === 'ok') ?? null;
   if (tab === 'convert') {
-    const canStart = formatAvailability(format) === 'ok';
+    const canStart = chosenFormat != null;
     body = (
       <>
         <DsSectionLabel first>{t('playerDesign.sectionFormat')}</DsSectionLabel>
@@ -107,11 +110,11 @@ export const ConvertPage = memo(function ConvertPage({
                 icon={kind === 'mp4' ? 'film' : 'music'}
                 title={kind === 'mp4' ? t('mediaEdit.convertMp4') : t('mediaEdit.convertAudio')}
                 subtitle={availabilityHint(availability)}
-                trailing={format === kind ? <DsIcon name="check" size={18} color="primary" /> : 'none'}
+                trailing={chosenFormat === kind ? <DsIcon name="check" size={18} color="primary" /> : 'none'}
                 disabled={availability !== 'ok'}
                 onPress={() => setFormat(kind)}
                 accessibilityLabel={`${kind === 'mp4' ? t('mediaEdit.convertMp4') : t('mediaEdit.convertAudio')}${
-                  format === kind ? `, ${t('common.selected')}` : ''
+                  chosenFormat === kind ? `, ${t('common.selected')}` : ''
                 }`}
                 testID={`player-convert-${kind}`}
               />
@@ -131,7 +134,7 @@ export const ConvertPage = memo(function ConvertPage({
           label={t('playerDesign.start')}
           fullWidth
           disabled={!canStart}
-          onPress={() => run(() => edit.onConvert(format))}
+          onPress={() => chosenFormat && run(() => edit.onConvert(chosenFormat))}
           testID="player-convert-start"
         />
       </>
