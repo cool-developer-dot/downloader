@@ -35,6 +35,7 @@ import {
   userMessageForPlayerError,
 } from './errors';
 import { emitPlaybackEvent } from './playback-events';
+import { isCastingMedia, useCastStore } from './cast/cast-store';
 import { useAudioOnly } from './engine/audio-settings';
 import { releasePlayerEngine } from './engine/native-player';
 import {
@@ -662,9 +663,18 @@ export function usePlayerSession(
   // Background play: expo-video's media session and its foreground service while a video is ready and not finished.
   // Reaching the end (or an error) turns them off, which removes the notification; Replay turns them on again.
   // #520 Stop ends it too, until the video plays again.
+  // P13 (Faran, after the review): while a TV plays this video, the phone's player waits paused; its notification and
+  // lock-screen controls would drive that paused player, not the TV, so they go until the cast ends. The Player's own
+  // controls drive the TV meanwhile.
   const [stopped, setStopped] = useState(false);
+  const castingHere = useCastStore((state) => isCastingMedia(state, mediaId));
   const backgroundSessionActive =
-    backgroundPlayback && session.isReady && !session.isCompleted && session.error == null && !stopped;
+    backgroundPlayback &&
+    session.isReady &&
+    !session.isCompleted &&
+    session.error == null &&
+    !stopped &&
+    !castingHere;
   useEffect(() => {
     applyBackgroundPlayback(player, backgroundSessionActive);
   }, [backgroundSessionActive, player]);
