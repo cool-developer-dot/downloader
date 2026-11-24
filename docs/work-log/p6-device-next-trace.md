@@ -3,7 +3,32 @@
 **Repro (phone):** Device videos → quiet.mp4 → Up next → tap two-audio.mp4 → quiet.mp4 restarts. Also ⏮ near the
 start. Seen before and after Faran's P14–P19 merge. Faran suspects the `device:<id>` route param.
 
-**Result:** the cause is **not found**. Every JavaScript step below handles `device:<id>` exactly as it handles a
+## Root cause, found and fixed (Faran, 2026-11-24)
+
+Found on the Pixel_8 emulator with a release build that had the `[P6-DEVNEXT]` lines switched on for the test. The
+route, the queue, the session and the device lookup were all right, as the trace below says. Opening two-audio.mp4
+showed `session_shown` with two-audio's own `_ID`, then at once `go_to_media from=two-audio target=left-only`, then
+`go_to_media from=left-only target=quiet`: each video that opened moved itself on to the next.
+
+- **Why:** each session's player starts empty (`useVideoPlayer(null)` in `use-player-session.ts`) and prepares an
+  empty playlist, which ExoPlayer reports as ended. expo-video then sends `playToEnd` (its `setStatus` sends it
+  whenever the state is ENDED) before the video is loaded. The session's own handler ignored it (no source yet), but
+  P5's end of playback (`use-repeat.ts`) acted on it.
+- **Why it looked like device videos:** it shows only with Auto Play Next or Repeat all on (the video jumps on, then
+  the next one too, until a video sits behind a slower load; quiet.mp4 "restarted" because the chain ended on it) or
+  Repeat one (the video restarts). With Stop, the default, the stray end does nothing. The device-video queue was
+  where Auto Play Next had been switched on.
+- **Fix:** `isRealPlayToEnd` (`src/player/end-of-playback.ts`): an end counts only when the session is ready, has no
+  error and the player knows the video's length. Used by `use-repeat.ts` and by the session runner's mini-player end
+  (`src/player/session-host/use-session-end-of-playback.ts`). Unit tests in `end-of-playback.test.ts`.
+- **Check 145** passed on the emulator after the fix (Up next, ⏮, ⏭, Auto Play Next, opening from Device videos with
+  Auto Play Next on).
+- The `[P6-DEVNEXT]` logger (`src/player/p6-devnext-diagnostics.ts` and its calls in `PlayerScreen.tsx`) was removed
+  with the fix, as its header asked; the tests in `src/player/p6-device-next.test.ts` stay.
+
+The rest of this file is Hamza's trace from before the device run.
+
+**Result (before the device run):** the cause is **not found**. Every JavaScript step below handles `device:<id>` exactly as it handles a
 library id. That was checked by reading the code and by `node:test` cases that walk the same path
 (`src/player/p6-device-next.test.ts`, all passing). Two steps can only be seen on a device: expo-router's own
 native-stack state, and the native player. The `[P6-DEVNEXT]` development-build log lines now cover them. No fix was

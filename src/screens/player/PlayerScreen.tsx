@@ -65,10 +65,7 @@ import {
   removeFromPlayQueue,
   setPlayQueueShuffle,
   usePlayQueueNeighbours,
-  usePlayQueueStore,
 } from '@/player/play-queue';
-import { knownDeviceVideo } from '@/player/device-media';
-import { p6CallerNames, p6DevNextLog, p6QueueSummary, p6UriTail } from '@/player/p6-devnext-diagnostics';
 import { setAutoPlayNext, setNextEpisodePrompt } from '@/player/auto-next-preference';
 import { nextEpisodePromptState } from '@/player/next-episode-prompt';
 import { queueMediaTitle } from '@/player/queue-media';
@@ -111,7 +108,6 @@ import {
   openPlayerSession,
   setPlayerSessionPictureInPicture,
   useFullPlayerSession,
-  usePlayerSessionHostStore,
   useRedrawOnAttach,
   useVideoSurfaceAttachment,
   type LivePlayerSession,
@@ -218,44 +214,6 @@ export const PlayerScreen = memo(function PlayerScreen() {
       openPlayerSession(mediaId);
     }, [mediaId]),
   );
-
-  // P6 fix investigation, development builds only (`[P6-DEVNEXT]`, src/player/p6-devnext-diagnostics.ts): the
-  // route's id as the router gives it and as parsed, every session request (and who made it), and the session shown.
-  const p6RawId = params.id ?? null;
-  useEffect(() => {
-    p6DevNextLog('route', { raw: p6RawId, parsed: mediaId });
-  }, [p6RawId, mediaId]);
-  useEffect(() => {
-    if (!__DEV__) {
-      return undefined;
-    }
-    return usePlayerSessionHostStore.subscribe((state, previous) => {
-      const next = state.request;
-      const before = previous.request;
-      if (next?.key === before?.key && next?.mediaId === before?.mediaId) {
-        return;
-      }
-      p6DevNextLog('session_request', {
-        fromKey: before?.key ?? null,
-        fromMediaId: before?.mediaId ?? null,
-        toKey: next?.key ?? null,
-        toMediaId: next?.mediaId ?? null,
-        caller: p6CallerNames(new Error().stack),
-      });
-    });
-  }, []);
-  const p6ShownKey = live?.key ?? null;
-  const p6ShownRequested = live?.requestedMediaId ?? null;
-  const p6ShownMediaId = live?.session.mediaId ?? null;
-  useEffect(() => {
-    p6DevNextLog('session_shown', {
-      routeMediaId: mediaId,
-      key: p6ShownKey,
-      requestedMediaId: p6ShownRequested,
-      sessionMediaId: p6ShownMediaId,
-      source: p6UriTail(p6ShownRequested ? knownDeviceVideo(p6ShownRequested)?.uri : null),
-    });
-  }, [mediaId, p6ShownKey, p6ShownRequested, p6ShownMediaId]);
 
   if (!live) {
     return <PlayerOpeningShell isFullscreen={fullscreen.isFullscreen} />;
@@ -1020,17 +978,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const goToMedia = useCallback(
     (id: string) => {
       bumpControls();
-      // P6 fix investigation (development builds only): what Up next / ⏮ / ⏭ / the card asked for, from where.
-      p6DevNextLog('go_to_media', {
-        from: activeMediaId,
-        fromKey: sessionKey,
-        target: id,
-        targetSource: p6UriTail(knownDeviceVideo(id)?.uri),
-        queue: p6QueueSummary(usePlayQueueStore.getState().ids, id),
-      });
       appRouter.setParams({ id });
     },
-    [activeMediaId, bumpControls, sessionKey],
+    [bumpControls],
   );
   const onPrevious = useMemo(() => (previousId ? () => goToMedia(previousId) : null), [goToMedia, previousId]);
   const onNext = useMemo(() => (nextId ? () => goToMedia(nextId) : null), [goToMedia, nextId]);

@@ -3,8 +3,8 @@
  *
  * These walk the JavaScript path a switch takes — the route id, the queue, the Up next / ⏮ / ⏭ target, the session
  * request — for device, library and playlist ids alike. They pass on the current code: they show which layers are
- * NOT the cause (docs/work-log/p6-device-next-trace.md). The full Player can't be rendered here (no Jest and no React
- * renderer in this repo; tests run on node:test), so the rest is left to the `[P6-DEVNEXT]` lines on a device.
+ * NOT the cause (docs/work-log/p6-device-next-trace.md). The cause, found on a device: an empty player's `playToEnd`
+ * before the video loads; its fix (`isRealPlayToEnd`) is tested in end-of-playback.test.ts.
  */
 import assert from 'node:assert/strict';
 import { afterEach, describe, test } from 'node:test';
@@ -13,13 +13,6 @@ import { playerPath } from '@/navigation/constants/route-paths';
 
 import { previousTarget } from './engine/player-keys';
 import { parseRouteMediaId } from './media-id';
-import {
-  P6_DEVNEXT_TAG,
-  p6CallerNames,
-  p6DevNextLog,
-  p6QueueSummary,
-  p6UriTail,
-} from './p6-devnext-diagnostics';
 import {
   playQueueOnOpen,
   queueNeighbours,
@@ -142,55 +135,5 @@ describe('P6: switching from one video to another', () => {
       assert.equal(parseRouteMediaId(localSearchParam(stored)), 'device:1000000034');
     }
     assert.equal(parseRouteMediaId(['device:1000000035']), 'device:1000000035');
-  });
-});
-
-describe('[P6-DEVNEXT] diagnostics', () => {
-  test('log nothing outside a development build', () => {
-    const lines: unknown[][] = [];
-    const previous = (globalThis as { __DEV__?: boolean }).__DEV__;
-    (globalThis as { __DEV__?: boolean }).__DEV__ = false;
-    try {
-      assert.equal(p6DevNextLog('route', { raw: 'device:1' }, (...args) => lines.push(args)), false);
-    } finally {
-      (globalThis as { __DEV__?: boolean }).__DEV__ = previous;
-    }
-    assert.deepEqual(lines, []);
-  });
-
-  test('in a development build, one tagged line with the data as JSON', () => {
-    const lines: unknown[][] = [];
-    const previous = (globalThis as { __DEV__?: boolean }).__DEV__;
-    (globalThis as { __DEV__?: boolean }).__DEV__ = true;
-    try {
-      assert.equal(p6DevNextLog('route', { raw: 'device:1', parsed: 'device:1' }, (...args) => lines.push(args)), true);
-    } finally {
-      (globalThis as { __DEV__?: boolean }).__DEV__ = previous;
-    }
-    assert.deepEqual(lines, [[P6_DEVNEXT_TAG, 'route', '{"raw":"device:1","parsed":"device:1"}']]);
-  });
-
-  test('the queue summary: length, the first ids, where the target is', () => {
-    const queue = Array.from({ length: 25 }, (_, i) => `device:${i}`);
-    const summary = p6QueueSummary(queue, 'device:7');
-    assert.equal(summary.length, 25);
-    assert.equal(summary.head.length, 20);
-    assert.equal(summary.targetIndex, 7);
-    assert.equal(p6QueueSummary(queue, '1000000034').targetIndex, -1);
-    assert.equal(p6QueueSummary([], null).targetIndex, -1);
-  });
-
-  test('a source is logged by its last segment only, a caller by function names only', () => {
-    assert.equal(p6UriTail('content://media/external/video/media/1234'), '1234');
-    assert.equal(p6UriTail('file:///data/user/0/app/files/v.mp4?x=1'), 'v.mp4');
-    assert.equal(p6UriTail(null), null);
-    const stack = [
-      'Error',
-      '    at openPlayerSession (/app/src/player/session-host/player-session-store.ts:42:3)',
-      '    at goToMedia (address at index.android.bundle:1:2345)',
-      '    at anonymous (index.android.bundle:1:99)',
-    ].join('\n');
-    assert.deepEqual(p6CallerNames(stack), ['openPlayerSession', 'goToMedia']);
-    assert.deepEqual(p6CallerNames(undefined), []);
   });
 });
