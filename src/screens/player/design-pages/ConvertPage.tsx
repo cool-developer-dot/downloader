@@ -4,7 +4,7 @@ import { DsButton, DsCard, DsChip, DsChipRow, DsIcon, DsRow, DsRowGroup, DsSecti
 import { useTranslation, type TranslationKey } from '@/localization';
 import { formatFileSize } from '@/media-detection/utils/format';
 import { compressOptions, compressResolutionLabel, type CompressPreset } from '@/media-edit/compress-plan';
-import { editAvailability } from '@/media-edit/edit-plan';
+import { editAvailability, type EditAvailability } from '@/media-edit/edit-plan';
 import { AVAILABILITY_KEYS } from '@/screens/media-edit/useRunEdit';
 
 import type { PlayerEditToolsSheetsState } from '../page/use-player-edit-tools';
@@ -78,7 +78,14 @@ export const ConvertPage = memo(function ConvertPage({
     requestAnimationFrame(action);
   };
 
-  const formatAvailability = (kind: 'mp4' | 'audio') => (source ? editAvailability(kind, source) : 'unavailable');
+  // Nothing is drawn while hidden, and nothing is worked out without the library item (it loads with the video).
+  if (!visible) {
+    return null;
+  }
+  const formatAvailability = (kind: 'mp4' | 'audio'): EditAvailability | null =>
+    source ? editAvailability(kind, source) : null;
+  const availabilityHint = (availability: EditAvailability | null): string | undefined =>
+    availability && availability !== 'ok' ? t(AVAILABILITY_KEYS[availability]) : undefined;
   const nowSize = source ? (formatFileSize(source.sizeBytes) ?? '') : '';
   const nowResolution =
     source && typeof source.width === 'number' && typeof source.height === 'number'
@@ -99,7 +106,7 @@ export const ConvertPage = memo(function ConvertPage({
                 key={kind}
                 icon={kind === 'mp4' ? 'film' : 'music'}
                 title={kind === 'mp4' ? t('mediaEdit.convertMp4') : t('mediaEdit.convertAudio')}
-                subtitle={availability === 'ok' ? undefined : t(AVAILABILITY_KEYS[availability as keyof typeof AVAILABILITY_KEYS])}
+                subtitle={availabilityHint(availability)}
                 trailing={format === kind ? <DsIcon name="check" size={18} color="primary" /> : 'none'}
                 disabled={availability !== 'ok'}
                 onPress={() => setFormat(kind)}

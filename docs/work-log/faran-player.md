@@ -242,3 +242,32 @@ Decisions on #59's open items:
 
 Checks on the merged code: type check clean, lint 0 errors, JS tests all pass, native 1252 + 178 tests pass, release
 build OK.
+
+## Player design: the 65-screen PDF's Player screens (2026-11-24)
+
+Checked every Player screen of `VidoraX-6-Themes-65-Screens.pdf` against the app on the emulator (side-by-side
+screenshots) and rebuilt the ones that differed with the design kit (`src/design`), as Browser and Downloads were.
+
+| Design | In the app | Where |
+| --- | --- | --- |
+| 18 Player | The Player tab: header with the lock (Private), Videos · Audio · Playlists · Network (search at the row's end), All · Folders · Recent · Most played then Favorites, Newly downloaded, Quality, Length, Tag, Sort (grid / list and reset in its sheet), white card rows (thumbnail, title, quality · size · length, ⋮), last card Include / exclude folders · Videos on this device · Open network stream | `src/screens/library/LibraryScreen.tsx`, `components/LibraryHeaderControls.tsx`, `components/LibraryRowCard.tsx`, `utils/library-kind.ts` |
+| 19 Video player | Already as designed (P1–P8); the timeline shows the time left by default | `src/player/duration-label.ts` |
+| 20 Gestures | Page in the Player (⋮ → Gestures): the gesture map, P8's rows, volume boost, hardware keys | `src/screens/player/design-pages/GesturesPage.tsx` |
+| 21 Subtitles | Page (the Subs chip): P3 / P4 rows, the Style card with its four colour swatches | `design-pages/SubtitlesPage.tsx` |
+| 22 Audio | Page (the Audio chip): presets, the five bands, Bass boost · Virtualizer, Balance · Mono/Stereo, Night mode, Normalization, Audio delay, Headphone / Bluetooth; the bands open the full Audio sheet | `design-pages/AudioPage.tsx` |
+| 24 Video tools | Page (⋮ → Video tools): tiles Trim, Merge, Compress, Convert, Extract audio, GIF, Screenshot, Bookmark, Playlist; Change speed, Cast (with a Cast device), Adaptive bitrate, the other tools | `design-pages/VideoToolsPage.tsx` |
+| 25 Player settings | New screen (Settings → Player, every page's ⚙): Resume playback (new), Default orientation (now remembered), Seek interval, Background play, headphones / headset / volume keys, gestures, notch, info overlay, lock screen, Auto play next, Next episode card, Disable history | `src/screens/settings/player-settings/PlayerSettingsScreen.tsx`, `src/playback/resume-preference.ts`, `src/player/orientation-default-preference.ts` |
+| 48 Playlists | Playlists card, PLAY QUEUE (Now / Next), Create playlist, Edit · Reorder, Import / Export | `src/screens/playlists/PlaylistsScreen.tsx` |
+| 51 Timers | Page (⋮ → Timers): Sleep timer, Daily limit, Kid lock, Bookmark this moment, Headset buttons, Headphone detection | `design-pages/TimersPage.tsx` |
+| 52 Open stream | Title and the "Adaptive bitrate" row | `src/screens/network-stream/NetworkStreamScreen.tsx` |
+| 53 Trim video | The design kit | `src/screens/media-edit/TrimScreen.tsx` |
+| 54 Convert & compress | Page (Video tools' Convert / Compress / Extract audio / Merge tiles): tabs, formats, presets with sizes, Speed, Start | `design-pages/ConvertPage.tsx` |
+
+- The pages are full screen over the video (`PlayerDesignPage`), and each row is the ⋮ sheet's own registry row
+  (`PlayerOptionRows`), so a page and the ⋮ sheet never disagree. A row that opens a sheet keeps the page open; one
+  that leaves the Player (Trim, Move to Private, Delete, Save to library, Download this stream) closes it first.
+- Left out on purpose, as Not planned: 23 Music / Now playing and 49–50 (music library, lyrics), DLNA / SMB / IPTV,
+  screen recording, watermark, subtitle editor, decoder / AV1 / DVD settings, music alarm, ringtone, audio cutter.
+  55 Capture: its GIF part is P12's GIF sheet (already in the design kit); Screen rec is Not planned.
+- Sub-screens keep the app's convention from the Browser / Downloads design work: no tab bar under a pushed screen.
+- All strings in a new `playerDesign` catalog (English and Urdu).
