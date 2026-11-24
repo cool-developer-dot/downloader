@@ -64,6 +64,31 @@ export type EndOfPlaybackOutcome =
  * A "next" the user cancelled on the Next Episode card (P6) stops instead. The sleep timer's "End of this video"
  * (Faran's P18) stops first of all.
  */
+/**
+ * Whether expo-video's `playToEnd` is the end of the video that plays (P6 fix, found on the emulator 2026-11-24).
+ *
+ * Each session's player starts empty (`useVideoPlayer(null)`) and prepares an empty playlist, which ExoPlayer reports
+ * as ended, so expo-video sends `playToEnd` before the video is loaded. Acting on that one moved a video that had just
+ * opened on to the next (Auto Play Next, Repeat all; then that one too, and so on) or restarted it (Repeat one): the
+ * "Up next restarts the same video" bug. A real end comes from a loaded video: the session is ready, with no error,
+ * and the player knows the video's length.
+ */
+export function isRealPlayToEnd(input: { isReady: boolean; hasError: boolean; playerDurationSeconds: number }): boolean {
+  return (
+    input.isReady && !input.hasError && Number.isFinite(input.playerDurationSeconds) && input.playerDurationSeconds > 0
+  );
+}
+
+/** The player's length in seconds (0 when it has none, or is released). */
+export function readPlayerDuration(player: { duration: number }): number {
+  try {
+    const duration = player.duration;
+    return Number.isFinite(duration) && duration > 0 ? duration : 0;
+  } catch {
+    return 0;
+  }
+}
+
 export function decideEndOfPlayback(input: EndOfPlaybackInput): EndOfPlaybackOutcome {
   if (input.sleepAtEnd) {
     return { kind: 'stop' };

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import {
+  isRealPlayToEnd,
+  readPlayerDuration,
   DEFAULT_END_OF_PLAYBACK_ACTION,
   decideEndOfPlayback,
   normalizeEndOfPlaybackAction,
@@ -73,5 +75,34 @@ describe('End of Playback Action (#535, #539, #540)', () => {
     assert.equal(repeatAllNext(['a', 'b'], 'b'), 'a');
     assert.equal(repeatAllNext(['a', 'b'], null), null);
     assert.equal(repeatAllNext([], 'a'), null);
+  });
+});
+
+describe('P6 fix: only the end of a loaded video counts (isRealPlayToEnd)', () => {
+  test("the empty player's end before the video loads is ignored", () => {
+    assert.equal(isRealPlayToEnd({ isReady: false, hasError: false, playerDurationSeconds: 0 }), false);
+    assert.equal(isRealPlayToEnd({ isReady: true, hasError: false, playerDurationSeconds: 0 }), false);
+    assert.equal(isRealPlayToEnd({ isReady: false, hasError: false, playerDurationSeconds: 60 }), false);
+  });
+
+  test('an error is not an end', () => {
+    assert.equal(isRealPlayToEnd({ isReady: true, hasError: true, playerDurationSeconds: 60 }), false);
+  });
+
+  test('a loaded video that plays to its end counts', () => {
+    assert.equal(isRealPlayToEnd({ isReady: true, hasError: false, playerDurationSeconds: 60 }), true);
+  });
+
+  test("the player's length: 0 when unknown, not finite or released", () => {
+    assert.equal(readPlayerDuration({ duration: 90.5 }), 90.5);
+    assert.equal(readPlayerDuration({ duration: 0 }), 0);
+    assert.equal(readPlayerDuration({ duration: Number.NaN }), 0);
+    assert.equal(readPlayerDuration({ duration: -9.2e15 }), 0);
+    const released = {
+      get duration(): number {
+        throw new Error('released');
+      },
+    };
+    assert.equal(readPlayerDuration(released), 0);
   });
 });

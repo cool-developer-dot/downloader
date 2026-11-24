@@ -28,7 +28,13 @@ import {
   setAbPointB,
   type AbPoints,
 } from '@/player/ab-repeat';
-import { decideEndOfPlayback, type EndOfPlaybackAction, type EndOfPlaybackOutcome } from '@/player/end-of-playback';
+import {
+  decideEndOfPlayback,
+  isRealPlayToEnd,
+  readPlayerDuration,
+  type EndOfPlaybackAction,
+  type EndOfPlaybackOutcome,
+} from '@/player/end-of-playback';
 import { isSleepAtEndOfVideo } from '@/player/engine/sleep-limits';
 import { formatPlaybackTime } from '@/player/format-time';
 import { abPointsLabel, endOfPlaybackLabel, loopSpanLabel } from '@/player/repeat-labels';
@@ -141,6 +147,8 @@ export function usePlayerRepeat(input: PlayerRepeatInput): PlayerRepeat {
 
   // What the end decides with, read when the video ends (not when this renders).
   const latest = useRef({
+    isReady,
+    hasError,
     loop,
     endAction,
     queue: input.queue,
@@ -154,6 +162,8 @@ export function usePlayerRepeat(input: PlayerRepeatInput): PlayerRepeat {
   });
   useEffect(() => {
     latest.current = {
+      isReady,
+      hasError,
       loop,
       endAction,
       queue: input.queue,
@@ -168,6 +178,15 @@ export function usePlayerRepeat(input: PlayerRepeatInput): PlayerRepeat {
   });
 
   useEventListener(player, 'playToEnd', () => {
+    // Not the empty player's "end" before the video loads (see isRealPlayToEnd).
+    const real = isRealPlayToEnd({
+      isReady: latest.current.isReady,
+      hasError: latest.current.hasError,
+      playerDurationSeconds: readPlayerDuration(player),
+    });
+    if (!real) {
+      return;
+    }
     // After the session's own handler (it marks the video finished): a microtask runs once every listener has, and
     // before React renders, so a repeat never flashes the Replay button.
     void Promise.resolve().then(() => {

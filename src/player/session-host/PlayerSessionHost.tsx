@@ -70,7 +70,13 @@ function PlayerSessionRunner({ sessionKey, mediaId }: RunnerProps) {
   }, [controller, mediaId, resolveGeneration, session.error, session.isReady]);
 
   // P5 / P6 with no full Player showing this session (the mini player): Repeat one, Repeat all and Auto Play Next.
-  useSessionEndOfPlayback({ player: result.player, mediaId: activeMediaId, replay: result.replay });
+  useSessionEndOfPlayback({
+    player: result.player,
+    mediaId: activeMediaId,
+    isReady: session.isReady,
+    hasError: session.error != null,
+    replay: result.replay,
+  });
   // P15 there too: a headset's, a remote's or the notification's ⏭ / ⏮ move through the queue.
   useSessionQueueCommands({
     player: result.player,
