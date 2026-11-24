@@ -2,6 +2,12 @@
 
 Hamza's Player work for Faran: what was built, what is open, what to test. Detail per package is in `docs/work-log/hamza-player.md` (on `integration/player` up to P10; P11 and P12 add their sections in #50 / #51). Checklist ticks, ready to paste after device testing: `docs/work-log/hamza-player-checklist-ticks.md` / `.csv`.
 
+**P6 fix (#60, draft): device videos that don't switch.** From Device videos, Up next or ⏮ restarted the same video
+instead of switching to the one picked. The cause isn't found yet: every JavaScript step handles `device:<id>` like a
+library id (`docs/work-log/p6-device-next-trace.md`, with `node:test` cases in `src/player/p6-device-next.test.ts`).
+#60 adds `[P6-DEVNEXT]` log lines (development builds only) for Faran's repro. The fix follows once those lines show
+where the switch is lost. Device check 145.
+
 ## Packages
 
 | # | Package | Features (checklist #) | Points | PR | Status |
@@ -52,6 +58,8 @@ Checklist status of the 61 features (from the tick file): **Built 38, Built with
 12. **P10 / P12 Media3 effect:** `Presentation` and `FrameDropEffect` come from `media3-effect` 1.9.0, pulled in by the existing `media3-transformer`, with no `build.gradle` line of its own. Keep it that way, or add the explicit line (a build.gradle change)?
 13. **P12 speed:** the pitch changes with the speed (Transformer's default); keeping the pitch would mean a `SonicAudioProcessor`. And if `FrameDropEffect` fails on a device (device checks), the frame-rate cap can be dropped (`frameRateCap` returns null).
 14. **P7 shared menu:** the app-wide `ActionSheetModal` now scrolls its rows when they don't fit (nothing changes when they do). Please check it on a short phone.
+15. **P6 device videos (#60):** please run the repro on a development build and paste the `[P6-DEVNEXT]` lines
+    (device check 145 says how). The trace's last table says what each pattern means and where the fix goes.
 
 ## Limitations and Not planned
 
@@ -65,6 +73,8 @@ Checklist status of the 61 features (from the tick file): **Built 38, Built with
 - **#711 lengths** for older downloads are filled in in the background (5 at a time); until then they show only under Any length.
 - **Edit and export tools** (#677–#680, #676, #682, #684) take library videos only (the native editor's sources). Screenshot (#675) also works for device videos and files from other apps.
 - **Device videos in a restored queue or a playlist** play only once the device video list has been read (first 500).
+- **Device videos don't switch (P6, open):** from Device videos, Up next and ⏮ may restart the same video instead of
+  switching. The cause is open; diagnostics are in #60.
 - **Playlists:** deep links to `/playlists/<id>` aren't registered, and the typed routes weren't regenerated (needs a dev server).
 - **Screen 21's "RTL support" switch** isn't built: direction is detected per line.
 - **#667 Chromecast:** streams that need the website's headers aren't cast (a proxy would change P14's stream files);
@@ -143,6 +153,12 @@ Release build, emulator and one real phone, all six themes and Urdu. 144 checks,
 49. Auto Play Next off (default): a library list stops at the end, as before. On: the next one plays; the last one stops. A video from download details (no queue) goes on to the next in its folder.
 50. Next Episode card: a folder with "Show S01E01.mp4", "Show S01E02.mp4" and Auto Play Next on. The card shows 10 s before the end and counts down; Play now; Cancel (the video stops at its end); pause and seek back (it hides). No card for "Holiday.mp4" → "Work.mp4". Check it's clear of the controls on the card and in full screen.
 51. Auto Play Next in picture-in-picture and with background play on and the screen off: the next video plays.
+145. **P6 fix (#60), added after check 144: device videos switch** (a development build first, for #60's `[P6-DEVNEXT]` lines; then the build with the fix):
+     Device videos → quiet.mp4 → Up next → two-audio.mp4 plays (not quiet.mp4 again). Then, from a device video with one
+     before it, ⏮ at about 1 s goes to the previous video; with none before it, ⏮ restarts (P15, by design). Then ⏭,
+     Auto Play Next at the end, Repeat all wrapping from the last device video to the first, a playlist with a device video
+     in it, and the next-episode card's Play now: each switches. A library video and a playlist of library videos still
+     do exactly as before.
 
 ### P7 Playlists (#46)
 
