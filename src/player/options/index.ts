@@ -20,6 +20,7 @@ import './p16-speed';
 import './p17-audio';
 import './p18-sleep-limits';
 import './p19-effects';
+import './design-pages';
 
 export {
   playerOptions,

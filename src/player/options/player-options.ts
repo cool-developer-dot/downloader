@@ -188,6 +188,14 @@ export type PlayerOptionContext = {
    * packages' tests build their context without it; its rows hide when it is missing.
    */
   engine?: PlayerEngineOption;
+  /**
+   * The pages of the 65-screen design inside the Player (screens 24 Video tools, 51 Timers): their ⋮ rows open them.
+   * Optional, so the packages' tests build their context without it; the rows hide when it is missing.
+   */
+  designPages?: {
+    openVideoTools: () => void;
+    openTimers: () => void;
+  };
   ui: PlayerOptionUi;
 };
 

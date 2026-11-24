@@ -182,6 +182,12 @@ import { useKidLock } from '@/player/engine/sleep-limits';
 import { KidLockOverlay } from './engine/KidLockOverlay';
 import { AudioOnlyCover } from './engine/AudioOnlyCover';
 import { PlayerEngineSheets } from './engine/PlayerEngineSheets';
+// The 65-screen design's pages inside the Player (screens 20, 21, 22, 24, 51).
+import { AudioPage } from './design-pages/AudioPage';
+import { GesturesPage } from './design-pages/GesturesPage';
+import { SubtitlesPage } from './design-pages/SubtitlesPage';
+import { TimersPage } from './design-pages/TimersPage';
+import { VideoToolsPage } from './design-pages/VideoToolsPage';
 // P13 Chromecast: the Cast button, the device sheet, "Casting to <device>" and the phone's controls driving the TV.
 import { useCastDiscovery } from '@/player/cast/use-cast-discovery';
 import { usePlayerCast } from './page/use-player-cast';
@@ -356,6 +362,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const [queueSheetOpen, setQueueSheetOpen] = useState(false);
   // P8: the Gestures, Gesture sensitivity or Customize controls sheet.
   const [p8Sheet, setP8Sheet] = useState<'gestures' | 'sensitivity' | 'customize' | null>(null);
+  // The design's pages over the video (screens 20 Gestures, 21 Subtitles, 22 Audio, 24 Video tools, 51 Timers).
+  const [designPage, setDesignPage] = useState<'gestures' | 'subtitles' | 'audio' | 'tools' | 'timers' | null>(null);
   const window = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const notYet = usePlayerNotYet();
@@ -567,7 +575,8 @@ const PlayerSessionView = memo(function PlayerSessionView({
       frameMode ||
       displaySheet != null ||
       subtitleSheet != null ||
-      p8Sheet != null,
+      p8Sheet != null ||
+      designPage != null,
     isOrientationSheetOpen: orientationSheetOpen,
     isLoading: session.isLoading || startupCoverVisible,
     hasError: Boolean(session.error),
@@ -893,6 +902,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
   const engineSheetOpen = useOpenEngineSheet() != null;
   const kidLock = useKidLock();
   const anyModalOpen =
+    designPage != null ||
     engineSheetOpen ||
     speedSheetOpen ||
     orientationSheetOpen ||
@@ -1379,9 +1389,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
           onSpeedButton();
           return;
         case 'audio':
-          // Faran's P17: the Audio sheet (tracks, delay, audio only; P19's equalizer and effects).
+          // Design 22's Audio page (presets, bands, effects); its rows open Faran's Audio sheet for every band.
           endLongPress();
-          openEngineSheet('audio');
+          setDesignPage('audio');
           return;
         case 'rotate':
           endLongPress();
@@ -1408,7 +1418,9 @@ const PlayerSessionView = memo(function PlayerSessionView({
           openDisplaySheet('mirrorFlip');
           return;
         case 'subs':
-          openSubtitleSheet('subtitles');
+          // Design 21's Subtitles page (P3's and P4's rows with the Style card).
+          endLongPress();
+          setDesignPage('subtitles');
           return;
         case 'upNext':
           // P6 #619: the queue sheet.
@@ -1490,7 +1502,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       setShuffle: onShuffle,
       setAutoPlayNext: onAutoPlayNext,
       setNextEpisodePrompt,
-      openGestures: () => openP8Sheet('gestures'),
+      openGestures: () => (designPage === 'gestures' ? openP8Sheet('gestures') : setDesignPage('gestures')),
       setGesturesEnabled,
       openGestureSensitivity: () => openP8Sheet('sensitivity'),
       openCustomizeControls: () => openP8Sheet('customize'),
@@ -1512,6 +1524,7 @@ const PlayerSessionView = memo(function PlayerSessionView({
       openSubtitleSheet,
       seekExact,
       subtitles.setAutoDetect,
+      designPage,
     ],
   );
 
@@ -1674,7 +1687,16 @@ const PlayerSessionView = memo(function PlayerSessionView({
     privacy: p11Private.option,
     exportExtras: p12Export.option,
     engine: engine.option,
+    designPages: {
+      openVideoTools: () => setDesignPage('tools'),
+      openTimers: () => setDesignPage('timers'),
+    },
     ui: optionsUi,
+  };
+  const closeDesignPage = () => setDesignPage(null);
+  const openPlayerSettings = () => {
+    setDesignPage(null);
+    requestAnimationFrame(() => appRouter.push(routePaths.playerSettings as Parameters<typeof appRouter.push>[0]));
   };
 
   // #721 with the controls showing: between the volume button and the speed chip (P8: after the first dock button),
@@ -2166,6 +2188,43 @@ const PlayerSessionView = memo(function PlayerSessionView({
         selected={display.mirror}
         onSelect={onSelectMirror}
         onClose={() => setDisplaySheet(null)}
+      />
+      {/* The design's pages (a sheet a row opens comes up above the page). */}
+      <SubtitlesPage
+        visible={designPage === 'subtitles'}
+        context={optionsContext}
+        videoTitle={session.displayName ?? null}
+        color={subtitleStyle.color}
+        onColor={(color) => setSubtitleStyle({ color })}
+        onOpenStyle={() => openSubtitleSheet('style')}
+        onBack={closeDesignPage}
+        onSettings={openPlayerSettings}
+      />
+      <AudioPage
+        visible={designPage === 'audio'}
+        context={optionsContext}
+        onOpenAudioSheet={() => openEngineSheet('audio')}
+        onBack={closeDesignPage}
+        onSettings={openPlayerSettings}
+      />
+      <GesturesPage
+        visible={designPage === 'gestures'}
+        context={optionsContext}
+        onBack={closeDesignPage}
+        onSettings={openPlayerSettings}
+      />
+      <VideoToolsPage
+        visible={designPage === 'tools'}
+        context={optionsContext}
+        cast={cast.button ? { deviceName: cast.deviceName, casting: cast.casting, onPress: cast.button.onPress } : null}
+        onBack={closeDesignPage}
+        onSettings={openPlayerSettings}
+      />
+      <TimersPage
+        visible={designPage === 'timers'}
+        context={optionsContext}
+        onBack={closeDesignPage}
+        onSettings={openPlayerSettings}
       />
       {/* P3: the Subs chip opens the options sheet's Subtitles section alone. */}
       <PlayerOptionsSheet

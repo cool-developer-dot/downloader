@@ -1,17 +1,12 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Icon } from '@/components/base/Icon';
-import { Pressable } from '@/components/base/Pressable';
-import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
-import { ScreenHeader } from '@/components/headers/ScreenHeader';
-import { useTheme } from '@/hooks/use-theme';
+import { ds, DsHeader, DsRow, DsRowGroup, DsScreen } from '@/design';
 import { useTranslation } from '@/localization';
 import { useShowInFolderSheetActions } from '@/screens/library/hooks/useShowInFolderSheetAction';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
 
 import {
-  ContinueWatchingSection,
   LibraryEmptyState,
   LibraryErrorState,
   LibraryHeaderControls,
@@ -38,14 +33,14 @@ import { LibrarySelectionBar } from './components/LibrarySelectionBar';
 import { useLibraryPlaylists } from './hooks/useLibraryPlaylists';
 // P9 #628: Filter → Include / exclude folders.
 import { LibraryFolderVisibilitySheet } from './components/LibraryFolderVisibilitySheet';
+import { countByKind, itemsOfKind, type LibraryKind } from './utils/library-kind';
 
 export const LibraryScreen = memo(function LibraryScreen() {
-  const theme = useTheme();
   const { t } = useTranslation();
+  // Design 18: Videos · Audio split the list.
+  const [kind, setKind] = useState<LibraryKind>('video');
   const {
     visibleItems,
-    continueWatchingItems,
-    playableCount,
     searchDraft,
     filter,
     folderId,
@@ -54,7 +49,6 @@ export const LibraryScreen = memo(function LibraryScreen() {
     quality,
     qualities,
     controlsDirty,
-    filterSheetVisible,
     folderSelectionSheetVisible,
     sortSheetVisible,
     qualitySheetVisible,
@@ -62,8 +56,6 @@ export const LibraryScreen = memo(function LibraryScreen() {
     status,
     error,
     onChangeSearch,
-    openFilterSheet,
-    closeFilterSheet,
     closeFolderSelection,
     onSelectFolderSelection,
     openSortSheet,
@@ -92,7 +84,6 @@ export const LibraryScreen = memo(function LibraryScreen() {
     deleteConfirmId,
     deleteLoading,
     openDownloads,
-    openWatchHistory,
     durationBucket,
     onSelectDuration,
     excludedFolderIds,
@@ -211,10 +202,20 @@ export const LibraryScreen = memo(function LibraryScreen() {
     void refresh();
   }, [refresh]);
 
+  // Design 18's "48 videos · 120 songs".
+  const counts = countByKind(visibleItems);
   const subtitle =
-    playableCount > 0
-      ? `${playableCount} video${playableCount === 1 ? '' : 's'}`
-      : undefined;
+    [
+      counts.videos > 0
+        ? counts.videos === 1
+          ? t('playerDesign.countVideosOne')
+          : t('playerDesign.countVideos', { count: counts.videos })
+        : null,
+      counts.audio > 0 ? t('playerDesign.countAudio', { count: counts.audio }) : null,
+    ]
+      .filter(Boolean)
+      .join(' · ') || undefined;
+  const shownItems = useMemo(() => itemsOfKind(visibleItems, kind), [kind, visibleItems]);
 
   // P9 #708: how many times the video was played, after the menu's usual line.
   const actionPlays = actionItemId ? (playCounts[actionItemId]?.playCount ?? 0) : 0;
@@ -239,80 +240,70 @@ export const LibraryScreen = memo(function LibraryScreen() {
     [folderOrderedIds, foldersById],
   );
 
-  return (
-    <SafeAreaScreen
-      testID="library-screen"
-      padded={false}
-      edges={['top', 'left', 'right', 'bottom']}
-      style={{ backgroundColor: theme.colors.background }}>
-      <ScreenHeader
-        title={t('library.title')}
-        subtitle={subtitle}
-        actions={
-          <>
-          <Pressable
-            testID="library-device-videos"
-            accessibilityRole="button"
-            accessibilityLabel={t('deviceVideos.open')}
-            onPress={() => navigation.push(routePaths.deviceVideos)}
-            hitSlop={8}
-            style={{ padding: 8 }}>
-            <Icon name="cellphone-play" size="md" color="headerIcon" />
-          </Pressable>
-          <Pressable
-            testID="library-network-stream"
-            accessibilityRole="button"
-            accessibilityLabel={t('playerEngine.streamOpenA11y')}
-            onPress={() => navigation.push(routePaths.networkStream)}
-            hitSlop={8}
-            style={{ padding: 8 }}>
-            <Icon name="play-network-outline" size="md" color="headerIcon" />
-          </Pressable>
-          <Pressable
-            testID="library-playlists"
-            accessibilityRole="button"
-            accessibilityLabel={t('playlists.open')}
-            onPress={() => navigation.push(routePaths.playlists)}
-            hitSlop={8}
-            style={{ padding: 8 }}>
-            <Icon name="playlist-play" size="md" color="headerIcon" />
-          </Pressable>
-          <PrivateHeaderButton />
-          </>
-        }
-        testID="library-header"
+  const header = (
+    <View style={{ paddingHorizontal: ds.space.screenX, gap: 10, marginBottom: 10 }}>
+      <DsHeader title={t('library.title')} subtitle={subtitle} action={<PrivateHeaderButton />} testID="library-header" />
+      <LibraryHeaderControls
+        kind={kind}
+        onSelectKind={setKind}
+        onOpenPlaylists={() => navigation.push(routePaths.playlists)}
+        onOpenNetwork={() => navigation.push(routePaths.networkStream)}
+        searchDraft={searchDraft}
+        filter={filter}
+        sort={sort}
+        viewMode={viewMode}
+        quality={quality}
+        qualities={qualities}
+        controlsDirty={controlsDirty}
+        sortSheetVisible={sortSheetVisible}
+        qualitySheetVisible={qualitySheetVisible}
+        onChangeSearch={onChangeSearch}
+        onOpenSort={openSortSheet}
+        onCloseSort={closeSortSheet}
+        onOpenQuality={openQualitySheet}
+        onCloseQuality={closeQualitySheet}
+        onSelectFilter={onSelectFilter}
+        onSelectSort={onSelectSort}
+        onSelectQuality={onSelectQuality}
+        onToggleViewMode={onToggleViewMode}
+        onReset={onReset}
+        durationBucket={durationBucket}
+        onSelectDuration={onSelectDuration}
       />
+    </View>
+  );
 
-      <Box py={12} gap={4}>
-        <LibraryHeaderControls
-          searchDraft={searchDraft}
-          filter={filter}
-          sort={sort}
-          viewMode={viewMode}
-          quality={quality}
-          qualities={qualities}
-          controlsDirty={controlsDirty}
-          filterSheetVisible={filterSheetVisible}
-          sortSheetVisible={sortSheetVisible}
-          qualitySheetVisible={qualitySheetVisible}
-          onChangeSearch={onChangeSearch}
-          onOpenFilter={openFilterSheet}
-          onCloseFilter={closeFilterSheet}
-          onOpenSort={openSortSheet}
-          onCloseSort={closeSortSheet}
-          onOpenQuality={openQualitySheet}
-          onCloseQuality={closeQualitySheet}
-          onSelectFilter={onSelectFilter}
-          onSelectSort={onSelectSort}
-          onSelectQuality={onSelectQuality}
-          onToggleViewMode={onToggleViewMode}
-          onReset={onReset}
-          durationBucket={durationBucket}
-          onSelectDuration={onSelectDuration}
-          onOpenFolderVisibility={openFolderVisibility}
-          hiddenFolderCount={hiddenFolderCount}
-        />
-      </Box>
+  // Design 18's last card: Include / exclude folders, and the other ways to play (videos on the phone, a stream).
+  const footer = (
+    <DsRowGroup testID="library-more">
+      <DsRow
+        icon="sliders-horizontal"
+        title={t('playerDesign.rowFolders')}
+        value={hiddenFolderCount > 0 ? t('playerDesign.rowFoldersHidden', { count: hiddenFolderCount }) : undefined}
+        onPress={openFolderVisibility}
+        testID="library-folder-visibility"
+      />
+      <DsRow
+        icon="smartphone"
+        title={t('playerDesign.rowDeviceVideos')}
+        subtitle={t('playerDesign.rowDeviceVideosSub')}
+        onPress={() => navigation.push(routePaths.deviceVideos)}
+        accessibilityLabel={t('deviceVideos.open')}
+        testID="library-device-videos"
+      />
+      <DsRow
+        icon="globe"
+        title={t('playerDesign.rowNetwork')}
+        onPress={() => navigation.push(routePaths.networkStream)}
+        accessibilityLabel={t('playerEngine.streamOpenA11y')}
+        testID="library-network-stream"
+      />
+    </DsRowGroup>
+  );
+
+  return (
+    <DsScreen scroll={false} testID="library-screen">
+      {status !== 'ready' ? header : null}
       {playlists.selecting ? (
         <LibrarySelectionBar count={playlists.selectedCount} onAdd={playlists.addSelected} onCancel={playlists.cancel} />
       ) : null}
@@ -406,24 +397,28 @@ export const LibraryScreen = memo(function LibraryScreen() {
           />
         )
       ) : (
-        <Box style={{ flex: 1 }}>
-          {filter === 'all' && !searchDraft.trim() ? (
-            <ContinueWatchingSection
-              items={continueWatchingItems}
-              onSeeAll={openWatchHistory}
+        <LibraryList
+          items={shownItems}
+          viewMode={viewMode}
+          refreshing={refreshing}
+          onRefresh={handleRefresh}
+          onPressItem={playlists.selecting ? playlists.toggle : openPlayer}
+          onLongPressItem={playlists.selecting ? playlists.toggle : openItemActions}
+          selectedIds={playlists.selectedIds}
+          listHeaderComponent={header}
+          listFooterComponent={footer}
+          listEmptyComponent={
+            <EmptyState
+              icon={kind === 'audio' ? 'music-note-outline' : 'video-outline'}
+              title={kind === 'audio' ? t('playerDesign.emptyAudio') : t('library.emptyTitle')}
+              description={kind === 'audio' ? t('playerDesign.emptyAudioHint') : undefined}
             />
-          ) : null}
-          <LibraryList
-            items={visibleItems}
-            viewMode={viewMode}
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            onPressItem={playlists.selecting ? playlists.toggle : openPlayer}
-            onLongPressItem={playlists.selecting ? playlists.toggle : openItemActions}
-            selectedIds={playlists.selectedIds}
-          />
-        </Box>
+          }
+        />
       )}
-    </SafeAreaScreen>
+      {status !== 'ready' && status !== 'loading' ? (
+        <View style={{ paddingHorizontal: ds.space.screenX, paddingBottom: 16 }}>{footer}</View>
+      ) : null}
+    </DsScreen>
   );
 });

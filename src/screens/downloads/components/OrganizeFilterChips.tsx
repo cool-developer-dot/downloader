@@ -2,7 +2,6 @@ import { memo, useMemo, useState } from 'react';
 
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
-import { Chip } from '@/components/common/Chip';
 import { DsChip } from '@/design';
 import { allTags, SIZE_BUCKETS, type SizeBucket } from '@/library/item-organize';
 import { useItemTagsStore, useOrganizeFiltersStore } from '@/library/item-organize-store';
@@ -120,7 +119,7 @@ export const DownloadsOrganizeFilterChips = memo(function DownloadsOrganizeFilte
   );
 });
 
-/** Player → filters: Tag (#387). Nothing chosen shows every video, as before. (The player keeps the old chrome.) */
+/** Player → filters: Tag (#387), a design chip in the Player tab's second row. Nothing chosen shows every video, as before. */
 export const PlayerTagFilterChip = memo(function PlayerTagFilterChip({ testID }: { testID: string }) {
   const { t } = useTranslation();
   const tag = useOrganizeFiltersStore((s) => s.playerTag);
@@ -132,10 +131,9 @@ export const PlayerTagFilterChip = memo(function PlayerTagFilterChip({ testID }:
   }
   return (
     <>
-      <Chip
+      <DsChip
         label={tag ?? t('organize.tag')}
         selected={tag !== null}
-        icon="tag-outline"
         onPress={() => setOpen(true)}
         testID={`${testID}-tag-chip`}
       />

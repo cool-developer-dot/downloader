@@ -1,17 +1,18 @@
 import { memo, useCallback, useMemo, type ReactElement } from 'react';
+import { View } from 'react-native';
 import {
   FlatList,
   useWindowDimensions,
   type ListRenderItem,
 } from 'react-native';
 
-import { Box } from '@/components/base/Box';
+import { ds } from '@/design';
 import type { LibraryViewMode, MediaLibraryItem } from '@/library';
 import { useTagFilteredItems } from '@/screens/downloads/hooks/useOrganizeNarrowing';
 
 import { useLibraryTokens } from '../theme/library-tokens';
-import { LibraryCard } from './LibraryCard';
 import { LibraryGridTile } from './LibraryGridTile';
+import { LibraryRowCard } from './LibraryRowCard';
 
 export type LibraryListProps = {
   items: MediaLibraryItem[];
@@ -23,6 +24,9 @@ export type LibraryListProps = {
   /** P7 selection mode: the selected ids while selecting (undefined otherwise). */
   selectedIds?: ReadonlySet<string>;
   listEmptyComponent?: ReactElement | null;
+  /** Design 18: the header and chips scroll with the videos; the folder / stream rows follow the last one. */
+  listHeaderComponent?: ReactElement | null;
+  listFooterComponent?: ReactElement | null;
   testID?: string;
 };
 
@@ -37,6 +41,8 @@ export const LibraryList = memo(function LibraryList({
   onLongPressItem,
   selectedIds,
   listEmptyComponent,
+  listHeaderComponent,
+  listFooterComponent,
   testID = 'library-list',
 }: LibraryListProps) {
   // H12 (#387): the Tag filter narrows the videos shown (no tag chosen = every video, as before).
@@ -52,13 +58,15 @@ export const LibraryList = memo(function LibraryList({
 
   const renderListItem: ListRenderItem<MediaLibraryItem> = useCallback(
     ({ item }) => (
-      <LibraryCard
-        item={item}
-        onPress={onPressItem}
-        onLongPress={onLongPressItem}
-        selected={selectedIds ? selectedIds.has(item.id) : undefined}
-        testID={`library-card-${item.id}`}
-      />
+      <View style={{ paddingHorizontal: ds.space.screenX }}>
+        <LibraryRowCard
+          item={item}
+          onPress={onPressItem}
+          onMore={onLongPressItem}
+          selected={selectedIds ? selectedIds.has(item.id) : undefined}
+          testID={`library-card-${item.id}`}
+        />
+      </View>
     ),
     [onLongPressItem, onPressItem, selectedIds],
   );
@@ -107,25 +115,19 @@ export const LibraryList = memo(function LibraryList({
       contentContainerStyle={{
         flexGrow: 1,
         paddingBottom: 24,
-        paddingTop: 4,
+        paddingTop: 0,
       }}
       ListEmptyComponent={listEmptyComponent}
+      ListHeaderComponent={listHeaderComponent}
       ListFooterComponent={
-        items.length > 0 ? <Box style={{ height: 16 }} /> : null
+        <View style={{ paddingHorizontal: ds.space.screenX, paddingTop: items.length > 0 ? 2 : 0, paddingBottom: 16 }}>
+          {listFooterComponent}
+        </View>
       }
       initialNumToRender={isGrid ? 8 : 12}
       maxToRenderPerBatch={isGrid ? 6 : 10}
       windowSize={5}
       removeClippedSubviews
-      getItemLayout={
-        isGrid
-          ? undefined
-          : (_data, index) => ({
-              length: libraryTokens.listRowHeight,
-              offset: libraryTokens.listRowHeight * index,
-              index,
-            })
-      }
     />
   );
 });

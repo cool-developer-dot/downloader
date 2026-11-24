@@ -13,6 +13,7 @@ import { formatResumeLabel } from './domain/format';
 import { mergePlaybackStates, type PlaybackSummary } from './domain/merge';
 import { playbackLog } from './diagnostics';
 import { loadPlaybackState } from './persistence';
+import { isResumePlaybackOn } from './resume-preference';
 
 export type ResumeDecision = 'pending' | 'resume' | 'start_over' | 'dismissed';
 
@@ -55,7 +56,8 @@ function loadResume(
     loadPlaybackState(PLAYBACK_LOCAL_NAMESPACE, mediaId),
     null,
   );
-  if (merged && canResumeFrom(merged)) {
+  // Design 25 "Resume playback" off: every video starts from the beginning.
+  if (merged && canResumeFrom(merged) && isResumePlaybackOn()) {
     return { mediaId, generation, candidate: merged, decision: 'pending' };
   }
   if (merged?.completed) {

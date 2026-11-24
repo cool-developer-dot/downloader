@@ -4,10 +4,8 @@ import {
   applyOrientationMode,
   setOrientationMode as persistOrientationMode,
 } from '@/player/orientation-controller';
-import {
-  DEFAULT_ORIENTATION_MODE,
-  type OrientationMode,
-} from '@/player/orientation-mode';
+import { getDefaultOrientation } from '@/player/orientation-default-preference';
+import type { OrientationMode } from '@/player/orientation-mode';
 import { ensurePlayerChromeRuntime } from '@/player/player-chrome.runtime';
 
 export type UsePlayerOrientationResult = {
@@ -19,7 +17,8 @@ export type UsePlayerOrientationResult = {
  * Session-local orientation preference for the player screen.
  */
 export function usePlayerOrientation(): UsePlayerOrientationResult {
-  const [mode, setModeState] = useState<OrientationMode>(DEFAULT_ORIENTATION_MODE);
+  // Design 25: each video opens in the default orientation from Player settings (Auto unless changed).
+  const [mode, setModeState] = useState<OrientationMode>(() => getDefaultOrientation());
 
   useEffect(() => {
     ensurePlayerChromeRuntime();

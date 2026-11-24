@@ -1,31 +1,16 @@
-import { memo, useMemo, useState } from 'react';
-import { ScrollView } from 'react-native';
+import { memo, useCallback, useMemo, useState } from 'react';
+import { View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Text } from '@/components/base/Text';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
-import { IconButton } from '@/components/buttons/IconButton';
-import { Chip } from '@/components/common/Chip';
-import { SearchField } from '@/components/inputs/SearchField';
+import { DsChip, DsChipRow, DsIconButton, DsSearchField } from '@/design';
 import type { LibraryFilter, LibrarySort, LibraryViewMode } from '@/library';
 import { DURATION_BUCKETS, type DurationBucket } from '@/library/duration-buckets';
-import { useTranslation, type TranslationKey } from '@/localization';
+import { useRtl, useTranslation, type TranslationKey } from '@/localization';
 import { PlayerTagFilterChip } from '@/screens/downloads/components/OrganizeFilterChips';
 
-import {
-  LIBRARY_FILTER_OPTIONS,
-  LIBRARY_SORT_OPTIONS,
-} from '../constants/library.constants';
-
-const FILTER_LABEL_KEYS: Record<LibraryFilter, TranslationKey> = {
-  all: 'library.filterAll',
-  favorites: 'library.filterFavorites',
-  recently_downloaded: 'library.filterRecentlyDownloaded',
-  recently_watched: 'library.filterRecentlyWatched',
-  folder: 'library.filterFolder',
-  quality: 'library.qualityTitle',
-};
+import { LIBRARY_SORT_OPTIONS } from '../constants/library.constants';
+import type { LibraryKind } from '../utils/library-kind';
 
 const SORT_LABEL_KEYS: Record<LibrarySort, TranslationKey> = {
   newest: 'library.sortNewest',
@@ -46,9 +31,24 @@ const DURATION_LABEL_KEYS: Record<DurationBucket, TranslationKey> = {
   from20to60: 'libraryStats.duration20to60',
   over60: 'libraryStats.durationOver60',
 };
-import { useLibraryTokens } from '../theme/library-tokens';
+
+/** Design 18's second chips (after its All · Folders · Recent · Most played come the filters the Player tab had). */
+const FILTER_CHIPS: readonly { id: LibraryFilter; label: TranslationKey }[] = [
+  { id: 'all', label: 'playerDesign.chipAll' },
+  { id: 'folder', label: 'playerDesign.chipFolders' },
+  { id: 'recently_watched', label: 'playerDesign.chipRecent' },
+];
+const MORE_FILTER_CHIPS: readonly { id: LibraryFilter; label: TranslationKey }[] = [
+  { id: 'favorites', label: 'playerDesign.chipFavorites' },
+  { id: 'recently_downloaded', label: 'playerDesign.chipNew' },
+];
 
 export type LibraryHeaderControlsProps = {
+  /** Design 18's first chips: Videos · Audio (the list), Playlists · Network (other screens). */
+  kind: LibraryKind;
+  onSelectKind: (kind: LibraryKind) => void;
+  onOpenPlaylists: () => void;
+  onOpenNetwork: () => void;
   searchDraft: string;
   filter: LibraryFilter;
   sort: LibrarySort;
@@ -56,12 +56,9 @@ export type LibraryHeaderControlsProps = {
   quality: string | null;
   qualities: string[];
   controlsDirty: boolean;
-  filterSheetVisible: boolean;
   sortSheetVisible: boolean;
   qualitySheetVisible: boolean;
   onChangeSearch: (value: string) => void;
-  onOpenFilter: () => void;
-  onCloseFilter: () => void;
   onOpenSort: () => void;
   onCloseSort: () => void;
   onOpenQuality: () => void;
@@ -75,12 +72,18 @@ export type LibraryHeaderControlsProps = {
   /** P9 #711: the length filter (a chip and its sheet); omitted: no chip. */
   durationBucket?: DurationBucket;
   onSelectDuration?: (bucket: DurationBucket) => void;
-  /** P9 #628: the filter sheet's "Include / exclude folders" row, and how many folders are hidden. */
-  onOpenFolderVisibility?: () => void;
-  hiddenFolderCount?: number;
 };
 
+/**
+ * The Player tab's controls as design 18 draws them: Videos · Audio · Playlists · Network, then All · Folders ·
+ * Recent · Most played (and the Player tab's other filters: Favorites, Newly downloaded, Quality, Length, Tag). Search,
+ * sort (with Reset) and the grid / list switch are the plain buttons at the end of the second row, as on Downloads.
+ */
 export const LibraryHeaderControls = memo(function LibraryHeaderControls({
+  kind,
+  onSelectKind,
+  onOpenPlaylists,
+  onOpenNetwork,
   searchDraft,
   filter,
   sort,
@@ -88,12 +91,9 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
   quality,
   qualities,
   controlsDirty,
-  filterSheetVisible,
   sortSheetVisible,
   qualitySheetVisible,
   onChangeSearch,
-  onOpenFilter,
-  onCloseFilter,
   onOpenSort,
   onCloseSort,
   onOpenQuality,
@@ -106,48 +106,32 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
   testID = 'library-controls',
   durationBucket = 'any',
   onSelectDuration,
-  onOpenFolderVisibility,
-  hiddenFolderCount = 0,
 }: LibraryHeaderControlsProps) {
-  const libraryTokens = useLibraryTokens();
   const { t } = useTranslation();
-  const filterLabel = t(FILTER_LABEL_KEYS[filter] ?? 'library.filterAll');
-  const sortLabel = t(SORT_LABEL_KEYS[sort] ?? 'library.sortNewest');
-  // P9 #711: the length sheet belongs to its chip.
+  const rtl = useRtl();
   const [durationSheetVisible, setDurationSheetVisible] = useState(false);
-  const durationLabel = t(DURATION_LABEL_KEYS[durationBucket] ?? 'libraryStats.durationAny');
+  const [searchOpen, setSearchOpen] = useState(Boolean(searchDraft.trim()));
+  const searchVisible = searchOpen || Boolean(searchDraft.trim());
 
-  const filterActions = useMemo<ActionSheetItem[]>(
-    () => [
-      ...LIBRARY_FILTER_OPTIONS.filter((option) => option.available).map((option) => ({
-        id: option.id,
-        label: option.id === filter ? `${t(FILTER_LABEL_KEYS[option.id])} ✓` : t(FILTER_LABEL_KEYS[option.id]),
-        icon:
-          option.id === 'all'
-            ? 'format-list-bulleted'
-            : option.id === 'favorites'
-              ? 'heart-outline'
-              : option.id === 'recently_downloaded'
-                ? 'clock-outline'
-                : 'filter-outline',
-        onPress: () => onSelectFilter(option.id),
-      })),
-      // P9 #628: last, as on screen 18.
-      ...(onOpenFolderVisibility
-        ? [
-            {
-              id: 'p9-folder-visibility',
-              label:
-                hiddenFolderCount > 0
-                  ? t('libraryStats.foldersHiddenCount', { count: hiddenFolderCount })
-                  : t('libraryStats.foldersTitle'),
-              icon: 'folder-eye-outline',
-              onPress: onOpenFolderVisibility,
-            },
-          ]
-        : []),
-    ],
-    [filter, hiddenFolderCount, onOpenFolderVisibility, onSelectFilter, t],
+  const toggleSearch = useCallback(() => {
+    if (searchVisible) {
+      if (searchDraft) {
+        onChangeSearch('');
+      }
+      setSearchOpen(false);
+      return;
+    }
+    setSearchOpen(true);
+  }, [onChangeSearch, searchDraft, searchVisible]);
+
+  // A filter chip tapped again goes back to All.
+  const pickFilter = useCallback(
+    (next: LibraryFilter) => onSelectFilter(filter === next && next !== 'folder' ? 'all' : next),
+    [filter, onSelectFilter],
+  );
+  const toggleMostPlayed = useCallback(
+    () => onSelectSort(sort === 'most_played' ? 'newest' : 'most_played'),
+    [onSelectSort, sort],
   );
 
   const durationActions = useMemo<ActionSheetItem[]>(
@@ -156,150 +140,154 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
         id: bucket,
         label: t(DURATION_LABEL_KEYS[bucket]),
         selected: bucket === durationBucket,
-        icon: 'timer-outline',
-        onPress: () => onSelectDuration?.(bucket),
+        onPress: () => {
+          setDurationSheetVisible(false);
+          onSelectDuration?.(bucket);
+        },
       })),
     [durationBucket, onSelectDuration, t],
   );
 
-  const sortActions = useMemo<ActionSheetItem[]>(
-    () =>
-      LIBRARY_SORT_OPTIONS.filter((option) => option.available).map((option) => ({
-        id: option.id,
-        label: option.id === sort ? `${t(SORT_LABEL_KEYS[option.id])} ✓` : t(SORT_LABEL_KEYS[option.id]),
-        icon:
-          option.id === 'newest' || option.id === 'oldest'
-            ? 'sort-calendar-descending'
-            : option.id === 'name_asc' || option.id === 'name_desc'
-              ? 'sort-alphabetical-ascending'
-              : 'sort-numeric-descending',
-        onPress: () => onSelectSort(option.id),
-      })),
-    [onSelectSort, sort, t],
-  );
+  const sortActions = useMemo<ActionSheetItem[]>(() => {
+    const items: ActionSheetItem[] = LIBRARY_SORT_OPTIONS.filter((option) => option.available).map((option) => ({
+      id: option.id,
+      label: option.id === sort ? `${t(SORT_LABEL_KEYS[option.id])} ✓` : t(SORT_LABEL_KEYS[option.id]),
+      selected: option.id === sort,
+      onPress: () => onSelectSort(option.id),
+    }));
+    if (controlsDirty) {
+      items.push({
+        id: 'reset',
+        label: t('library.resetControls'),
+        destructive: true,
+        onPress: () => {
+          onCloseSort();
+          onReset();
+          setSearchOpen(false);
+        },
+      });
+    }
+    return items;
+  }, [controlsDirty, onCloseSort, onReset, onSelectSort, sort, t]);
 
   const qualityActions = useMemo<ActionSheetItem[]>(
     () => [
       {
         id: 'all-qualities',
-        label: quality == null ? 'All qualities ✓' : 'All qualities',
-        icon: 'format-list-bulleted',
+        label: quality == null ? `${t('playerDesign.allQualities')} ✓` : t('playerDesign.allQualities'),
+        selected: quality == null,
         onPress: () => onSelectQuality(null),
       },
       ...qualities.map((value) => ({
         id: value,
         label: value === quality ? `${value} ✓` : value,
-        icon: 'high-definition' as const,
+        selected: value === quality,
         onPress: () => onSelectQuality(value),
       })),
     ],
-    [onSelectQuality, qualities, quality],
+    [onSelectQuality, qualities, quality, t],
   );
 
   return (
-    <Box testID={testID} gap={libraryTokens.spacing.controlsGap}>
-      <Box px={libraryTokens.spacing.screenX}>
-        <SearchField
-          value={searchDraft}
-          onChangeText={onChangeSearch}
-          placeholder={t('library.searchPlaceholder')}
-          accessibilityLabel={t('library.searchA11y')}
-          accessibilityHint={t('library.searchFilterHint')}
-          testID={`${testID}-search`}
+    <View testID={testID} style={{ gap: 10 }}>
+      <DsChipRow testID={`${testID}-kinds`}>
+        <DsChip
+          label={t('playerDesign.kindVideos')}
+          selected={kind === 'video'}
+          onPress={() => onSelectKind('video')}
+          testID={`${testID}-kind-video`}
         />
-      </Box>
+        <DsChip
+          label={t('playerDesign.kindAudio')}
+          selected={kind === 'audio'}
+          onPress={() => onSelectKind('audio')}
+          testID={`${testID}-kind-audio`}
+        />
+        <DsChip label={t('playerDesign.kindPlaylists')} onPress={onOpenPlaylists} testID={`${testID}-kind-playlists`} />
+        <DsChip label={t('playerDesign.kindNetwork')} onPress={onOpenNetwork} testID={`${testID}-kind-network`} />
+      </DsChipRow>
 
-      <Box
-        row
-        px={libraryTokens.spacing.screenX}
-        style={{ alignItems: 'center', gap: 8 }}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ gap: 8, alignItems: 'center', paddingRight: 8 }}
-          style={{ flex: 1 }}>
-          <Chip
-            label={filterLabel}
-            selected={filter !== 'all'}
-            icon="filter-variant"
-            onPress={onOpenFilter}
-            testID={`${testID}-filter-chip`}
+      <View style={{ flexDirection: rtl.rowDirection, alignItems: 'center' }}>
+        <DsChipRow style={{ flex: 1, marginEnd: 0 }} testID={`${testID}-chips`}>
+          {FILTER_CHIPS.map((chip) => (
+            <DsChip
+              key={chip.id}
+              label={t(chip.label)}
+              selected={filter === chip.id}
+              onPress={() => pickFilter(chip.id)}
+              testID={`${testID}-chip-${chip.id}`}
+            />
+          ))}
+          <DsChip
+            label={t('playerDesign.chipMostPlayed')}
+            selected={sort === 'most_played'}
+            onPress={toggleMostPlayed}
+            testID={`${testID}-chip-most-played`}
           />
+          {MORE_FILTER_CHIPS.map((chip) => (
+            <DsChip
+              key={chip.id}
+              label={t(chip.label)}
+              selected={filter === chip.id}
+              onPress={() => pickFilter(chip.id)}
+              testID={`${testID}-chip-${chip.id}`}
+            />
+          ))}
           {qualities.length > 0 ? (
-            <Chip
+            <DsChip
               label={quality ?? t('library.qualityTitle')}
               selected={Boolean(quality)}
-              icon="high-definition"
               onPress={onOpenQuality}
               testID={`${testID}-quality-chip`}
             />
           ) : null}
-          <Chip
-            label={sortLabel}
-            selected={sort !== 'newest'}
-            icon="sort"
-            onPress={onOpenSort}
-            testID={`${testID}-sort-chip`}
-          />
           {onSelectDuration ? (
-            <Chip
-              label={durationLabel}
+            <DsChip
+              label={t(DURATION_LABEL_KEYS[durationBucket] ?? 'libraryStats.durationAny')}
               selected={durationBucket !== 'any'}
-              icon="timer-outline"
               onPress={() => setDurationSheetVisible(true)}
               testID={`${testID}-duration-chip`}
             />
           ) : null}
           <PlayerTagFilterChip testID={testID} />
-        </ScrollView>
-
-        <IconButton
-          icon={viewMode === 'grid' ? 'view-list-outline' : 'view-grid-outline'}
-          accessibilityLabel={
-            viewMode === 'grid' ? t('library.viewList') : t('library.viewGrid')
-          }
+        </DsChipRow>
+        <DsIconButton
+          variant="plain"
+          icon="search"
+          accessibilityLabel={searchVisible ? t('playerDesign.hideSearch') : t('playerDesign.showSearch')}
+          accessibilityHint={t('library.searchFilterHint')}
+          onPress={toggleSearch}
+          testID={`${testID}-search-toggle`}
+        />
+        <DsIconButton
+          variant="plain"
+          icon="arrow-up-down"
+          accessibilityLabel={t('playerDesign.sortA11y')}
+          onPress={onOpenSort}
+          testID={`${testID}-sort-button`}
+        />
+        <DsIconButton
+          variant="plain"
+          icon={viewMode === 'grid' ? 'list' : 'layout-grid'}
+          accessibilityLabel={viewMode === 'grid' ? t('playerDesign.viewList') : t('playerDesign.viewGrid')}
           onPress={onToggleViewMode}
-          variant="ghost"
-          size="small"
           testID={`${testID}-view-mode`}
         />
+      </View>
 
-        {controlsDirty ? (
-          <IconButton
-            icon="filter-remove-outline"
-            accessibilityLabel={t('library.resetControls')}
-            accessibilityHint={t('library.resetFiltersHint')}
-            onPress={onReset}
-            variant="ghost"
-            size="small"
-            testID={`${testID}-reset`}
-          />
-        ) : null}
-      </Box>
-
-      {filter !== 'all' || sort !== 'newest' || quality || durationBucket !== 'any' ? (
-        <Box px={libraryTokens.spacing.screenX}>
-          <Text variant="caption" color="textSecondary">
-            {[
-              filter !== 'all' ? `Filter: ${filterLabel}` : null,
-              quality ? `Quality: ${quality}` : null,
-              durationBucket !== 'any' ? t('libraryStats.lengthCaption', { label: durationLabel }) : null,
-              sort !== 'newest' ? `Sort: ${sortLabel}` : null,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          </Text>
-        </Box>
+      {searchVisible ? (
+        <DsSearchField
+          value={searchDraft}
+          onChangeText={onChangeSearch}
+          returnKeyType="search"
+          autoFocus={!searchDraft}
+          placeholder={t('library.searchPlaceholder')}
+          accessibilityLabel={t('library.searchA11y')}
+          accessibilityHint={t('library.searchFilterHint')}
+          actions={[{ icon: 'x', accessibilityLabel: t('playerDesign.hideSearch'), onPress: toggleSearch }]}
+          testID={`${testID}-search`}
+        />
       ) : null}
-
-      <ActionSheetModal
-        visible={filterSheetVisible}
-        onClose={onCloseFilter}
-        title={t('library.filterTitle')}
-        subtitle={t('library.filterSubtitle')}
-        actions={filterActions}
-        testID={`${testID}-filter-sheet`}
-      />
 
       <ActionSheetModal
         visible={sortSheetVisible}
@@ -309,7 +297,6 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
         actions={sortActions}
         testID={`${testID}-sort-sheet`}
       />
-
       <ActionSheetModal
         visible={qualitySheetVisible}
         onClose={onCloseQuality}
@@ -318,7 +305,6 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
         actions={qualityActions}
         testID={`${testID}-quality-sheet`}
       />
-
       <ActionSheetModal
         visible={durationSheetVisible}
         onClose={() => setDurationSheetVisible(false)}
@@ -327,6 +313,6 @@ export const LibraryHeaderControls = memo(function LibraryHeaderControls({
         actions={durationActions}
         testID={`${testID}-duration-sheet`}
       />
-    </Box>
+    </View>
   );
 });

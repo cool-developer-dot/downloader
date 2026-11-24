@@ -38,6 +38,10 @@ export const mmkvKeys = {
   playerQueue: 'vidorax.mmkv.player.queue.v1',
   /** P6 #534: Auto Play Next (default off). */
   playerAutoPlayNext: 'vidorax.mmkv.player.autoPlayNext.v1',
+  /** Design 25 "Resume playback": a video opens where it was left (on by default). */
+  playerResumePlayback: 'vidorax.mmkv.player.resumePlayback.v1',
+  /** Design 25 "Default orientation": the orientation each video opens in. */
+  playerDefaultOrientation: 'vidorax.mmkv.player.defaultOrientation.v1',
   /** P6 #733: the Next Episode Prompt (default on; shows only when the next episode is about to play). */
   playerNextEpisodePrompt: 'vidorax.mmkv.player.nextEpisodePrompt.v1',
   firstLaunch: 'vidorax.mmkv.flags.firstLaunch',
