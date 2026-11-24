@@ -30,6 +30,11 @@ export function useAutoPlayNext(): boolean {
   return useAutoNextStore((state) => state.autoPlayNext);
 }
 
+/** For code outside React (the session runner's end of a video, in the mini player). */
+export function getAutoPlayNext(): boolean {
+  return useAutoNextStore.getState().autoPlayNext;
+}
+
 export function useNextEpisodePrompt(): boolean {
   return useAutoNextStore((state) => state.nextEpisodePrompt);
 }

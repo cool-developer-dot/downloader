@@ -6,8 +6,9 @@
  * what the session already offers (replay, exact seek, play) and the screen's Previous / Next. The decision itself is
  * `decideEndOfPlayback` (pure, unit-tested).
  *
- * Runs while the full Player shows the video, in full screen, picture-in-picture and in the background. The in-app mini
- * player keeps today's end (stop, with Replay).
+ * Runs while the full Player shows the video, in full screen, picture-in-picture and in the background. With no full
+ * Player showing it (the in-app mini player), the session's runner makes the same end decision without the A-B loop
+ * and the Next Episode card (`src/player/session-host/session-end-of-playback.ts`).
  */
 
 import { useEventListener } from 'expo';

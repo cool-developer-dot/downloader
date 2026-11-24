@@ -13,6 +13,9 @@ import {
   usePlayerSessionHostStore,
   withdrawLiveSession,
 } from './player-session-store';
+import { takeSessionAutoAdvance } from './session-end-of-playback';
+import { useSessionEndOfPlayback } from './use-session-end-of-playback';
+import { useSessionQueueCommands } from './use-session-queue-commands';
 
 /**
  * Runs the app's one player session (see player-session-store). Mounted once in the app stack, beside the navigator:
@@ -52,17 +55,30 @@ function PlayerSessionRunner({ sessionKey, mediaId }: RunnerProps) {
   });
 
   // Opens with autoplay: once per loaded media (a retry loads again), after the resume seek above, and only with the
-  // app in front — coming back from the background never resumes playback by itself.
+  // app in front — coming back from the background never resumes playback by itself. The one exception: the next video
+  // the runner moved to by itself at the end of the last (below), which carries on as background play did.
   const autoPlayedGenerationRef = useRef<number | null>(null);
   useEffect(() => {
     if (!session.isReady || session.error || autoPlayedGenerationRef.current === resolveGeneration) {
       return;
     }
     autoPlayedGenerationRef.current = resolveGeneration;
-    if (AppState.currentState === 'active') {
+    const autoAdvanced = takeSessionAutoAdvance(mediaId);
+    if (AppState.currentState === 'active' || autoAdvanced) {
       controller.play();
     }
-  }, [controller, resolveGeneration, session.error, session.isReady]);
+  }, [controller, mediaId, resolveGeneration, session.error, session.isReady]);
+
+  // P5 / P6 with no full Player showing this session (the mini player): Repeat one, Repeat all and Auto Play Next.
+  useSessionEndOfPlayback({ player: result.player, mediaId: activeMediaId, replay: result.replay });
+  // P15 there too: a headset's, a remote's or the notification's ⏭ / ⏮ move through the queue.
+  useSessionQueueCommands({
+    player: result.player,
+    mediaId: activeMediaId,
+    isReady: session.isReady,
+    positionSeconds: session.positionSeconds,
+    restart: () => controller.seekTo(0),
+  });
 
   // Faran's P18: the sleep timer and the daily limit follow the session — full Player, mini player, screen off.
   useSleepLimitSession({
