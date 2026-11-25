@@ -118,6 +118,10 @@ export const routePaths = {
   playerSettings: '/player-settings',
   /** P7 #617 / #618: the user's playlists of local videos (Playlist Download is `downloadsPlaylist`). */
   playlists: '/playlists',
+
+  // ── Files (Hamza's F1–F11): the Files tab's own screens are `filesTypePath` / `filesFolderPath` below ──
+  // F2 · File manager settings (design 27)
+  // F10 · Security (design 64)
 } as const;
 
 export type RoutePath = (typeof routePaths)[keyof typeof routePaths];
@@ -138,4 +142,14 @@ export function playerPath(id: string): PlayerRoute {
 /** P7 #618: app-stack path of one playlist. */
 export function playlistPath(id: string): `/playlists/${string}` {
   return `/playlists/${encodeURIComponent(id)}`;
+}
+
+/** Files F1 #753: the files of one type (`video`, `audio`, `image`, `doc`, `archive`, `apk`). */
+export function filesTypePath(type: string): `/files/type/${string}` {
+  return `/files/type/${encodeURIComponent(type)}`;
+}
+
+/** Files F1 #741–#743: one VidoraX folder (the folder screen walks up and down by changing its id). */
+export function filesFolderPath(id: string): `/files/folder/${string}` {
+  return `/files/folder/${encodeURIComponent(id)}`;
 }

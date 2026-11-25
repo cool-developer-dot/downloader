@@ -1,0 +1,37 @@
+/**
+ * The File Manager's own strings (Hamza's F1–F11): the Files tab and its screens, File manager settings, Private
+ * folder and Security. Registered as `fileManager` (the older `files` namespace holds the download file actions).
+ * `files.ur.ts` mirrors it. Faran may append keys at the end, under an `// F15` comment.
+ */
+export const filesEn = {
+  // ── F1 · Files tab · Browse (design 26) ──
+  subtitleFree: 'Internal storage · {free} free',
+  tileA11yOne: '{label}, 1 file',
+  tileA11yOther: '{label}, {count} files',
+  tileHint: 'Lists the files of this type',
+  foldersEmpty: 'No folders yet',
+  foldersEmptyHint: 'Make a folder to keep your files together.',
+  itemsOne: '1 item',
+  itemsOther: '{count} items',
+  filesOne: '1 file',
+  filesOther: '{count} files',
+  upTo: 'Up to {name}',
+  upToA11y: 'Up one level, to {name}',
+  crumbA11y: 'Go to {name}',
+  pathA11y: 'Path: {path}',
+  folderEmpty: 'This folder is empty',
+  folderEmptyHint: 'Files you move into this folder show up here.',
+  folderGone: 'That folder was deleted',
+  typeEmpty: 'Nothing here yet',
+  typeEmptyHint: 'Files of this type that you download show up here.',
+  rowMore: 'More for {name}',
+  fileOpenHint: 'Opens the file',
+  folderOpenHint: 'Opens the folder',
+  details: 'Details',
+  loadFailed: 'Your files couldn’t be loaded.',
+  noApp: 'No app on this phone can open this file.',
+  deleted: 'Deleted',
+  deleteFailed: 'It couldn’t be deleted.',
+  // ── F2 · File manager settings (design 27) ──
+  // ── F10 · Private folder & Security (designs 28, 29, 64) ──
+} as const;

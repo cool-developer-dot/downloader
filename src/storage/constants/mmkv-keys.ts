@@ -104,6 +104,9 @@ export const mmkvKeys = {
   playerDailyLimit: 'vidorax.mmkv.player.dailyLimit.v1',
   /** Faran's P19: the equalizer, its presets (built-in and the user's), the effects, mono, balance (app-wide). */
   playerAudioEffects: 'vidorax.mmkv.player.audioEffects.v1',
+  // ── Files (Hamza's F1–F11) ──
+  // F2 · File manager settings (design 27)
+  // F10 · Private folder & Security (designs 28, 29, 64)
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

@@ -147,6 +147,12 @@ import {
   Wifi,
   X,
   Zap,
+  // Files (F1, F10): the plain file of an unknown type, "Up to {parent}", the PIN pad's fingerprint and ⌫ keys.
+  CornerLeftUp,
+  CornerRightUp,
+  Delete,
+  File,
+  FingerprintPattern,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -305,6 +311,11 @@ const ICONS = {
   wifi: Wifi,
   x: X,
   zap: Zap,
+  'corner-left-up': CornerLeftUp,
+  'corner-right-up': CornerRightUp,
+  delete: Delete,
+  file: File,
+  fingerprint: FingerprintPattern,
 } as const satisfies Record<string, LucideIcon>;
 
 export type DsIconName = keyof typeof ICONS;
