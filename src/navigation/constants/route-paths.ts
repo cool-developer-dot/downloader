@@ -121,6 +121,8 @@ export const routePaths = {
 
   // ── Files (Hamza's F1–F11): the Files tab's own screens are `filesTypePath` / `filesFolderPath` below ──
   // F2 · File manager settings (design 27)
+  /** Files F2: File manager settings (Settings → File manager, and the ⚙ of every Files screen but the tab). */
+  filesSettings: '/files-settings',
   // F10 · Security (design 64)
 } as const;
 
