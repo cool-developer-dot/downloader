@@ -17,6 +17,7 @@ import {
   DsTileGrid,
 } from '@/design';
 import type { FolderEntry } from '@/files/ui/files-index';
+import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { filesFolderPath, filesTypePath, navigation, routePaths } from '@/navigation';
@@ -38,17 +39,21 @@ export const FilesScreen = memo(function FilesScreen() {
   const { t, language } = useTranslation();
   const { data, status, refreshing, refresh } = useFilesHome();
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const settings = useFilesViewSettings();
 
   const free = formatFileBytes(data.space?.freeBytes);
   const subtitle = free ? t('fileManager.subtitleFree', { free }) : t('filesTab.subtitle');
   const tiles = buildTypeTiles(data.counts);
-  const folders = useMemo(
-    () =>
-      folderListEntries(data.listing?.folders ?? [], [], { foldersFirst: true }).flatMap((entry) =>
-        entry.kind === 'folder' ? [entry.folder] : [],
-      ),
-    [data.listing],
-  );
+  // The folders in F2's order (Name ascending by default; Size counts everything in a folder).
+  const folders = useMemo(() => {
+    const folderSizes: Record<string, number> = {};
+    for (const [id, stats] of Object.entries(data.statsById)) {
+      folderSizes[id] = stats.totalBytes;
+    }
+    return folderListEntries(data.listing?.folders ?? [], [], { ...settings, folderSizes }).flatMap((entry) =>
+      entry.kind === 'folder' ? [entry.folder] : [],
+    );
+  }, [data.listing, data.statsById, settings]);
 
   const openFolder = useCallback((folder: FolderEntry) => navigation.push(filesFolderPath(folder.id)), []);
   const openPrivate = useCallback(() => navigation.push(routePaths.private), []);

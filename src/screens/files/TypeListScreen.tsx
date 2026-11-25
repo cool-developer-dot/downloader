@@ -1,43 +1,51 @@
 import { useLocalSearchParams } from 'expo-router';
 import { memo, useCallback, useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, RefreshControl, View, type ListRenderItem } from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
 
 import { ds, DsCard, DsHeader, DsScreen, DsText } from '@/design';
 import { fileTypeOf, type FileEntry } from '@/files/ui/files-source';
+import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { useTheme } from '@/hooks/use-theme';
-import { intlLocaleForLanguage, useTranslation } from '@/localization';
+import { useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
 
+import { FileEntriesList } from './components/FileEntriesList';
 import { FileMenu } from './components/FileMenu';
-import { FileRow } from './components/FileRow';
 import { useAllFiles } from './hooks/use-files-data';
+import { useFilesSettingsAction } from './hooks/use-files-settings-action';
 import { useOpenFile } from './hooks/use-open-file';
-import { fileCountText, fileMetaLine, folderListEntries, formatFileBytes } from './utils/file-rows';
+import { fileCountText, folderListEntries, formatFileBytes } from './utils/file-rows';
 import { isTileType, tileLabelKey } from './utils/type-tiles';
 
 function paramOf(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? '';
 }
 
+const noFolderMeta = () => '';
+const noFolderPress = () => undefined;
+
 /**
  * Files F1 · #753 Categories: one type tile's files (`/files/type/[type]`) — exactly the library files `fileTypeOf()`
- * gives that type, from every folder. A tap opens the file; ⋮ opens its menu.
+ * gives that type, from every folder, in F2's order and view. A tap opens the file; ⋮ opens its menu; ⚙ opens File
+ * manager settings.
  */
 export const TypeListScreen = memo(function TypeListScreen() {
   const theme = useTheme();
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const type = paramOf(useLocalSearchParams<{ type?: string | string[] }>().type);
   const { data: allFiles, status, refreshing, refresh, reload } = useAllFiles();
+  const settings = useFilesViewSettings();
+  const settingsAction = useFilesSettingsAction();
   const [menuFile, setMenuFile] = useState<FileEntry | null>(null);
-  const locale = intlLocaleForLanguage(language);
 
-  const files = useMemo(() => {
+  const entries = useMemo(() => {
     if (!isTileType(type)) {
       return [];
     }
     const ofType = allFiles.filter((file) => fileTypeOf({ mimeType: file.mimeType, fileName: file.name }) === type);
-    return folderListEntries([], ofType, { foldersFirst: true }).flatMap((entry) => (entry.kind === 'file' ? [entry.file] : []));
-  }, [allFiles, type]);
+    return folderListEntries([], ofType, settings);
+  }, [allFiles, settings, type]);
+  const files = useMemo(() => entries.flatMap((entry) => (entry.kind === 'file' ? [entry.file] : [])), [entries]);
 
   const openFile = useOpenFile(files);
   const onRefresh = useCallback(() => void refresh(), [refresh]);
@@ -47,38 +55,21 @@ export const TypeListScreen = memo(function TypeListScreen() {
   const totalBytes = files.reduce((sum, file) => sum + file.sizeBytes, 0);
   const subtitle = [fileCountText(files.length, t), totalBytes > 0 ? formatFileBytes(totalBytes) : null].filter(Boolean).join(' · ');
 
-  const renderFile = useCallback<ListRenderItem<FileEntry>>(
-    ({ item, index }) => (
-      <FileRow
-        file={item}
-        name={item.name}
-        meta={fileMetaLine(item, locale)}
-        first={index === 0}
-        last={index === files.length - 1}
-        onPress={openFile}
-        onMore={setMenuFile}
-        testID={`files-type-row-${item.id}`}
-      />
-    ),
-    [files.length, locale, openFile],
-  );
-
   return (
     <DsScreen scroll={false} edges={['top', 'bottom']} testID="files-type-screen">
-      <FlatList
-        data={files}
-        keyExtractor={(file) => file.id}
-        renderItem={renderFile}
-        ListHeaderComponent={
+      <FileEntriesList
+        entries={entries}
+        header={
           <View style={{ paddingBottom: ds.space.stack }}>
             <DsHeader
               title={isTileType(type) ? t(tileLabelKey(type)) : t('filesTab.title')}
               subtitle={status === 'ready' ? subtitle : undefined}
               onBack={() => navigation.back()}
+              action={settingsAction}
             />
           </View>
         }
-        ListEmptyComponent={
+        empty={
           status === 'loading' ? (
             <View style={{ paddingVertical: 24, alignItems: 'center' }}>
               <ActivityIndicator color={theme.colors.primary} accessibilityLabel={t('common.loading')} />
@@ -98,18 +89,12 @@ export const TypeListScreen = memo(function TypeListScreen() {
             </DsCard>
           )
         }
-        contentContainerStyle={{ paddingHorizontal: ds.space.screenX, paddingBottom: 24 }}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor={theme.colors.primary}
-            colors={[theme.colors.primary]}
-            accessibilityLabel={t('common.refreshA11y')}
-          />
-        }
-        extraData={language}
+        folderMeta={noFolderMeta}
+        onPressFile={openFile}
+        onMoreFile={setMenuFile}
+        onPressFolder={noFolderPress}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
         testID="files-type-list"
       />
       <FileMenu file={menuFile} onClose={closeMenu} onOpen={openFile} onChanged={onChanged} />
