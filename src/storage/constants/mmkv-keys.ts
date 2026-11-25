@@ -107,6 +107,10 @@ export const mmkvKeys = {
   // ── Files (Hamza's F1–F11) ──
   // F2 · File manager settings (design 27)
   // F10 · Private folder & Security (designs 28, 29, 64)
+  /** Files F10 #910: the folders locked with Folder lock (ids); opening one asks for the App Lock PIN. */
+  filesLockedFolders: 'vidorax.files.lockedFolders.v1',
+  /** Files F10 #916: Block screenshots for the whole app (Security page; default off). Private keeps its own switch. */
+  privacyBlockScreenshotsApp: 'vidorax.mmkv.privacy.blockScreenshotsApp.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

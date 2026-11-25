@@ -8,7 +8,7 @@
  * while at least one holds it, cleared when the last lets go, and never called twice for the same state.
  */
 
-export type SecureWindowOwner = 'incognito' | 'private-folder' | (string & {});
+export type SecureWindowOwner = 'incognito' | 'private-folder' | 'app' | (string & {});
 
 export type SecureWindowArbiter = {
   /** `owner` wants the window secure (`true`) or no longer does (`false`). Repeating a call changes nothing. */
@@ -50,6 +50,8 @@ export function createSecureWindowArbiter(apply: (secure: boolean) => void): Sec
 
 export const PRIVATE_FOLDER_SECURE_OWNER: SecureWindowOwner = 'private-folder';
 export const INCOGNITO_SECURE_OWNER: SecureWindowOwner = 'incognito';
+/** Files F10 #916: Security → Block screenshots, for every screen of the app. */
+export const APP_SECURE_OWNER: SecureWindowOwner = 'app';
 
 /**
  * The rule for the Private Folder (#689 asks for "private videos"): with the setting on, the window is secure while a
@@ -60,4 +62,12 @@ export const INCOGNITO_SECURE_OWNER: SecureWindowOwner = 'incognito';
  */
 export function privateFolderHoldsSecure(input: { settingOn: boolean; screenFocused: boolean }): boolean {
   return input.settingOn && input.screenFocused;
+}
+
+/**
+ * Files F10 #916, the whole-app rule: with Security → Block screenshots on, the window is secure on every screen, for as
+ * long as the app runs (Private's own setting still holds it on Private's screens when this one is off).
+ */
+export function appHoldsSecure(input: { settingOn: boolean }): boolean {
+  return input.settingOn;
 }
