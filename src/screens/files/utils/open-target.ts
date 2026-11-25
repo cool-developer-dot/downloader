@@ -6,8 +6,8 @@
  * - a ZIP: the archive import — but that screen only takes a token Android hands VidoraX for a file another app
  *   opened, and nothing turns a library file into one yet, so a ZIP goes to Android's Open with until Faran's native
  *   side can (see `ZIP_OPENS_WITH_ANDROID`);
- * - an APK: its details page with the malware warning (File details once F3 lands; Download details today). There is
- *   never an install button: installing needs REQUEST_INSTALL_PACKAGES, a new permission;
+ * - an APK: its File details page (F3) with the malware warning. There is never an install button: installing needs
+ *   REQUEST_INSTALL_PACKAGES, a new permission;
  * - images and every other file: Android's Open with.
  */
 

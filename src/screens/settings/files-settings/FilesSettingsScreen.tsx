@@ -17,11 +17,13 @@ import {
   type FilesViewMode,
 } from '@/files/ui/files-view-settings';
 import { useTranslation, type TranslationKey } from '@/localization';
-import { navigation, routePaths } from '@/navigation';
+import { fileChecksumPath, navigation, routePaths } from '@/navigation';
 import { useAndroidBackHandler } from '@/navigation/hooks';
 import { updateThemePreference } from '@/services/auth/settings.service';
 import { AppearanceSection } from '@/screens/settings/components/AppearanceSection';
 import { selectThemeMode, useThemeStore, type ThemePreference } from '@/store/theme';
+
+import { FilePickerModal } from '@/screens/files/components/FilePickerModal';
 
 import { ChoiceSheet, type ChoiceOption } from '../browser-settings/ChoiceSheet';
 
@@ -62,8 +64,8 @@ type Sheet = 'view' | 'size' | null;
  * Confirm before delete, for Files, the Player tab and Downloads. Every change applies to the Files lists at once and
  * is kept (`files-view-settings.ts`).
  *
- * Later packages add their rows here: F3 "Checksum verify" and F8 "Recycle bin" in SAFETY, Faran's F15 the STORAGE
- * ACCESS section and F16 "Open videos with VidoraX".
+ * SAFETY also has F3's "Checksum verify". Later packages add their rows here: F8 "Recycle bin" in SAFETY, Faran's F15
+ * the STORAGE ACCESS section and F16 "Open videos with VidoraX".
  */
 export const FilesSettingsScreen = memo(function FilesSettingsScreen() {
   const { t } = useTranslation();
@@ -72,6 +74,7 @@ export const FilesSettingsScreen = memo(function FilesSettingsScreen() {
   const [sheet, setSheet] = useState<Sheet>(null);
   const [sortPage, setSortPage] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [checksumPickerOpen, setChecksumPickerOpen] = useState(false);
   const closeSheet = useCallback(() => setSheet(null), []);
 
   // The Sort by page is part of this screen: Back returns to the settings.
@@ -239,6 +242,14 @@ export const FilesSettingsScreen = memo(function FilesSettingsScreen() {
           }}
           testID="files-settings-confirm-delete"
         />
+        {/* F3 #827: pick a file, then check its SHA-256. */}
+        <DsRow
+          icon="shield-check"
+          title={t('fileManager.checksumVerifyRow')}
+          subtitle={t('fileManager.checksumVerifyHint')}
+          onPress={() => setChecksumPickerOpen(true)}
+          testID="files-settings-checksum"
+        />
       </DsRowGroup>
 
       <ChoiceSheet
@@ -264,6 +275,15 @@ export const FilesSettingsScreen = memo(function FilesSettingsScreen() {
         }}
         onClose={closeSheet}
         testID="files-settings-size-sheet"
+      />
+      <FilePickerModal
+        visible={checksumPickerOpen}
+        title={t('fileManager.pickFileTitle')}
+        onPick={(file) => {
+          setChecksumPickerOpen(false);
+          navigation.push(fileChecksumPath(file.id));
+        }}
+        onClose={() => setChecksumPickerOpen(false)}
       />
       {/* #775 Accent colors: the app's own theme picker (Settings → Appearance); the picked theme colours Files too. */}
       <AppModal visible={themeOpen} onClose={() => setThemeOpen(false)} title={t('fileManager.accentColor')} showCloseButton testID="files-settings-theme">

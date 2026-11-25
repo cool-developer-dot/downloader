@@ -1,13 +1,14 @@
 /**
  * Files F1: opens a tapped file the way `openTargetOf` says (Player, PDF viewer, details, or Android's Open with).
- * Every handoff reuses the existing flows: `openPlayer`, the B17 PDF viewer, Download details (P8's malware warning)
- * and the completed-file Open with (which shows P8's warning first when a file isn't what its name says).
+ * Every handoff reuses the existing flows: `openPlayer`, the B17 PDF viewer, File details (F3: P8's malware warning, never
+ * an install button) and the completed-file Open with (which shows P8's warning first when a file isn't what its name
+ * says).
  */
 
 import { Directory, File, Paths } from 'expo-file-system';
 
 import type { FileEntry } from '@/files/ui/files-index';
-import { downloadDetailsPath, navigation, openPlayer, routePaths } from '@/navigation';
+import { fileDetailsPath, navigation, openPlayer, routePaths } from '@/navigation';
 
 import { openTargetOf } from './utils/open-target';
 
@@ -54,8 +55,8 @@ export async function openFileEntry(file: FileEntry, playable: readonly string[]
       case 'pdf':
         return await openPdf(file);
       case 'apk-details':
-        // File details (F3) once it lands; Download details shows P8's malware warning today. Never an install button.
-        navigation.push(downloadDetailsPath(file.id));
+        // File details (F3) with P8's malware warning. Never an install button.
+        navigation.push(fileDetailsPath(file.id));
         return 'opened';
       case 'archive':
       case 'open-with':
@@ -67,7 +68,7 @@ export async function openFileEntry(file: FileEntry, playable: readonly string[]
   }
 }
 
-/** The file's details page (Download details until F3's File details lands). */
+/** The file's details page (design 56). */
 export function openFileDetails(fileId: string): void {
-  navigation.push(downloadDetailsPath(fileId));
+  navigation.push(fileDetailsPath(fileId));
 }
