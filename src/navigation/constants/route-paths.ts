@@ -122,6 +122,8 @@ export const routePaths = {
   // ── Files (Hamza's F1–F11): the Files tab's own screens are `filesTypePath` / `filesFolderPath` below ──
   // F2 · File manager settings (design 27)
   // F10 · Security (design 64)
+  /** Files F10: the Security page (Settings → Privacy → Security, and the ⚙ of Private's PIN pad). */
+  security: '/security',
 } as const;
 
 export type RoutePath = (typeof routePaths)[keyof typeof routePaths];

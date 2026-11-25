@@ -135,6 +135,14 @@ export const PrivacySection = memo(function PrivacySection({
       ) : null}
       {/* P11 #689: no screenshots or screen recording inside Private (off by default). */}
       <BlockScreenCaptureRow disabled={disabled} testID={`${testID}-block-capture`} />
+      {/* Files F10: the Security page (design 64). */}
+      <SettingsRow
+        title={t('fileManager.securityRow')}
+        description={t('fileManager.securityRowHint')}
+        icon="shield-lock-outline"
+        onPress={disabled ? undefined : () => push(routePaths.security)}
+        testID={`${testID}-security`}
+      />
       {/* What losing both the PIN and the recovery code means, next to the PIN / recovery code settings. */}
       <View style={{ paddingBottom: 14, paddingTop: isEnabled ? 4 : 0 }}>
         <AppLockDataLossWarning compact testID={`${testID}-data-loss-warning`} />
