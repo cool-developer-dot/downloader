@@ -1,4 +1,4 @@
-import { memo, useCallback, type ReactElement } from 'react';
+import { memo, useCallback, useEffect, useRef, type ReactElement } from 'react';
 import { FlatList, RefreshControl, useWindowDimensions, View, type ListRenderItem } from 'react-native';
 
 import { ds, type DsIconName } from '@/design';
@@ -27,6 +27,8 @@ export type FileEntriesListProps = {
   folderIcon?: (folder: FolderEntry) => DsIconName;
   refreshing: boolean;
   onRefresh: () => void;
+  /** F3 Show in folder: this file's row is highlighted and scrolled to once. */
+  highlightId?: string;
   testID?: string;
 };
 
@@ -47,6 +49,7 @@ export const FileEntriesList = memo(function FileEntriesList({
   folderIcon,
   refreshing,
   onRefresh,
+  highlightId,
   testID = 'files-entries',
 }: FileEntriesListProps) {
   const theme = useTheme();
@@ -58,6 +61,21 @@ export const FileEntriesList = memo(function FileEntriesList({
   const columns = grid ? GRID_COLUMNS[settings.thumbnailSize] : 1;
   const tileWidth = Math.floor((width - ds.space.screenX * 2 - ds.space.grid * (columns - 1)) / columns);
   const nameOf = useCallback((file: FileEntry) => displayFileName(file.name, settings.showExtensions), [settings.showExtensions]);
+
+  // F3 Show in folder: scroll the highlighted file into view once its row is in the list.
+  const listRef = useRef<FlatList<FolderListEntry>>(null);
+  const scrolledToRef = useRef<string | null>(null);
+  const highlightIndex = highlightId ? entries.findIndex((entry) => entry.kind === 'file' && entry.file.id === highlightId) : -1;
+  useEffect(() => {
+    if (!highlightId || highlightIndex < 0 || scrolledToRef.current === highlightId) {
+      return undefined;
+    }
+    scrolledToRef.current = highlightId;
+    const timer = setTimeout(() => {
+      listRef.current?.scrollToIndex({ index: Math.floor(highlightIndex / columns), viewPosition: 0.3, animated: true });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [columns, highlightId, highlightIndex]);
 
   const renderRow = useCallback<ListRenderItem<FolderListEntry>>(
     ({ item, index }) => {
@@ -88,11 +106,12 @@ export const FileEntriesList = memo(function FileEntriesList({
           last={last}
           onPress={onPressFile}
           onMore={onMoreFile}
+          highlighted={item.file.id === highlightId}
           testID={`files-file-${item.file.id}`}
         />
       );
     },
-    [entries.length, folderIcon, folderMeta, locale, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, settings.showThumbnails, settings.thumbnailSize],
+    [entries.length, folderIcon, folderMeta, highlightId, locale, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, settings.showThumbnails, settings.thumbnailSize],
   );
 
   const renderTile = useCallback<ListRenderItem<FolderListEntry>>(
@@ -126,6 +145,7 @@ export const FileEntriesList = memo(function FileEntriesList({
 
   return (
     <FlatList
+      ref={listRef}
       // A new column count needs a new list (FlatList can't change `numColumns` on the fly).
       key={grid ? `grid-${columns}` : 'list'}
       data={entries}
@@ -148,6 +168,9 @@ export const FileEntriesList = memo(function FileEntriesList({
         />
       }
       extraData={settings}
+      onScrollToIndexFailed={({ averageItemLength, index }) =>
+        listRef.current?.scrollToOffset({ offset: averageItemLength * index, animated: true })
+      }
       testID={testID}
     />
   );

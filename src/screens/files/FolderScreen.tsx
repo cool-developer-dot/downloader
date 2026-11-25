@@ -14,10 +14,10 @@ import { useAndroidBackHandler } from '@/navigation/hooks';
 import { announce } from './announce';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { FileEntriesList } from './components/FileEntriesList';
-import { FileMenu } from './components/FileMenu';
 import { useFolderView } from './hooks/use-files-data';
 import { useFilesSettingsAction } from './hooks/use-files-settings-action';
 import { useOpenFile } from './hooks/use-open-file';
+import { FileActionsSheet } from './FileActionsSheet';
 import { backTarget, buildBreadcrumbs, upTarget } from './utils/breadcrumbs';
 import { folderListEntries, folderMetaLine, itemCountText } from './utils/file-rows';
 
@@ -35,7 +35,9 @@ function paramOf(value: string | string[] | undefined): string {
 export const FolderScreen = memo(function FolderScreen() {
   const theme = useTheme();
   const { t, rtl } = useTranslation();
-  const folderId = paramOf(useLocalSearchParams<{ id?: string | string[] }>().id);
+  const params = useLocalSearchParams<{ id?: string | string[]; highlight?: string | string[] }>();
+  const folderId = paramOf(params.id);
+  const highlightId = paramOf(params.highlight) || undefined;
   const { data, status, refreshing, refresh, reload } = useFolderView(folderId);
   const settings = useFilesViewSettings();
   const settingsAction = useFilesSettingsAction();
@@ -152,9 +154,10 @@ export const FolderScreen = memo(function FolderScreen() {
         onPressFolder={openFolder}
         refreshing={refreshing}
         onRefresh={onRefresh}
+        highlightId={highlightId}
         testID="files-folder-list"
       />
-      <FileMenu file={menuFile} onClose={closeMenu} onOpen={openFile} onChanged={onChanged} />
+      <FileActionsSheet file={menuFile} onClose={closeMenu} onOpen={openFile} onChanged={onChanged} />
     </DsScreen>
   );
 });

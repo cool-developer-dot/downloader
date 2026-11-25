@@ -25,6 +25,8 @@ export type FileRowProps = {
   onPress: (file: FileEntry) => void;
   /** The row's ⋮ (also a long press). */
   onMore?: (file: FileEntry) => void;
+  /** F3 Show in folder: the file the user came to see. */
+  highlighted?: boolean;
   testID?: string;
 };
 
@@ -42,6 +44,7 @@ export const FileRow = memo(function FileRow({
   last,
   onPress,
   onMore,
+  highlighted = false,
   testID,
 }: FileRowProps) {
   const theme = useTheme();
@@ -61,7 +64,9 @@ export const FileRow = memo(function FileRow({
         accessibilityRole="button"
         accessibilityLabel={meta ? `${name}, ${meta}` : name}
         accessibilityHint={t('fileManager.fileOpenHint')}
-        style={({ pressed }) => ({ backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent' })}>
+        style={({ pressed }) => ({
+          backgroundColor: pressed ? theme.colors.surfacePressed : highlighted ? theme.colors.accentSoft : 'transparent',
+        })}>
         <View
           style={{
             flexDirection: rtl.rowDirection,

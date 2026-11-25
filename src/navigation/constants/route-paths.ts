@@ -161,6 +161,14 @@ export function filesFolderPath(id: string): `/files/folder/${string}` {
 
 // ── Files F3–F7 route helpers, one block per package ──
 // F3 · File details and checksum
+/** Files F3 · design 56: one file's details. */
+export function fileDetailsPath(id: string): `/files/details/${string}` {
+  return `/files/details/${encodeURIComponent(id)}`;
+}
+/** Files F3 #827: one file's SHA-256, and a check against a pasted one. */
+export function fileChecksumPath(id: string): `/files/checksum/${string}` {
+  return `/files/checksum/${encodeURIComponent(id)}`;
+}
 // F5 · Batch rename
 // F6 · Search
 // F7 · Organize

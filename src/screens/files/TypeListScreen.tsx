@@ -10,10 +10,10 @@ import { useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
 
 import { FileEntriesList } from './components/FileEntriesList';
-import { FileMenu } from './components/FileMenu';
 import { useAllFiles } from './hooks/use-files-data';
 import { useFilesSettingsAction } from './hooks/use-files-settings-action';
 import { useOpenFile } from './hooks/use-open-file';
+import { FileActionsSheet } from './FileActionsSheet';
 import { fileCountText, folderListEntries, formatFileBytes } from './utils/file-rows';
 import { isTileType, tileLabelKey } from './utils/type-tiles';
 
@@ -32,7 +32,9 @@ const noFolderPress = () => undefined;
 export const TypeListScreen = memo(function TypeListScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
-  const type = paramOf(useLocalSearchParams<{ type?: string | string[] }>().type);
+  const params = useLocalSearchParams<{ type?: string | string[]; highlight?: string | string[] }>();
+  const type = paramOf(params.type);
+  const highlightId = paramOf(params.highlight) || undefined;
   const { data: allFiles, status, refreshing, refresh, reload } = useAllFiles();
   const settings = useFilesViewSettings();
   const settingsAction = useFilesSettingsAction();
@@ -95,9 +97,10 @@ export const TypeListScreen = memo(function TypeListScreen() {
         onPressFolder={noFolderPress}
         refreshing={refreshing}
         onRefresh={onRefresh}
+        highlightId={highlightId}
         testID="files-type-list"
       />
-      <FileMenu file={menuFile} onClose={closeMenu} onOpen={openFile} onChanged={onChanged} />
+      <FileActionsSheet file={menuFile} onClose={closeMenu} onOpen={openFile} onChanged={onChanged} />
     </DsScreen>
   );
 });

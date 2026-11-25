@@ -16,6 +16,8 @@ export {
   playerPath,
   filesTypePath,
   filesFolderPath,
+  fileDetailsPath,
+  fileChecksumPath,
   type PlayerRoute,
   type RoutePath,
 } from './route-paths';
