@@ -28,6 +28,8 @@ import {
   setLibraryDurationBucket,
   useLibraryStatsStore,
 } from '@/library/library-stats-store';
+// Files F10 #910: a locked folder's videos stay out of the Player tab until it is opened with the PIN.
+import { hiddenFolderIds, useLockedNowIds } from '@/files/ui/locked-folders';
 import { translate, type TranslationKey } from '@/localization';
 import { navigation, openPlayer, routePaths, consumeSecondaryDestinationIntent } from '@/navigation';
 import {
@@ -226,6 +228,21 @@ export function useLibraryScreen() {
   );
   // ── end P9 ───────────────────────────────────────────────────────────────────────────────────────────────────
 
+  // Files F10 #910: locked folders (and the folders under them) join the folders the query leaves out, but not P9's
+  // own list — they are not counted as "hidden" and don't show in the folder visibility sheet.
+  const lockedNow = useLockedNowIds();
+  const queryExcludedFolderIds = useMemo(() => {
+    if (lockedNow.length === 0) {
+      return excludedFolderIds;
+    }
+    const folders = Object.values(foldersById).map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+      parentId: (folder as { parentId?: string | null }).parentId ?? null,
+    }));
+    return [...new Set([...excludedFolderIds, ...hiddenFolderIds(lockedNow, folders)])];
+  }, [excludedFolderIds, foldersById, lockedNow]);
+
   // "Recently downloaded" is judged at the library's last refresh (every focus and every completion
   // refreshes it), so rendering stays pure.
   const queryResult = useMemo(
@@ -240,14 +257,14 @@ export function useLibraryScreen() {
         nowMs: lastReconciledAt ?? 0,
         durationBucket,
         durationById,
-        excludedFolderIds,
+        excludedFolderIds: queryExcludedFolderIds,
         playCounts,
       }),
     [
       durationBucket,
       durationById,
       enrichedCanonical,
-      excludedFolderIds,
+      queryExcludedFolderIds,
       filter,
       folderId,
       lastReconciledAt,
@@ -261,7 +278,7 @@ export function useLibraryScreen() {
   const continueWatchingItems = useMemo(() => {
     // P9 #628: a hidden folder's videos stay out of the Library's Continue watching row too.
     const libraryById = new Map(
-      applyFolderExclusion(enrichedCanonical, excludedFolderIds).map((item) => [item.id, item] as const),
+      applyFolderExclusion(enrichedCanonical, queryExcludedFolderIds).map((item) => [item.id, item] as const),
     );
     const rows = [];
     for (const summary of continueQuery.items) {
@@ -286,7 +303,7 @@ export function useLibraryScreen() {
       });
     }
     return rows;
-  }, [continueQuery.items, enrichedCanonical, excludedFolderIds]);
+  }, [continueQuery.items, enrichedCanonical, queryExcludedFolderIds]);
 
   const qualities = useMemo(
     () => listDistinctQualities(enrichedCanonical),
