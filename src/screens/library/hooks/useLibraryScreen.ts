@@ -49,6 +49,7 @@ import { useFavoritesStore } from '@/store/favorites';
 import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 import { useLibraryStore } from '@/store/library';
+import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 
 /** P9 #711: the background length backfill starts this long after the Library's list last changed. */
 const LENGTH_BACKFILL_START_DELAY_MS = 3000;
@@ -565,10 +566,6 @@ export function useLibraryScreen() {
     }
   }, []);
 
-  const requestDeleteItem = useCallback((id: string) => {
-    setDeleteConfirmId(id);
-  }, []);
-
   const cancelDeleteItem = useCallback(() => {
     if (deleteLoading) {
       return;
@@ -576,11 +573,8 @@ export function useLibraryScreen() {
     setDeleteConfirmId(null);
   }, [deleteLoading]);
 
-  const confirmDeleteItem = useCallback(async () => {
-    const id = deleteConfirmId;
-    if (!id) {
-      return;
-    }
+  /** The delete itself, for one id (the dialog's Delete, or a request when Confirm before delete is off). */
+  const runDeleteItem = useCallback(async (id: string) => {
     setDeleteLoading(true);
     setActionError(null);
     try {
@@ -599,7 +593,27 @@ export function useLibraryScreen() {
     } finally {
       setDeleteLoading(false);
     }
-  }, [deleteConfirmId]);
+  }, []);
+
+  const confirmDeleteItem = useCallback(async () => {
+    const id = deleteConfirmId;
+    if (!id) {
+      return;
+    }
+    await runDeleteItem(id);
+  }, [deleteConfirmId, runDeleteItem]);
+
+  const requestDeleteItem = useCallback(
+    (id: string) => {
+      // Files F2 #800: with Confirm before delete off, the Player tab deletes without "Delete from VidoraX?".
+      if (!isConfirmBeforeDeleteOn()) {
+        void runDeleteItem(id);
+        return;
+      }
+      setDeleteConfirmId(id);
+    },
+    [runDeleteItem],
+  );
 
   const openDownloads = useCallback(() => {
     navigation.push(routePaths.downloads);

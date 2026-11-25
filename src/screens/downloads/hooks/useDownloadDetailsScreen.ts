@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 
 import { isApiError } from '@/api';
@@ -11,6 +11,7 @@ import { getV2Engine, pageFavoriteChange, setEngineFavorite } from '@/downloads/
 import { translate, type TranslationKey } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import { useDownloadsStore } from '@/store/downloads';
+import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import {
   normalizeFavoriteSourceKey,
   useFavoritesStore,
@@ -76,6 +77,8 @@ export function useDownloadDetailsScreen() {
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [favoriteError, setFavoriteError] = useState<string | null>(null);
+  /** Files F2 #800: the delete itself, run without the dialog when Confirm before delete is off. */
+  const confirmDeleteRef = useRef<(() => Promise<void>) | null>(null);
 
   const sourceUrl = item?.sourceUrl ?? '';
   const sourceKey = sourceUrl ? normalizeFavoriteSourceKey(sourceUrl) : '';
@@ -293,6 +296,11 @@ export function useDownloadDetailsScreen() {
       setActionError(null);
 
       if (action === 'remove') {
+        // Files F2 #800: with Confirm before delete off, no "Delete from VidoraX?".
+        if (!isConfirmBeforeDeleteOn()) {
+          void confirmDeleteRef.current?.();
+          return;
+        }
         setDeleteVisible(true);
         return;
       }
@@ -382,6 +390,10 @@ export function useDownloadDetailsScreen() {
       setDeleting(false);
     }
   }, [downloadId, goBack, remove]);
+
+  useEffect(() => {
+    confirmDeleteRef.current = confirmDelete;
+  }, [confirmDelete]);
 
   const cancelDelete = useCallback(() => {
     if (deleting) {

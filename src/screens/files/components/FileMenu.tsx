@@ -4,6 +4,7 @@ import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
 import type { FileEntry } from '@/files/ui/files-index';
+import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import { useTranslation } from '@/localization';
 
 import { announce } from '../announce';
@@ -21,7 +22,8 @@ export type FileMenuProps = {
 
 /**
  * Files F1: a file's ⋮ until F3's actions sheet (design 45) replaces it — Open, Details and Delete. Delete is the
- * app's own "Delete from VidoraX?" (the Player tab's dialog and its delete service).
+ * app's own "Delete from VidoraX?" (the Player tab's dialog and its delete service), skipped when F2's Confirm before
+ * delete is off.
  */
 export const FileMenu = memo(function FileMenu({ file, onClose, onOpen, onChanged, testID = 'files-file-menu' }: FileMenuProps) {
   const { t } = useTranslation();
@@ -75,11 +77,16 @@ export const FileMenu = memo(function FileMenu({ file, onClose, onOpen, onChange
         destructive: true,
         onPress: () => {
           onClose();
-          setConfirmFile(file);
+          // F2 #800: with Confirm before delete off, no "Delete from VidoraX?".
+          if (isConfirmBeforeDeleteOn()) {
+            setConfirmFile(file);
+          } else {
+            void runDelete(file);
+          }
         },
       },
     ];
-  }, [file, onClose, onOpen, t]);
+  }, [file, onClose, onOpen, runDelete, t]);
 
   return (
     <>
