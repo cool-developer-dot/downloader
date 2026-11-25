@@ -106,6 +106,8 @@ export const mmkvKeys = {
   playerAudioEffects: 'vidorax.mmkv.player.audioEffects.v1',
   // ── Files (Hamza's F1–F11) ──
   // F2 · File manager settings (design 27)
+  /** Files F2: how the Files lists look (view, thumbnails, sort, folders first, extensions) and Confirm before delete. */
+  filesViewSettings: 'vidorax.files.viewSettings.v1',
   // F10 · Private folder & Security (designs 28, 29, 64)
 } as const;
 

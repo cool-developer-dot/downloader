@@ -1,11 +1,13 @@
 /**
  * Files F1 · #779 File type icons: what a file row and a folder row show — the type's icon, "size · date" — and the
- * order of a folder's rows (folders first by default; F2's settings choose the sort). Pure.
+ * order of a folder's rows (F2's settings: sort, direction, folders first). Pure.
  */
 
 import type { DsIconName } from '@/design/DsIcon';
 import type { FileType } from '@/files/ui/file-types';
 import type { FileEntry, FolderEntry, FolderStats } from '@/files/ui/files-index';
+import type { FilesSortDirection, FilesSortKey } from '@/files/ui/files-view-settings';
+import { sortFileRows, type SortFields } from '@/files/ui/sort-files';
 import type { InterpolationParams, TranslationKey } from '@/localization/types';
 
 /** One icon per file type; an unknown type gets the plain file. */
@@ -95,29 +97,36 @@ export function fileEntryOf(file: FileEntry): FolderListEntry {
   return { kind: 'file', key: `file:${file.id}`, file };
 }
 
-function compareByName(a: string, b: string): number {
-  return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+/** What a row is sorted by (a folder's size is everything in it, when known). */
+function sortFieldsOf(row: FolderListEntry, folderSizes: Readonly<Record<string, number>> | undefined): SortFields {
+  return row.kind === 'folder'
+    ? { isFolder: true, name: row.folder.name, date: row.folder.createdAt, sizeBytes: folderSizes?.[row.folder.id] ?? 0, type: null }
+    : { isFolder: false, name: row.file.name, date: row.file.date, sizeBytes: row.file.sizeBytes, type: row.file.type };
 }
 
-function nameOf(entry: FolderListEntry): string {
-  return entry.kind === 'folder' ? entry.folder.name : entry.file.name;
-}
+export type FolderListOptions = {
+  foldersFirst: boolean;
+  /** F2's Sort by (default Name). */
+  sortKey?: FilesSortKey;
+  /** F2's Ascending / Descending (default ascending). */
+  sortDirection?: FilesSortDirection;
+  /** Each subfolder's total size, for the Size sort. */
+  folderSizes?: Readonly<Record<string, number>>;
+};
 
 /**
- * A folder screen's rows by name: with `foldersFirst`, the subfolders and then the files; without it, folders and files
- * mixed. Equal names keep their order (stable).
+ * A folder screen's rows in F2's order (Name ascending by default): with `foldersFirst`, the subfolders and then the
+ * files; without it, folders and files mixed. Equal values keep their order (stable).
  */
 export function folderListEntries(
   folders: readonly FolderEntry[],
   files: readonly FileEntry[],
-  options: { foldersFirst: boolean },
+  options: FolderListOptions,
 ): FolderListEntry[] {
-  const byName = (list: FolderListEntry[]) =>
-    list
-      .map((entry, index) => ({ entry, index }))
-      .sort((a, b) => compareByName(nameOf(a.entry), nameOf(b.entry)) || a.index - b.index)
-      .map(({ entry }) => entry);
-  const folderRows = folders.map(folderEntryOf);
-  const fileRows = files.map(fileEntryOf);
-  return options.foldersFirst ? [...byName(folderRows), ...byName(fileRows)] : byName([...folderRows, ...fileRows]);
+  const rows = [...folders.map(folderEntryOf), ...files.map(fileEntryOf)];
+  return sortFileRows(rows, (row) => sortFieldsOf(row, options.folderSizes), {
+    foldersFirst: options.foldersFirst,
+    sortKey: options.sortKey ?? 'name',
+    sortDirection: options.sortDirection ?? 'asc',
+  });
 }
