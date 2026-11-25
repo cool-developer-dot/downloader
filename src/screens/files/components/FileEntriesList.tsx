@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useRef, type ReactElement } from 'react';
-import { FlatList, RefreshControl, useWindowDimensions, View, type ListRenderItem } from 'react-native';
+import { RefreshControl, useWindowDimensions, View, type FlatList, type ListRenderItem } from 'react-native';
 
 import { ds, type DsIconName } from '@/design';
 import { displayFileName } from '@/files/ui/display-name';
@@ -9,9 +9,22 @@ import { useTheme } from '@/hooks/use-theme';
 import { intlLocaleForLanguage, useTranslation } from '@/localization';
 
 import { fileMetaLine, fileTypeIcon, type FolderListEntry } from '../utils/file-rows';
+import { DragSelectList } from './DragSelectList';
 import { FileRow } from './FileRow';
 import { FolderRow } from './FolderRow';
 import { GridTile } from './GridTile';
+import { SelectRow } from './SelectRow';
+
+/** F4: the list's selection (entry keys: `file:<id>` / `folder:<id>`). */
+export type EntriesSelection = {
+  active: boolean;
+  selected: ReadonlySet<string>;
+  toggle: (key: string) => void;
+  startWith: (key: string) => void;
+  dragStart: (index: number) => void;
+  dragOver: (index: number) => void;
+  dragEnd: () => void;
+};
 
 export type FileEntriesListProps = {
   entries: readonly FolderListEntry[];
@@ -29,13 +42,16 @@ export type FileEntriesListProps = {
   onRefresh: () => void;
   /** F3 Show in folder: this file's row is highlighted and scrolled to once. */
   highlightId?: string;
+  /** F4: a long press starts selecting (and a drag selects a range); while selecting a tap toggles. */
+  selection?: EntriesSelection;
   testID?: string;
 };
 
 /**
- * Files F1/F2: a Files list of folders and files in one FlatList, drawn as F2's settings say — rows or the grid
+ * Files F1/F2/F4: a Files list of folders and files in one FlatList, drawn as F2's settings say — rows or the grid
  * (4 / 3 / 2 columns), thumbnails or type icons at the chosen size, names with or without their extension. Any change
- * on the File manager settings page redraws it at once.
+ * on the File manager settings page redraws it at once. With a selection (F4) a long press starts selecting, and
+ * keeping the finger down and dragging selects a range (`DragSelectList`); while selecting, rows show their check box.
  */
 export const FileEntriesList = memo(function FileEntriesList({
   entries,
@@ -50,6 +66,7 @@ export const FileEntriesList = memo(function FileEntriesList({
   refreshing,
   onRefresh,
   highlightId,
+  selection,
   testID = 'files-entries',
 }: FileEntriesListProps) {
   const theme = useTheme();
@@ -60,7 +77,9 @@ export const FileEntriesList = memo(function FileEntriesList({
   const grid = settings.viewMode === 'grid';
   const columns = grid ? GRID_COLUMNS[settings.thumbnailSize] : 1;
   const tileWidth = Math.floor((width - ds.space.screenX * 2 - ds.space.grid * (columns - 1)) / columns);
+  const thumbnailSize = LIST_THUMBNAIL_DP[settings.thumbnailSize];
   const nameOf = useCallback((file: FileEntry) => displayFileName(file.name, settings.showExtensions), [settings.showExtensions]);
+  const selecting = selection?.active === true;
 
   // F3 Show in folder: scroll the highlighted file into view once its row is in the list.
   const listRef = useRef<FlatList<FolderListEntry>>(null);
@@ -81,6 +100,23 @@ export const FileEntriesList = memo(function FileEntriesList({
     ({ item, index }) => {
       const first = index === 0;
       const last = index === entries.length - 1;
+      if (selecting && selection) {
+        const isFolder = item.kind === 'folder';
+        return (
+          <SelectRow
+            title={isFolder ? item.folder.name : nameOf(item.file)}
+            meta={isFolder ? folderMeta(item.folder) : fileMetaLine(item.file, locale)}
+            icon={isFolder ? (folderIcon?.(item.folder) ?? 'folder') : fileTypeIcon(item.file.type)}
+            pictureUri={!isFolder && settings.showThumbnails ? item.file.thumbnailUri : null}
+            thumbnailSize={thumbnailSize}
+            selected={selection.selected.has(item.key)}
+            onToggle={() => selection.toggle(item.key)}
+            first={first}
+            last={last}
+            testID={`files-select-${item.key}`}
+          />
+        );
+      }
       if (item.kind === 'folder') {
         return (
           <FolderRow
@@ -101,30 +137,36 @@ export const FileEntriesList = memo(function FileEntriesList({
           name={nameOf(item.file)}
           meta={fileMetaLine(item.file, locale)}
           showThumbnail={settings.showThumbnails}
-          thumbnailSize={LIST_THUMBNAIL_DP[settings.thumbnailSize]}
+          thumbnailSize={thumbnailSize}
           first={first}
           last={last}
           onPress={onPressFile}
           onMore={onMoreFile}
+          // F4: a long press selects (the gesture of DragSelectList); ⋮ keeps the actions sheet. TalkBack gets "Select".
+          longPressOpensMore={!selection}
+          onSelect={selection ? () => selection.startWith(item.key) : undefined}
           highlighted={item.file.id === highlightId}
           testID={`files-file-${item.file.id}`}
         />
       );
     },
-    [entries.length, folderIcon, folderMeta, highlightId, locale, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, settings.showThumbnails, settings.thumbnailSize],
+    [entries.length, folderIcon, folderMeta, highlightId, locale, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, selecting, selection, settings.showThumbnails, thumbnailSize],
   );
 
   const renderTile = useCallback<ListRenderItem<FolderListEntry>>(
-    ({ item }) =>
-      item.kind === 'folder' ? (
+    ({ item }) => {
+      const selected = selecting && selection ? selection.selected.has(item.key) : undefined;
+      const toggle = selecting && selection ? () => selection.toggle(item.key) : undefined;
+      return item.kind === 'folder' ? (
         <GridTile
           title={item.folder.name}
           meta={folderMeta(item.folder)}
           icon={folderIcon?.(item.folder) ?? 'folder'}
           width={tileWidth}
-          onPress={() => onPressFolder(item.folder)}
-          onLongPress={onMoreFolder ? () => onMoreFolder(item.folder) : undefined}
-          accessibilityHint={t('fileManager.folderOpenHint')}
+          onPress={toggle ?? (() => onPressFolder(item.folder))}
+          onLongPress={!selection && onMoreFolder ? () => onMoreFolder(item.folder) : undefined}
+          selected={selected}
+          accessibilityHint={selected === undefined ? t('fileManager.folderOpenHint') : t('fileManager.selectHint')}
           testID={`files-folder-${item.folder.id}`}
         />
       ) : (
@@ -134,24 +176,35 @@ export const FileEntriesList = memo(function FileEntriesList({
           icon={fileTypeIcon(item.file.type)}
           pictureUri={settings.showThumbnails ? item.file.thumbnailUri : null}
           width={tileWidth}
-          onPress={() => onPressFile(item.file)}
-          onLongPress={onMoreFile ? () => onMoreFile(item.file) : undefined}
-          accessibilityHint={t('fileManager.fileOpenHint')}
+          onPress={toggle ?? (() => onPressFile(item.file))}
+          onLongPress={!selection && onMoreFile ? () => onMoreFile(item.file) : undefined}
+          selected={selected}
+          accessibilityHint={selected === undefined ? t('fileManager.fileOpenHint') : t('fileManager.selectHint')}
           testID={`files-file-${item.file.id}`}
         />
-      ),
-    [folderIcon, folderMeta, locale, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, settings.showThumbnails, t, tileWidth],
+      );
+    },
+    [folderIcon, folderMeta, locale, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, selecting, selection, settings.showThumbnails, t, tileWidth],
   );
 
+  const noop = useCallback(() => undefined, []);
+
   return (
-    <FlatList
-      ref={listRef}
+    <DragSelectList
       // A new column count needs a new list (FlatList can't change `numColumns` on the fly).
       key={grid ? `grid-${columns}` : 'list'}
+      listRef={listRef}
       data={entries}
       keyExtractor={(entry) => entry.key}
       renderItem={grid ? renderTile : renderRow}
       numColumns={columns}
+      columns={columns}
+      rowGap={grid ? ds.space.grid : 0}
+      paddingX={ds.space.screenX}
+      dragEnabled={Boolean(selection)}
+      onDragStart={selection?.dragStart ?? noop}
+      onDragOver={selection?.dragOver ?? noop}
+      onDragEnd={selection?.dragEnd ?? noop}
       columnWrapperStyle={grid ? { gap: ds.space.grid, flexDirection: rtl.rowDirection } : undefined}
       ItemSeparatorComponent={grid ? GridGap : undefined}
       ListHeaderComponent={header}
@@ -167,10 +220,8 @@ export const FileEntriesList = memo(function FileEntriesList({
           accessibilityLabel={t('common.refreshA11y')}
         />
       }
-      extraData={settings}
-      onScrollToIndexFailed={({ averageItemLength, index }) =>
-        listRef.current?.scrollToOffset({ offset: averageItemLength * index, animated: true })
-      }
+      extraData={[settings, selection?.selected, selecting]}
+      onScrollToIndexFailed={({ averageItemLength, index }) => listRef.current?.scrollToOffset({ offset: averageItemLength * index, animated: true })}
       testID={testID}
     />
   );

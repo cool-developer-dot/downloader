@@ -5,11 +5,14 @@ import { ActivityIndicator, View } from 'react-native';
 import { ds, DsCard, DsHeader, DsScreen, DsText } from '@/design';
 import { fileTypeOf, type FileEntry } from '@/files/ui/files-source';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
+import { useSelection } from '@/files/ui/use-selection';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
 
 import { FileEntriesList } from './components/FileEntriesList';
+import { SelectionBar, type SelectedEntry } from './components/SelectionBar';
+import { SelectionHeader } from './components/SelectionHeader';
 import { useAllFiles } from './hooks/use-files-data';
 import { useFilesSettingsAction } from './hooks/use-files-settings-action';
 import { useOpenFile } from './hooks/use-open-file';
@@ -48,6 +51,18 @@ export const TypeListScreen = memo(function TypeListScreen() {
     return folderListEntries([], ofType, settings);
   }, [allFiles, settings, type]);
   const files = useMemo(() => entries.flatMap((entry) => (entry.kind === 'file' ? [entry.file] : [])), [entries]);
+  // F4: a long press selects; the selection bar acts on the selected files.
+  const keys = useMemo(() => entries.map((entry) => entry.key), [entries]);
+  const selection = useSelection(keys);
+  const selectedEntries = useMemo<SelectedEntry[]>(
+    () => entries.filter((entry) => selection.selected.has(entry.key)),
+    [entries, selection.selected],
+  );
+  const { clear: clearSelection } = selection;
+  const afterBatch = useCallback(() => {
+    clearSelection();
+    void reload();
+  }, [clearSelection, reload]);
 
   const openFile = useOpenFile(files);
   const onRefresh = useCallback(() => void refresh(), [refresh]);
@@ -63,12 +78,16 @@ export const TypeListScreen = memo(function TypeListScreen() {
         entries={entries}
         header={
           <View style={{ paddingBottom: ds.space.stack }}>
-            <DsHeader
-              title={isTileType(type) ? t(tileLabelKey(type)) : t('filesTab.title')}
-              subtitle={status === 'ready' ? subtitle : undefined}
-              onBack={() => navigation.back()}
-              action={settingsAction}
-            />
+            {selection.active ? (
+              <SelectionHeader count={selection.count} onClose={selection.clear} onSelectAll={selection.selectAll} onInvert={selection.invert} />
+            ) : (
+              <DsHeader
+                title={isTileType(type) ? t(tileLabelKey(type)) : t('filesTab.title')}
+                subtitle={status === 'ready' ? subtitle : undefined}
+                onBack={() => navigation.back()}
+                action={settingsAction}
+              />
+            )}
           </View>
         }
         empty={
@@ -98,8 +117,10 @@ export const TypeListScreen = memo(function TypeListScreen() {
         refreshing={refreshing}
         onRefresh={onRefresh}
         highlightId={highlightId}
+        selection={selection}
         testID="files-type-list"
       />
+      {selection.active ? <SelectionBar entries={selectedEntries} onDone={afterBatch} /> : null}
       <FileActionsSheet file={menuFile} onClose={closeMenu} onOpen={openFile} onChanged={onChanged} />
     </DsScreen>
   );

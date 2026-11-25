@@ -6,6 +6,7 @@ import { ds, DsCard, DsHeader, DsRow, DsRowGroup, DsScreen, DsText } from '@/des
 import type { FileEntry, FolderEntry } from '@/files/ui/files-index';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { folderLookupOf } from '@/files/ui/folder-tree';
+import { useSelection } from '@/files/ui/use-selection';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
@@ -14,6 +15,8 @@ import { useAndroidBackHandler } from '@/navigation/hooks';
 import { announce } from './announce';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { FileEntriesList } from './components/FileEntriesList';
+import { SelectionBar, type SelectedEntry } from './components/SelectionBar';
+import { SelectionHeader } from './components/SelectionHeader';
 import { useFolderView } from './hooks/use-files-data';
 import { useFilesSettingsAction } from './hooks/use-files-settings-action';
 import { useOpenFile } from './hooks/use-open-file';
@@ -59,6 +62,14 @@ export const FolderScreen = memo(function FolderScreen() {
     return folderListEntries(data.listing.folders, data.listing.files, { ...settings, folderSizes });
   }, [data.listing, data.statsById, settings]);
   const shownFiles = useMemo(() => entries.flatMap((entry) => (entry.kind === 'file' ? [entry.file] : [])), [entries]);
+  // F4: a long press selects (folders too); the selection bar acts on the selection.
+  const keys = useMemo(() => entries.map((entry) => entry.key), [entries]);
+  const selection = useSelection(keys);
+  const selectedEntries = useMemo<SelectedEntry[]>(
+    () => entries.filter((entry) => selection.selected.has(entry.key)),
+    [entries, selection.selected],
+  );
+  const { clear: clearSelection } = selection;
   const openFile = useOpenFile(shownFiles);
 
   /** Shows another folder in this screen; `null` leaves for the Files tab. */
@@ -93,15 +104,23 @@ export const FolderScreen = memo(function FolderScreen() {
   const onRefresh = useCallback(() => void refresh(), [refresh]);
   const closeMenu = useCallback(() => setMenuFile(null), []);
   const onChanged = useCallback(() => void reload(), [reload]);
+  const afterBatch = useCallback(() => {
+    clearSelection();
+    void reload();
+  }, [clearSelection, reload]);
 
   const header = (
     <View style={{ gap: ds.space.stack, paddingBottom: ds.space.stack }}>
-      <DsHeader
-        title={folder?.name ?? crumbs[crumbs.length - 1]!.label}
-        subtitle={data.listing ? itemCountText(entries.length, t) : undefined}
-        onBack={goUp}
-        action={settingsAction}
-      />
+      {selection.active ? (
+        <SelectionHeader count={selection.count} onClose={selection.clear} onSelectAll={selection.selectAll} onInvert={selection.invert} />
+      ) : (
+        <DsHeader
+          title={folder?.name ?? crumbs[crumbs.length - 1]!.label}
+          subtitle={data.listing ? itemCountText(entries.length, t) : undefined}
+          onBack={goUp}
+          action={settingsAction}
+        />
+      )}
       <Breadcrumbs crumbs={crumbs} onPressCrumb={goTo} />
       {up ? (
         <DsRowGroup>
@@ -155,8 +174,10 @@ export const FolderScreen = memo(function FolderScreen() {
         refreshing={refreshing}
         onRefresh={onRefresh}
         highlightId={highlightId}
+        selection={selection}
         testID="files-folder-list"
       />
+      {selection.active ? <SelectionBar entries={selectedEntries} onDone={afterBatch} /> : null}
       <FileActionsSheet file={menuFile} onClose={closeMenu} onOpen={openFile} onChanged={onChanged} />
     </DsScreen>
   );

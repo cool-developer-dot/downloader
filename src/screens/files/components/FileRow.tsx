@@ -25,6 +25,10 @@ export type FileRowProps = {
   onPress: (file: FileEntry) => void;
   /** The row's ⋮ (also a long press). */
   onMore?: (file: FileEntry) => void;
+  /** F4: off where a long press selects (the list's drag gesture); ⋮ still opens the actions. Default on. */
+  longPressOpensMore?: boolean;
+  /** F4: TalkBack's "Select" action, which starts selecting with this row. */
+  onSelect?: () => void;
   /** F3 Show in folder: the file the user came to see. */
   highlighted?: boolean;
   testID?: string;
@@ -44,6 +48,8 @@ export const FileRow = memo(function FileRow({
   last,
   onPress,
   onMore,
+  longPressOpensMore = true,
+  onSelect,
   highlighted = false,
   testID,
 }: FileRowProps) {
@@ -59,11 +65,13 @@ export const FileRow = memo(function FileRow({
       <Pressable
         testID={testID}
         onPress={handlePress}
-        onLongPress={onMore ? handleMore : undefined}
+        onLongPress={onMore && longPressOpensMore ? handleMore : undefined}
         delayLongPress={350}
         accessibilityRole="button"
         accessibilityLabel={meta ? `${name}, ${meta}` : name}
-        accessibilityHint={t('fileManager.fileOpenHint')}
+        accessibilityHint={onSelect ? `${t('fileManager.fileOpenHint')}. ${t('fileManager.longPressSelectHint')}` : t('fileManager.fileOpenHint')}
+        accessibilityActions={onSelect ? [{ name: 'select', label: t('fileManager.selectionOn') }] : undefined}
+        onAccessibilityAction={onSelect ? (event) => (event.nativeEvent.actionName === 'select' ? onSelect() : undefined) : undefined}
         style={({ pressed }) => ({
           backgroundColor: pressed ? theme.colors.surfacePressed : highlighted ? theme.colors.accentSoft : 'transparent',
         })}>
