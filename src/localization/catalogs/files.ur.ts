@@ -67,5 +67,10 @@ export const filesUr: CatalogStrings<typeof filesEn> = {
   sectionTitle: 'فائل منیجر',
   sectionDescription: 'فائلز کا انداز، ترتیب اور حذف',
   selectedA11y: '{name}، منتخب',
+  // ── F3 · File actions & details (designs 45, 56) ──
+  // ── F4 · Selection & batch actions (lists of design 26) ──
+  // ── F5 · Rename, batch rename & name clashes (design 45) ──
+  // ── F6 · Search, filters & sort (search of design 26) ──
+  // ── F7 · Organize (the ⋮ of design 45) ──
   // ── F10 · Private folder & Security (designs 28, 29, 64) ──
 };

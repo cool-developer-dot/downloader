@@ -123,6 +123,9 @@ export const routePaths = {
   // F2 · File manager settings (design 27)
   /** Files F2: File manager settings (Settings → File manager, and the ⚙ of every Files screen but the tab). */
   filesSettings: '/files-settings',
+  // F3 · File details and checksum: `fileDetailsPath` / `fileChecksumPath` below
+  // F5 · Batch rename
+  // F6 · Search
   // F10 · Security (design 64)
 } as const;
 
@@ -155,3 +158,9 @@ export function filesTypePath(type: string): `/files/type/${string}` {
 export function filesFolderPath(id: string): `/files/folder/${string}` {
   return `/files/folder/${encodeURIComponent(id)}`;
 }
+
+// ── Files F3–F7 route helpers, one block per package ──
+// F3 · File details and checksum
+// F5 · Batch rename
+// F6 · Search
+// F7 · Organize
