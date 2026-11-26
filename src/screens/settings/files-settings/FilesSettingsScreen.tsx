@@ -24,6 +24,9 @@ import { AppearanceSection } from '@/screens/settings/components/AppearanceSecti
 import { selectThemeMode, useThemeStore, type ThemePreference } from '@/store/theme';
 
 import { FilePickerModal } from '@/screens/files/components/FilePickerModal';
+import { filesCapabilities } from '@/files/api';
+import { keepLabel } from '@/files/ui/bin-labels';
+import { getBinSettings, setBinSettings } from '@/files/ui/trash-port';
 import { useSaveLocationStore } from '@/downloads/v2/save-location-store';
 
 import { ChoiceSheet, type ChoiceOption } from '../browser-settings/ChoiceSheet';
@@ -73,6 +76,8 @@ export const FilesSettingsScreen = memo(function FilesSettingsScreen() {
   const settings = useFilesViewSettings();
   const themeMode = useThemeStore(selectThemeMode);
   const [sheet, setSheet] = useState<Sheet>(null);
+  // F8: the bin's own settings (F13's), shown while its bin is live.
+  const [binSettings, setBinSettingsShown] = useState(() => getBinSettings());
   const [sortPage, setSortPage] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [checksumPickerOpen, setChecksumPickerOpen] = useState(false);
@@ -254,6 +259,22 @@ export const FilesSettingsScreen = memo(function FilesSettingsScreen() {
           }}
           testID="files-settings-confirm-delete"
         />
+        {/* F8: the Recycle bin on or off, with how long it keeps files — only once F13's bin is live. */}
+        {filesCapabilities.recycleBin ? (
+          <DsRow
+            icon="trash-2"
+            title={t('fileManager.binTitle')}
+            subtitle={binSettings.enabled ? t(keepLabel(binSettings.keepDays).key, keepLabel(binSettings.keepDays).params) : t('fileManager.binOff')}
+            toggle={{
+              value: binSettings.enabled,
+              onValueChange: (enabled) => {
+                setBinSettings({ enabled });
+                setBinSettingsShown(getBinSettings());
+              },
+            }}
+            testID="files-settings-recycle-bin"
+          />
+        ) : null}
         {/* F3 #827: pick a file, then check its SHA-256. */}
         <DsRow
           icon="shield-check"

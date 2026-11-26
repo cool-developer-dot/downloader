@@ -137,6 +137,8 @@ export const routePaths = {
   /** Files F10: the Security page (Settings → Privacy → Security, and the ⚙ of Private's PIN pad). */
   security: '/security',
   // F8 · Recycle bin (design 58)
+  /** Files F8: the Recycle bin (the Files tab's "Recycle bin · {n}" row, once F13's bin is live). */
+  filesRecycleBin: '/files/recycle-bin',
   // F9 · Storage & cleaning (design 59)
   // F11 · Backup & reset (design 62)
 } as const;

@@ -17,6 +17,7 @@ import {
   DsTile,
   DsTileGrid,
 } from '@/design';
+import { filesCapabilities } from '@/files/api';
 import type { FolderEntry } from '@/files/ui/files-index';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { useTheme } from '@/hooks/use-theme';
@@ -27,6 +28,7 @@ import { FolderRow } from './components/FolderRow';
 import { NewFolderDialog } from './components/NewFolderDialog';
 import { OrganizeNowModal } from './components/OrganizeNowModal';
 import { useFilesHome } from './hooks/use-files-data';
+import { useRecycleBin } from './hooks/use-recycle-bin';
 import { folderListEntries, folderMetaLine, formatFileBytes } from './utils/file-rows';
 import { buildTypeTiles, tileA11y } from './utils/type-tiles';
 
@@ -40,6 +42,8 @@ export const FilesScreen = memo(function FilesScreen() {
   const theme = useTheme();
   const { t, language } = useTranslation();
   const { data, status, refreshing, refresh, reload } = useFilesHome();
+  // F8: the Recycle bin's count, read only while F13's bin is live.
+  const bin = useRecycleBin(filesCapabilities.recycleBin);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [organizeOpen, setOrganizeOpen] = useState(false);
   const settings = useFilesViewSettings();
@@ -124,6 +128,16 @@ export const FilesScreen = memo(function FilesScreen() {
           onPress={openPrivate}
           testID="files-private-folder"
         />
+        {/* F8: the Recycle bin, under Private folder — only once F13's bin is live. */}
+        {filesCapabilities.recycleBin ? (
+          <DsRow
+            icon="trash-2"
+            title={t('fileManager.binRow', { count: bin.items.length })}
+            subtitle={t('fileManager.binRowHint')}
+            onPress={() => navigation.push(routePaths.filesRecycleBin)}
+            testID="files-recycle-bin"
+          />
+        ) : null}
       </DsRowGroup>
       <DsSectionLabel>{t('filesTab.folders')}</DsSectionLabel>
     </View>
