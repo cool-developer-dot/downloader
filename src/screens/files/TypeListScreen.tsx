@@ -13,7 +13,7 @@ import { FileRow } from './components/FileRow';
 import { useAllFiles } from './hooks/use-files-data';
 import { useOpenFile } from './hooks/use-open-file';
 import { fileCountText, fileMetaLine, folderListEntries, formatFileBytes } from './utils/file-rows';
-import { isTileType, tileLabelKey } from './utils/type-tiles';
+import { isTileType, tileLabelKey, videoTileFiles } from './utils/type-tiles';
 
 function paramOf(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? '';
@@ -35,7 +35,11 @@ export const TypeListScreen = memo(function TypeListScreen() {
     if (!isTileType(type)) {
       return [];
     }
-    const ofType = allFiles.filter((file) => fileTypeOf({ mimeType: file.mimeType, fileName: file.name }) === type);
+    // #753: Videos lists what the Player tab calls a video (its own rule), so the list matches the tile's count.
+    const ofType =
+      type === 'video'
+        ? videoTileFiles(allFiles)
+        : allFiles.filter((file) => fileTypeOf({ mimeType: file.mimeType, fileName: file.name }) === type);
     return folderListEntries([], ofType, { foldersFirst: true }).flatMap((entry) => (entry.kind === 'file' ? [entry.file] : []));
   }, [allFiles, type]);
 
