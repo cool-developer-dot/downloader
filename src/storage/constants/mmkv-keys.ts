@@ -122,6 +122,9 @@ export const mmkvKeys = {
   filesFolderColors: 'vidorax.files.folderColors.v1',
   /** Files F7 #954: each folder's own order (`{ [folderId]: { enabled, ids } }`). */
   filesCustomOrder: 'vidorax.files.customOrder.v1',
+  // F8 · Recycle bin & Undo (design 58)
+  // F9 · Storage & cleaning (design 59)
+  // F11 · Backup & reset (design 62)
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

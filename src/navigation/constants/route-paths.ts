@@ -136,6 +136,9 @@ export const routePaths = {
   // F10 · Security (design 64)
   /** Files F10: the Security page (Settings → Privacy → Security, and the ⚙ of Private's PIN pad). */
   security: '/security',
+  // F8 · Recycle bin (design 58)
+  // F9 · Storage & cleaning (design 59)
+  // F11 · Backup & reset (design 62)
 } as const;
 
 export type RoutePath = (typeof routePaths)[keyof typeof routePaths];
@@ -181,3 +184,6 @@ export function fileChecksumPath(id: string): `/files/checksum/${string}` {
 // F5 · Batch rename
 // F6 · Search
 // F7 · Organize
+// F8 · Recycle bin
+// F9 · Storage & cleaning
+// F11 · Backup & reset

@@ -318,4 +318,7 @@ export const filesUr: CatalogStrings<typeof filesEn> = {
   blockScreenshotsHint: 'VidoraX میں کہیں بھی اسکرین شاٹ یا ریکارڈنگ نہیں',
   securityRow: 'سیکیورٹی',
   securityRowHint: 'ایپ لاک، اسکرین شاٹ روکیں، فائل انکرپشن، ہسٹری چھپائیں',
+  // ── F8 · Recycle bin & Undo (design 58) ──
+  // ── F9 · Storage & cleaning (design 59) ──
+  // ── F11 · Backup & reset (design 62) ──
 };

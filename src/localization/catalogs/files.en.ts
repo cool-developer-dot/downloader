@@ -320,4 +320,7 @@ export const filesEn = {
   blockScreenshotsHint: 'No screenshots or screen recording anywhere in VidoraX',
   securityRow: 'Security',
   securityRowHint: 'App lock, Block screenshots, File encryption, Hide history',
+  // ── F8 · Recycle bin & Undo (design 58) ──
+  // ── F9 · Storage & cleaning (design 59) ──
+  // ── F11 · Backup & reset (design 62) ──
 } as const;
