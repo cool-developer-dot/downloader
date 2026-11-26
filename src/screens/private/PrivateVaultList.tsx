@@ -1,17 +1,14 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, ActivityIndicator, FlatList, Platform, ToastAndroid, View } from 'react-native';
+import { AccessibilityInfo, ActivityIndicator, FlatList, Platform, ToastAndroid, useWindowDimensions, View } from 'react-native';
 
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
-import { Box } from '@/components/base/Box';
-import { Text } from '@/components/base/Text';
-import { Button } from '@/components/buttons/Button';
-import { EmptyState } from '@/components/common/EmptyState';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
+import { ds, DsButton, DsCard, DsChip, DsChipRow, DsFab, DsIcon, DsRowGroup, DsText } from '@/design';
 import { ensureGalleryPermission } from '@/downloads/v2/gallery-permission';
 import { formatFileSize } from '@/media-detection/utils/format';
 import { useTheme } from '@/hooks/use-theme';
-import { useTranslation } from '@/localization';
+import { useTranslation, type TranslationKey } from '@/localization';
 import { closePlayerSession } from '@/player/session-host/player-session-store';
 import { exportVaultItem } from '@/private-vault/vault-export';
 import { dataLossNotice } from '@/private-vault/data-loss';
@@ -28,8 +25,11 @@ import { privateFolderItemActions, type PrivateFolderAction } from '@/privacy/pr
 import { moveOutOfPrivateFolder } from '@/privacy/private-folder.runtime';
 import { formatUsagePercent } from '@/storage-manager/utils/format-bytes';
 
+import { AddFilesModal } from './AddFilesModal';
 import { PrivateDataLossNotice } from './PrivateDataLossNotice';
-import { VaultItemRow } from './VaultItemRow';
+import { filterVaultItems, PRIVATE_FILTERS, type PrivateFilter } from './private-filters';
+import { protectionRows } from './ProtectionRows';
+import { VaultGridTile } from './VaultGridTile';
 import { VaultPlayerModal } from './VaultPlayerModal';
 
 // P11 #686: 'move-out' — to the Gallery, then out of Private.
@@ -38,6 +38,20 @@ type Busy = { id: string; kind: Confirm['kind']; percent: string | null };
 
 /** How often a long decryption's progress is read (memory only on the native side). */
 const PROGRESS_POLL_MS = 500;
+
+/** Design 29: a 3-column grid of the vault's items. */
+const GRID_COLUMNS = 3;
+
+const FILTER_LABELS: Record<PrivateFilter, TranslationKey> = {
+  all: 'fileManager.chipAll',
+  videos: 'filesTab.videos',
+  photos: 'fileManager.chipPhotos',
+  audio: 'filesTab.audio',
+};
+
+function GridGap() {
+  return <View style={{ height: ds.space.grid }} />;
+}
 
 function announce(message: string): void {
   if (Platform.OS === 'android') {
@@ -51,13 +65,18 @@ function errorCode(error: unknown): unknown {
 }
 
 /**
- * The unlocked Private section: the vault's videos with Play, Export (Gallery or a picked folder) and Delete, each
- * export and delete behind a confirm. Mounted only while unlocked: when the section locks this unmounts, which drops
- * the list and the decrypted thumbnails from memory and deletes the playback file.
+ * The unlocked Private section (design 29, Files F10): the info card, the All / Videos / Photos / Audio chips, the
+ * vault's items in a 3-column grid with Play, Export (Gallery or a picked folder), Move out and Delete — each export
+ * and delete behind a confirm — the three protections that are always on, and "+ Add files". Mounted only while
+ * unlocked: when the section locks this unmounts, which drops the list and the decrypted thumbnails from memory and
+ * deletes the playback file.
  */
 export const PrivateVaultList = memo(function PrivateVaultList() {
-  const { t } = useTranslation();
+  const { t, rtl } = useTranslation();
   const theme = useTheme();
+  const { width } = useWindowDimensions();
+  const [filter, setFilter] = useState<PrivateFilter>('all');
+  const [addOpen, setAddOpen] = useState(false);
   const port = getVaultPort();
   const [items, setItems] = useState<VaultItem[]>([]);
   const [status, setStatus] = useState<'loading' | 'ready' | 'error'>('loading');
@@ -115,7 +134,8 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
 
   useEffect(() => {
     liveRef.current = true;
-    void load();
+    // Loaded from a microtask right after mount, so the effect body itself sets no state.
+    void Promise.resolve().then(() => load());
     return () => {
       liveRef.current = false;
       // Locked or left: the decrypted file goes, whatever was playing.
@@ -325,11 +345,14 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
   const confirmTitle = confirmItem?.title || t('privateVault.untitled');
   const confirmUnreadable = confirmItem?.unreadable === true;
 
+  const tileSize = Math.floor((width - ds.space.screenX * 2 - ds.space.grid * (GRID_COLUMNS - 1)) / GRID_COLUMNS);
+  const shownItems = useMemo(() => filterVaultItems(items, filter), [filter, items]);
+
   const renderItem = useCallback(
     ({ item }: { item: VaultItem }) => (
-      <VaultItemRow item={item} thumbnail={thumbnails[item.id] ?? null} onPlay={(id) => void play(id)} onMore={setSheetId} />
+      <VaultGridTile item={item} thumbnail={thumbnails[item.id] ?? null} size={tileSize} onPlay={(id) => void play(id)} onMore={setSheetId} />
     ),
-    [play, thumbnails],
+    [play, thumbnails, tileSize],
   );
 
   const dataLossAcknowledged = usePrivateVaultPrefs((s) => s.dataLossAcknowledged);
@@ -344,60 +367,102 @@ export const PrivateVaultList = memo(function PrivateVaultList() {
 
   if (status === 'error') {
     return (
-      <Box px={24} pt={24} gap={12}>
-        <Text variant="body">{t('privateVault.loadFailed')}</Text>
-        <Box row rtlRow>
-          <Button
-            title={t('common.retry')}
-            variant="outline"
-            size="small"
-            onPress={() => {
-              setStatus('loading');
-              void load();
-            }}
-          />
-        </Box>
-      </Box>
+      <View style={{ paddingHorizontal: ds.space.screenX, paddingTop: 12 }}>
+        <DsCard>
+          <View style={{ gap: 12 }}>
+            <DsText variant="body">{t('privateVault.loadFailed')}</DsText>
+            <DsButton
+              label={t('common.retry')}
+              variant="secondary"
+              onPress={() => {
+                setStatus('loading');
+                void load();
+              }}
+            />
+          </View>
+        </DsCard>
+      </View>
     );
   }
 
   return (
     <View style={{ flex: 1 }}>
-      {busy ? (
-        <Box px={16} py={8}>
-          <Text variant="caption" color="textSecondary" accessibilityLiveRegion="polite">
-            {busy.kind === 'delete'
-              ? t('privateVault.deleting')
-              : busy.kind === 'move-out'
-                ? busy.percent
-                  ? t('privacyBackup.movingOut', { percent: busy.percent })
-                  : t('privacyBackup.movingOutPlain')
-              : busy.percent
-                ? t('privateVault.exporting', { percent: busy.percent })
-                : t('privateVault.exportingPlain')}
-          </Text>
-        </Box>
-      ) : null}
       <FlatList
-        data={items}
+        data={shownItems}
         keyExtractor={(item) => item.id}
         renderItem={renderItem}
-        contentContainerStyle={items.length === 0 ? { flexGrow: 1 } : { paddingBottom: 24 }}
+        numColumns={GRID_COLUMNS}
+        columnWrapperStyle={{ gap: ds.space.grid, flexDirection: rtl.rowDirection }}
+        ItemSeparatorComponent={GridGap}
+        contentContainerStyle={{ paddingHorizontal: ds.space.screenX, paddingBottom: 96, flexGrow: 1 }}
         ListHeaderComponent={
-          // Until the first move was acknowledged the whole warning, then a one-line reminder.
-          <Box px={16} pt={12} pb={4}>
+          <View style={{ gap: ds.space.stack, paddingTop: 4, paddingBottom: ds.space.stack }}>
+            {busy ? (
+              <DsText variant="body" accessibilityLiveRegion="polite">
+                {busy.kind === 'delete'
+                  ? t('privateVault.deleting')
+                  : busy.kind === 'move-out'
+                    ? busy.percent
+                      ? t('privacyBackup.movingOut', { percent: busy.percent })
+                      : t('privacyBackup.movingOutPlain')
+                  : busy.percent
+                    ? t('privateVault.exporting', { percent: busy.percent })
+                    : t('privateVault.exportingPlain')}
+              </DsText>
+            ) : null}
+            {/* Design 29's info card. */}
+            <DsCard testID="private-info-card">
+              <View style={{ flexDirection: rtl.rowDirection, gap: 10, alignItems: 'flex-start' }}>
+                <DsIcon name="shield" size={18} color="textPrimary" strokeWidth={1.8} />
+                <DsText variant="bodyStrong" style={{ flex: 1 }}>
+                  {t('fileManager.vaultInfo')}
+                </DsText>
+              </View>
+            </DsCard>
+            {/* Until the first move was acknowledged the whole warning, then a one-line reminder. */}
             <PrivateDataLossNotice compact={dataLossNotice(dataLossAcknowledged) === 'compact'} />
-          </Box>
+            <DsChipRow>
+              {PRIVATE_FILTERS.map((value) => (
+                <DsChip
+                  key={value}
+                  label={t(FILTER_LABELS[value])}
+                  selected={filter === value}
+                  onPress={() => setFilter(value)}
+                  testID={`private-chip-${value}`}
+                />
+              ))}
+            </DsChipRow>
+          </View>
         }
         ListEmptyComponent={
-          <EmptyState
-            icon="lock-outline"
-            title={t('privateVault.emptyTitle')}
-            description={t('privateVault.emptyDescription')}
-          />
+          <DsCard testID="private-empty">
+            <View style={{ gap: 6, alignItems: 'center', paddingVertical: 8 }}>
+              <DsText variant="bodyStrong" align="center">
+                {items.length > 0 ? t('fileManager.vaultFilterEmpty') : t('privateVault.emptyTitle')}
+              </DsText>
+              {items.length > 0 ? null : (
+                <DsText variant="body" align="center">
+                  {t('privateVault.emptyDescription')}
+                </DsText>
+              )}
+            </View>
+          </DsCard>
+        }
+        ListFooterComponent={
+          <DsRowGroup style={{ marginTop: ds.space.stack }} testID="private-protections">
+            {protectionRows(t, 'private-protection')}
+          </DsRowGroup>
         }
         testID="private-list"
       />
+
+      <DsFab
+        label={t('fileManager.addFiles')}
+        icon="plus"
+        onPress={() => setAddOpen(true)}
+        testID="private-add-files-button"
+      />
+      <AddFilesModal visible={addOpen} onClose={() => setAddOpen(false)} onMoved={() => void load()} />
 
       <ActionSheetModal
         visible={sheetItem !== null}

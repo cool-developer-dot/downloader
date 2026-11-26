@@ -1,13 +1,8 @@
 import { useFocusEffect } from 'expo-router';
 import { memo, useCallback, useEffect, useReducer } from 'react';
-import { AppState } from 'react-native';
+import { AppState, View } from 'react-native';
 
-import { Box } from '@/components/base/Box';
-import { Button } from '@/components/buttons/Button';
-import { EmptyState } from '@/components/common/EmptyState';
-import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
-import { ScreenHeader } from '@/components/headers/ScreenHeader';
-import { useTheme } from '@/hooks/use-theme';
+import { ds, DsButton, DsCard, DsHeader, DsScreen, DsText } from '@/design';
 import { useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import { isExternalUiOpen } from '@/private-vault/external-ui';
@@ -26,13 +21,13 @@ import { PrivatePinGate } from './PrivatePinGate';
 import { PrivateVaultList } from './PrivateVaultList';
 
 /**
- * Private (#459, #413). Opens locked every time: the App Lock PIN is asked even when VidoraX is unlocked. Leaving the
- * section (going back, or anything opening on top), the app going to the background, App Lock locking the app or
- * being turned off — each locks it again, which drops the list and the decrypted thumbnails from memory and deletes
- * the playback file. Without App Lock there is nothing to open: the screen offers to set it up.
+ * Private (#459, #413), designs 28 and 29 (Files F10). Opens locked every time: the App Lock PIN is asked even when
+ * VidoraX is unlocked. Leaving the section (going back, or anything opening on top), the app going to the background,
+ * App Lock locking the app or being turned off, or the header's lock button — each locks it again, which drops the
+ * list and the decrypted thumbnails from memory and deletes the playback file. Without App Lock there is nothing to
+ * open: the screen offers to set it up.
  */
 export const PrivateScreen = memo(function PrivateScreen() {
-  const theme = useTheme();
   const { t } = useTranslation();
   const enabled = useAppLockStore(selectAppLockEnabled);
   const [session, dispatch] = useReducer(reduceVaultSession, LOCKED_SESSION);
@@ -78,33 +73,66 @@ export const PrivateScreen = memo(function PrivateScreen() {
   useEffect(() => () => clearVaultPlayback(), []);
 
   const goBack = useCallback(() => navigation.back(), []);
+  // Design 29's lock button: locks at once, exactly as leaving the section does.
+  const lockNow = useCallback(() => {
+    dispatch({ type: 'left-section' });
+    clearVaultPlayback();
+  }, []);
+
+  const unlocked = enabled && session.unlocked;
 
   return (
-    <SafeAreaScreen
+    <DsScreen
+      scroll={false}
+      edges={['top', 'bottom']}
       testID="private-screen"
-      padded={false}
-      edges={['top', 'left', 'right', 'bottom']}
-      style={{ backgroundColor: theme.colors.background }}>
-      <ScreenHeader title={t('privateVault.title')} showBack onBackPress={goBack} testID="private-header" />
+      fixedHeader={
+        <View style={{ paddingHorizontal: ds.space.screenX }}>
+          <DsHeader
+            title={t('filesTab.privateFolder')}
+            subtitle={unlocked ? t('fileManager.privateUnlocked') : enabled ? t('fileManager.privateEnterPin') : undefined}
+            onBack={goBack}
+            action={
+              unlocked
+                ? {
+                    icon: 'lock',
+                    accessibilityLabel: t('fileManager.lockNow'),
+                    accessibilityHint: t('fileManager.lockNowHint'),
+                    onPress: lockNow,
+                    testID: 'private-lock-now',
+                  }
+                : {
+                    icon: 'settings',
+                    accessibilityLabel: t('fileManager.securityA11y'),
+                    onPress: () => navigation.push(routePaths.security),
+                    testID: 'private-security',
+                  }
+            }
+            testID="private-header"
+          />
+        </View>
+      }>
       {!enabled ? (
-        <Box flex={1} px={24} gap={12}>
-          <EmptyState
-            icon="lock-outline"
-            title={t('privateVault.needsAppLockTitle')}
-            description={t('privateVault.needsAppLockMessage')}
-          />
-          <Button
-            title={t('privateVault.setUpAppLock')}
-            onPress={() => navigation.push(routePaths.appLockSetup)}
-            fullWidth
-            testID="private-set-up-app-lock"
-          />
-        </Box>
+        <View style={{ paddingHorizontal: ds.space.screenX, paddingTop: 12 }}>
+          <DsCard testID="private-needs-app-lock">
+            <View style={{ gap: 8 }}>
+              <DsText variant="bodyStrong">{t('privateVault.needsAppLockTitle')}</DsText>
+              <DsText variant="body">{t('privateVault.needsAppLockMessage')}</DsText>
+              <DsButton
+                label={t('privateVault.setUpAppLock')}
+                onPress={() => navigation.push(routePaths.appLockSetup)}
+                fullWidth
+                style={{ marginTop: 6 }}
+                testID="private-set-up-app-lock"
+              />
+            </View>
+          </DsCard>
+        </View>
       ) : session.unlocked ? (
         <PrivateVaultList key={session.generation} />
       ) : (
         <PrivatePinGate onVerified={() => dispatch({ type: 'pin-verified' })} />
       )}
-    </SafeAreaScreen>
+    </DsScreen>
   );
 });

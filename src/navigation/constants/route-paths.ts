@@ -127,6 +127,8 @@ export const routePaths = {
   // F5 · Batch rename
   // F6 · Search
   // F10 · Security (design 64)
+  /** Files F10: the Security page (Settings → Privacy → Security, and the ⚙ of Private's PIN pad). */
+  security: '/security',
 } as const;
 
 export type RoutePath = (typeof routePaths)[keyof typeof routePaths];
