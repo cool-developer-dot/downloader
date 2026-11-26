@@ -323,4 +323,26 @@ export const filesEn = {
   // ── F8 · Recycle bin & Undo (design 58) ──
   // ── F9 · Storage & cleaning (design 59) ──
   // ── F11 · Backup & reset (design 62) ──
+  backupTitle: 'Backup',
+  backupRow: 'Backup & reset',
+  backupRowHint: 'Back up, restore, export or reset VidoraX',
+  backupLast: 'Last backup',
+  backupNever: 'Never',
+  backupToday: 'Today · {size}',
+  backupOnDate: '{date} · {size}',
+  backupNow: 'Back up now',
+  backupRestore: 'Restore',
+  backupExport: 'Export data',
+  backupExportSub: 'Save a copy to…',
+  backupSettings: 'Settings backup',
+  backupSettingsSub: 'Settings only',
+  backupSend: 'Send to device',
+  backupSendSub: 'Share the newest backup',
+  backupIncludes: 'Includes settings, bookmarks, history, playlists, tags, notes, folders and colors. Not media files or Private files.',
+  backupReset: 'Reset VidoraX…',
+  backupSaved: 'Backed up',
+  backupFailed: 'The backup didn’t work. Try again.',
+  backupShareTitle: 'VidoraX backup',
+  backupTooBigToShare: 'This backup is too big to share. Use Export data instead.',
+  backupStart: 'Start',
 } as const;

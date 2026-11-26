@@ -125,6 +125,8 @@ export const mmkvKeys = {
   // F8 · Recycle bin & Undo (design 58)
   // F9 · Storage & cleaning (design 59)
   // F11 · Backup & reset (design 62)
+  /** Files F11: this phone's last backup (when, its size, the folder it went to); device-only, never itself backed up. */
+  filesLastBackup: 'vidorax.files.lastBackup.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

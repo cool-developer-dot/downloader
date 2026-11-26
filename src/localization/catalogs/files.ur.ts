@@ -321,4 +321,26 @@ export const filesUr: CatalogStrings<typeof filesEn> = {
   // ── F8 · Recycle bin & Undo (design 58) ──
   // ── F9 · Storage & cleaning (design 59) ──
   // ── F11 · Backup & reset (design 62) ──
+  backupTitle: 'بیک اپ',
+  backupRow: 'بیک اپ اور ری سیٹ',
+  backupRowHint: 'VidoraX کا بیک اپ، بحالی، ایکسپورٹ یا ری سیٹ',
+  backupLast: 'آخری بیک اپ',
+  backupNever: 'کبھی نہیں',
+  backupToday: 'آج · {size}',
+  backupOnDate: '{date} · {size}',
+  backupNow: 'ابھی بیک اپ لیں',
+  backupRestore: 'بحال کریں',
+  backupExport: 'ڈیٹا ایکسپورٹ کریں',
+  backupExportSub: 'ایک کاپی یہاں محفوظ کریں…',
+  backupSettings: 'سیٹنگز کا بیک اپ',
+  backupSettingsSub: 'صرف سیٹنگز',
+  backupSend: 'ڈیوائس پر بھیجیں',
+  backupSendSub: 'سب سے نیا بیک اپ شیئر کریں',
+  backupIncludes: 'اس میں سیٹنگز، بک مارکس، ہسٹری، پلے لسٹس، ٹیگز، نوٹس، فولڈرز اور رنگ شامل ہیں۔ میڈیا فائلیں اور پرائیویٹ فائلیں شامل نہیں۔',
+  backupReset: 'VidoraX ری سیٹ کریں…',
+  backupSaved: 'بیک اپ ہو گیا',
+  backupFailed: 'بیک اپ نہیں ہو سکا۔ دوبارہ کوشش کریں۔',
+  backupShareTitle: 'VidoraX بیک اپ',
+  backupTooBigToShare: 'یہ بیک اپ شیئر کرنے کے لیے بہت بڑا ہے۔ اس کی جگہ ڈیٹا ایکسپورٹ کریں۔',
+  backupStart: 'آغاز',
 };
