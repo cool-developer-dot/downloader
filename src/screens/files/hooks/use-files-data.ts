@@ -31,8 +31,6 @@ import { useItemHiddenStore } from '@/library/item-organize-store';
 import { useFoldersStore } from '@/store/organization/folders';
 import { useFilesRevision } from '@/files/ui/use-files-revision';
 
-import { videoTileCount } from '../utils/type-tiles';
-
 export type LoadStatus = 'loading' | 'ready' | 'error';
 
 /** Runs `load` on focus and on every files change; `refresh` rescans first. */
@@ -103,12 +101,10 @@ export type FilesHome = {
   favoritesCount: number;
   statsById: Record<string, FolderStats>;
   counts: TypeCounts | null;
-  /** #753: the Videos tile's count, by the Player tab's own rule (`videoTileCount`). */
-  videoCount: number;
   space: StorageSpace | null;
 };
 
-const EMPTY_HOME: FilesHome = { listing: null, favoritesCount: 0, statsById: {}, counts: null, videoCount: 0, space: null };
+const EMPTY_HOME: FilesHome = { listing: null, favoritesCount: 0, statsById: {}, counts: null, space: null };
 
 /** F7 #911: hidden files leave every Files list until "Show hidden files" is on. */
 function useHiddenFilter(): { hiddenIds: ReadonlySet<string>; showHidden: boolean } {
@@ -143,7 +139,6 @@ export function useFilesHome() {
       listing,
       counts,
       space,
-      videoCount: videoTileCount(visible),
       favoritesCount: visible.filter((file) => file.favorite).length,
       statsById: await statsFor(listing.folders),
     };

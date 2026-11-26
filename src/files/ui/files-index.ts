@@ -17,8 +17,8 @@ export type FileEntry = {
   title: string;
   type: FileType;
   mimeType: string | null;
-  /** The file's name on the phone (the library's `fileName`): what the Player tab's video / audio rule reads. */
-  fileName: string;
+  /** The file's name on the phone (the library's `fileName`). Optional, as an added field of Faran's contract shape. */
+  fileName?: string;
   /** Bytes; 0 when unknown. */
   sizeBytes: number;
   /** When it was downloaded (ISO), the date Files shows and sorts by. */
