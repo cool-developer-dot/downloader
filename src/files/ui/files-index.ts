@@ -17,6 +17,8 @@ export type FileEntry = {
   title: string;
   type: FileType;
   mimeType: string | null;
+  /** The file's name on the phone (the library's `fileName`): what the Player tab's video / audio rule reads. */
+  fileName: string;
   /** Bytes; 0 when unknown. */
   sizeBytes: number;
   /** When it was downloaded (ISO), the date Files shows and sorts by. */
@@ -99,6 +101,7 @@ export function toFileEntry(item: FileSourceItem): FileEntry {
     title: item.displayName?.trim() || name,
     type: fileTypeOf({ mimeType: item.mimeType, fileName: name }),
     mimeType: item.mimeType,
+    fileName: item.fileName,
     sizeBytes: parseBytes(item.fileSize),
     date: item.downloadedAt,
     folderId: item.folderId,
