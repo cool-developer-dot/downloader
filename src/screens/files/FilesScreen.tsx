@@ -43,7 +43,7 @@ export const FilesScreen = memo(function FilesScreen() {
 
   const free = formatFileBytes(data.space?.freeBytes);
   const subtitle = free ? t('fileManager.subtitleFree', { free }) : t('filesTab.subtitle');
-  const tiles = buildTypeTiles(data.counts, data.videoCount);
+  const tiles = buildTypeTiles(data.counts);
   // The folders in F2's order (Name ascending by default; Size counts everything in a folder).
   const folders = useMemo(() => {
     const folderSizes: Record<string, number> = {};
