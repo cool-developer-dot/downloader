@@ -26,6 +26,8 @@ import { typeCountsOf } from '@/files/ui/files-index';
 import { hiddenFolderIds, useLockedNowIds, withoutLockedFiles } from '@/files/ui/locked-folders';
 import { useFilesRevision } from '@/files/ui/use-files-revision';
 
+import { videoTileCount } from '../utils/type-tiles';
+
 export type LoadStatus = 'loading' | 'ready' | 'error';
 
 /** Runs `load` on focus and on every files change; `refresh` rescans first. */
@@ -94,10 +96,12 @@ export type FilesHome = {
   listing: FolderListing | null;
   statsById: Record<string, FolderStats>;
   counts: TypeCounts | null;
+  /** #753: the Videos tile's count, by the Player tab's own rule (`videoTileCount`). */
+  videoCount: number;
   space: StorageSpace | null;
 };
 
-const EMPTY_HOME: FilesHome = { listing: null, statsById: {}, counts: null, space: null };
+const EMPTY_HOME: FilesHome = { listing: null, statsById: {}, counts: null, videoCount: 0, space: null };
 
 /**
  * The Files tab: the top-level folders with their stats, the type counts and the free space. F10: a locked folder's
@@ -106,15 +110,15 @@ const EMPTY_HOME: FilesHome = { listing: null, statsById: {}, counts: null, spac
 export function useFilesHome() {
   const lockedNow = useLockedNowIds();
   const load = useCallback(async (): Promise<FilesHome> => {
-    const [listing, space] = await Promise.all([listFolder(null), storageSpace()]);
+    const [listing, space, all] = await Promise.all([listFolder(null), storageSpace(), listAllFilesAndFolders()]);
+    const visible = withoutLockedFiles(all.files, hiddenFolderIds(lockedNow, all.folders));
     let counts: TypeCounts;
     if (lockedNow.length === 0) {
       counts = await typeCounts();
     } else {
-      const all = await listAllFilesAndFolders();
-      counts = typeCountsOf(withoutLockedFiles(all.files, hiddenFolderIds(lockedNow, all.folders)));
+      counts = typeCountsOf(visible);
     }
-    return { listing, counts, space, statsById: await statsFor(listing.folders) };
+    return { listing, counts, space, videoCount: videoTileCount(visible), statsById: await statsFor(listing.folders) };
   }, [lockedNow]);
   return useReloading(load, EMPTY_HOME);
 }
