@@ -8,6 +8,8 @@
  */
 
 import type { FileEntry } from '@/files/api';
+import type { PlaybackSummary } from '@/playback/domain/merge';
+import { enrichLibraryWithPlayback } from '@/playback/enrich-library';
 
 import { fileBytes } from './file-fields';
 
@@ -21,6 +23,14 @@ export type CleanRules = {
   olderThanMonths?: CleanOlderMonths | null;
   larger?: boolean;
 };
+
+/**
+ * "Watched to the end" comes from watch history. The Files list's items carry none (the library assembles them with
+ * `completed: false`), so it is joined on here exactly as the Player tab does (`enrichLibraryWithPlayback`).
+ */
+export function withWatchHistory<T extends FileEntry>(files: readonly T[], byMediaId: ReadonlyMap<string, PlaybackSummary>): T[] {
+  return enrichLibraryWithPlayback(files, byMediaId) as T[];
+}
 
 export function hasCleanRule(rules: CleanRules): boolean {
   return Boolean(rules.watched || rules.olderThanMonths || rules.larger);

@@ -4,14 +4,16 @@ import { ActivityIndicator, FlatList, View, type ListRenderItem } from 'react-na
 import { ds, DsButton, DsCard, DsChip, DsChipRow, DsHeader, DsRow, DsScreen, DsText } from '@/design';
 import type { FileEntry } from '@/files/api';
 import { binIsOn, requestDelete } from '@/files/trash/useDeleteWithUndo';
-import { CLEAN_OLDER_MONTHS, cleanCandidates, hasCleanRule, type CleanOlderMonths, type CleanRules } from '@/files/ui/clean-downloads';
+import { CLEAN_OLDER_MONTHS, cleanCandidates, hasCleanRule, withWatchHistory, type CleanOlderMonths, type CleanRules } from '@/files/ui/clean-downloads';
 import { fileBytes, fileLabel } from '@/files/ui/file-fields';
 import { useTheme } from '@/hooks/use-theme';
 import { intlLocaleForLanguage, useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
+import { buildPlaybackSummaryMap, listLocalPlaybackSummaries, useContinueWatchingQuery, useRecentPlaybackQuery } from '@/playback/hooks';
 
 import { ListCardCell } from './components/ListCardCell';
 import { useAllFiles } from './hooks/use-files-data';
+import { useFilesSettingsAction } from './hooks/use-files-settings-action';
 import { fileMetaLine, fileTypeIcon, formatFileBytes } from './utils/file-rows';
 
 /**
@@ -24,11 +26,20 @@ export const CleanDownloadsScreen = memo(function CleanDownloadsScreen() {
   const theme = useTheme();
   const { t, language } = useTranslation();
   const locale = intlLocaleForLanguage(language);
+  const settingsAction = useFilesSettingsAction();
   const { data: files, status, reload } = useAllFiles();
   const [rules, setRules] = useState<CleanRules>({});
   const [now] = useState(() => Date.now());
+  // Watch history, gathered as the Player tab gathers it ("watched to the end" lives there, not on the list).
+  const continueQuery = useContinueWatchingQuery();
+  const recentQuery = useRecentPlaybackQuery(50);
+  const playbackById = useMemo(
+    () => buildPlaybackSummaryMap([...recentQuery.items, ...continueQuery.items, ...listLocalPlaybackSummaries()]),
+    [continueQuery.items, recentQuery.items],
+  );
+  const watchedFiles = useMemo(() => withWatchHistory(files, playbackById), [files, playbackById]);
 
-  const picked = useMemo(() => cleanCandidates(files, rules, { now }), [files, now, rules]);
+  const picked = useMemo(() => cleanCandidates(watchedFiles, rules, { now }), [now, rules, watchedFiles]);
   const totalBytes = picked.reduce((sum, file) => sum + fileBytes(file), 0);
   const toBin = binIsOn();
 
@@ -53,7 +64,12 @@ export const CleanDownloadsScreen = memo(function CleanDownloadsScreen() {
         renderItem={renderFile}
         ListHeaderComponent={
           <View style={{ gap: ds.space.stack, paddingBottom: ds.space.stack }}>
-            <DsHeader title={t('fileManager.cleanDownloads')} subtitle={t('fileManager.cleanDownloadsHint')} onBack={() => navigation.back()} />
+            <DsHeader
+              title={t('fileManager.cleanDownloads')}
+              subtitle={t('fileManager.cleanDownloadsHint')}
+              onBack={() => navigation.back()}
+              action={settingsAction}
+            />
             <DsChipRow>
               <DsChip
                 label={t('fileManager.cleanWatched')}

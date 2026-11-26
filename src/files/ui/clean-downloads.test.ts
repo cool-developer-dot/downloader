@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { cleanCandidates, CLEAN_LARGER_THAN_BYTES } from './clean-downloads';
+import type { PlaybackSummary } from '@/playback/domain/merge';
+
+import { cleanCandidates, CLEAN_LARGER_THAN_BYTES, withWatchHistory } from './clean-downloads';
 import { toFileEntry } from './files-index';
 import { libraryItem } from './test-fixtures';
 
@@ -42,6 +44,30 @@ describe('Files F9 · #856 Clean downloads', () => {
     assert.deepEqual(ids({ watched: true, olderThanMonths: 6, larger: true }), ['watched-old']);
     assert.deepEqual(ids({ olderThanMonths: 12, larger: true }), []);
     assert.deepEqual(ids({}), []);
+  });
+
+  test('"watched to the end" is read from watch history, not from the list (where it is always false)', () => {
+    // As the Files list gets them: the library never fills in `completed`.
+    const listed = [libraryItem({ id: 'seen' }), libraryItem({ id: 'half' }), libraryItem({ id: 'never' })].map(toFileEntry);
+    const summary = (mediaId: string, completed: boolean): PlaybackSummary => ({
+      mediaId,
+      positionSeconds: completed ? 600 : 120,
+      durationSeconds: 600,
+      progressPercent: completed ? 100 : 20,
+      lastPlayedAt: '2026-11-20T10:00:00.000Z',
+      completed,
+      updatedAt: '2026-11-20T10:00:00.000Z',
+      pendingSync: false,
+    });
+    const history = new Map([
+      ['seen', summary('seen', true)],
+      ['half', summary('half', false)],
+    ]);
+    assert.deepEqual(cleanCandidates(listed, { watched: true }, { now: NOW }), []);
+    assert.deepEqual(
+      cleanCandidates(withWatchHistory(listed, history), { watched: true }, { now: NOW }).map((file) => file.id),
+      ['seen'],
+    );
   });
 
   test('Private and missing files are left out, even when every rule matches', () => {

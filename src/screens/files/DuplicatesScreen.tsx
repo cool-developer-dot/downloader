@@ -12,6 +12,7 @@ import { intlLocaleForLanguage, useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
 
 import { ListCardCell } from './components/ListCardCell';
+import { useFilesSettingsAction } from './hooks/use-files-settings-action';
 import { fileTypeIcon, formatFileBytes, formatFileDate } from './utils/file-rows';
 
 type Group = Awaited<ReturnType<typeof findDuplicates>>[number];
@@ -24,6 +25,7 @@ type Row = { kind: 'group'; key: string; group: Group } | { kind: 'item'; key: s
  */
 export const DuplicatesScreen = memo(function DuplicatesScreen() {
   const { t, language } = useTranslation();
+  const settingsAction = useFilesSettingsAction();
   const locale = intlLocaleForLanguage(language);
   const [groups, setGroups] = useState<Group[]>([]);
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
@@ -118,7 +120,12 @@ export const DuplicatesScreen = memo(function DuplicatesScreen() {
         extraData={selected}
         ListHeaderComponent={
           <View style={{ gap: ds.space.stack, paddingBottom: ds.space.stack }}>
-            <DsHeader title={t('fileManager.storageDuplicates')} subtitle={t('fileManager.duplicatesHint')} onBack={() => navigation.back()} />
+            <DsHeader
+              title={t('fileManager.storageDuplicates')}
+              subtitle={t('fileManager.duplicatesHint')}
+              onBack={() => navigation.back()}
+              action={settingsAction}
+            />
             {scanning ? (
               <DsCard testID="files-duplicates-progress">
                 <View style={{ gap: 8 }}>
