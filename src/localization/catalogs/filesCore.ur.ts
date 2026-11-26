@@ -30,6 +30,7 @@ export const filesCoreUr: CatalogStrings<typeof filesCoreEn> = {
   remove: 'ہٹائیں',
   folder: 'فولڈر',
   itemCount: '{count} آئٹمز',
+  itemCountOne: '1 آئٹم',
   emptyFolder: 'یہ فولڈر خالی ہے۔',
   cantRead: 'VidoraX اب یہ فولڈر نہیں پڑھ سکتا۔ “فولڈرز جو VidoraX کھول سکتا ہے” سے اسے دوبارہ چنیں۔',
   importA11y: 'اس فولڈر کی ویڈیوز VidoraX میں کاپی کریں',

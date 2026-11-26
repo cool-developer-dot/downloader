@@ -2,7 +2,7 @@ import { useLocalSearchParams } from 'expo-router';
 import { memo, useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, FlatList, View } from 'react-native';
 
-import { DsHeader, DsRow, DsScreen, DsText } from '@/design';
+import { ds, DsHeader, DsRow, DsScreen, DsText } from '@/design';
 import type { DsIconName } from '@/design/DsIcon';
 import type { FileType } from '@/files/engine/file-types';
 import { importFolder, listPicked, playableIdOf, type PickedDocument } from '@/files/folder-access/folder-access-api';
@@ -67,10 +67,10 @@ export const AddedFolderScreen = memo(function AddedFolderScreen() {
   }, [t, tree]);
 
   return (
-    <DsScreen scroll={false} testID="added-folder-screen">
+    <DsScreen scroll={false} contentContainerStyle={{ paddingHorizontal: ds.space.screenX }} testID="added-folder-screen">
       <DsHeader
         title={name || t('filesCore.foldersTitle')}
-        subtitle={items ? t('filesCore.itemCount', { count: items.length }) : undefined}
+        subtitle={items ? (items.length === 1 ? t('filesCore.itemCountOne') : t('filesCore.itemCount', { count: items.length })) : undefined}
         onBack={() => navigation.back()}
         action={doc ? undefined : { icon: 'download', accessibilityLabel: t('filesCore.importA11y'), onPress: () => void runImport() }}
       />

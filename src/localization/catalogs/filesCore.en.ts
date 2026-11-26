@@ -35,6 +35,7 @@ export const filesCoreEn = {
   remove: 'Remove',
   folder: 'Folder',
   itemCount: '{count} items',
+  itemCountOne: '1 item',
   emptyFolder: 'This folder is empty.',
   cantRead: 'VidoraX can’t read this folder any more. Pick it again from Folders VidoraX can open.',
   importA11y: 'Copy this folder’s videos into VidoraX',
