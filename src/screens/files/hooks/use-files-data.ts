@@ -22,6 +22,8 @@ import {
   type TypeCounts,
 } from '@/files/ui/files-source';
 import { nearestExistingFolder } from '@/files/ui/folder-tree';
+import { typeCountsOf } from '@/files/ui/files-index';
+import { hiddenFolderIds, useLockedNowIds, withoutLockedFiles } from '@/files/ui/locked-folders';
 import { useFilesRevision } from '@/files/ui/use-files-revision';
 
 export type LoadStatus = 'loading' | 'ready' | 'error';
@@ -97,18 +99,30 @@ export type FilesHome = {
 
 const EMPTY_HOME: FilesHome = { listing: null, statsById: {}, counts: null, space: null };
 
-/** The Files tab: the top-level folders with their stats, the type counts and the free space. */
+/**
+ * The Files tab: the top-level folders with their stats, the type counts and the free space. F10: a locked folder's
+ * files are left out of the counts until it is opened with the PIN.
+ */
 export function useFilesHome() {
+  const lockedNow = useLockedNowIds();
   const load = useCallback(async (): Promise<FilesHome> => {
-    const [listing, counts, space] = await Promise.all([listFolder(null), typeCounts(), storageSpace()]);
+    const [listing, space] = await Promise.all([listFolder(null), storageSpace()]);
+    let counts: TypeCounts;
+    if (lockedNow.length === 0) {
+      counts = await typeCounts();
+    } else {
+      const all = await listAllFilesAndFolders();
+      counts = typeCountsOf(withoutLockedFiles(all.files, hiddenFolderIds(lockedNow, all.folders)));
+    }
     return { listing, counts, space, statsById: await statsFor(listing.folders) };
-  }, []);
+  }, [lockedNow]);
   return useReloading(load, EMPTY_HOME);
 }
 
-/** Every file VidoraX keeps, in every folder (walked through `listFolder`, so subfolders count once F12 nests them). */
-export async function listAllFiles(): Promise<FileEntry[]> {
+/** Every file and folder VidoraX keeps (walked through `listFolder`, so subfolders count once F12 nests them). */
+export async function listAllFilesAndFolders(): Promise<{ files: FileEntry[]; folders: FolderEntry[] }> {
   const files: FileEntry[] = [];
+  const folders: FolderEntry[] = [];
   const seen = new Set<string>();
   const queue: (string | null)[] = [null];
   while (queue.length > 0) {
@@ -118,18 +132,32 @@ export async function listAllFiles(): Promise<FileEntry[]> {
     for (const folder of listing.folders) {
       if (!seen.has(folder.id)) {
         seen.add(folder.id);
+        folders.push(folder);
         queue.push(folder.id);
       }
     }
   }
-  return files;
+  return { files, folders };
+}
+
+/** Every file VidoraX keeps, in every folder. */
+export async function listAllFiles(): Promise<FileEntry[]> {
+  return (await listAllFilesAndFolders()).files;
+}
+
+/** Every file a list may show now: a locked folder's files stay out until it is opened with the PIN (F10). */
+export async function listVisibleFiles(lockedNow: readonly string[]): Promise<FileEntry[]> {
+  const all = await listAllFilesAndFolders();
+  return lockedNow.length === 0 ? all.files : withoutLockedFiles(all.files, hiddenFolderIds(lockedNow, all.folders));
 }
 
 const NO_FILES: FileEntry[] = [];
 
-/** All files (the type lists filter them with `fileTypeOf`). */
+/** All the files a type list may show (the type lists filter them with `fileTypeOf`). */
 export function useAllFiles() {
-  return useReloading(listAllFiles, NO_FILES);
+  const lockedNow = useLockedNowIds();
+  const load = useCallback(() => listVisibleFiles(lockedNow), [lockedNow]);
+  return useReloading(load, NO_FILES);
 }
 
 export type FolderView = {

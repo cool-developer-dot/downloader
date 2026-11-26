@@ -128,7 +128,11 @@ export const routePaths = {
   /** Files F5 #793: rename the selected files at once (`?ids=` the files, comma-separated). */
   filesBatchRename: '/files/batch-rename',
   // F6 · Search
+  /** Files F6: search VidoraX's files (the Files tab's 🔍). */
+  filesSearch: '/files/search',
   // F10 · Security (design 64)
+  /** Files F10: the Security page (Settings → Privacy → Security, and the ⚙ of Private's PIN pad). */
+  security: '/security',
 } as const;
 
 export type RoutePath = (typeof routePaths)[keyof typeof routePaths];

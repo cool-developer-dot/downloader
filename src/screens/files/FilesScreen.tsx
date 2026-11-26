@@ -32,7 +32,7 @@ import { buildTypeTiles, tileA11y } from './utils/type-tiles';
  * Files tab (design 26 "Files · Browse", Files F1): VidoraX's own files by type — six tiles with their counts — the
  * Private folder, and the top-level VidoraX folders with "{n} items · {size}". Everything comes through
  * `files-source.ts`; pull to refresh rescans the library. Faran's F15 adds the SD card and "Folders I added" chips;
- * F6 brings back the search button.
+ * the search button opens F6's search.
  */
 export const FilesScreen = memo(function FilesScreen() {
   const theme = useTheme();
@@ -75,8 +75,12 @@ export const FilesScreen = memo(function FilesScreen() {
 
   const header = (
     <View style={{ gap: ds.space.stack, paddingBottom: ds.space.sectionBottom }}>
-      {/* F6 adds the search button (design 26's 🔍) once Files search exists. */}
-      <DsHeader title={t('filesTab.title')} subtitle={subtitle} />
+      <DsHeader
+        title={t('filesTab.title')}
+        subtitle={subtitle}
+        // F6: design 26's 🔍 opens Files search.
+        action={{ icon: 'search', accessibilityLabel: t('filesTab.searchA11y'), onPress: () => navigation.push(routePaths.filesSearch), testID: 'files-search' }}
+      />
       <DsChipRow>
         <DsChip label={t('filesTab.internal')} selected />
       </DsChipRow>

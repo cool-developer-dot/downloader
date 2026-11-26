@@ -19,6 +19,7 @@ import { OrganizeHosts } from '@/screens/downloads/components/OrganizeHosts';
 import { MiniPlayerOverlay } from '@/screens/player/mini';
 import { ClipboardLinkBanner } from '@/browser/components/ClipboardLinkBanner';
 import { AppLockGate } from '@/security/app-lock';
+import { SecurityHost } from '@/screens/settings/security/SecurityHost';
 import { TourAccessibilityScope, TourHost } from '@/tour';
 
 export default function AppLayout() {
@@ -84,6 +85,8 @@ export default function AppLayout() {
           {/* The one player session, shared by the Player screen and the mini player (outlives the Player screen). */}
           <PlayerSessionHost />
           <IncomingMediaHost />
+          {/* Files F10: Block screenshots for the whole app, and locked folders lock again with the app. */}
+          <SecurityHost />
           <Stack screenOptions={screenOptions}>
             <Stack.Screen
               name={appStackRouteNames.tabs}

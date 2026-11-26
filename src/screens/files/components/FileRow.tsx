@@ -29,6 +29,8 @@ export type FileRowProps = {
   longPressOpensMore?: boolean;
   /** F4: TalkBack's "Select" action, which starts selecting with this row. */
   onSelect?: () => void;
+  /** F6 search: the part of `name` that matched, drawn in bold. */
+  nameMatch?: { start: number; end: number } | null;
   /** F3 Show in folder: the file the user came to see. */
   highlighted?: boolean;
   testID?: string;
@@ -51,6 +53,7 @@ export const FileRow = memo(function FileRow({
   longPressOpensMore = true,
   onSelect,
   highlighted = false,
+  nameMatch,
   testID,
 }: FileRowProps) {
   const theme = useTheme();
@@ -107,9 +110,19 @@ export const FileRow = memo(function FileRow({
             </View>
           )}
           <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
-            <DsText variant="rowTitle" numberOfLines={1} ellipsizeMode="middle">
-              {name}
-            </DsText>
+            {nameMatch && nameMatch.end > nameMatch.start ? (
+              <DsText variant="body" color="textPrimary" numberOfLines={1}>
+                {name.slice(0, nameMatch.start)}
+                <DsText variant="bodyStrong" color="primary">
+                  {name.slice(nameMatch.start, nameMatch.end)}
+                </DsText>
+                {name.slice(nameMatch.end)}
+              </DsText>
+            ) : (
+              <DsText variant="rowTitle" numberOfLines={1} ellipsizeMode="middle">
+                {name}
+              </DsText>
+            )}
             {meta ? (
               <DsText variant="rowSub" numberOfLines={1}>
                 {meta}
