@@ -285,6 +285,7 @@ export const filesEn = {
   malwareWarning: 'Malware warning',
   malwareWarningHint: 'VidoraX always warns before opening a file that isn’t what its name says',
   alwaysOn: '{name}: always on',
+  alwaysOnValue: 'Always on',
   addFiles: 'Add files',
   addFilesTitle: 'Add to Private folder',
   addFilesHint: 'Pick files to move in. They leave every other list.',

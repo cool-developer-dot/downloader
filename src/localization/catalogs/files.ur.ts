@@ -283,6 +283,7 @@ export const filesUr: CatalogStrings<typeof filesEn> = {
   malwareWarning: 'میلویئر وارننگ',
   malwareWarningHint: 'جو فائل اپنے نام کے مطابق نہ ہو، اسے کھولنے سے پہلے VidoraX ہمیشہ خبردار کرتا ہے',
   alwaysOn: '{name}: ہمیشہ آن',
+  alwaysOnValue: 'ہمیشہ آن',
   addFiles: 'فائلیں شامل کریں',
   addFilesTitle: 'پرائیویٹ فولڈر میں شامل کریں',
   addFilesHint: 'منتقل کرنے کے لیے فائلیں چنیں۔ یہ باقی تمام فہرستوں سے ہٹ جائیں گی۔',
