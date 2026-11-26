@@ -4,7 +4,7 @@ import { describe, test } from 'node:test';
 import { countByKind } from '@/screens/library/utils/library-kind';
 
 import { fileExtension, fileTypeOf } from './file-types';
-import { buildFilesIndex, folderPathIn, folderStatsIn, listFolderIn, typeCountsOf, type FileSourceItem } from './files-index';
+import { buildFilesIndex, fileDisplayName, folderPathIn, folderStatsIn, listFolderIn, typeCountsOf, type FileSourceItem } from './files-index';
 import { folderLookupOf, folderSubtreeIds, nearestExistingFolder, parentFolderId } from './folder-tree';
 
 const item = (id: string, fileName: string, folderId: string | null = null, fileSize = '100', mimeType: string | null = null): FileSourceItem => ({
@@ -103,6 +103,16 @@ describe('Files F1 stand-in for F12: listing, stats and paths', () => {
       folderPathIn(index, 'C').map((folder) => folder.id),
       ['A', 'B', 'C'],
     );
+  });
+
+  test('F5: a file shows its title (what Rename changes) with its file’s extension', () => {
+    assert.equal(fileDisplayName('My trip', 'a1b2c3.mp4'), 'My trip.mp4');
+    assert.equal(fileDisplayName('clip.MP4', 'clip.mp4'), 'clip.MP4');
+    assert.equal(fileDisplayName('', 'clip.mp4'), 'clip.mp4');
+    assert.equal(fileDisplayName('Notes', 'readme'), 'Notes');
+    const index = buildFilesIndex([{ ...item('1', 'a1b2.mp3'), displayName: 'Song' }], []);
+    assert.equal(index.files[0]!.name, 'Song.mp3');
+    assert.equal(index.files[0]!.type, 'audio');
   });
 
   test('a file whose folder no longer exists is unfiled; duplicate ids keep their first entry', () => {

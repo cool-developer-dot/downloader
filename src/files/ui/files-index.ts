@@ -6,7 +6,7 @@
  * unfiled (it shows at the top level). Stats count a folder's subfolders too.
  */
 
-import { fileTypeOf, FILE_TYPES, type FileType } from './file-types';
+import { fileExtension, fileTypeOf, FILE_TYPES, type FileType } from './file-types';
 import { folderLookupOf, folderSubtreeIds, parentFolderId, folderChain, type FolderNodeLike } from './folder-tree';
 
 export type FileEntry = {
@@ -74,8 +74,25 @@ function parseBytes(value: string | null | undefined): number {
   return Number.isFinite(bytes) && bytes > 0 ? bytes : 0;
 }
 
+/**
+ * F5: the name Files shows and renames — the file's title (what Rename changes; the app's own file keeps a stable name
+ * on the phone) with the file's extension, so "My trip" stored as `a1b2.mp4` reads "My trip.mp4".
+ */
+export function fileDisplayName(title: string | null | undefined, fileName: string | null | undefined): string {
+  const cleanTitle = title?.trim() ?? '';
+  const cleanFile = fileName?.trim() ?? '';
+  if (!cleanTitle) {
+    return cleanFile;
+  }
+  const extension = fileExtension(cleanFile);
+  if (!extension || cleanTitle.toLowerCase().endsWith(`.${extension}`)) {
+    return cleanTitle;
+  }
+  return `${cleanTitle}.${extension}`;
+}
+
 export function toFileEntry(item: FileSourceItem): FileEntry {
-  const name = item.fileName?.trim() || item.displayName?.trim() || item.id;
+  const name = fileDisplayName(item.displayName, item.fileName) || item.id;
   return {
     id: item.id,
     name,
