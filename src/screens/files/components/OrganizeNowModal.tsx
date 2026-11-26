@@ -49,7 +49,7 @@ export const OrganizeNowModal = memo(function OrganizeNowModal({ visible, onClos
     const items = useDownloadsStore.getState().itemsById;
     const monthFormat = new Intl.DateTimeFormat(intlLocaleForLanguage(language), { month: 'long', year: 'numeric' });
     return planAutoOrganize(
-      source.files.map((file) => ({ id: file.id, type: file.type, folderId: file.folderId, date: file.date, site: siteOf(items[file.id]?.sourceUrl) })),
+      source.files.map((file) => ({ id: file.id, type: file.fileType, folderId: file.folderId, date: file.downloadedAt, site: siteOf(items[file.id]?.sourceUrl) })),
       source.folders,
       by,
       {
@@ -67,7 +67,7 @@ export const OrganizeNowModal = memo(function OrganizeNowModal({ visible, onClos
     const store = useMediaFolderAssignmentsStore.getState();
     for (const group of plan.groups) {
       try {
-        const folderId = group.folderId ?? (await createFolder(group.name)).id;
+        const folderId = group.folderId ?? (await createFolder(group.name, null)).id;
         for (const id of group.fileIds) {
           await store.moveMediaToFolder({ mediaId: id, desiredFolderId: folderId, fallbackFolderId: null }).catch(() => undefined);
           moved += 1;

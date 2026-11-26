@@ -4,6 +4,7 @@ import { ScrollView, View } from 'react-native';
 import { AppModal } from '@/components/modals/AppModal';
 import { DsText } from '@/design';
 import { tagColorOf } from '@/files/organize/tag-colors';
+import { fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-index';
 import { useItemTagsStore, useTagColorsStore } from '@/library/item-organize-store';
 import { useTranslation } from '@/localization';
@@ -22,7 +23,7 @@ export const TagsDialog = memo(function TagsDialog({ file, onClose }: TagsDialog
   const tags = useItemTagsStore((s) => (file ? (s.tagsById[file.id] ?? []) : []));
   const colors = useTagColorsStore((s) => s.colors);
   return (
-    <AppModal visible={file !== null} onClose={onClose} title={file ? t('fileManager.tagsTitle', { name: file.name }) : undefined} showCloseButton testID="files-tags">
+    <AppModal visible={file !== null} onClose={onClose} title={file ? t('fileManager.tagsTitle', { name: fileLabel(file) }) : undefined} showCloseButton testID="files-tags">
       {file ? (
         <ScrollView style={{ maxHeight: 520 }} contentContainerStyle={{ gap: 14 }}>
           <ItemTagsEditor id={file.id} />
