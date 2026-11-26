@@ -19,7 +19,11 @@ import { AddToPlaylistSheet } from '@/screens/playlists/components/AddToPlaylist
 import type { PlaylistItemInput } from '@/storage/repositories/playlists.repository';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 
+import { findClash, keepBothName, type ClashChoice } from '@/files/rename/name-clash';
+import { deleteForReplace, renameFileTo } from '@/files/rename/rename-runtime';
+
 import { announce } from '../announce';
+import { NameClashDialog, useNameClash } from './NameClashDialog';
 import { NewFolderDialog } from './NewFolderDialog';
 import { PrivateBatchMoveDialog } from './PrivateBatchMoveDialog';
 
@@ -75,14 +79,43 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
   const [playlistInputs, setPlaylistInputs] = useState<PlaylistItemInput[] | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [privateFiles, setPrivateFiles] = useState<readonly FileEntry[] | null>(null);
+  const clash = useNameClash();
 
   const moveTo = useCallback(
     async (folderId: string | null, folderName: string) => {
       setFolderPicker(null);
       const store = useMediaFolderAssignmentsStore.getState();
+      // F5 #797: what is already in the target folder (not the files being moved).
+      const movingIds = new Set(files.map((file) => file.id));
+      const there = (await listFolder(folderId).catch(() => null))?.files.filter((file) => !movingIds.has(file.id)) ?? [];
+      const names = there.map((file) => file.name);
+      let remembered: ClashChoice | null = null;
       let moved = 0;
       for (const file of files) {
         try {
+          if (file.folderId === folderId) {
+            continue;
+          }
+          const clashing = findClash(file.name, names);
+          if (clashing) {
+            let choice = remembered;
+            if (!choice) {
+              const answer = await clash.ask(file.name, folderName, files.length > 1);
+              choice = answer.choice;
+              if (answer.forAll) remembered = answer.choice;
+            }
+            if (choice === 'skip') continue;
+            if (choice === 'keep-both') {
+              const next = keepBothName(file.name, names);
+              await renameFileTo(file.id, next);
+              names.push(next);
+            } else {
+              const victim = there.find((other) => other.name.toLocaleLowerCase() === clashing.toLocaleLowerCase());
+              if (victim) await deleteForReplace(victim.id);
+            }
+          } else {
+            names.push(file.name);
+          }
           await store.moveMediaToFolder({ mediaId: file.id, desiredFolderId: folderId, fallbackFolderId: file.folderId });
           moved += 1;
         } catch {
@@ -93,7 +126,7 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
       if (moved < files.length) announce(t('fileManager.moveFailed', { count: files.length - moved }));
       onDone();
     },
-    [files, onDone, t],
+    [clash, files, onDone, t],
   );
 
   const deleteNow = useCallback(async () => {
@@ -250,6 +283,7 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
       />
       <AddToPlaylistSheet inputs={playlistInputs} onClose={() => setPlaylistInputs(null)} onAdded={onDone} />
       <ActionSheetModal visible={moreOpen} onClose={() => setMoreOpen(false)} actions={moreSheet} testID={`${testID}-more`} />
+      <NameClashDialog {...clash.dialogProps} />
       <PrivateBatchMoveDialog
         files={privateFiles}
         onClose={() => setPrivateFiles(null)}

@@ -20,6 +20,7 @@ import { SelectionHeader } from './components/SelectionHeader';
 import { useFolderView } from './hooks/use-files-data';
 import { useFilesSettingsAction } from './hooks/use-files-settings-action';
 import { useOpenFile } from './hooks/use-open-file';
+import { useSelectionMoreActions } from './hooks/use-selection-more';
 import { FileActionsSheet } from './FileActionsSheet';
 import { backTarget, buildBreadcrumbs, upTarget } from './utils/breadcrumbs';
 import { folderListEntries, folderMetaLine, itemCountText } from './utils/file-rows';
@@ -70,6 +71,7 @@ export const FolderScreen = memo(function FolderScreen() {
     [entries, selection.selected],
   );
   const { clear: clearSelection } = selection;
+  const moreActions = useSelectionMoreActions();
   const openFile = useOpenFile(shownFiles);
 
   /** Shows another folder in this screen; `null` leaves for the Files tab. */
@@ -177,7 +179,7 @@ export const FolderScreen = memo(function FolderScreen() {
         selection={selection}
         testID="files-folder-list"
       />
-      {selection.active ? <SelectionBar entries={selectedEntries} onDone={afterBatch} /> : null}
+      {selection.active ? <SelectionBar entries={selectedEntries} onDone={afterBatch} moreActions={moreActions} /> : null}
       <FileActionsSheet file={menuFile} onClose={closeMenu} onOpen={openFile} onChanged={onChanged} />
     </DsScreen>
   );

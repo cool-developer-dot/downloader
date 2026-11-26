@@ -14,12 +14,12 @@ import { useTheme } from '@/hooks/use-theme';
 import { intlLocaleForLanguage, useTranslation, type TranslationKey } from '@/localization';
 import { fileChecksumPath, fileDetailsPath, filesFolderPath, filesTypePath, navigation, routePaths } from '@/navigation';
 import { canMoveToPrivate } from '@/private-vault/move-to-private.runtime';
-import { RenameModal } from '@/screens/downloads/extras/file-actions/RenameModal';
 import { PrivateMoveDialog } from '@/screens/private/PrivateMoveDialog';
 import { usePrivateMove } from '@/screens/private/usePrivateMove';
 import { useTourBlocker } from '@/tour/tour-store';
 
 import { announce } from './announce';
+import { RenameFileDialog } from './components/RenameFileDialog';
 import { fileActionsFor, type FileAction } from './utils/file-actions';
 import { fileMetaLine } from './utils/file-rows';
 
@@ -56,7 +56,7 @@ const ROWS: Record<FileAction, RowSpec> = {
  * Play, Details, Show in folder, Share, Send to device, Save to…, Lock file, Verify checksum, Open with, Rename and
  * Delete; rows that can't apply are hidden (`fileActionsFor`). Every row runs the app's existing flow: the completed-file
  * share and Open with (with P8's malware warning), the native `copyToFolder` after Android's folder picker (nothing is
- * sent to any server), Move to Private, the H20 checksum, the existing rename (F5 replaces it) and the delete service,
+ * sent to any server), Move to Private, the H20 checksum, F5's rename (name clashes ask) and the delete service,
  * which asks first unless F2's Confirm before delete is off.
  */
 export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, onOpen, onChanged, testID = 'files-actions-sheet' }: FileActionsSheetProps) {
@@ -64,7 +64,7 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const { t, language } = useTranslation();
-  const [renameId, setRenameId] = useState<string | null>(null);
+  const [renameFile, setRenameFile] = useState<FileEntry | null>(null);
   const [confirmFile, setConfirmFile] = useState<FileEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const privateMove = usePrivateMove(() => onChanged?.());
@@ -188,7 +188,8 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
           void openWith(target);
           return;
         case 'rename':
-          setRenameId(target.id);
+          // F5: the name selected without its extension; a clash asks Keep both / Replace / Skip.
+          setRenameFile(target);
           return;
         case 'delete':
           if (isConfirmBeforeDeleteOn()) {
@@ -260,14 +261,7 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
         </View>
       </Modal>
 
-      <RenameModal
-        visible={renameId !== null}
-        id={renameId ?? ''}
-        onClose={() => {
-          setRenameId(null);
-          onChanged?.();
-        }}
-      />
+      <RenameFileDialog file={renameFile} onClose={() => setRenameFile(null)} onRenamed={onChanged} />
       <ConfirmModal
         visible={confirmFile !== null}
         variant="delete"

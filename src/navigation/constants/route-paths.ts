@@ -125,6 +125,8 @@ export const routePaths = {
   filesSettings: '/files-settings',
   // F3 · File details and checksum: `fileDetailsPath` / `fileChecksumPath` below
   // F5 · Batch rename
+  /** Files F5 #793: rename the selected files at once (`?ids=` the files, comma-separated). */
+  filesBatchRename: '/files/batch-rename',
   // F6 · Search
   // F10 · Security (design 64)
 } as const;

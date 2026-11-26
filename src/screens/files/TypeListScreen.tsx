@@ -16,6 +16,7 @@ import { SelectionHeader } from './components/SelectionHeader';
 import { useAllFiles } from './hooks/use-files-data';
 import { useFilesSettingsAction } from './hooks/use-files-settings-action';
 import { useOpenFile } from './hooks/use-open-file';
+import { useSelectionMoreActions } from './hooks/use-selection-more';
 import { FileActionsSheet } from './FileActionsSheet';
 import { fileCountText, folderListEntries, formatFileBytes } from './utils/file-rows';
 import { isTileType, tileLabelKey } from './utils/type-tiles';
@@ -59,6 +60,7 @@ export const TypeListScreen = memo(function TypeListScreen() {
     [entries, selection.selected],
   );
   const { clear: clearSelection } = selection;
+  const moreActions = useSelectionMoreActions();
   const afterBatch = useCallback(() => {
     clearSelection();
     void reload();
@@ -120,7 +122,7 @@ export const TypeListScreen = memo(function TypeListScreen() {
         selection={selection}
         testID="files-type-list"
       />
-      {selection.active ? <SelectionBar entries={selectedEntries} onDone={afterBatch} /> : null}
+      {selection.active ? <SelectionBar entries={selectedEntries} onDone={afterBatch} moreActions={moreActions} /> : null}
       <FileActionsSheet file={menuFile} onClose={closeMenu} onOpen={openFile} onChanged={onChanged} />
     </DsScreen>
   );
