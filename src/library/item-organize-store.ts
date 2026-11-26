@@ -1,6 +1,10 @@
 import { persist } from 'zustand/middleware';
 
 import { getV2Engine } from '@/downloads/v2/engine-port';
+import { normalizeHiddenIds } from '@/files/organize/hidden-items';
+import type { SwatchId } from '@/files/organize/swatches';
+import { clearTagColor, normalizeTagColors, renameTagColor, setTagColor } from '@/files/organize/tag-colors';
+import { mmkvKeys } from '@/storage/constants';
 import { createStore } from '@/store/shared/create-store';
 import { createPersistStorage } from '@/store/shared/persist-storage';
 
@@ -166,13 +170,78 @@ export const useOrganizeFiltersStore = createStore<OrganizeFiltersState>()((set)
   setPlayerTag: (tag) => set({ playerTag: tag }),
 }));
 
-/** Tags and notes of items that were deleted are forgotten too. */
+/**
+ * Files F7 #911 Hide file: the hidden items (MMKV `vidorax.files.hidden.v1`). A hidden file leaves Files, the Player
+ * tab, Downloads and search until "Show hidden files" (File manager settings) is on. Not encryption.
+ */
+type HiddenState = {
+  hiddenIds: string[];
+  setHidden: (ids: readonly string[], hidden: boolean) => void;
+  forget: (ids: readonly string[]) => void;
+};
+
+export const useItemHiddenStore = createStore<HiddenState>()(
+  persist(
+    (set) => ({
+      hiddenIds: [],
+      setHidden: (ids, hidden) =>
+        set((state) => {
+          const next = new Set(state.hiddenIds);
+          let changed = false;
+          for (const id of ids) {
+            if (hidden && !next.has(id)) {
+              next.add(id);
+              changed = true;
+            } else if (!hidden && next.has(id)) {
+              next.delete(id);
+              changed = true;
+            }
+          }
+          return changed ? { hiddenIds: [...next] } : state;
+        }),
+      forget: (ids) =>
+        set((state) => (ids.some((id) => state.hiddenIds.includes(id)) ? { hiddenIds: state.hiddenIds.filter((id) => !ids.includes(id)) } : state)),
+    }),
+    {
+      name: mmkvKeys.filesHidden,
+      storage: createPersistStorage<{ hiddenIds: string[] }>(),
+      partialize: (state) => ({ hiddenIds: state.hiddenIds }),
+      merge: (persisted, current) => ({ ...current, hiddenIds: normalizeHiddenIds((persisted as { hiddenIds?: unknown } | null)?.hiddenIds) }),
+    },
+  ),
+);
+
+/** Files F7 #977 Color tags: each tag's colour (MMKV `vidorax.files.tagColors.v1`), by tag, ignoring case. */
+type TagColorsState = {
+  colors: Record<string, SwatchId>;
+  setColor: (tag: string, color: SwatchId | null) => void;
+  renameTag: (from: string, to: string) => void;
+};
+
+export const useTagColorsStore = createStore<TagColorsState>()(
+  persist(
+    (set) => ({
+      colors: {},
+      setColor: (tag, color) => set((state) => ({ colors: color ? setTagColor(state.colors, tag, color) : clearTagColor(state.colors, tag) })),
+      renameTag: (from, to) => set((state) => ({ colors: renameTagColor(state.colors, from, to) })),
+    }),
+    {
+      name: mmkvKeys.filesTagColors,
+      storage: createPersistStorage<{ colors: Record<string, SwatchId> }>(),
+      partialize: (state) => ({ colors: state.colors }),
+      merge: (persisted, current) => ({ ...current, colors: normalizeTagColors((persisted as { colors?: unknown } | null)?.colors) }),
+    },
+  ),
+);
+
+/** Tags, notes and the hidden mark (F7) of items that were deleted are forgotten too. */
 export function forgetItemOrganize(ids: readonly string[]): void {
   if (ids.length === 0) {
     return;
   }
   useItemTagsStore.getState().forget(ids);
   useItemNotesStore.getState().forget(ids);
+  useItemHiddenStore.getState().forget(ids);
 }
 
 /**

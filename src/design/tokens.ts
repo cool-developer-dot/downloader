@@ -140,3 +140,18 @@ export const dsThumbColors = {
   video: { base: '#15321F', light: '#2E5A3A' },
   transfer: { base: '#5C6678', light: '#8A93A3' },
 } as const;
+
+/**
+ * Files F7: the 8 swatches a folder icon (#778) or a tag (#977) can take — strong enough on every theme's card, light
+ * or dark, and told apart by more than hue alone (they also differ in lightness).
+ */
+export const dsSwatchColors = {
+  red: '#E5484D',
+  orange: '#F76B15',
+  amber: '#D59B00',
+  green: '#30A46C',
+  teal: '#0D9B8A',
+  blue: '#0090FF',
+  violet: '#8E4EC6',
+  pink: '#D6409F',
+} as const;

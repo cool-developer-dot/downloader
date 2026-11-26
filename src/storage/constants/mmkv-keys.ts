@@ -113,6 +113,15 @@ export const mmkvKeys = {
   filesLockedFolders: 'vidorax.files.lockedFolders.v1',
   /** Files F10 #916: Block screenshots for the whole app (Security page; default off). Private keeps its own switch. */
   privacyBlockScreenshotsApp: 'vidorax.mmkv.privacy.blockScreenshotsApp.v1',
+  // F7 · Organize (the ⋮ of design 45)
+  /** Files F7 #911: the ids of hidden files (they leave Files, the Player tab, Downloads and search). */
+  filesHidden: 'vidorax.files.hidden.v1',
+  /** Files F7 #977: each tag's colour (`{ [tag]: swatch }`). */
+  filesTagColors: 'vidorax.files.tagColors.v1',
+  /** Files F7 #778: each folder's icon colour (`{ [folderId]: swatch }`); Faran's folders.ts is never touched. */
+  filesFolderColors: 'vidorax.files.folderColors.v1',
+  /** Files F7 #954: each folder's own order (`{ [folderId]: { enabled, ids } }`). */
+  filesCustomOrder: 'vidorax.files.customOrder.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];
