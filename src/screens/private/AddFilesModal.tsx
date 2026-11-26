@@ -36,7 +36,7 @@ type Phase = { kind: 'pick' } | { kind: 'confirm' } | { kind: 'moving'; done: nu
  */
 export const AddFilesModal = memo(function AddFilesModal({ visible, onClose, onMoved }: AddFilesModalProps) {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { t, rtl } = useTranslation();
   const acknowledged = usePrivateVaultPrefs((s) => s.dataLossAcknowledged);
   const lockedNow = useLockedNowIds();
   const [files, setFiles] = useState<FileEntry[] | null>(null);
@@ -117,7 +117,7 @@ export const AddFilesModal = memo(function AddFilesModal({ visible, onClose, onM
           accessibilityLabel={t('fileManager.selectFileA11y', { name: fileLabel(item), state: on ? t('fileManager.selected') : t('fileManager.notSelected') })}
           testID={`private-add-${item.id}`}
           style={({ pressed }) => ({
-            flexDirection: 'row',
+            flexDirection: rtl.rowDirection,
             alignItems: 'center',
             gap: ds.space.rowGap,
             paddingVertical: 10,
@@ -137,7 +137,7 @@ export const AddFilesModal = memo(function AddFilesModal({ visible, onClose, onM
         </Pressable>
       );
     },
-    [picked, t, theme.colors.surfacePressed, toggle],
+    [picked, rtl.rowDirection, t, theme.colors.surfacePressed, toggle],
   );
 
   return (
