@@ -22,6 +22,8 @@ export type FolderRowProps = {
   onMore?: (folder: FolderEntry) => void;
   /** The tile's icon (F10 draws a locked folder with the lock). */
   icon?: DsIconName;
+  /** F4: off where a long press selects (the list's drag gesture); ⋮ still opens the menu. Default on. */
+  longPressOpensMore?: boolean;
   testID?: string;
 };
 
@@ -30,7 +32,17 @@ export type FolderRowProps = {
  * Shared by the Files tab and the folder screens; always in a FlatList. F10 #910: a locked folder shows the lock and
  * "Locked" (not its contents' count or size) until it is opened with the PIN, and ⋮ offers Lock folder / Remove lock.
  */
-export const FolderRow = memo(function FolderRow({ folder, meta, first, last, onPress, onMore, icon = 'folder', testID }: FolderRowProps) {
+export const FolderRow = memo(function FolderRow({
+  folder,
+  meta,
+  first,
+  last,
+  onPress,
+  onMore,
+  icon = 'folder',
+  longPressOpensMore = true,
+  testID,
+}: FolderRowProps) {
   const theme = useTheme();
   const rtl = useRtl();
   const { t } = useTranslation();
@@ -47,7 +59,7 @@ export const FolderRow = memo(function FolderRow({ folder, meta, first, last, on
       <Pressable
         testID={testID}
         onPress={handlePress}
-        onLongPress={handleMore}
+        onLongPress={longPressOpensMore ? handleMore : undefined}
         delayLongPress={350}
         accessibilityRole="button"
         accessibilityLabel={shownMeta ? `${folder.name}, ${shownMeta}` : folder.name}

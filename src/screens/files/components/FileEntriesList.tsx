@@ -5,6 +5,7 @@ import { ds, type DsIconName } from '@/design';
 import { displayFileName } from '@/files/ui/display-name';
 import type { FileEntry, FolderEntry } from '@/files/ui/files-index';
 import { GRID_COLUMNS, LIST_THUMBNAIL_DP, useFilesViewSettings } from '@/files/ui/files-view-settings';
+import { useLockedNowIds } from '@/files/ui/locked-folders';
 import { useTheme } from '@/hooks/use-theme';
 import { intlLocaleForLanguage, useTranslation } from '@/localization';
 
@@ -80,6 +81,16 @@ export const FileEntriesList = memo(function FileEntriesList({
   const thumbnailSize = LIST_THUMBNAIL_DP[settings.thumbnailSize];
   const nameOf = useCallback((file: FileEntry) => displayFileName(file.name, settings.showExtensions), [settings.showExtensions]);
   const selecting = selection?.active === true;
+  // F10: a locked folder shows the lock and "Locked" in the grid and while selecting too (FolderRow does it itself).
+  const lockedNow = useLockedNowIds();
+  const iconOf = useCallback(
+    (folder: FolderEntry): DsIconName => (lockedNow.includes(folder.id) ? 'lock' : (folderIcon?.(folder) ?? 'folder')),
+    [folderIcon, lockedNow],
+  );
+  const metaOf = useCallback(
+    (folder: FolderEntry): string => (lockedNow.includes(folder.id) ? t('fileManager.folderLocked') : folderMeta(folder)),
+    [folderMeta, lockedNow, t],
+  );
 
   // F3 Show in folder: scroll the highlighted file into view once its row is in the list.
   const listRef = useRef<FlatList<FolderListEntry>>(null);
@@ -105,8 +116,8 @@ export const FileEntriesList = memo(function FileEntriesList({
         return (
           <SelectRow
             title={isFolder ? item.folder.name : nameOf(item.file)}
-            meta={isFolder ? folderMeta(item.folder) : fileMetaLine(item.file, locale)}
-            icon={isFolder ? (folderIcon?.(item.folder) ?? 'folder') : fileTypeIcon(item.file.type)}
+            meta={isFolder ? metaOf(item.folder) : fileMetaLine(item.file, locale)}
+            icon={isFolder ? iconOf(item.folder) : fileTypeIcon(item.file.type)}
             pictureUri={!isFolder && settings.showThumbnails ? item.file.thumbnailUri : null}
             thumbnailSize={thumbnailSize}
             selected={selection.selected.has(item.key)}
@@ -127,6 +138,7 @@ export const FileEntriesList = memo(function FileEntriesList({
             onPress={onPressFolder}
             onMore={onMoreFolder}
             icon={folderIcon?.(item.folder)}
+            longPressOpensMore={!selection}
             testID={`files-folder-${item.folder.id}`}
           />
         );
@@ -150,7 +162,7 @@ export const FileEntriesList = memo(function FileEntriesList({
         />
       );
     },
-    [entries.length, folderIcon, folderMeta, highlightId, locale, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, selecting, selection, settings.showThumbnails, thumbnailSize],
+    [entries.length, folderIcon, folderMeta, highlightId, iconOf, locale, metaOf, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, selecting, selection, settings.showThumbnails, thumbnailSize],
   );
 
   const renderTile = useCallback<ListRenderItem<FolderListEntry>>(
@@ -160,8 +172,8 @@ export const FileEntriesList = memo(function FileEntriesList({
       return item.kind === 'folder' ? (
         <GridTile
           title={item.folder.name}
-          meta={folderMeta(item.folder)}
-          icon={folderIcon?.(item.folder) ?? 'folder'}
+          meta={metaOf(item.folder)}
+          icon={iconOf(item.folder)}
           width={tileWidth}
           onPress={toggle ?? (() => onPressFolder(item.folder))}
           onLongPress={!selection && onMoreFolder ? () => onMoreFolder(item.folder) : undefined}
@@ -184,7 +196,7 @@ export const FileEntriesList = memo(function FileEntriesList({
         />
       );
     },
-    [folderIcon, folderMeta, locale, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, selecting, selection, settings.showThumbnails, t, tileWidth],
+    [iconOf, locale, metaOf, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, selecting, selection, settings.showThumbnails, t, tileWidth],
   );
 
   const noop = useCallback(() => undefined, []);
