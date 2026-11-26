@@ -10,7 +10,8 @@ import { ds, DsIcon, DsText, type DsIconName } from '@/design';
 import { confirmLibraryFileAction } from '@/downloads/safety/file-safety-dialog';
 import { getV2Engine } from '@/downloads/v2/engine-port';
 import { batchActionsFor, type BatchAction, type BatchItem } from '@/files/ui/batch-actions';
-import { listFolder, type FileEntry, type FolderEntry } from '@/files/ui/files-source';
+import { fileLabel } from '@/files/ui/file-fields';
+import { filesCapabilities, listFolder, moveFolder, type FileEntry, type FolderEntry } from '@/files/ui/files-source';
 import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation, type TranslationKey } from '@/localization';
@@ -57,16 +58,18 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
   const insets = useSafeAreaInsets();
   const { t, rtl } = useTranslation();
   const files = useMemo(() => entries.flatMap((entry) => (entry.kind === 'file' ? [entry.file] : [])), [entries]);
+  const folders = useMemo(() => entries.flatMap((entry) => (entry.kind === 'folder' ? [entry.folder] : [])), [entries]);
   const items = useMemo<BatchItem[]>(
     () =>
       entries.map((entry) =>
         entry.kind === 'folder'
           ? { kind: 'folder', id: entry.folder.id }
-          : { kind: 'file', id: entry.file.id, type: entry.file.type, canMoveToPrivate: canMoveToPrivate(entry.file.id) },
+          : { kind: 'file', id: entry.file.id, type: entry.file.fileType, canMoveToPrivate: canMoveToPrivate(entry.file.id) },
       ),
     [entries],
   );
-  const states = batchActionsFor(items, { moreItems: moreActions.length });
+  // F12: moving a folder only once nested folders are live.
+  const states = batchActionsFor(items, { moreItems: moreActions.length, nestedFolders: filesCapabilities.nestedFolders });
 
   const [folderPicker, setFolderPicker] = useState<FolderEntry[] | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
@@ -89,11 +92,22 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
           // counted below
         }
       }
+      // F12: the selected folders too, once nested folders are live (a folder can't go into itself or too deep).
+      const movingFolders = filesCapabilities.nestedFolders ? folders : [];
+      for (const folder of movingFolders) {
+        try {
+          await moveFolder(folder.id, folderId);
+          moved += 1;
+        } catch {
+          // counted below
+        }
+      }
+      const total = files.length + movingFolders.length;
       announce(t('fileManager.movedCount', { count: moved, folder: folderName }));
-      if (moved < files.length) announce(t('fileManager.moveFailed', { count: files.length - moved }));
+      if (moved < total) announce(t('fileManager.moveFailed', { count: total - moved }));
       onDone();
     },
-    [files, onDone, t],
+    [files, folders, onDone, t],
   );
 
   const deleteNow = useCallback(async () => {
@@ -119,7 +133,7 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
     const ids: string[] = [];
     for (const file of files) {
       // P8 #461: the warning for a file that isn't what its name says, before it leaves the app.
-      if (await confirmLibraryFileAction(file.id, 'share', file.name)) ids.push(file.id);
+      if (await confirmLibraryFileAction(file.id, 'share', fileLabel(file))) ids.push(file.id);
     }
     if (ids.length === 0) return;
     try {
@@ -135,7 +149,8 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
     (action: BatchAction) => {
       switch (action) {
         case 'move':
-          void listFolder(null).then((listing) => setFolderPicker(listing.folders));
+          // A folder being moved is never offered as where it goes.
+          void listFolder(null).then((listing) => setFolderPicker(listing.folders.filter((folder) => !folders.some((moving) => moving.id === folder.id))));
           return;
         case 'share':
           void share();
@@ -145,7 +160,7 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
           else void deleteNow();
           return;
         case 'add-to-playlist':
-          setPlaylistInputs(files.map((file) => ({ mediaId: file.id, title: file.title, fileName: file.name, durationSeconds: null })));
+          setPlaylistInputs(files.map((file) => ({ mediaId: file.id, title: file.displayName || fileLabel(file), fileName: file.fileName, durationSeconds: null })));
           return;
         case 'move-to-private':
           setPrivateFiles(files);
@@ -157,7 +172,7 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
           return;
       }
     },
-    [deleteNow, files, share],
+    [deleteNow, files, folders, share],
   );
 
   const pickerActions = useMemo<ActionSheetItem[]>(

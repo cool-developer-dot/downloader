@@ -4,7 +4,7 @@
  */
 
 import type { DsIconName } from '@/design/DsIcon';
-import { fileTypeOf, isFileType, type FileType } from '@/files/ui/file-types';
+import { isFileType, type FileType } from '@/files/ui/file-types';
 import type { FileEntry, TypeCounts } from '@/files/ui/files-index';
 import type { TranslationKey } from '@/localization/types';
 
@@ -34,8 +34,8 @@ export function buildTypeTiles(counts: Partial<TypeCounts> | null | undefined): 
 }
 
 /** A tile's list: exactly the files of its type, by `fileTypeOf` alone (Videos included), as its count is. */
-export function tileFiles<T extends Pick<FileEntry, 'mimeType' | 'name'>>(files: readonly T[], type: TileType): T[] {
-  return files.filter((file) => fileTypeOf({ mimeType: file.mimeType, fileName: file.name }) === type);
+export function tileFiles<T extends Pick<FileEntry, 'fileType'>>(files: readonly T[], type: TileType): T[] {
+  return files.filter((file) => file.fileType === type);
 }
 
 export function isTileType(value: unknown): value is TileType {

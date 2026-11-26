@@ -10,8 +10,8 @@ import { ds, DsButton, DsButtonRow, DsCard, DsHeader, DsIcon, DsRow, DsRowGroup,
 import { completedActionErrorMessageKey } from '@/downloads/completed-file/action-errors';
 import { fileIntegrity, storedChecksum } from '@/downloads/v2/file-integrity';
 import { getV2Engine } from '@/downloads/v2/engine-port';
-import { fileTypeOf } from '@/files/ui/files-source';
-import { folderPath, fullPathOf, type FileEntry } from '@/files/ui/files-source';
+import { fileBytes, fileLabel } from '@/files/ui/file-fields';
+import { fileTypeOf, folderPath, fullPathOf, type FileEntry } from '@/files/ui/files-source';
 import { useItemNotesStore, useItemTagsStore } from '@/library/item-organize-store';
 import { formatDuration } from '@/media-detection/utils/format';
 import { intlLocaleForLanguage, useTranslation, type TranslationKey } from '@/localization';
@@ -109,10 +109,10 @@ export const FileDetailsScreen = memo(function FileDetailsScreen() {
     };
   }, [id]);
 
-  const name = item?.fileName?.trim() || item?.title?.trim() || entry?.name || '';
-  const type = fileTypeOf({ mimeType: item?.mimeType ?? entry?.mimeType ?? null, fileName: name });
+  const name = item?.fileName?.trim() || item?.title?.trim() || (entry ? fileLabel(entry) : '');
+  const type = fileTypeOf(item?.mimeType ?? entry?.mimeType ?? null, name);
   const audioOnly = type === 'audio';
-  const sizeBytes = Number(item?.fileSize ?? 0) || entry?.sizeBytes || 0;
+  const sizeBytes = Number(item?.fileSize ?? 0) || (entry ? fileBytes(entry) : 0);
   const resolution =
     media?.width && media.height ? `${media.width}x${media.height}` : (item?.resolution ?? null);
   const format = formatLine({ mimeType: item?.mimeType ?? null, fileName: name, resolution, audioOnly });
@@ -123,7 +123,7 @@ export const FileDetailsScreen = memo(function FileDetailsScreen() {
     formatDurableBitrate(item?.bitrate) ? t('fileManager.formatBitrate', { bitrate: formatDurableBitrate(item?.bitrate) ?? '' }) : null,
     durationSeconds ? t('fileManager.formatDuration', { duration: formatDuration(durationSeconds) ?? '' }) : null,
   ].filter((line): line is string => Boolean(line));
-  const downloaded = formatDownloadDate(item?.downloadedAt ?? entry?.date ?? null);
+  const downloaded = formatDownloadDate(item?.downloadedAt ?? entry?.downloadedAt ?? null);
   const created = formatDownloadDate(item?.createdAt ?? null);
   const source = item?.sourceUrl || media?.pageUrl || '';
   const playable = type === 'video' || type === 'audio';
@@ -133,7 +133,7 @@ export const FileDetailsScreen = memo(function FileDetailsScreen() {
   const showPath = useCallback(() => {
     toggle('path');
     if (fullPath === undefined && id) {
-      void fullPathOf(id).then(setFullPath);
+      void fullPathOf(id).then((paths) => setFullPath(paths?.appPath ?? null));
     }
   }, [fullPath, id, toggle]);
 

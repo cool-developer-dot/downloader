@@ -89,7 +89,7 @@ export const FileRow = memo(function FileRow({
             <DsThumb
               uri={picture}
               kind="video"
-              icon={fileTypeIcon(file.type)}
+              icon={fileTypeIcon(file.fileType)}
               width={thumbnailSize}
               height={Math.round(thumbnailSize * 0.75)}
             />
@@ -103,7 +103,7 @@ export const FileRow = memo(function FileRow({
                 alignItems: 'center',
                 justifyContent: 'center',
               }}>
-              <DsIcon name={fileTypeIcon(file.type)} size={ds.size.rowIcon} color="primary" strokeWidth={ds.stroke.row} />
+              <DsIcon name={fileTypeIcon(file.fileType)} size={ds.size.rowIcon} color="primary" strokeWidth={ds.stroke.row} />
             </View>
           )}
           <View style={{ flex: 1, minWidth: 0, gap: 1 }}>

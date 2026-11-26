@@ -20,6 +20,8 @@ export const filesUr: CatalogStrings<typeof filesEn> = {
   folderEmpty: 'یہ فولڈر خالی ہے',
   folderEmptyHint: 'اس فولڈر میں منتقل کی گئی فائلیں یہاں دکھائی دیں گی۔',
   folderGone: 'وہ فولڈر حذف ہو گیا',
+  folderNameTaken: 'اس نام کا فولڈر پہلے سے موجود ہے',
+  newFolderInside: '{name} میں نیا فولڈر',
   typeEmpty: 'یہاں ابھی کچھ نہیں',
   typeEmptyHint: 'اس قسم کی جو فائلیں آپ ڈاؤن لوڈ کریں گے وہ یہاں دکھائی دیں گی۔',
   rowMore: '{name} کے مزید اختیارات',

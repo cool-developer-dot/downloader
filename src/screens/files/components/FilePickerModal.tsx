@@ -3,6 +3,7 @@ import { ActivityIndicator, FlatList, Modal, View, type ListRenderItem } from 'r
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ds, DsCard, DsHeader, DsText } from '@/design';
+import { fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-index';
 import { useTheme } from '@/hooks/use-theme';
 import { intlLocaleForLanguage, useTranslation } from '@/localization';
@@ -34,7 +35,7 @@ export const FilePickerModal = memo(function FilePickerModal({ visible, title, o
     void listAllFiles()
       .catch(() => [] as FileEntry[])
       .then((all) => {
-        if (live) setFiles([...all].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true })));
+        if (live) setFiles([...all].sort((a, b) => fileLabel(a).localeCompare(fileLabel(b), undefined, { sensitivity: 'base', numeric: true })));
       });
     return () => {
       live = false;
@@ -45,7 +46,7 @@ export const FilePickerModal = memo(function FilePickerModal({ visible, title, o
     ({ item, index }) => (
       <FileRow
         file={item}
-        name={item.name}
+        name={fileLabel(item)}
         meta={fileMetaLine(item, locale)}
         showThumbnail={false}
         first={index === 0}

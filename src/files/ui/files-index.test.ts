@@ -4,19 +4,13 @@ import { describe, test } from 'node:test';
 import { countByKind } from '@/screens/library/utils/library-kind';
 
 import { fileExtension, fileTypeOf } from './file-types';
-import { buildFilesIndex, folderPathIn, folderStatsIn, listFolderIn, typeCountsOf, type FileSourceItem } from './files-index';
+import { fileLabel } from './file-fields';
+import { buildFilesIndex, folderPathIn, folderStatsIn, listFolderIn, typeCountsOf } from './files-index';
 import { folderLookupOf, folderSubtreeIds, nearestExistingFolder, parentFolderId } from './folder-tree';
+import { libraryItem } from './test-fixtures';
 
-const item = (id: string, fileName: string, folderId: string | null = null, fileSize = '100', mimeType: string | null = null): FileSourceItem => ({
-  id,
-  displayName: fileName,
-  fileName,
-  mimeType,
-  fileSize,
-  downloadedAt: null,
-  folderId,
-  thumbnailUri: null,
-});
+const item = (id: string, fileName: string, folderId: string | null = null, fileSize = '100', mimeType: string | null = null) =>
+  libraryItem({ id, displayName: fileName, fileName, mimeType, fileSize, folderId });
 
 describe('Files F1 stand-in for F12: fileTypeOf', () => {
   test('the MIME type decides; a missing or generic one falls back to the extension; anything else is other', () => {
@@ -55,7 +49,6 @@ describe('Files F1 stand-in for F12: listing, stats and paths', () => {
       ],
     );
     const root = listFolderIn(index, null);
-    assert.equal(root.folder, null);
     assert.deepEqual(
       root.folders.map((folder) => folder.id),
       ['f1', 'f2'],
@@ -65,7 +58,6 @@ describe('Files F1 stand-in for F12: listing, stats and paths', () => {
       ['2'],
     );
     const movies = listFolderIn(index, 'f1');
-    assert.equal(movies.folder?.name, 'Movies');
     assert.deepEqual(movies.folders, []);
     assert.deepEqual(
       movies.files.map((file) => file.id),
@@ -76,7 +68,7 @@ describe('Files F1 stand-in for F12: listing, stats and paths', () => {
       folderPathIn(index, 'f1').map((folder) => folder.id),
       ['f1'],
     );
-    assert.deepEqual(listFolderIn(index, 'gone'), { folder: null, folders: [], files: [] });
+    assert.deepEqual(listFolderIn(index, 'gone'), { folders: [], files: [] });
   });
 
   test('nested once F12 adds parent ids: subfolders are listed and counted, size included', () => {
@@ -110,7 +102,7 @@ describe('Files F1 stand-in for F12: listing, stats and paths', () => {
     assert.equal(index.files.length, 1);
     assert.equal(index.files[0]!.folderId, null);
     assert.deepEqual(
-      listFolderIn(index, null).files.map((file) => file.name),
+      listFolderIn(index, null).files.map((file) => fileLabel(file)),
       ['a.mp4'],
     );
   });

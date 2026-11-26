@@ -36,6 +36,13 @@ describe('Files F4: batch actions', () => {
     assert.deepEqual(enabled([{ kind: 'folder', id: 'f' }]), []);
   });
 
+  test('F12: moving a folder waits for nested folders, then Move takes the folders too', () => {
+    const items: BatchItem[] = [video('1'), { kind: 'folder', id: 'f' }];
+    assert.equal(batchActionsFor(items, { moreItems: 0, nestedFolders: false }).move.enabled, false);
+    assert.equal(batchActionsFor(items, { moreItems: 0, nestedFolders: true }).move.enabled, true);
+    assert.equal(batchActionsFor([{ kind: 'folder', id: 'f' }], { moreItems: 0, nestedFolders: true }).move.enabled, true);
+  });
+
   test('a missing file: Delete still works; Share, Add to playlist and Move to Private don’t', () => {
     const items = [video('1'), video('2', { missing: true })];
     assert.deepEqual(enabled(items), ['move', 'delete']);
