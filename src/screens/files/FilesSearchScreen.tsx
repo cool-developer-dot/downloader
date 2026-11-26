@@ -107,9 +107,9 @@ export const FilesSearchScreen = memo(function FilesSearchScreen() {
   const now = data?.now ?? 0;
 
   const load = useCallback(async () => {
-    const next = await listAllFilesAndFolders().catch(() => ({ files: [] as FileEntry[], folders: [] as FolderEntry[] }));
+    const next = await listAllFilesAndFolders({ includeHidden: showHidden }).catch(() => ({ files: [] as FileEntry[], folders: [] as FolderEntry[] }));
     setData({ ...next, now: Date.now() });
-  }, []);
+  }, [showHidden]);
   // On focus, and again whenever the files change while the search is in front (no polling).
   useFocusEffect(
     useCallback(() => {

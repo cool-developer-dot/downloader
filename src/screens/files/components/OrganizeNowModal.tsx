@@ -69,8 +69,11 @@ export const OrganizeNowModal = memo(function OrganizeNowModal({ visible, onClos
       try {
         const folderId = group.folderId ?? (await createFolder(group.name, null)).id;
         for (const id of group.fileIds) {
-          await store.moveMediaToFolder({ mediaId: id, desiredFolderId: folderId, fallbackFolderId: null }).catch(() => undefined);
-          moved += 1;
+          const ok = await store
+            .moveMediaToFolder({ mediaId: id, desiredFolderId: folderId, fallbackFolderId: null })
+            .then(() => true)
+            .catch(() => false);
+          if (ok) moved += 1;
         }
       } catch {
         // the next group still goes
