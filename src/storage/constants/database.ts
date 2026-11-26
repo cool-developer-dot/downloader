@@ -14,7 +14,7 @@ export const DATABASE_NAME = 'vidorax.db';
  * v10 (P9): play counts and video bookmarks (`applyLibraryStatsTables` → library-stats-schema; new tables only, app
  * database only, like v9).
  */
-export const DATABASE_VERSION = 10;
+export const DATABASE_VERSION = 11;
 
 export const TABLE_NAMES = {
   browserHistory: 'browser_history',
