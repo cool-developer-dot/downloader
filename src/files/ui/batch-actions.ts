@@ -20,7 +20,14 @@ export type BatchItem =
 
 export type BatchActionState = { visible: boolean; enabled: boolean };
 
-export function batchActionsFor(items: readonly BatchItem[], options: { moreItems: number }): Record<BatchAction, BatchActionState> {
+/**
+ * `nestedFolders` is the F12 contract's `filesCapabilities.nestedFolders`: while it is false, a selection with a folder
+ * can't be moved (moving a folder is hidden); once true, Move moves the folders too.
+ */
+export function batchActionsFor(
+  items: readonly BatchItem[],
+  options: { moreItems: number; nestedFolders?: boolean },
+): Record<BatchAction, BatchActionState> {
   const files = items.filter((item): item is Extract<BatchItem, { kind: 'file' }> => item.kind === 'file');
   const anyFolder = files.length < items.length;
   const anyMissing = files.some((file) => file.missing === true);
@@ -28,7 +35,7 @@ export function batchActionsFor(items: readonly BatchItem[], options: { moreItem
   const allPlayable = hasItems && !anyFolder && files.every((file) => !file.missing && (file.type === 'video' || file.type === 'audio'));
   const allLockable = hasItems && !anyFolder && files.every((file) => !file.missing && file.canMoveToPrivate === true);
   return {
-    move: { visible: true, enabled: hasItems && !anyFolder },
+    move: { visible: true, enabled: hasItems && (!anyFolder || options.nestedFolders === true) },
     share: { visible: !anyFolder, enabled: files.length > 0 && !anyFolder && !anyMissing },
     delete: { visible: true, enabled: files.length > 0 },
     'add-to-playlist': { visible: true, enabled: allPlayable },

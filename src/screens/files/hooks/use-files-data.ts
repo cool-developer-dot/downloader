@@ -1,7 +1,8 @@
 /**
- * Files F1: the data behind the Files screens, read only through `files-source.ts` (the F12 door). Each hook loads
- * when its screen comes into focus and again whenever the files may have changed (`useFilesRevision`); pull to refresh
- * runs `rescanLibrary()` first. A late answer never overwrites a newer one.
+ * Files F1: the data behind the Files screens, read only through the F12 contract (`@/files/api`, via
+ * `files-source.ts`). Each hook loads when its screen comes into focus and again whenever `subscribeFiles` says the
+ * files changed while it is in front (no polling); pull to refresh runs `rescanLibrary()` first. A late answer never
+ * overwrites a newer one.
  */
 
 import { useFocusEffect } from 'expo-router';
@@ -13,39 +14,33 @@ import {
   listFolder,
   rescanLibrary,
   storageSpace,
+  subscribeFiles,
   typeCounts,
   type FileEntry,
   type FolderEntry,
-  type FolderListing,
-  type FolderStats,
-  type StorageSpace,
-  type TypeCounts,
 } from '@/files/ui/files-source';
+import { typeCountsOf, type FolderContents, type FolderStats, type TypeCounts } from '@/files/ui/files-index';
 import { nearestExistingFolder } from '@/files/ui/folder-tree';
-import { typeCountsOf } from '@/files/ui/files-index';
 import { hiddenFolderIds, useLockedNowIds, withoutLockedFiles } from '@/files/ui/locked-folders';
 import { withoutHiddenItems } from '@/files/organize/hidden-items';
 import { useFolderColorsStore } from '@/files/organize/organize-stores';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { useItemHiddenStore } from '@/library/item-organize-store';
 import { useFoldersStore } from '@/store/organization/folders';
-import { useFilesRevision } from '@/files/ui/use-files-revision';
 
 export type LoadStatus = 'loading' | 'ready' | 'error';
 
-/** Runs `load` on focus and on every files change; `refresh` rescans first. */
+export type StorageSpace = Awaited<ReturnType<typeof storageSpace>>;
+
+/** Runs `load` on focus and whenever the files change while the screen is in front; `refresh` rescans first. */
 function useReloading<T>(load: () => Promise<T>, initial: T) {
-  const revision = useFilesRevision();
   const [data, setData] = useState<T>(initial);
   const [status, setStatus] = useState<LoadStatus>('loading');
   const [refreshing, setRefreshing] = useState(false);
   const tokenRef = useRef(0);
   const liveRef = useRef(true);
-  /** The files revision the last load started at (a change while in front loads again). */
-  const loadedRevisionRef = useRef<string | null>(null);
 
   const run = useCallback(async () => {
-    loadedRevisionRef.current = revision;
     const token = ++tokenRef.current;
     try {
       const next = await load();
@@ -58,7 +53,7 @@ function useReloading<T>(load: () => Promise<T>, initial: T) {
         setStatus('error');
       }
     }
-  }, [load, revision]);
+  }, [load]);
 
   useEffect(() => {
     liveRef.current = true;
@@ -67,10 +62,13 @@ function useReloading<T>(load: () => Promise<T>, initial: T) {
     };
   }, []);
 
-  // On focus, and again whenever the files change while the screen is in front.
+  // On focus, and again on every change `subscribeFiles` reports while the screen is in front.
   useFocusEffect(
     useCallback(() => {
       void run();
+      return subscribeFiles(() => {
+        void run();
+      });
     }, [run]),
   );
 
@@ -91,12 +89,11 @@ function useReloading<T>(load: () => Promise<T>, initial: T) {
 }
 
 async function statsFor(folders: readonly FolderEntry[]): Promise<Record<string, FolderStats>> {
-  const entries = await Promise.all(folders.map(async (folder) => [folder.id, await folderStats(folder.id)] as const));
-  return Object.fromEntries(entries);
+  return folders.length > 0 ? folderStats(folders.map((folder) => folder.id)) : {};
 }
 
 export type FilesHome = {
-  listing: FolderListing | null;
+  listing: FolderContents | null;
   /** F7 #750: how many favourite files (the "Favorites · {n}" row). */
   favoritesCount: number;
   statsById: Record<string, FolderStats>;
@@ -180,7 +177,7 @@ export async function listVisibleFiles(lockedNow: readonly string[]): Promise<Fi
 
 const NO_FILES: FileEntry[] = [];
 
-/** All the files a type list may show (the type lists filter them with `fileTypeOf`); hidden ones only when shown. */
+/** All the files a type list may show (the type lists keep the ones of their type); hidden ones only when shown. */
 export function useAllFiles() {
   const lockedNow = useLockedNowIds();
   const { hiddenIds, showHidden } = useHiddenFilter();
@@ -192,7 +189,9 @@ export function useAllFiles() {
 }
 
 export type FolderView = {
-  listing: FolderListing | null;
+  /** The folder itself (the last of its path); null while loading or when it is gone. */
+  folder: FolderEntry | null;
+  listing: FolderContents | null;
   /** The folder's path from the top level down to it (empty when it is gone). */
   path: FolderEntry[];
   statsById: Record<string, FolderStats>;
@@ -200,7 +199,7 @@ export type FolderView = {
   gone: { fallbackId: string | null } | null;
 };
 
-const EMPTY_FOLDER: FolderView = { listing: null, path: [], statsById: {}, gone: null };
+const EMPTY_FOLDER: FolderView = { folder: null, listing: null, path: [], statsById: {}, gone: null };
 
 /**
  * One folder: its rows, its path (breadcrumbs, "Up to", Back) and its subfolders' stats. When the folder is deleted
@@ -210,8 +209,9 @@ export function useFolderView(folderId: string) {
   const lastChainRef = useRef<string[]>([]);
   const { hiddenIds, showHidden } = useHiddenFilter();
   const load = useCallback(async (): Promise<FolderView> => {
-    const [listing, path] = await Promise.all([listFolder(folderId), folderPath(folderId)]);
-    if (!listing.folder || path.length === 0) {
+    const path = await folderPath(folderId);
+    const folder = path[path.length - 1];
+    if (!folder || folder.id !== folderId) {
       const known = lastChainRef.current;
       const chain = known[known.length - 1] === folderId ? known : [folderId];
       const ancestors = chain.slice(0, -1);
@@ -219,9 +219,10 @@ export function useFolderView(folderId: string) {
       const existing = new Set(paths.filter((p) => p.length > 0).map((p) => p[p.length - 1]!.id));
       return { ...EMPTY_FOLDER, gone: { fallbackId: nearestExistingFolder(ancestors, (id) => existing.has(id)) } };
     }
-    lastChainRef.current = path.map((folder) => folder.id);
+    const listing = await listFolder(folderId);
+    lastChainRef.current = path.map((entry) => entry.id);
     const shown = { ...listing, files: withoutHiddenItems(listing.files, hiddenIds, showHidden) };
-    return { listing: shown, path, statsById: await statsFor(listing.folders), gone: null };
+    return { folder, listing: shown, path, statsById: await statsFor(listing.folders), gone: null };
   }, [folderId, hiddenIds, showHidden]);
   return useReloading(load, EMPTY_FOLDER);
 }

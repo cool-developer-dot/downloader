@@ -7,7 +7,8 @@ import { DsButton, DsText } from '@/design';
 import { ILLEGAL_NAME_CHARACTERS, nameProblem, splitExtension, type RenameProblem } from '@/files/rename/batch-rename';
 import { findClash, keepBothName } from '@/files/rename/name-clash';
 import { deleteForReplace, renameFileTo } from '@/files/rename/rename-runtime';
-import { listFolder, type FileEntry } from '@/files/ui/files-source';
+import { fileLabel } from '@/files/ui/file-fields';
+import { folderPath, listFolder, type FileEntry } from '@/files/ui/files-source';
 import { useTranslation, type TranslationKey } from '@/localization';
 
 import { announce } from '../announce';
@@ -55,7 +56,7 @@ function RenameBody({
   ask: ReturnType<typeof useNameClash>['ask'];
 }) {
   const { t } = useTranslation();
-  const [base, extension] = splitExtension(file.name);
+  const [base, extension] = splitExtension(fileLabel(file));
   const [draft, setDraft] = useState(base);
   // Selected without the extension at first; the user's own selection afterwards.
   const [selection, setSelection] = useState<{ start: number; end: number } | undefined>({ start: 0, end: base.length });
@@ -69,7 +70,7 @@ function RenameBody({
       setError(t(PROBLEM_KEYS[problem], { characters: ILLEGAL_NAME_CHARACTERS.join(' ') }));
       return;
     }
-    if (next === file.name) {
+    if (next === fileLabel(file)) {
       onClose();
       return;
     }
@@ -77,17 +78,18 @@ function RenameBody({
     try {
       const listing = await listFolder(file.folderId);
       const others = listing.files.filter((other) => other.id !== file.id);
-      const clashing = findClash(next, others.map((other) => other.name));
+      const clashing = findClash(next, others.map((other) => fileLabel(other)));
       if (clashing) {
-        const answer = await ask(next, listing.folder?.name ?? t('filesTab.title'), false);
+        const path = file.folderId ? await folderPath(file.folderId) : [];
+        const answer = await ask(next, path[path.length - 1]?.name ?? t('filesTab.title'), false);
         if (answer.choice === 'skip') {
           onClose();
           return;
         }
         if (answer.choice === 'keep-both') {
-          next = keepBothName(next, others.map((other) => other.name));
+          next = keepBothName(next, others.map((other) => fileLabel(other)));
         } else {
-          const victim = others.find((other) => other.name.toLocaleLowerCase() === clashing.toLocaleLowerCase());
+          const victim = others.find((other) => fileLabel(other).toLocaleLowerCase() === clashing.toLocaleLowerCase());
           if (victim) await deleteForReplace(victim.id);
         }
       }
