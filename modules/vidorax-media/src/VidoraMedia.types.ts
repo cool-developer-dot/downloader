@@ -890,6 +890,20 @@ export interface StorageStats {
   totalBytes: number;
 }
 
+/** F15: a child of a picked folder (see `listFolderDocuments`). */
+export interface FolderDocument {
+  documentId: string;
+  /** The child's own document URI (plays, shares or imports). */
+  uri: string;
+  name: string;
+  /** null for a folder. */
+  mimeType: string | null;
+  sizeBytes: number | null;
+  /** ms since epoch; null when the provider does not say. */
+  modifiedAt: number | null;
+  isDirectory: boolean;
+}
+
 /** One copy `copyToFolder` wrote: the new document, the folder it is in (for Show in Folder), its final name. */
 export interface FolderCopy {
   documentUri: string;
@@ -1183,6 +1197,14 @@ export interface VidoraMediaModuleApi {
   releaseFolderAccess?(treeUri: string): Promise<void>;
   /** The picked folder's own name, or null when the provider does not say. */
   getFolderName?(treeUri: string): Promise<string | null>;
+  /** F15: folder trees VidoraX holds a lasting read grant for (any feature's), newest first. Missing on older builds. */
+  listGrantedFolders?(): string[];
+  /**
+   * F15: one folder's children (`parentDocumentId` null = the picked folder itself), folders first then by name, at
+   * most 5,000, hidden (".") names skipped. One DocumentsContract query. ERR_INVALID_REQUEST when `treeUri` is not a
+   * folder tree. Missing on older builds.
+   */
+  listFolderDocuments?(treeUri: string, parentDocumentId: string | null): Promise<FolderDocument[]>;
   /** Show in Folder (#398), best effort: false when no installed app opens folders. */
   openFolder?(folderUri: string): Promise<boolean>;
   getStorageStats(): Promise<StorageStats>;

@@ -2,6 +2,7 @@ import { memo, useCallback } from 'react';
 import { ToastAndroid } from 'react-native';
 
 import { DsChip, DsChipRow, DsHeader, DsRow, DsRowGroup, DsScreen, DsSectionLabel, DsTile, DsTileGrid } from '@/design';
+import { FolderAccessChips } from '@/files/folder-access/FolderAccessChips';
 import { useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 
@@ -30,8 +31,8 @@ export const FilesScreen = memo(function FilesScreen() {
       />
       <DsChipRow>
         <DsChip label={t('filesTab.internal')} selected />
-        <DsChip label={t('filesTab.sdCard')} onPress={notYet} />
-        <DsChip label={t('filesTab.foldersAdded')} onPress={notYet} />
+        {/* F15 (Faran): SD card and Folders I added. */}
+        <FolderAccessChips />
       </DsChipRow>
       <DsTileGrid>
         <DsTile icon="film" label={t('filesTab.videos')} onPress={openDeviceVideos} />

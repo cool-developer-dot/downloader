@@ -108,6 +108,8 @@ export const mmkvKeys = {
   filesBin: 'vidorax.files.bin.v1',
   /** Faran's F14: the low space alert, `{ enabled, thresholdBytes, lastAlertDay }`. */
   filesLowSpace: 'vidorax.files.lowSpace.v1',
+  /** Faran's F15: the folders added through Android's folder picker, `{ folders: [{ treeUri, label, addedAt }] }`. */
+  filesAddedFolders: 'vidorax.files.addedFolders.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];
