@@ -1,44 +1,20 @@
-import { memo, useMemo } from 'react';
+import { memo } from 'react';
 
-import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
-import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
-import { ConfirmModal } from '@/components/modals/ConfirmModal';
-import { DEFAULT_TABS, type DefaultTab } from '@/navigation/helpers/default-tab';
 import { useTranslation } from '@/localization';
-import type { TranslationKey } from '@/localization/types';
+import { navigation, routePaths } from '@/navigation';
 import { SettingsRow } from '@/screens/settings/components/SettingsRow';
 import { SettingsSection } from '@/screens/settings/components/SettingsSection';
 
-import { FullBackupRows } from './FullBackupRows';
-import { useSettingsBackupReset } from './useSettingsBackupReset';
-
-const TAB_LABELS: Record<DefaultTab, TranslationKey> = {
-  browser: 'settingsBackup.tabBrowser',
-  downloads: 'settingsBackup.tabDownloads',
-  player: 'settingsBackup.tabPlayer',
-};
-
-/** Settings → Start & backup: Default tab, export/import settings, reset settings. */
+/**
+ * Settings → Start & backup. Files F11 moved its rows (Default tab, Settings backup, Back up all data, Restore, Reset)
+ * onto the Backup page of design 62; this section opens it.
+ */
 export const BackupResetSection = memo(function BackupResetSection({
   testID = 'settings-backup-reset',
 }: {
   testID?: string;
 }) {
   const { t } = useTranslation();
-  const screen = useSettingsBackupReset();
-
-  const { defaultTab, setDefaultTab } = screen;
-  const tabActions = useMemo<ActionSheetItem[]>(
-    () =>
-      DEFAULT_TABS.map((tab) => ({
-        id: tab,
-        label: t(TAB_LABELS[tab]),
-        selected: defaultTab === tab,
-        onPress: () => setDefaultTab(tab),
-      })),
-    [defaultTab, setDefaultTab, t],
-  );
-
   return (
     <SettingsSection
       testID={testID}
@@ -46,56 +22,12 @@ export const BackupResetSection = memo(function BackupResetSection({
       description={t('settingsBackup.sectionDescription')}
       icon="cog-sync-outline">
       <SettingsRow
-        title={t('settingsBackup.defaultTab')}
-        description={t('settingsBackup.defaultTabHint')}
-        icon="tab"
-        value={t(TAB_LABELS[screen.defaultTab] ?? TAB_LABELS.browser)}
-        onPress={screen.openTabSheet}
-        testID={`${testID}-default-tab`}
-      />
-      <SettingsRow
-        title={t('settingsBackup.export')}
-        description={t('settingsBackup.exportHint')}
-        icon="export-variant"
-        onPress={screen.busy ? undefined : screen.exportSettings}
-        testID={`${testID}-export`}
-      />
-      <SettingsRow
-        title={t('settingsBackup.import')}
-        description={t('settingsBackup.importHint')}
-        icon="import"
-        onPress={screen.busy ? undefined : screen.importSettings}
-        testID={`${testID}-import`}
-      />
-      {/* P11 #700: everything in one file (settings, Player choices, playlists, bookmarks, play counts), and restore. */}
-      <FullBackupRows testID={`${testID}-all-data`} />
-      <SettingsRow
-        title={t('settingsBackup.reset')}
-        description={t('settingsBackup.resetHint')}
-        icon="restore"
-        destructive
-        onPress={screen.requestReset}
+        title={t('fileManager.backupRow')}
+        description={t('fileManager.backupRowHint')}
+        icon="database-export-outline"
+        onPress={() => navigation.push(routePaths.backup)}
         showDivider={false}
-        testID={`${testID}-reset`}
-      />
-
-      <ActionSheetModal
-        visible={screen.tabSheetVisible}
-        onClose={screen.closeTabSheet}
-        title={t('settingsBackup.defaultTab')}
-        actions={tabActions}
-        testID={`${testID}-default-tab-sheet`}
-      />
-      <ConfirmModal
-        visible={screen.resetConfirmVisible}
-        variant="warning"
-        title={t('settingsBackup.resetConfirmTitle')}
-        message={t('settingsBackup.resetConfirmMessage')}
-        confirmLabel={t('settingsBackup.reset')}
-        cancelLabel={t('common.cancel')}
-        onConfirm={screen.confirmReset}
-        onCancel={screen.cancelReset}
-        testID={`${testID}-reset-confirm`}
+        testID={`${testID}-open`}
       />
     </SettingsSection>
   );

@@ -139,6 +139,8 @@ export const routePaths = {
   // F8 · Recycle bin (design 58)
   // F9 · Storage & cleaning (design 59)
   // F11 · Backup & reset (design 62)
+  /** Files F11: the Backup page (Settings → Backup & reset). */
+  backup: '/backup',
 } as const;
 
 export type RoutePath = (typeof routePaths)[keyof typeof routePaths];
