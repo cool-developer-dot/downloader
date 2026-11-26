@@ -8,4 +8,8 @@ export const filesCoreEn = {
   lowSpaceChannel: 'Low storage',
   lowSpaceTitle: 'Phone storage is low',
   lowSpaceBody: '{free} left. Open VidoraX → Files → Storage to free space.',
+  // F16 · #873 Default app, #947 File associations
+  openWithTitle: 'Open videos with VidoraX',
+  openWithSub: 'Android lets you pick the default app: App info → Open by default',
+  openWithHint: 'Opens VidoraX’s app info in Android settings',
 } as const;
