@@ -3,7 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, View, type ListRenderItem } from 'react-native';
 
 import { TextField } from '@/components/inputs/TextField';
-import { ds, DsButton, DsCard, DsChip, DsChipRow, DsHeader, DsRow, DsRowGroup, DsScreen, DsSectionLabel, DsText } from '@/design';
+import { ds, DsButton, DsCard, DsChip, DsChipRow, DsHeader, DsRow, DsScreen, DsSectionLabel, DsText } from '@/design';
 import {
   batchRename,
   canApplyRename,
@@ -22,6 +22,7 @@ import { useTranslation, type TranslationKey } from '@/localization';
 import { navigation } from '@/navigation';
 
 import { announce } from './announce';
+import { ListCardCell } from './components/ListCardCell';
 import { NameClashDialog, useNameClash } from './components/NameClashDialog';
 import { PROBLEM_KEYS } from './components/RenameFileDialog';
 import { listAllFiles } from './hooks/use-files-data';
@@ -189,19 +190,33 @@ export const BatchRenameScreen = memo(function BatchRenameScreen() {
 
   if (failures) {
     return (
-      <DsScreen edges={['top', 'bottom']} testID="files-batch-rename-result">
-        <DsHeader title={t('fileManager.renameFailures')} onBack={() => navigation.back()} action={settingsAction} />
-        <DsRowGroup>
-          {failures.map((failure) => (
-            <DsRow
-              key={failure.name}
-              icon="alert-triangle"
-              title={failure.name}
-              subtitle={failure.reason === 'skipped' ? t('fileManager.reasonSkipped') : t('fileManager.reasonFailed')}
-            />
-          ))}
-        </DsRowGroup>
-        <DsButton label={t('fileManager.renameDone')} onPress={() => navigation.back()} fullWidth />
+      <DsScreen scroll={false} edges={['top', 'bottom']} testID="files-batch-rename-result">
+        <FlatList
+          data={failures}
+          keyExtractor={(failure, index) => `${index}:${failure.name}`}
+          renderItem={({ item: failure, index }) => (
+            <ListCardCell first={index === 0} last={index === failures.length - 1}>
+              <DsRow
+                icon="alert-triangle"
+                title={failure.name}
+                subtitle={failure.reason === 'skipped' ? t('fileManager.reasonSkipped') : t('fileManager.reasonFailed')}
+                trailing="none"
+              />
+            </ListCardCell>
+          )}
+          ListHeaderComponent={
+            <View style={{ paddingBottom: ds.space.stack }}>
+              <DsHeader title={t('fileManager.renameFailures')} onBack={() => navigation.back()} action={settingsAction} />
+            </View>
+          }
+          ListFooterComponent={
+            <View style={{ paddingTop: ds.space.stack }}>
+              <DsButton label={t('fileManager.renameDone')} onPress={() => navigation.back()} fullWidth />
+            </View>
+          }
+          contentContainerStyle={{ paddingHorizontal: ds.space.screenX, paddingBottom: 24 }}
+          testID="files-batch-rename-failures"
+        />
       </DsScreen>
     );
   }

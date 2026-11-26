@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import {
   dragModeFor,
   EMPTY_SELECTION,
+  inSelectionOrder,
   invertSelection,
   rangeSelection,
   selectAll,
@@ -15,6 +16,26 @@ const ROWS = ['a', 'b', 'c', 'd', 'e', 'f'];
 const sorted = (set: ReadonlySet<string>) => [...set].sort();
 
 describe('Files F4: the selection', () => {
+  test('the selected rows come back in the order they were picked, not list order', () => {
+    const rows = ROWS.map((key) => ({ key }));
+    let picked = toggleSelection(EMPTY_SELECTION, 'e');
+    picked = toggleSelection(picked, 'b');
+    picked = toggleSelection(picked, 'd');
+    assert.deepEqual(
+      inSelectionOrder(rows, picked).map((row) => row.key),
+      ['e', 'b', 'd'],
+    );
+    // A row that is no longer shown is skipped; Select all follows the list.
+    assert.deepEqual(
+      inSelectionOrder(rows.slice(0, 4), picked).map((row) => row.key),
+      ['b', 'd'],
+    );
+    assert.deepEqual(
+      inSelectionOrder(rows, selectAll(ROWS)).map((row) => row.key),
+      ROWS,
+    );
+  });
+
   test('toggle: a tap selects a row, a second tap unselects it', () => {
     const one = toggleSelection(EMPTY_SELECTION, 'b');
     assert.deepEqual(sorted(one), ['b']);
