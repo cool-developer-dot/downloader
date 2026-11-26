@@ -217,8 +217,10 @@ export function searchFiles<T extends SearchItem>(items: readonly T[], input: Se
   const hits: { hit: SearchHit<T>; index: number; time: number }[] = [];
   items.forEach((item, index) => {
     if (hidden && item.folderId && hidden.has(item.folderId)) return;
+    // The cheap filters first: only the files they keep have their names folded and matched (same result, faster).
+    if (!passesFilters(item, input.filters, input.now)) return;
     const { score, nameMatch } = matchScore(item, needle, extensionNeedle);
-    if (score === 0 || !passesFilters(item, input.filters, input.now)) return;
+    if (score === 0) return;
     hits.push({ hit: { item, score, nameMatch }, index, time: ms(item.date) ?? -Infinity });
   });
   hits.sort((a, b) => {
