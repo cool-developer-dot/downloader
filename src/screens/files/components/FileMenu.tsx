@@ -3,6 +3,7 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
+import { fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-index';
 import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import { useTranslation } from '@/localization';
@@ -90,7 +91,7 @@ export const FileMenu = memo(function FileMenu({ file, onClose, onOpen, onChange
 
   return (
     <>
-      <ActionSheetModal visible={file !== null} onClose={onClose} title={file?.name} actions={actions} testID={testID} />
+      <ActionSheetModal visible={file !== null} onClose={onClose} title={file ? fileLabel(file) : undefined} actions={actions} testID={testID} />
       <ConfirmModal
         visible={confirmFile !== null}
         variant="delete"

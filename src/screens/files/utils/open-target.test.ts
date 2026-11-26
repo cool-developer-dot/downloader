@@ -5,7 +5,7 @@ import type { FileType } from '@/files/ui/file-types';
 
 import { openTargetOf, playableQueue } from './open-target';
 
-const target = (type: FileType, name: string, mimeType: string | null = null) => openTargetOf({ type, name, mimeType });
+const target = (fileType: FileType, fileName: string, mimeType: string | null = null) => openTargetOf({ fileType, fileName, mimeType });
 
 describe('Files F1: tapping a file', () => {
   test('video and audio open the Player; a PDF the viewer; an APK its details (never an install)', () => {
@@ -28,9 +28,9 @@ describe('Files F1: tapping a file', () => {
   test('the Player’s queue is the list’s videos and audio, in the order shown', () => {
     assert.deepEqual(
       playableQueue([
-        { id: 'a', type: 'video' },
-        { id: 'b', type: 'doc' },
-        { id: 'c', type: 'audio' },
+        { id: 'a', fileType: 'video' },
+        { id: 'b', fileType: 'doc' },
+        { id: 'c', fileType: 'audio' },
       ]),
       ['a', 'c'],
     );
