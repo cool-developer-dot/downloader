@@ -23,7 +23,7 @@ import { formatDownloadDate, formatDurableBitrate, formatSourceHost } from '@/sc
 import { announce } from './announce';
 import { listAllFiles } from './hooks/use-files-data';
 import { useFilesSettingsAction } from './hooks/use-files-settings-action';
-import { exactBytes, formatLine, pathLine } from './utils/details-rows';
+import { exactBytes, formatLine, pathLine, tagsOf } from './utils/details-rows';
 import { fileTypeIcon, formatFileBytes } from './utils/file-rows';
 
 /** What the native library knows about the file (codecs, picture size, length, its page). */
@@ -65,7 +65,8 @@ export const FileDetailsScreen = memo(function FileDetailsScreen() {
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
   const note = useItemNotesStore((s) => (id ? (s.notesById[id] ?? '') : ''));
-  const tags = useItemTagsStore((s) => (id ? (s.tagsById[id] ?? []) : []));
+  // One shared empty list for an untagged file (a new `[]` here would re-render without end).
+  const tags = useItemTagsStore((s) => tagsOf(s.tagsById, id));
 
   // The native library's view of the file, its place in Files, and a stored checksum.
   useEffect(() => {
