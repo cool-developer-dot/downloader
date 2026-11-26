@@ -1,4 +1,4 @@
-import { useFocusEffect } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
@@ -26,6 +26,7 @@ import {
   type SearchSort,
   type SizeBucket,
 } from '@/files/search/files-search';
+import { searchStateFromParams } from '@/files/search/search-params';
 import { useItemHiddenStore, useItemNotesStore, useItemTagsStore, useTagColorsStore } from '@/library/item-organize-store';
 import { SWATCH_IDS, type SwatchId } from '@/files/organize/swatches';
 import { colorsOfTags } from '@/files/organize/tag-colors';
@@ -95,8 +96,11 @@ export const FilesSearchScreen = memo(function FilesSearchScreen() {
   const [data, setData] = useState<{ files: FileEntry[]; folders: FolderEntry[]; now: number } | null>(null);
   const [draft, setDraft] = useState('');
   const [query, setQuery] = useState('');
-  const [filters, setFilters] = useState<SearchFilters>({});
-  const [sort, setSort] = useState<SearchSort>('best');
+  // F9: a link from the Storage page opens the search with its filters and sort set.
+  const linkParams = useLocalSearchParams<{ types?: string; minMb?: string; old?: string; sort?: string }>();
+  const [linked] = useState(() => searchStateFromParams(linkParams));
+  const [filters, setFilters] = useState<SearchFilters>(linked.filters);
+  const [sort, setSort] = useState<SearchSort>(linked.sort ?? 'best');
   const [sheet, setSheet] = useState<Sheet>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const [customFrom, setCustomFrom] = useState('');
@@ -232,6 +236,9 @@ export const FilesSearchScreen = memo(function FilesSearchScreen() {
         testID="files-search-field"
       />
       <DsChipRow>
+        {filters.minBytes ? (
+          <DsChip label={t('fileManager.filterOver100')} selected onPress={() => patch({ minBytes: null })} testID="files-search-chip-min-size" />
+        ) : null}
         {chip('fileManager.chipType', filters.types?.[0] ? t(tileLabelKey(filters.types[0] as TileType)) : null, () => setSheet('type'), 'files-search-chip-type')}
         {chip('fileManager.chipSize', filters.size ? t(SIZE_LABELS[filters.size]) : null, () => setSheet('size'), 'files-search-chip-size')}
         {chip('fileManager.chipDate', filters.date ? dateLabel(filters.date) : null, () => setSheet('date'), 'files-search-chip-date')}

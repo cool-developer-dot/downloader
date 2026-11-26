@@ -63,10 +63,6 @@ export default function AppLayout() {
     () => createStackHeaderOptions(t('nav.appLockRotateRecovery'), theme),
     [t, theme],
   );
-  const storageHeaderOptions = useMemo(
-    () => createStackHeaderOptions(t('nav.storage'), theme),
-    [t, theme],
-  );
   const privacyHeaderOptions = useMemo(
     () => createStackHeaderOptions(t('nav.privacy'), theme),
     [t, theme],
@@ -133,10 +129,8 @@ export default function AppLayout() {
               name={appStackRouteNames.appLockRotateRecovery}
               options={appLockRotateRecoveryHeaderOptions}
             />
-            <Stack.Screen
-              name={appStackRouteNames.storage}
-              options={storageHeaderOptions}
-            />
+            {/* Files F9 · design 59: the Storage page draws its own header. */}
+            <Stack.Screen name={appStackRouteNames.storage} options={{ headerShown: false }} />
             <Stack.Screen
               name={appStackRouteNames.player}
               options={{

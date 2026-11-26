@@ -37,9 +37,11 @@ const noFolderPress = () => undefined;
 export const TypeListScreen = memo(function TypeListScreen() {
   const theme = useTheme();
   const { t } = useTranslation();
-  const params = useLocalSearchParams<{ type?: string | string[]; highlight?: string | string[] }>();
+  const params = useLocalSearchParams<{ type?: string | string[]; highlight?: string | string[]; sort?: string | string[] }>();
   const type = paramOf(params.type);
   const highlightId = paramOf(params.highlight) || undefined;
+  // F9: the Storage page opens a type's list biggest first (`?sort=size`).
+  const bySize = paramOf(params.sort) === 'size';
   const { data: allFiles, status, refreshing, refresh, reload } = useAllFiles();
   const settings = useFilesViewSettings();
   const settingsAction = useFilesSettingsAction();
@@ -50,8 +52,8 @@ export const TypeListScreen = memo(function TypeListScreen() {
       return [];
     }
     const ofType = tileFiles(allFiles, type);
-    return folderListEntries([], ofType, settings);
-  }, [allFiles, settings, type]);
+    return folderListEntries([], ofType, bySize ? { ...settings, sortKey: 'size', sortDirection: 'desc' } : settings);
+  }, [allFiles, bySize, settings, type]);
   const files = useMemo(() => entries.flatMap((entry) => (entry.kind === 'file' ? [entry.file] : [])), [entries]);
   // F4: a long press selects; the selection bar acts on the selected files.
   const keys = useMemo(() => entries.map((entry) => entry.key), [entries]);

@@ -140,6 +140,10 @@ export const routePaths = {
   /** Files F8: the Recycle bin (the Files tab's "Recycle bin · {n}" row, once F13's bin is live). */
   filesRecycleBin: '/files/recycle-bin',
   // F9 · Storage & cleaning (design 59)
+  /** Files F9: F14's duplicate groups, each keeping one copy (Storage → Duplicates, once F14 is live). */
+  filesDuplicates: '/files/duplicates',
+  /** Files F9 #856: clear downloads by rule, after a preview (Storage → Clean downloads). */
+  filesCleanDownloads: '/files/clean-downloads',
   // F11 · Backup & reset (design 62)
 } as const;
 
@@ -188,4 +192,17 @@ export function fileChecksumPath(id: string): `/files/checksum/${string}` {
 // F7 · Organize
 // F8 · Recycle bin
 // F9 · Storage & cleaning
+/** Files F9: a type's list, biggest file first (Storage's rows). */
+export function filesTypeBySizePath(type: string): string {
+  return `${filesTypePath(type)}?sort=size`;
+}
+/** Files F9: the search with filters set (Storage's rows and FILTERS chips). */
+export function filesSearchWithPath(options: { types?: readonly string[]; minMb?: number; oldMonths?: number; sort?: string }): string {
+  const query: string[] = [];
+  if (options.types && options.types.length > 0) query.push(`types=${encodeURIComponent(options.types.join(','))}`);
+  if (options.minMb) query.push(`minMb=${options.minMb}`);
+  if (options.oldMonths) query.push(`old=${options.oldMonths}`);
+  if (options.sort) query.push(`sort=${encodeURIComponent(options.sort)}`);
+  return query.length > 0 ? `${routePaths.filesSearch}?${query.join('&')}` : routePaths.filesSearch;
+}
 // F11 · Backup & reset

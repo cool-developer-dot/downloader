@@ -18,6 +18,8 @@ export {
   filesFolderPath,
   fileDetailsPath,
   fileChecksumPath,
+  filesTypeBySizePath,
+  filesSearchWithPath,
   type PlayerRoute,
   type RoutePath,
 } from './route-paths';

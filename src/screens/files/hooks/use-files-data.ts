@@ -175,6 +175,17 @@ export async function listVisibleFiles(lockedNow: readonly string[]): Promise<Fi
   return lockedNow.length === 0 ? all.files : withoutLockedFiles(all.files, hiddenFolderIds(lockedNow, all.folders));
 }
 
+export type StorageOverview = { space: StorageSpace | null; counts: TypeCounts | null };
+
+/** F9 · design 59: the Storage page's numbers — free, total and VidoraX's size, and each type's size. */
+export function useStorageOverview() {
+  const load = useCallback(async (): Promise<StorageOverview> => {
+    const [space, counts] = await Promise.all([storageSpace(), typeCounts()]);
+    return { space, counts };
+  }, []);
+  return useReloading(load, { space: null, counts: null });
+}
+
 const NO_FILES: FileEntry[] = [];
 
 /** All the files a type list may show (the type lists keep the ones of their type); hidden ones only when shown. */
