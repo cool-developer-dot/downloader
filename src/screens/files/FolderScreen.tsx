@@ -4,6 +4,8 @@ import { ActivityIndicator, FlatList, RefreshControl, View, type ListRenderItem 
 
 import { ds, DsCard, DsHeader, DsRow, DsRowGroup, DsScreen, DsText } from '@/design';
 import type { FileEntry, FolderEntry } from '@/files/ui/files-index';
+import { filesCapabilities } from '@/files/api';
+import { fileLabel } from '@/files/ui/file-fields';
 import { folderLookupOf } from '@/files/ui/folder-tree';
 import { useTheme } from '@/hooks/use-theme';
 import { intlLocaleForLanguage, useTranslation } from '@/localization';
@@ -15,6 +17,7 @@ import { Breadcrumbs } from './components/Breadcrumbs';
 import { FileMenu } from './components/FileMenu';
 import { FileRow } from './components/FileRow';
 import { FolderRow } from './components/FolderRow';
+import { NewFolderDialog } from './components/NewFolderDialog';
 import { useFolderView } from './hooks/use-files-data';
 import { useOpenFile } from './hooks/use-open-file';
 import { backTarget, buildBreadcrumbs, upTarget } from './utils/breadcrumbs';
@@ -37,12 +40,14 @@ export const FolderScreen = memo(function FolderScreen() {
   const folderId = paramOf(useLocalSearchParams<{ id?: string | string[] }>().id);
   const { data, status, refreshing, refresh, reload } = useFolderView(folderId);
   const [menuFile, setMenuFile] = useState<FileEntry | null>(null);
+  // "New folder inside" (F12): only while nested folders are live (`filesCapabilities.nestedFolders`).
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
   const locale = intlLocaleForLanguage(language);
 
   const lookup = useMemo(() => folderLookupOf(data.path), [data.path]);
   const crumbs = useMemo(() => buildBreadcrumbs(folderId, lookup, t('filesTab.title')), [folderId, lookup, t]);
   const up = upTarget(folderId, lookup);
-  const folder = data.listing?.folder ?? null;
+  const folder = data.folder;
 
   const entries = useMemo<FolderListEntry[]>(
     () => (data.listing ? folderListEntries(data.listing.folders, data.listing.files, { foldersFirst: true }) : []),
@@ -99,7 +104,7 @@ export const FolderScreen = memo(function FolderScreen() {
       ) : (
         <FileRow
           file={item.file}
-          name={item.file.name}
+          name={fileLabel(item.file)}
           meta={fileMetaLine(item.file, locale)}
           first={first}
           last={last}
@@ -129,6 +134,18 @@ export const FolderScreen = memo(function FolderScreen() {
             onPress={() => goTo(up.id)}
             trailing="none"
             testID="files-folder-up"
+          />
+        </DsRowGroup>
+      ) : null}
+      {filesCapabilities.nestedFolders && folder ? (
+        <DsRowGroup>
+          <DsRow
+            icon="folder-plus"
+            title={t('downloads.newFolder')}
+            accessibilityLabel={t('fileManager.newFolderInside', { name: folder.name })}
+            onPress={() => setNewFolderOpen(true)}
+            trailing="none"
+            testID="files-folder-new-folder"
           />
         </DsRowGroup>
       ) : null}
@@ -181,6 +198,9 @@ export const FolderScreen = memo(function FolderScreen() {
         testID="files-folder-list"
       />
       <FileMenu file={menuFile} onClose={closeMenu} onOpen={openFile} onChanged={onChanged} />
+      {filesCapabilities.nestedFolders ? (
+        <NewFolderDialog visible={newFolderOpen} parentId={folderId} onClose={() => setNewFolderOpen(false)} testID="files-folder-new-folder-dialog" />
+      ) : null}
     </DsScreen>
   );
 });

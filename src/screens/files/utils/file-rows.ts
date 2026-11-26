@@ -5,6 +5,7 @@
 
 import type { DsIconName } from '@/design/DsIcon';
 import type { FileType } from '@/files/ui/file-types';
+import { fileBytes, fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry, FolderEntry, FolderStats } from '@/files/ui/files-index';
 import type { InterpolationParams, TranslationKey } from '@/localization/types';
 
@@ -57,9 +58,10 @@ export function formatFileDate(iso: string | null | undefined, locale: string): 
 }
 
 /** A file row's second line, "size · date", with whatever of the two is known. */
-export function fileMetaLine(file: Pick<FileEntry, 'sizeBytes' | 'date'>, locale: string): string {
-  const size = file.sizeBytes > 0 ? formatFileBytes(file.sizeBytes) : null;
-  return [size, formatFileDate(file.date, locale)].filter((part): part is string => Boolean(part)).join(' · ');
+export function fileMetaLine(file: Pick<FileEntry, 'fileSize' | 'downloadedAt'>, locale: string): string {
+  const bytes = fileBytes(file);
+  const size = bytes > 0 ? formatFileBytes(bytes) : null;
+  return [size, formatFileDate(file.downloadedAt, locale)].filter((part): part is string => Boolean(part)).join(' · ');
 }
 
 type Translate = (key: TranslationKey, params?: InterpolationParams) => string;
@@ -100,7 +102,7 @@ function compareByName(a: string, b: string): number {
 }
 
 function nameOf(entry: FolderListEntry): string {
-  return entry.kind === 'folder' ? entry.folder.name : entry.file.name;
+  return entry.kind === 'folder' ? entry.folder.name : fileLabel(entry.file);
 }
 
 /**

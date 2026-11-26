@@ -22,6 +22,8 @@ export const filesEn = {
   folderEmpty: 'This folder is empty',
   folderEmptyHint: 'Files you move into this folder show up here.',
   folderGone: 'That folder was deleted',
+  folderNameTaken: 'A folder with this name already exists',
+  newFolderInside: 'New folder in {name}',
   typeEmpty: 'Nothing here yet',
   typeEmptyHint: 'Files of this type that you download show up here.',
   rowMore: 'More for {name}',

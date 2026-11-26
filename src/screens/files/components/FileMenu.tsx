@@ -4,6 +4,7 @@ import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
 import type { FileEntry } from '@/files/ui/files-index';
+import { fileLabel } from '@/files/ui/file-fields';
 import { useTranslation } from '@/localization';
 
 import { announce } from '../announce';
@@ -83,7 +84,7 @@ export const FileMenu = memo(function FileMenu({ file, onClose, onOpen, onChange
 
   return (
     <>
-      <ActionSheetModal visible={file !== null} onClose={onClose} title={file?.name} actions={actions} testID={testID} />
+      <ActionSheetModal visible={file !== null} onClose={onClose} title={file ? fileLabel(file) : undefined} actions={actions} testID={testID} />
       <ConfirmModal
         visible={confirmFile !== null}
         variant="delete"

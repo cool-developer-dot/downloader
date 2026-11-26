@@ -4,6 +4,7 @@ import { ActivityIndicator, FlatList, RefreshControl, View, type ListRenderItem 
 
 import { ds, DsCard, DsHeader, DsScreen, DsText } from '@/design';
 import type { FileEntry } from '@/files/ui/files-source';
+import { fileBytes, fileLabel } from '@/files/ui/file-fields';
 import { useTheme } from '@/hooks/use-theme';
 import { intlLocaleForLanguage, useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
@@ -44,14 +45,14 @@ export const TypeListScreen = memo(function TypeListScreen() {
   const closeMenu = useCallback(() => setMenuFile(null), []);
   const onChanged = useCallback(() => void reload(), [reload]);
 
-  const totalBytes = files.reduce((sum, file) => sum + file.sizeBytes, 0);
+  const totalBytes = files.reduce((sum, file) => sum + fileBytes(file), 0);
   const subtitle = [fileCountText(files.length, t), totalBytes > 0 ? formatFileBytes(totalBytes) : null].filter(Boolean).join(' · ');
 
   const renderFile = useCallback<ListRenderItem<FileEntry>>(
     ({ item, index }) => (
       <FileRow
         file={item}
-        name={item.name}
+        name={fileLabel(item)}
         meta={fileMetaLine(item, locale)}
         first={index === 0}
         last={index === files.length - 1}

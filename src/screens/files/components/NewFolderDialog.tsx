@@ -4,11 +4,13 @@ import { View } from 'react-native';
 import { TextField } from '@/components/inputs/TextField';
 import { AppModal } from '@/components/modals/AppModal';
 import { DsButton } from '@/design';
-import { createFolder, type FolderEntry } from '@/files/ui/files-source';
+import { createFolder, FilesError, type FolderEntry } from '@/files/ui/files-source';
 import { useTranslation } from '@/localization';
 
 export type NewFolderDialogProps = {
   visible: boolean;
+  /** Where the folder goes: the top level (default), or inside a folder once nested folders are on. */
+  parentId?: string | null;
   onClose: () => void;
   onCreated?: (folder: FolderEntry) => void;
   testID?: string;
@@ -18,7 +20,13 @@ export type NewFolderDialogProps = {
  * Files F1: "New folder" — the same flow as Download details → Manage folders → New folder (the folder store's
  * `createFolder`, its words and its empty-name check), through the F12 door.
  */
-export const NewFolderDialog = memo(function NewFolderDialog({ visible, onClose, onCreated, testID = 'files-new-folder' }: NewFolderDialogProps) {
+export const NewFolderDialog = memo(function NewFolderDialog({
+  visible,
+  parentId = null,
+  onClose,
+  onCreated,
+  testID = 'files-new-folder',
+}: NewFolderDialogProps) {
   const { t } = useTranslation();
   const [draft, setDraft] = useState('');
   const [busy, setBusy] = useState(false);
@@ -39,16 +47,24 @@ export const NewFolderDialog = memo(function NewFolderDialog({ visible, onClose,
     setBusy(true);
     setError(null);
     try {
-      const folder = await createFolder(draft);
+      const folder = await createFolder(draft, parentId);
       setDraft('');
       onCreated?.(folder);
       onClose();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('errors.unexpected'));
+      setError(
+        cause instanceof FilesError && cause.code === 'NAME_TAKEN'
+          ? t('fileManager.folderNameTaken')
+          : cause instanceof FilesError && cause.code === 'INVALID_NAME'
+            ? t('files.emptyFolderName')
+            : cause instanceof Error
+              ? cause.message
+              : t('errors.unexpected'),
+      );
     } finally {
       setBusy(false);
     }
-  }, [draft, onClose, onCreated, t]);
+  }, [draft, onClose, onCreated, parentId, t]);
 
   return (
     <AppModal visible={visible} onClose={close} title={t('downloads.newFolder')} showCloseButton testID={testID}>

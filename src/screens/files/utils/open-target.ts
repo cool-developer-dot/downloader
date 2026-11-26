@@ -19,9 +19,9 @@ export type OpenTarget = 'player' | 'pdf' | 'archive' | 'apk-details' | 'open-wi
 /** The archive import can't open a library file yet (no token for it), so a ZIP is opened with another app. */
 export const ZIP_OPENS_WITH_ANDROID = true;
 
-export function openTargetOf(file: Pick<FileEntry, 'type' | 'mimeType' | 'name'>): OpenTarget {
-  const named = { mimeType: file.mimeType, fileName: file.name };
-  switch (file.type) {
+export function openTargetOf(file: Pick<FileEntry, 'fileType' | 'mimeType' | 'fileName'>): OpenTarget {
+  const named = { mimeType: file.mimeType, fileName: file.fileName };
+  switch (file.fileType) {
     case 'video':
     case 'audio':
       return 'player';
@@ -37,6 +37,6 @@ export function openTargetOf(file: Pick<FileEntry, 'type' | 'mimeType' | 'name'>
 }
 
 /** The ids the Player steps through from a list: its playable files, in the order shown. */
-export function playableQueue(files: readonly Pick<FileEntry, 'id' | 'type'>[]): string[] {
-  return files.filter((file) => file.type === 'video' || file.type === 'audio').map((file) => file.id);
+export function playableQueue(files: readonly Pick<FileEntry, 'id' | 'fileType'>[]): string[] {
+  return files.filter((file) => file.fileType === 'video' || file.fileType === 'audio').map((file) => file.id);
 }
