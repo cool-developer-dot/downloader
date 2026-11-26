@@ -41,7 +41,7 @@ export class FilesError extends Error {
 }
 
 /** Which engine parts are live. Screens hide what is still false; each backend package flips its own flag. */
-export const filesCapabilities = { nestedFolders: true, recycleBin: true, duplicates: true, folderAccess: false };
+export const filesCapabilities = { nestedFolders: true, recycleBin: true, duplicates: true, folderAccess: true };
 
 /**
  * Hidden files (F7 "Hide"). F7 registers where its hidden ids live; until then nothing is hidden. Kept as a provider
