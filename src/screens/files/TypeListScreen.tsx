@@ -3,7 +3,7 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
 import { ds, DsCard, DsHeader, DsScreen, DsText } from '@/design';
-import { fileTypeOf, type FileEntry } from '@/files/ui/files-source';
+import type { FileEntry } from '@/files/ui/files-source';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
@@ -15,7 +15,7 @@ import { useFilesSettingsAction } from './hooks/use-files-settings-action';
 import { useOpenFile } from './hooks/use-open-file';
 import { FileActionsSheet } from './FileActionsSheet';
 import { fileCountText, folderListEntries, formatFileBytes } from './utils/file-rows';
-import { isTileType, tileLabelKey, videoTileFiles } from './utils/type-tiles';
+import { isTileType, tileFiles, tileLabelKey } from './utils/type-tiles';
 
 function paramOf(value: string | string[] | undefined): string {
   return (Array.isArray(value) ? value[0] : value) ?? '';
@@ -44,11 +44,7 @@ export const TypeListScreen = memo(function TypeListScreen() {
     if (!isTileType(type)) {
       return [];
     }
-    // #753: Videos lists what the Player tab calls a video (its own rule), so the list matches the tile's count.
-    const ofType =
-      type === 'video'
-        ? videoTileFiles(allFiles)
-        : allFiles.filter((file) => fileTypeOf({ mimeType: file.mimeType, fileName: file.name }) === type);
+    const ofType = tileFiles(allFiles, type);
     return folderListEntries([], ofType, settings);
   }, [allFiles, settings, type]);
   const files = useMemo(() => entries.flatMap((entry) => (entry.kind === 'file' ? [entry.file] : [])), [entries]);
