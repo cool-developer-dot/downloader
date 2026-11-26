@@ -21,7 +21,7 @@ export async function renameFileTo(id: string, newName: string): Promise<void> {
 
 /** Replace in a clash: the file already there goes through the app's delete (the bin, once F8 lands). */
 export async function deleteForReplace(id: string): Promise<boolean> {
-  const { deleteCompletedFileFromVidoraX } = await import('@/downloads/completed-file/delete/delete-service');
-  const result = await deleteCompletedFileFromVidoraX(id).catch(() => ({ ok: false as const }));
-  return result.ok;
+  const { deleteItems } = await import('@/files/ui/trash-port');
+  const result = await deleteItems([id], { source: 'files' }).catch(() => ({ trashed: [] as string[], deleted: [] as string[] }));
+  return result.trashed.includes(id) || result.deleted.includes(id);
 }

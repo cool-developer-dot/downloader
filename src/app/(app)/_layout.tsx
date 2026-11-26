@@ -20,6 +20,7 @@ import { MiniPlayerOverlay } from '@/screens/player/mini';
 import { ClipboardLinkBanner } from '@/browser/components/ClipboardLinkBanner';
 import { AppLockGate } from '@/security/app-lock';
 import { SecurityHost } from '@/screens/settings/security/SecurityHost';
+import { DeleteUndoHost } from '@/screens/files/components/DeleteUndoHost';
 import { TourAccessibilityScope, TourHost } from '@/tour';
 
 export default function AppLayout() {
@@ -145,6 +146,8 @@ export default function AppLayout() {
               }}
             />
           </Stack>
+          {/* Files F8: every delete's Confirm before delete and its "… · Undo" bar (outlives the screen it came from). */}
+          <DeleteUndoHost />
           <OrganizeHosts />
           <MiniPlayerOverlay />
           <ClipboardLinkBanner />

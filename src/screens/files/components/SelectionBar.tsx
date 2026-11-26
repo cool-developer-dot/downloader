@@ -5,14 +5,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import { Pressable } from '@/components/base/Pressable';
-import { ConfirmModal } from '@/components/modals/ConfirmModal';
 import { ds, DsIcon, DsText, type DsIconName } from '@/design';
 import { confirmLibraryFileAction } from '@/downloads/safety/file-safety-dialog';
 import { getV2Engine } from '@/downloads/v2/engine-port';
 import { batchActionsFor, type BatchAction, type BatchItem } from '@/files/ui/batch-actions';
+import { requestDelete } from '@/files/trash/useDeleteWithUndo';
 import { fileLabel } from '@/files/ui/file-fields';
 import { filesCapabilities, listFolder, moveFolder, type FileEntry, type FolderEntry } from '@/files/ui/files-source';
-import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation, type TranslationKey } from '@/localization';
 import { canMoveToPrivate } from '@/private-vault/move-to-private.runtime';
@@ -78,8 +77,6 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
 
   const [folderPicker, setFolderPicker] = useState<FolderEntry[] | null>(null);
   const [newFolderOpen, setNewFolderOpen] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
   const [playlistInputs, setPlaylistInputs] = useState<PlaylistItemInput[] | null>(null);
   const [moreOpen, setMoreOpen] = useState(false);
   const [privateFiles, setPrivateFiles] = useState<readonly FileEntry[] | null>(null);
@@ -142,22 +139,17 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
     [clash, files, folders, onDone, t],
   );
 
-  const deleteNow = useCallback(async () => {
-    setDeleting(true);
-    let deleted = 0;
-    try {
-      const { deleteCompletedFileFromVidoraX } = await import('@/downloads/completed-file/delete/delete-service');
-      for (const file of files) {
-        const result = await deleteCompletedFileFromVidoraX(file.id).catch(() => ({ ok: false as const }));
-        if (result.ok) deleted += 1;
-      }
-    } finally {
-      setDeleting(false);
-      setConfirmDelete(false);
-    }
-    announce(t('fileManager.deletedCount', { count: deleted }));
-    if (files.length < entries.length) announce(t('fileManager.foldersNotDeleted'));
-    onDone();
+  const deleteNow = useCallback(() => {
+    // F8: one door for every delete — F2's Confirm before delete, the bin, and the Undo bar.
+    requestDelete({
+      ids: files.map((file) => file.id),
+      source: 'batch',
+      name: files.length === 1 ? fileLabel(files[0]!) : undefined,
+      onDone: () => {
+        if (files.length < entries.length) announce(t('fileManager.foldersNotDeleted'));
+        onDone();
+      },
+    });
   }, [entries.length, files, onDone, t]);
 
   const share = useCallback(async () => {
@@ -188,8 +180,7 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
           void share();
           return;
         case 'delete':
-          if (isConfirmBeforeDeleteOn()) setConfirmDelete(true);
-          else void deleteNow();
+          deleteNow();
           return;
         case 'add-to-playlist':
           setPlaylistInputs(files.map((file) => ({ mediaId: file.id, title: file.displayName || fileLabel(file), fileName: file.fileName, durationSeconds: null })));
@@ -280,20 +271,6 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
         visible={newFolderOpen}
         onClose={() => setNewFolderOpen(false)}
         onCreated={(folder) => void moveTo(folder.id, folder.name)}
-      />
-      <ConfirmModal
-        visible={confirmDelete}
-        variant="delete"
-        title={t('fileManager.deleteManyTitle', { count: files.length })}
-        message={t('fileManager.deleteManyMessage')}
-        confirmLabel={t('library.deleteConfirm')}
-        cancelLabel={t('library.deleteCancel')}
-        loading={deleting}
-        onConfirm={() => void deleteNow()}
-        onCancel={() => {
-          if (!deleting) setConfirmDelete(false);
-        }}
-        testID={`${testID}-delete`}
       />
       <AddToPlaylistSheet inputs={playlistInputs} onClose={() => setPlaylistInputs(null)} onAdded={onDone} />
       <ActionSheetModal visible={moreOpen} onClose={() => setMoreOpen(false)} actions={moreSheet} testID={`${testID}-more`} />

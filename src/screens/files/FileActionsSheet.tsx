@@ -2,15 +2,14 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { Modal, Pressable as RNPressable, ScrollView, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ConfirmModal } from '@/components/modals/ConfirmModal';
 import { ds, DsRow, DsRowGroup, DsText, type DsIconName } from '@/design';
 import { completedActionErrorMessageKey } from '@/downloads/completed-file/action-errors';
 import { confirmLibraryFileAction } from '@/downloads/safety/file-safety-dialog';
 import { fileIntegrity } from '@/downloads/v2/file-integrity';
 import { getTreeExportPort, pickTreeFolder } from '@/downloads/v2/tree-export-port';
+import { requestDelete } from '@/files/trash/useDeleteWithUndo';
 import { fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-index';
-import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { intlLocaleForLanguage, useTranslation, type TranslationKey } from '@/localization';
 import { fileChecksumPath, fileDetailsPath, filesFolderPath, filesTypePath, navigation, routePaths } from '@/navigation';
@@ -70,8 +69,6 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
   const [renameFile, setRenameFile] = useState<FileEntry | null>(null);
   const [tagsFile, setTagsFile] = useState<FileEntry | null>(null);
   const hidden = useItemHiddenStore((s) => (file ? s.hiddenIds.includes(file.id) : false));
-  const [confirmFile, setConfirmFile] = useState<FileEntry | null>(null);
-  const [deleting, setDeleting] = useState(false);
   const privateMove = usePrivateMove(() => onChanged?.());
   useTourBlocker(file !== null);
 
@@ -89,23 +86,6 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
     [file],
   );
 
-  const runDelete = useCallback(
-    async (target: FileEntry) => {
-      setDeleting(true);
-      try {
-        const { deleteCompletedFileFromVidoraX } = await import('@/downloads/completed-file/delete/delete-service');
-        const result = await deleteCompletedFileFromVidoraX(target.id);
-        announce(result.ok ? t('fileManager.deleted') : t('fileManager.deleteFailed'));
-        if (result.ok) onChanged?.();
-      } catch {
-        announce(t('fileManager.deleteFailed'));
-      } finally {
-        setDeleting(false);
-        setConfirmFile(null);
-      }
-    },
-    [onChanged, t],
-  );
 
   const saveTo = useCallback(
     async (target: FileEntry) => {
@@ -197,17 +177,21 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
           setRenameFile(target);
           return;
         case 'delete':
-          if (isConfirmBeforeDeleteOn()) {
-            setConfirmFile(target);
-          } else {
-            void runDelete(target);
-          }
+          // F8: one door for every delete — F2's Confirm before delete, the bin, and the Undo bar.
+          requestDelete({
+            ids: [target.id],
+            source: 'files',
+            name: fileLabel(target),
+            onDone: (result) => {
+              if (result.deleted.length + result.trashed.length > 0) onChanged?.();
+            },
+          });
           return;
         default:
           return;
       }
     },
-    [onClose, onOpen, openWith, privateMove, runDelete, saveTo, shareFile],
+    [onChanged, onClose, onOpen, openWith, privateMove, saveTo, shareFile],
   );
 
   return (
@@ -310,22 +294,6 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
 
       <RenameFileDialog file={renameFile} onClose={() => setRenameFile(null)} onRenamed={onChanged} />
       <TagsDialog file={tagsFile} onClose={() => setTagsFile(null)} />
-      <ConfirmModal
-        visible={confirmFile !== null}
-        variant="delete"
-        title={t('library.deleteTitle')}
-        message={t('library.deleteMessage')}
-        confirmLabel={t('library.deleteConfirm')}
-        cancelLabel={t('library.deleteCancel')}
-        loading={deleting}
-        onConfirm={() => {
-          if (confirmFile) void runDelete(confirmFile);
-        }}
-        onCancel={() => {
-          if (!deleting) setConfirmFile(null);
-        }}
-        testID={`${testID}-delete`}
-      />
       <PrivateMoveDialog controller={privateMove} testID={`${testID}-private-move`} />
     </>
   );

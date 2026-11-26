@@ -32,7 +32,8 @@ import {
 import { hiddenFolderIds, useLockedNowIds } from '@/files/ui/locked-folders';
 // Files F7 #911: a hidden file stays out of the Player tab until Show hidden files is on.
 import { withoutHiddenItems } from '@/files/organize/hidden-items';
-import { isConfirmBeforeDeleteOn, useFilesViewSettings } from '@/files/ui/files-view-settings';
+import { useFilesViewSettings } from '@/files/ui/files-view-settings';
+import { requestDelete as requestFilesDelete } from '@/files/trash/useDeleteWithUndo';
 import { useItemHiddenStore } from '@/library/item-organize-store';
 import { translate, type TranslationKey } from '@/localization';
 import { navigation, openPlayer, routePaths, consumeSecondaryDestinationIntent } from '@/navigation';
@@ -632,14 +633,17 @@ export function useLibraryScreen() {
 
   const requestDeleteItem = useCallback(
     (id: string) => {
-      // Files F2 #800: with Confirm before delete off, the Player tab deletes without "Delete from VidoraX?".
-      if (!isConfirmBeforeDeleteOn()) {
-        void runDeleteItem(id);
-        return;
-      }
-      setDeleteConfirmId(id);
+      // Files F8: one door for every delete — F2's Confirm before delete (on or off), the bin, and the Undo bar.
+      requestFilesDelete({
+        ids: [id],
+        source: 'player',
+        name: enrichedCanonical.find((item) => item.id === id)?.displayName,
+        onDone: (result) => {
+          if (result.deleted.includes(id) || result.trashed.includes(id)) setActionItemId(null);
+        },
+      });
     },
-    [runDeleteItem],
+    [enrichedCanonical],
   );
 
   const openDownloads = useCallback(() => {
