@@ -13,7 +13,10 @@ import {
   routePaths,
 } from '@/navigation';
 import { useDownloads } from '@/storage/hooks';
-import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
+// Files F2 #800 Confirm before delete; F7 #911: a hidden file stays out of Downloads until Show hidden files is on.
+import { isConfirmBeforeDeleteOn, useFilesViewSettings } from '@/files/ui/files-view-settings';
+import { withoutHiddenIds } from '@/files/organize/hidden-items';
+import { useItemHiddenStore } from '@/library/item-organize-store';
 import {
   selectDownloadSectionMembershipSignature,
   useDownloadsStore,
@@ -30,7 +33,7 @@ function localizeCompletedActionError(code: Parameters<typeof completedActionErr
 
 export function useDownloadsScreen() {
   const {
-    orderedIds,
+    orderedIds: allOrderedIds,
     itemsById,
     total,
     loading,
@@ -63,6 +66,12 @@ export function useDownloadsScreen() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const hiddenItemIds = useItemHiddenStore((state) => state.hiddenIds);
+  const { showHidden } = useFilesViewSettings();
+  const orderedIds = useMemo(
+    () => withoutHiddenIds(allOrderedIds, new Set(hiddenItemIds), showHidden),
+    [allOrderedIds, hiddenItemIds, showHidden],
+  );
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasFocusedOnceRef = useRef(false);
 

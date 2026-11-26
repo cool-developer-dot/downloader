@@ -1,7 +1,9 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 
 import type { ActionSheetItem } from '@/components/bottom-sheets/ActionSheet';
 import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
+import { AppModal } from '@/components/modals/AppModal';
+import { useFolderColorsStore } from '@/files/organize/organize-stores';
 import type { FolderEntry } from '@/files/ui/files-index';
 import { lockFolder, removeFolderLock, useLockedFoldersStore } from '@/files/ui/locked-folders';
 import { useTranslation } from '@/localization';
@@ -9,6 +11,7 @@ import { navigation, routePaths } from '@/navigation';
 import { useAppLockStore } from '@/security/app-lock';
 
 import { announce } from '../announce';
+import { SwatchPicker } from './SwatchPicker';
 
 export type FolderMenuProps = {
   /** The folder whose ⋮ was tapped; null when the menu is closed. */
@@ -18,22 +21,34 @@ export type FolderMenuProps = {
 };
 
 /**
- * Files F10 · #910: a folder's ⋮ — Lock folder, or Remove lock while it is open (after the PIN). Locking needs App
- * Lock's PIN, so without App Lock it offers the setup. F7 adds Color here.
+ * Files F10 · #910 / F7 · #778: a folder's ⋮ — Color (8 swatches), and Lock folder, or Remove lock while it is open
+ * (after the PIN). Locking needs App Lock's PIN, so without App Lock it offers the setup.
  */
 export const FolderMenu = memo(function FolderMenu({ folder, onClose, testID = 'files-folder-menu' }: FolderMenuProps) {
   const { t } = useTranslation();
   const locked = useLockedFoldersStore((state) => state.locked);
   const sessionUnlocked = useLockedFoldersStore((state) => state.sessionUnlocked);
   const appLockEnabled = useAppLockStore((state) => state.isEnabled);
+  const [colorFolder, setColorFolder] = useState<FolderEntry | null>(null);
+  const colors = useFolderColorsStore((state) => state.colors);
 
   const actions = useMemo<ActionSheetItem[]>(() => {
     if (!folder) {
       return [];
     }
     const isLocked = locked.includes(folder.id);
+    // F7 #778: Color, for every folder.
+    const color: ActionSheetItem = {
+      id: 'color',
+      label: t('fileManager.folderColor'),
+      onPress: () => {
+        onClose();
+        setColorFolder(folder);
+      },
+    };
     if (!isLocked) {
       return [
+        color,
         {
           id: 'lock',
           label: t('fileManager.lockFolder'),
@@ -53,6 +68,7 @@ export const FolderMenu = memo(function FolderMenu({ folder, onClose, testID = '
     // The lock comes off only once the folder was opened with the PIN this session.
     return sessionUnlocked.includes(folder.id)
       ? [
+          color,
           {
             id: 'remove-lock',
             label: t('fileManager.removeLock'),
@@ -63,10 +79,22 @@ export const FolderMenu = memo(function FolderMenu({ folder, onClose, testID = '
             },
           },
         ]
-      : [];
+      : [color];
   }, [appLockEnabled, folder, locked, onClose, sessionUnlocked, t]);
 
   return (
+    <>
+      <AppModal visible={colorFolder !== null} onClose={() => setColorFolder(null)} title={t('fileManager.folderColorTitle')} showCloseButton testID={`${testID}-color`}>
+        {colorFolder ? (
+          <SwatchPicker
+            value={colors[colorFolder.id] ?? null}
+            onChange={(value) => {
+              useFolderColorsStore.getState().setColor([colorFolder.id], value);
+              setColorFolder(null);
+            }}
+          />
+        ) : null}
+      </AppModal>
     <ActionSheetModal
       visible={folder !== null}
       onClose={onClose}
@@ -75,5 +103,6 @@ export const FolderMenu = memo(function FolderMenu({ folder, onClose, testID = '
       actions={actions}
       testID={testID}
     />
+    </>
   );
 });

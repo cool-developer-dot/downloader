@@ -30,6 +30,10 @@ import {
 } from '@/library/library-stats-store';
 // Files F10 #910: a locked folder's videos stay out of the Player tab until it is opened with the PIN.
 import { hiddenFolderIds, useLockedNowIds } from '@/files/ui/locked-folders';
+// Files F7 #911: a hidden file stays out of the Player tab until Show hidden files is on.
+import { withoutHiddenItems } from '@/files/organize/hidden-items';
+import { isConfirmBeforeDeleteOn, useFilesViewSettings } from '@/files/ui/files-view-settings';
+import { useItemHiddenStore } from '@/library/item-organize-store';
 import { translate, type TranslationKey } from '@/localization';
 import { navigation, openPlayer, routePaths, consumeSecondaryDestinationIntent } from '@/navigation';
 import {
@@ -51,7 +55,6 @@ import { useFavoritesStore } from '@/store/favorites';
 import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 import { useLibraryStore } from '@/store/library';
-import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 
 /** P9 #711: the background length backfill starts this long after the Library's list last changed. */
 const LENGTH_BACKFILL_START_DELAY_MS = 3000;
@@ -244,11 +247,18 @@ export function useLibraryScreen() {
     return [...new Set([...excludedFolderIds, ...hiddenFolderIds(lockedNow, folders)])];
   }, [excludedFolderIds, foldersById, lockedNow]);
 
+  const hiddenItemIds = useItemHiddenStore((state) => state.hiddenIds);
+  const { showHidden } = useFilesViewSettings();
+  const shownCanonical = useMemo(
+    () => withoutHiddenItems(enrichedCanonical, new Set(hiddenItemIds), showHidden),
+    [enrichedCanonical, hiddenItemIds, showHidden],
+  );
+
   // "Recently downloaded" is judged at the library's last refresh (every focus and every completion
   // refreshes it), so rendering stays pure.
   const queryResult = useMemo(
     () =>
-      applyLibraryQuery(enrichedCanonical, {
+      applyLibraryQuery(shownCanonical, {
         search: searchQuery,
         filter,
         sort,
@@ -264,7 +274,7 @@ export function useLibraryScreen() {
     [
       durationBucket,
       durationById,
-      enrichedCanonical,
+      shownCanonical,
       queryExcludedFolderIds,
       filter,
       folderId,

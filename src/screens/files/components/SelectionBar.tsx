@@ -26,12 +26,13 @@ import { announce } from '../announce';
 import { NameClashDialog, useNameClash } from './NameClashDialog';
 import { NewFolderDialog } from './NewFolderDialog';
 import { PrivateBatchMoveDialog } from './PrivateBatchMoveDialog';
+import { SelectionMoreHost } from './SelectionMoreHost';
 
 /** A selected row: a file or a folder. */
 export type SelectedEntry = { kind: 'file'; file: FileEntry } | { kind: 'folder'; folder: FolderEntry };
 
-/** What later packages put in More ⋮ (F5 Rename, F7 Tag, Color and Hide). */
-export type MoreAction = { id: string; label: string; onPress: (entries: readonly SelectedEntry[]) => void };
+/** What later packages put in More ⋮ (F5 Rename, F7 Tag, Color and Hide). `done` leaves selection mode and reloads. */
+export type MoreAction = { id: string; label: string; onPress: (entries: readonly SelectedEntry[], done: () => void) => void };
 
 export type SelectionBarProps = {
   entries: readonly SelectedEntry[];
@@ -219,10 +220,10 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
         label: more.label,
         onPress: () => {
           setMoreOpen(false);
-          more.onPress(entries);
+          more.onPress(entries, onDone);
         },
       })),
-    [entries, moreActions],
+    [entries, moreActions, onDone],
   );
 
   return (
@@ -284,6 +285,7 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
       <AddToPlaylistSheet inputs={playlistInputs} onClose={() => setPlaylistInputs(null)} onAdded={onDone} />
       <ActionSheetModal visible={moreOpen} onClose={() => setMoreOpen(false)} actions={moreSheet} testID={`${testID}-more`} />
       <NameClashDialog {...clash.dialogProps} />
+      <SelectionMoreHost />
       <PrivateBatchMoveDialog
         files={privateFiles}
         onClose={() => setPrivateFiles(null)}

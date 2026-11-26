@@ -5,6 +5,8 @@ import { Pressable } from '@/components/base/Pressable';
 import { ds, DsIcon, DsIconButton, DsText, type DsIconName } from '@/design';
 import type { FolderEntry } from '@/files/ui/files-index';
 import { useLockedNowIds } from '@/files/ui/locked-folders';
+import { useFolderColorsStore } from '@/files/organize/organize-stores';
+import { swatchColor } from '@/files/organize/swatches';
 import { useTheme } from '@/hooks/use-theme';
 import { useRtl, useTranslation } from '@/localization';
 
@@ -53,6 +55,8 @@ export const FolderRow = memo(function FolderRow({
   const closeMenu = useCallback(() => setMenuOpen(false), []);
   const shownMeta = lockedNow ? t('fileManager.folderLocked') : meta;
   const shownIcon: DsIconName = lockedNow ? 'lock' : icon;
+  // F7 #778: the folder's own colour on its icon.
+  const swatch = useFolderColorsStore((state) => state.colors[folder.id]);
 
   return (
     <ListCardCell first={first} last={last}>
@@ -84,7 +88,7 @@ export const FolderRow = memo(function FolderRow({
               alignItems: 'center',
               justifyContent: 'center',
             }}>
-            <DsIcon name={shownIcon} size={ds.size.rowIcon} color="primary" strokeWidth={ds.stroke.row} />
+            <DsIcon name={shownIcon} size={ds.size.rowIcon} color={swatch ? swatchColor(swatch) : 'primary'} strokeWidth={ds.stroke.row} />
           </View>
           <View style={{ flex: 1, minWidth: 0, gap: 1 }}>
             <DsText variant="rowTitle" numberOfLines={1}>

@@ -25,13 +25,18 @@ import {
   type SearchSort,
   type SizeBucket,
 } from '@/files/search/files-search';
-import { useItemNotesStore, useItemTagsStore } from '@/library/item-organize-store';
+import { useItemHiddenStore, useItemNotesStore, useItemTagsStore, useTagColorsStore } from '@/library/item-organize-store';
+import { SWATCH_IDS, type SwatchId } from '@/files/organize/swatches';
+import { colorsOfTags } from '@/files/organize/tag-colors';
+import { withoutHiddenItems } from '@/files/organize/hidden-items';
+import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation, type TranslationKey } from '@/localization';
 import { navigation } from '@/navigation';
 import { ChoiceSheet, type ChoiceOption } from '@/screens/settings/browser-settings/ChoiceSheet';
 
 import { FileEntriesList } from './components/FileEntriesList';
+import { SWATCH_LABELS } from './components/SwatchPicker';
 import { SelectionBar, type SelectedEntry } from './components/SelectionBar';
 import { SelectionHeader } from './components/SelectionHeader';
 import { FileActionsSheet } from './FileActionsSheet';
@@ -45,7 +50,7 @@ import { tileLabelKey, type TileType } from './utils/type-tiles';
 /** Typing settles for this long before the results change (#807). */
 const SEARCH_DEBOUNCE_MS = 150;
 
-type Sheet = 'type' | 'size' | 'date' | 'extension' | 'old' | 'sort' | null;
+type Sheet = 'type' | 'size' | 'date' | 'extension' | 'old' | 'sort' | 'color' | null;
 type Hit = SearchItem & { file: FileEntry };
 
 const SIZE_LABELS: Record<SizeBucket, TranslationKey> = {
@@ -81,6 +86,10 @@ export const FilesSearchScreen = memo(function FilesSearchScreen() {
   const lockedNow = useLockedNowIds();
   const tagsById = useItemTagsStore((s) => s.tagsById);
   const notesById = useItemNotesStore((s) => s.notesById);
+  const tagColors = useTagColorsStore((s) => s.colors);
+  // F7 #911: hidden files stay out of search until Show hidden files is on.
+  const hiddenIds = useItemHiddenStore((s) => s.hiddenIds);
+  const { showHidden } = useFilesViewSettings();
   /** The files, their folders, and when they were read (the "now" of the date filters). */
   const [data, setData] = useState<{ files: FileEntry[]; folders: FolderEntry[]; now: number } | null>(null);
   const [draft, setDraft] = useState('');
@@ -117,7 +126,7 @@ export const FilesSearchScreen = memo(function FilesSearchScreen() {
   const items = useMemo<Hit[]>(() => {
     if (!data) return [];
     const folderNames = new Map(data.folders.map((folder) => [folder.id, folder.name] as const));
-    return data.files.map((file) => ({
+    return withoutHiddenItems(data.files, new Set(hiddenIds), showHidden).map((file) => ({
       id: file.id,
       name: file.name,
       type: file.type,
@@ -126,10 +135,11 @@ export const FilesSearchScreen = memo(function FilesSearchScreen() {
       folderId: file.folderId,
       folderName: file.folderId ? (folderNames.get(file.folderId) ?? null) : null,
       tags: tagsById[file.id] ?? [],
+      tagColors: colorsOfTags(tagColors, tagsById[file.id] ?? []),
       note: notesById[file.id] ?? null,
       file,
     }));
-  }, [data, notesById, tagsById]);
+  }, [data, hiddenIds, notesById, showHidden, tagColors, tagsById]);
 
   const hidden = useMemo(() => hiddenFolderIds(lockedNow, data?.folders ?? []), [data, lockedNow]);
   const hits = useMemo(
@@ -184,6 +194,11 @@ export const FilesSearchScreen = memo(function FilesSearchScreen() {
     [t],
   );
   const sortOptions = useMemo<ChoiceOption<SearchSort>[]>(() => SEARCH_SORTS.map((value) => ({ value, label: t(SORT_LABELS[value]) })), [t]);
+  // F7 #977: filter by a tag's colour.
+  const colorOptions = useMemo<ChoiceOption<string>[]>(
+    () => [{ value: 'any', label: t('fileManager.anyColor') }, ...SWATCH_IDS.map((id) => ({ value: id, label: t(SWATCH_LABELS[id]) }))],
+    [t],
+  );
 
   const dateLabel = (range: DateRange) =>
     typeof range === 'object' ? t('fileManager.dateCustomValue', { from: range.from.slice(0, 10), to: range.to.slice(0, 10) }) : t(DATE_LABELS[range]);
@@ -228,6 +243,7 @@ export const FilesSearchScreen = memo(function FilesSearchScreen() {
           'files-search-chip-old',
         )}
         {chip('fileManager.chipRecent', null, () => patch({ recent: !filters.recent }), 'files-search-chip-recent', filters.recent === true)}
+        {chip('fileManager.chipColor', filters.tagColor ? t(SWATCH_LABELS[filters.tagColor as SwatchId]) : null, () => setSheet('color'), 'files-search-chip-color')}
         {chip('fileManager.chipSort', t(SORT_LABELS[sort]), () => setSheet('sort'), 'files-search-chip-sort', sort !== 'best')}
       </DsChipRow>
       {data ? (
@@ -325,6 +341,17 @@ export const FilesSearchScreen = memo(function FilesSearchScreen() {
         value={filters.oldMonths ? String(filters.oldMonths) : 'off'}
         onSelect={(value) => {
           patch({ oldMonths: value === 'off' ? null : (Number(value) as OldMonths) });
+          closeSheet();
+        }}
+        onClose={closeSheet}
+      />
+      <ChoiceSheet
+        visible={sheet === 'color'}
+        title={t('fileManager.chipColor')}
+        options={colorOptions}
+        value={filters.tagColor ?? 'any'}
+        onSelect={(value) => {
+          patch({ tagColor: value === 'any' ? null : value });
           closeSheet();
         }}
         onClose={closeSheet}

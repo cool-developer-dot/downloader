@@ -4,11 +4,18 @@ import { View } from 'react-native';
 import { Pressable } from '@/components/base/Pressable';
 import { ds, DsIcon, DsIconButton, DsText, DsThumb } from '@/design';
 import type { FileEntry } from '@/files/ui/files-index';
+import { swatchColor } from '@/files/organize/swatches';
+import { tagColorOf } from '@/files/organize/tag-colors';
+import { useItemTagsStore, useTagColorsStore } from '@/library/item-organize-store';
 import { useTheme } from '@/hooks/use-theme';
 import { useRtl, useTranslation } from '@/localization';
 
 import { fileTypeIcon } from '../utils/file-rows';
 import { ListCardCell } from './ListCardCell';
+
+const NO_TAGS: readonly string[] = [];
+/** F7: at most this many tag chips on a row (then "+n"). */
+const MAX_ROW_TAGS = 2;
 
 export type FileRowProps = {
   file: FileEntry;
@@ -60,6 +67,9 @@ export const FileRow = memo(function FileRow({
   const rtl = useRtl();
   const { t } = useTranslation();
   const handlePress = useCallback(() => onPress(file), [file, onPress]);
+  // F7 #939 / #977: the file's tags as chips, each with its colour's dot.
+  const tags = useItemTagsStore((state) => state.tagsById[file.id] ?? NO_TAGS);
+  const tagColors = useTagColorsStore((state) => state.colors);
   const handleMore = useCallback(() => onMore?.(file), [file, onMore]);
   const picture = showThumbnail && file.thumbnailUri ? file.thumbnailUri : null;
 
@@ -127,6 +137,33 @@ export const FileRow = memo(function FileRow({
               <DsText variant="rowSub" numberOfLines={1}>
                 {meta}
               </DsText>
+            ) : null}
+            {tags.length > 0 ? (
+              <View style={{ flexDirection: rtl.rowDirection, alignItems: 'center', gap: 6, marginTop: 3 }}>
+                {tags.slice(0, MAX_ROW_TAGS).map((tag) => {
+                  const color = tagColorOf(tagColors, tag);
+                  return (
+                    <View
+                      key={tag}
+                      style={{
+                        flexDirection: rtl.rowDirection,
+                        alignItems: 'center',
+                        gap: 4,
+                        paddingHorizontal: 7,
+                        height: 18,
+                        borderRadius: 9,
+                        backgroundColor: theme.colors.accentSoft,
+                        maxWidth: 120,
+                      }}>
+                      {color ? <View style={{ width: 7, height: 7, borderRadius: 3.5, backgroundColor: swatchColor(color) }} /> : null}
+                      <DsText variant="rowSub" numberOfLines={1} style={{ fontSize: 11, lineHeight: 14 }}>
+                        {tag}
+                      </DsText>
+                    </View>
+                  );
+                })}
+                {tags.length > MAX_ROW_TAGS ? <DsText variant="rowSub">{`+${tags.length - MAX_ROW_TAGS}`}</DsText> : null}
+              </View>
             ) : null}
           </View>
         </View>

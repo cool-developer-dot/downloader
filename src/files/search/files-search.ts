@@ -28,6 +28,8 @@ export type SearchItem = {
   folderId: string | null;
   folderName?: string | null;
   tags?: readonly string[];
+  /** F7 #977: the colours of its tags. */
+  tagColors?: readonly string[];
   note?: string | null;
 };
 
@@ -52,6 +54,8 @@ export type SearchFilters = {
   /** Downloaded more than this many months ago. */
   oldMonths?: OldMonths | null;
   recent?: boolean;
+  /** F7 #977: files with a tag of this colour. */
+  tagColor?: string | null;
 };
 
 export type SearchInput = {
@@ -184,6 +188,7 @@ function passesFilters(item: SearchItem, filters: SearchFilters, now: number): b
   if (filters.extension && extensionOf(item.name) !== normalizeExtension(filters.extension)) return false;
   if (filters.oldMonths && !isOld(item.date, filters.oldMonths, now)) return false;
   if (filters.recent && !isRecent(item, now)) return false;
+  if (filters.tagColor && !(item.tagColors ?? []).includes(filters.tagColor)) return false;
   return true;
 }
 
@@ -246,5 +251,7 @@ export function searchFiles<T extends SearchItem>(items: readonly T[], input: Se
 
 /** Whether any filter is on (the empty state then offers Clear filters). */
 export function hasFilters(filters: SearchFilters): boolean {
-  return Boolean((filters.types && filters.types.length > 0) || filters.size || filters.date || filters.extension || filters.oldMonths || filters.recent);
+  return Boolean(
+    (filters.types && filters.types.length > 0) || filters.size || filters.date || filters.extension || filters.oldMonths || filters.recent || filters.tagColor,
+  );
 }

@@ -125,6 +125,12 @@ describe('Files F6: search', () => {
     assert.equal(hasFilters({}), false);
   });
 
+  test('F7: filter by a tag colour', () => {
+    const items = [item('red', 'a.mp4', { tags: ['work'], tagColors: ['red'] }), item('blue', 'b.mp4', { tagColors: ['blue'] }), item('none', 'c.mp4')];
+    assert.deepEqual(run(items, { filters: { tagColor: 'red' } }), ['red']);
+    assert.equal(hasFilters({ tagColor: 'red' }), true);
+  });
+
   test('each sort, and ties keep their order', () => {
     const items = [
       item('b', 'b.mp4', { sizeBytes: 3, date: ago(3) }),

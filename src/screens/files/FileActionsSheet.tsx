@@ -17,9 +17,11 @@ import { canMoveToPrivate } from '@/private-vault/move-to-private.runtime';
 import { PrivateMoveDialog } from '@/screens/private/PrivateMoveDialog';
 import { usePrivateMove } from '@/screens/private/usePrivateMove';
 import { useTourBlocker } from '@/tour/tour-store';
+import { useItemHiddenStore } from '@/library/item-organize-store';
 
 import { announce } from './announce';
 import { RenameFileDialog } from './components/RenameFileDialog';
+import { TagsDialog } from './components/TagsDialog';
 import { fileActionsFor, type FileAction } from './utils/file-actions';
 import { fileMetaLine } from './utils/file-rows';
 
@@ -65,6 +67,8 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
   const { height } = useWindowDimensions();
   const { t, language } = useTranslation();
   const [renameFile, setRenameFile] = useState<FileEntry | null>(null);
+  const [tagsFile, setTagsFile] = useState<FileEntry | null>(null);
+  const hidden = useItemHiddenStore((s) => (file ? s.hiddenIds.includes(file.id) : false));
   const [confirmFile, setConfirmFile] = useState<FileEntry | null>(null);
   const [deleting, setDeleting] = useState(false);
   const privateMove = usePrivateMove(() => onChanged?.());
@@ -240,20 +244,62 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
             <ScrollView showsVerticalScrollIndicator={false}>
               <DsRowGroup>
                 {file
-                  ? actions.map((action) => {
-                      const row = ROWS[action];
-                      return (
-                        <DsRow
-                          key={action}
-                          icon={row.icon}
-                          title={t(row.title)}
-                          subtitle={row.subtitle ? t(row.subtitle) : undefined}
-                          trailing="none"
-                          onPress={() => run(action, file)}
-                          testID={`${testID}-${action}`}
-                        />
-                      );
-                    })
+                  ? [
+                      ...actions
+                        .filter((action) => action !== 'delete')
+                        .map((action) => {
+                          const row = ROWS[action];
+                          return (
+                            <DsRow
+                              key={action}
+                              icon={row.icon}
+                              title={t(row.title)}
+                              subtitle={row.subtitle ? t(row.subtitle) : undefined}
+                              trailing="none"
+                              onPress={() => run(action, file)}
+                              testID={`${testID}-${action}`}
+                            />
+                          );
+                        }),
+                      // F7 #939 Tags (with their colours, #977) and #911 Hide — not encryption: Private is the lock.
+                      <DsRow
+                        key="tags"
+                        icon="tags"
+                        title={t('fileManager.rowTags')}
+                        trailing="none"
+                        onPress={() => {
+                          onClose();
+                          setTagsFile(file);
+                        }}
+                        testID={`${testID}-tags`}
+                      />,
+                      <DsRow
+                        key="hide"
+                        icon={hidden ? 'eye' : 'eye-off'}
+                        title={hidden ? t('fileManager.unhide') : t('fileManager.hide')}
+                        subtitle={hidden ? undefined : t('fileManager.hideSub')}
+                        trailing="none"
+                        onPress={() => {
+                          onClose();
+                          useItemHiddenStore.getState().setHidden([file.id], !hidden);
+                          announce(hidden ? t('fileManager.shownAgain') : t('fileManager.hiddenToast'));
+                          onChanged?.();
+                        }}
+                        testID={`${testID}-hide`}
+                      />,
+                      ...(actions.includes('delete')
+                        ? [
+                            <DsRow
+                              key="delete"
+                              icon={ROWS.delete.icon}
+                              title={t(ROWS.delete.title)}
+                              trailing="none"
+                              onPress={() => run('delete', file)}
+                              testID={`${testID}-delete`}
+                            />,
+                          ]
+                        : []),
+                    ]
                   : null}
               </DsRowGroup>
             </ScrollView>
@@ -262,6 +308,7 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
       </Modal>
 
       <RenameFileDialog file={renameFile} onClose={() => setRenameFile(null)} onRenamed={onChanged} />
+      <TagsDialog file={tagsFile} onClose={() => setTagsFile(null)} />
       <ConfirmModal
         visible={confirmFile !== null}
         variant="delete"
