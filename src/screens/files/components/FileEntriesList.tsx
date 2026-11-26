@@ -230,7 +230,8 @@ export const FileEntriesList = memo(function FileEntriesList({
       columns={columns}
       rowGap={grid ? ds.space.grid : 0}
       paddingX={ds.space.screenX}
-      dragEnabled={Boolean(selection) && !reorder}
+      // F4's long press still selects in a Custom order folder; only the handle reorders.
+      dragEnabled={Boolean(selection)}
       scrollEnabled={!reordering}
       onDragStart={selection?.dragStart ?? noop}
       onDragOver={selection?.dragOver ?? noop}

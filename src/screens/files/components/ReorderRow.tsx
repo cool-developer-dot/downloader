@@ -30,8 +30,12 @@ export const ReorderRow = memo(function ReorderRow({ name, onMoveBy, onDragChang
 
   const gesture = useMemo(
     () =>
+      // The handle takes the touch at once, so the row's long press (F4's drag select) never starts from the handle.
       Gesture.Pan()
-        .activeOffsetY([-6, 6])
+        .manualActivation(true)
+        .onTouchesDown((_event, manager) => {
+          manager.activate();
+        })
         .onStart(() => {
           lifted.set(true);
           if (onDragChange) runOnJS(onDragChange)(true);
