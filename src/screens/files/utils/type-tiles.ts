@@ -4,10 +4,9 @@
  */
 
 import type { DsIconName } from '@/design/DsIcon';
-import { isFileType, type FileType } from '@/files/ui/file-types';
+import { fileTypeOf, isFileType, type FileType } from '@/files/ui/file-types';
 import type { FileEntry, TypeCounts } from '@/files/ui/files-index';
 import type { TranslationKey } from '@/localization/types';
-import { countByKind, itemsOfKind } from '@/screens/library/utils/library-kind';
 
 export type TileType = Exclude<FileType, 'other'>;
 
@@ -29,28 +28,14 @@ const TILES: readonly Omit<TypeTile, 'count'>[] = [
 
 export const TILE_TYPES: readonly TileType[] = TILES.map((tile) => tile.type);
 
-/**
- * The six tiles in the design's order, with their counts (0 when the type has none). `videoCount`, when given, is the
- * Videos tile's count (`videoTileCount`, the Player tab's rule) in place of the video file type's.
- */
-export function buildTypeTiles(counts: Partial<TypeCounts> | null | undefined, videoCount?: number): TypeTile[] {
-  return TILES.map((tile) => ({
-    ...tile,
-    count: Math.max(0, tile.type === 'video' && videoCount !== undefined ? videoCount : (counts?.[tile.type]?.count ?? 0)),
-  }));
+/** The six tiles in the design's order, with their counts (0 when the type has none). */
+export function buildTypeTiles(counts: Partial<TypeCounts> | null | undefined): TypeTile[] {
+  return TILES.map((tile) => ({ ...tile, count: Math.max(0, counts?.[tile.type]?.count ?? 0) }));
 }
 
-/**
- * The Videos tile counts and lists exactly what the Player tab calls a video, through the Player tab's own functions
- * (`library-kind`), so its count always equals the Player tab's. That rule is "everything that isn't audio": an image,
- * a PDF or an unknown file is under Videos there, so it is here too (and it keeps its own tile).
- */
-export function videoTileFiles<T extends Pick<FileEntry, 'mimeType' | 'fileName'>>(files: readonly T[]): T[] {
-  return itemsOfKind(files, 'video');
-}
-
-export function videoTileCount(files: readonly Pick<FileEntry, 'mimeType' | 'fileName'>[]): number {
-  return countByKind(files).videos;
+/** A tile's list: exactly the files of its type, by `fileTypeOf` alone (Videos included), as its count is. */
+export function tileFiles<T extends Pick<FileEntry, 'mimeType' | 'name'>>(files: readonly T[], type: TileType): T[] {
+  return files.filter((file) => fileTypeOf({ mimeType: file.mimeType, fileName: file.name }) === type);
 }
 
 export function isTileType(value: unknown): value is TileType {

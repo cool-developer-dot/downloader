@@ -2,9 +2,9 @@ import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
 import { buildFilesIndex, typeCountsOf } from '@/files/ui/files-index';
-import { countByKind } from '@/screens/library/utils/library-kind';
+import { fileTypeOf } from '@/files/ui/file-types';
 
-import { buildTypeTiles, tileA11y, videoTileCount, videoTileFiles } from './type-tiles';
+import { buildTypeTiles, tileA11y, tileFiles, TILE_TYPES } from './type-tiles';
 
 /** A mixed library: videos, audio by MIME type and by extension only, and files that are neither. */
 const MIXED = [
@@ -47,17 +47,25 @@ const SEVEN_FILES = [
 }));
 
 describe('Files F1 #753: the type tiles', () => {
-  test('the Videos tile equals the Player tab video count on a mixed library, and lists the same files', () => {
-    // The Player tab counts the library's items with countByKind; Files counts its own entries of the same items.
-    const playerVideos = countByKind(MIXED).videos;
+  test('on the 11-file mixed library, each tile holds only its own type, and its count is its list', () => {
     const files = buildFilesIndex(MIXED, []).files;
-    const videosTile = buildTypeTiles(typeCountsOf(files), videoTileCount(files)).find((tile) => tile.type === 'video');
-    assert.equal(playerVideos, 8);
-    assert.equal(videosTile?.count, playerVideos);
-    assert.deepEqual(
-      videoTileFiles(files).map((file) => file.id),
-      ['v1', 'v2', 'v3', 'i1', 'd1', 'z1', 'p1', 'o1'],
-    );
+    const tiles = buildTypeTiles(typeCountsOf(files));
+    const held = Object.fromEntries(TILE_TYPES.map((type) => [type, tileFiles(files, type).map((file) => file.id)]));
+    assert.deepEqual(held, {
+      video: ['v1', 'v2', 'v3'],
+      audio: ['a1', 'a2', 'a3'],
+      image: ['i1'],
+      doc: ['d1'],
+      archive: ['z1'],
+      apk: ['p1'],
+    });
+    for (const tile of tiles) {
+      const list = tileFiles(files, tile.type);
+      assert.ok(list.every((file) => fileTypeOf({ mimeType: file.mimeType, fileName: file.name }) === tile.type), tile.type);
+      assert.equal(tile.count, list.length, tile.type);
+    }
+    // The file of no known type is on no tile.
+    assert.ok(!Object.values(held).flat().includes('o1'));
   });
 
   test('counts from 7 files, one of each type: every tile shows 1, and the unknown file has no tile', () => {
