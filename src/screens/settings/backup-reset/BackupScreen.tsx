@@ -137,7 +137,15 @@ export const BackupScreen = memo(function BackupScreen() {
 
       <DsSectionLabel>{t('settingsBackup.reset')}</DsSectionLabel>
       <DsRowGroup>
-        <DsRow icon="rotate-cw" title={t('fileManager.backupReset')} subtitle={t('settingsBackup.resetHint')} destructive onPress={screen.requestReset} testID="backup-reset" />
+        <DsRow
+          icon="rotate-cw"
+          title={t('fileManager.backupReset')}
+          subtitle={t('settingsBackup.resetHint')}
+          destructive
+          onPress={anyBusy ? undefined : screen.requestReset}
+          disabled={anyBusy}
+          testID="backup-reset"
+        />
       </DsRowGroup>
 
       <BackupPreviewModal preview={backup.pending?.preview ?? null} onChoose={backup.chooseMode} onCancel={backup.cancelRestore} testID="backup-preview" />
