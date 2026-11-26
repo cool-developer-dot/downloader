@@ -41,7 +41,7 @@ export const FilesScreen = memo(function FilesScreen() {
 
   const free = formatFileBytes(data.space?.freeBytes);
   const subtitle = free ? t('fileManager.subtitleFree', { free }) : t('filesTab.subtitle');
-  const tiles = buildTypeTiles(data.counts, data.videoCount);
+  const tiles = buildTypeTiles(data.counts);
   const folders = useMemo(
     () =>
       folderListEntries(data.listing?.folders ?? [], [], { foldersFirst: true }).flatMap((entry) =>
