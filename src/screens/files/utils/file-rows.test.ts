@@ -12,6 +12,7 @@ const file = (name: string, overrides: Partial<FileEntry> = {}): FileEntry => ({
   title: name,
   type: 'video',
   mimeType: null,
+  fileName: name,
   sizeBytes: 0,
   date: null,
   folderId: null,
