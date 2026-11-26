@@ -7,6 +7,7 @@ import { filesCapabilities } from '@/files/api';
 import type { FileEntry, FolderEntry } from '@/files/ui/files-index';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { folderLookupOf } from '@/files/ui/folder-tree';
+import { inSelectionOrder } from '@/files/ui/selection';
 import { useSelection } from '@/files/ui/use-selection';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
@@ -70,7 +71,8 @@ export const FolderScreen = memo(function FolderScreen() {
   const keys = useMemo(() => entries.map((entry) => entry.key), [entries]);
   const selection = useSelection(keys);
   const selectedEntries = useMemo<SelectedEntry[]>(
-    () => entries.filter((entry) => selection.selected.has(entry.key)),
+    // In the order they were picked (F5's Number them follows it).
+    () => inSelectionOrder(entries, selection.selected),
     [entries, selection.selected],
   );
   const { clear: clearSelection } = selection;

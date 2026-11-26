@@ -6,6 +6,7 @@ import { ds, DsCard, DsHeader, DsScreen, DsText } from '@/design';
 import { fileBytes } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-source';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
+import { inSelectionOrder } from '@/files/ui/selection';
 import { useSelection } from '@/files/ui/use-selection';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
@@ -56,7 +57,8 @@ export const TypeListScreen = memo(function TypeListScreen() {
   const keys = useMemo(() => entries.map((entry) => entry.key), [entries]);
   const selection = useSelection(keys);
   const selectedEntries = useMemo<SelectedEntry[]>(
-    () => entries.filter((entry) => selection.selected.has(entry.key)),
+    // In the order they were picked (F5's Number them follows it).
+    () => inSelectionOrder(entries, selection.selected),
     [entries, selection.selected],
   );
   const { clear: clearSelection } = selection;
