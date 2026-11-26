@@ -19,7 +19,7 @@ import { AddToPlaylistSheet } from '@/screens/playlists/components/AddToPlaylist
 import type { PlaylistItemInput } from '@/storage/repositories/playlists.repository';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 
-import { findClash, keepBothName, type ClashChoice } from '@/files/rename/name-clash';
+import { createClashResolver, findClash, keepBothName } from '@/files/rename/name-clash';
 import { deleteForReplace, renameFileTo } from '@/files/rename/rename-runtime';
 
 import { announce } from '../announce';
@@ -90,7 +90,9 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
       const movingIds = new Set(files.map((file) => file.id));
       const there = (await listFolder(folderId).catch(() => null))?.files.filter((file) => !movingIds.has(file.id)) ?? [];
       const names = there.map((file) => file.name);
-      let remembered: ClashChoice | null = null;
+      // "Do this for all" (#797): each clash asks until an answer is for all.
+      let clashingName = '';
+      const choose = createClashResolver(() => clash.ask(clashingName, folderName, files.length > 1));
       let moved = 0;
       for (const file of files) {
         try {
@@ -99,12 +101,8 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
           }
           const clashing = findClash(file.name, names);
           if (clashing) {
-            let choice = remembered;
-            if (!choice) {
-              const answer = await clash.ask(file.name, folderName, files.length > 1);
-              choice = answer.choice;
-              if (answer.forAll) remembered = answer.choice;
-            }
+            clashingName = file.name;
+            const choice = await choose();
             if (choice === 'skip') continue;
             if (choice === 'keep-both') {
               const next = keepBothName(file.name, names);

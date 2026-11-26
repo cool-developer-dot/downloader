@@ -13,7 +13,7 @@ import {
   type RenameMode,
   type RenameResult,
 } from '@/files/rename/batch-rename';
-import { findClash, keepBothName, type ClashChoice } from '@/files/rename/name-clash';
+import { createClashResolver, findClash, keepBothName, type ClashChoice } from '@/files/rename/name-clash';
 import { deleteForReplace, renameFileTo } from '@/files/rename/rename-runtime';
 import { listFolder, type FileEntry } from '@/files/ui/files-source';
 import { useTheme } from '@/hooks/use-theme';
@@ -106,7 +106,10 @@ export const BatchRenameScreen = memo(function BatchRenameScreen() {
   const apply = useCallback(async () => {
     if (!files) return;
     const failed: Failure[] = [];
-    let remembered: ClashChoice | null = null;
+    // "Do this for all" (#797): each clash asks until an answer is for all.
+    let resolve: (() => Promise<ClashChoice>) | null = null;
+    let pendingName = '';
+    let pendingFolder = '';
     let renamed = 0;
     const batchIds = new Set(files.map((file) => file.id));
     const total = results.filter((result) => result.to !== result.from).length;
@@ -123,12 +126,10 @@ export const BatchRenameScreen = memo(function BatchRenameScreen() {
         const others = listing.files.filter((other) => !batchIds.has(other.id));
         const clashing = findClash(next, others.map((other) => other.name));
         if (clashing) {
-          let choice = remembered;
-          if (!choice) {
-            const answer = await clash.ask(next, listing.folder?.name ?? t('filesTab.title'), true);
-            choice = answer.choice;
-            if (answer.forAll) remembered = answer.choice;
-          }
+          pendingName = next;
+          pendingFolder = listing.folder?.name ?? t('filesTab.title');
+          resolve ??= createClashResolver(() => clash.ask(pendingName, pendingFolder, true));
+          const choice = await resolve();
           if (choice === 'skip') {
             failed.push({ name: file.name, reason: 'skipped' });
             continue;

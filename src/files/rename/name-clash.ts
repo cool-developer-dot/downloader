@@ -30,3 +30,23 @@ export function keepBothName(name: string, existingNames: readonly string[]): st
   }
   return candidate;
 }
+
+export type ClashAnswer = { choice: ClashChoice; forAll: boolean };
+
+/**
+ * A batch's clashes, with "Do this for all": `ask` is called for a clash until an answer says "for all"; from then on
+ * that choice is used for every later clash without asking.
+ */
+export function createClashResolver(ask: () => Promise<ClashAnswer>): () => Promise<ClashChoice> {
+  let remembered: ClashChoice | null = null;
+  return async () => {
+    if (remembered) {
+      return remembered;
+    }
+    const answer = await ask();
+    if (answer.forAll) {
+      remembered = answer.choice;
+    }
+    return answer.choice;
+  };
+}
