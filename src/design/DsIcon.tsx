@@ -153,6 +153,8 @@ import {
   Delete,
   File,
   FingerprintPattern,
+  // Files F7: the drag handle of a folder's Custom order.
+  GripVertical,
   type LucideIcon,
 } from 'lucide-react-native';
 
@@ -316,6 +318,7 @@ const ICONS = {
   delete: Delete,
   file: File,
   fingerprint: FingerprintPattern,
+  'grip-vertical': GripVertical,
 } as const satisfies Record<string, LucideIcon>;
 
 export type DsIconName = keyof typeof ICONS;

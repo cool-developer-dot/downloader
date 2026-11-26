@@ -2,11 +2,13 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
-import { ds, DsCard, DsHeader, DsRow, DsRowGroup, DsScreen, DsText } from '@/design';
+import { ds, DsCard, DsChip, DsChipRow, DsHeader, DsRow, DsRowGroup, DsScreen, DsText } from '@/design';
 import type { FileEntry, FolderEntry } from '@/files/ui/files-index';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { folderLookupOf } from '@/files/ui/folder-tree';
 import { useSelection } from '@/files/ui/use-selection';
+import { applyCustomOrder, moveInOrder } from '@/files/organize/custom-order';
+import { useCustomOrderStore } from '@/files/organize/organize-stores';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation } from '@/localization';
 import { navigation } from '@/navigation';
@@ -52,6 +54,9 @@ export const FolderScreen = memo(function FolderScreen() {
   const up = upTarget(folderId, lookup);
   const folder = data.listing?.folder ?? null;
 
+  // F7 #954: this folder's Custom order (on or off, and its saved order).
+  const customOrder = useCustomOrderStore((state) => state.byFolder[folderId]);
+  const customOn = customOrder?.enabled === true;
   const entries = useMemo(() => {
     if (!data.listing) {
       return [];
@@ -60,8 +65,16 @@ export const FolderScreen = memo(function FolderScreen() {
     for (const [id, stats] of Object.entries(data.statsById)) {
       folderSizes[id] = stats.totalBytes;
     }
-    return folderListEntries(data.listing.folders, data.listing.files, { ...settings, folderSizes });
-  }, [data.listing, data.statsById, settings]);
+    const sorted = folderListEntries(data.listing.folders, data.listing.files, { ...settings, folderSizes });
+    if (!customOn) {
+      return sorted;
+    }
+    // Folders stay first in the chosen sort; files follow the saved order, new ones last.
+    const files = sorted.filter((entry) => entry.kind === 'file');
+    const byId = new Map(files.map((entry) => [entry.kind === 'file' ? entry.file.id : '', entry] as const));
+    const order = applyCustomOrder(customOrder?.ids ?? [], [...byId.keys()]);
+    return [...sorted.filter((entry) => entry.kind === 'folder'), ...order.map((id) => byId.get(id)!)];
+  }, [customOn, customOrder?.ids, data.listing, data.statsById, settings]);
   const shownFiles = useMemo(() => entries.flatMap((entry) => (entry.kind === 'file' ? [entry.file] : [])), [entries]);
   // F4: a long press selects (folders too); the selection bar acts on the selection.
   const keys = useMemo(() => entries.map((entry) => entry.key), [entries]);
@@ -106,6 +119,25 @@ export const FolderScreen = memo(function FolderScreen() {
   const onRefresh = useCallback(() => void refresh(), [refresh]);
   const closeMenu = useCallback(() => setMenuFile(null), []);
   const onChanged = useCallback(() => void reload(), [reload]);
+  const fileOrder = useMemo(() => entries.flatMap((entry) => (entry.kind === 'file' ? [entry.file.id] : [])), [entries]);
+  const reorder = useMemo(
+    () =>
+      customOn
+        ? {
+            onMoveBy: (fileId: string, steps: number) =>
+              useCustomOrderStore.getState().setOrder(folderId, moveInOrder(fileOrder, fileId, fileOrder.indexOf(fileId) + steps)),
+          }
+        : undefined,
+    [customOn, fileOrder, folderId],
+  );
+  const toggleCustomOrder = useCallback(() => {
+    const store = useCustomOrderStore.getState();
+    if (!customOn && (store.byFolder[folderId]?.ids.length ?? 0) === 0) {
+      store.setOrder(folderId, fileOrder);
+    }
+    store.setEnabled(folderId, !customOn);
+  }, [customOn, fileOrder, folderId]);
+
   const afterBatch = useCallback(() => {
     clearSelection();
     void reload();
@@ -124,6 +156,10 @@ export const FolderScreen = memo(function FolderScreen() {
         />
       )}
       <Breadcrumbs crumbs={crumbs} onPressCrumb={goTo} />
+      {/* F7 #954: this folder's own order, with drag handles. */}
+      <DsChipRow scroll={false}>
+        <DsChip label={t('fileManager.customOrder')} selected={customOn} onPress={toggleCustomOrder} testID="files-folder-custom-order" />
+      </DsChipRow>
       {up ? (
         <DsRowGroup>
           <DsRow
@@ -177,6 +213,7 @@ export const FolderScreen = memo(function FolderScreen() {
         onRefresh={onRefresh}
         highlightId={highlightId}
         selection={selection}
+        reorder={selection.active ? undefined : reorder}
         testID="files-folder-list"
       />
       {selection.active ? <SelectionBar entries={selectedEntries} onDone={afterBatch} moreActions={moreActions} /> : null}

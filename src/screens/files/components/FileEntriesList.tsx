@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, type ReactElement } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
 import { RefreshControl, useWindowDimensions, View, type FlatList, type ListRenderItem } from 'react-native';
 
 import { ds, type DsIconName } from '@/design';
@@ -14,6 +14,7 @@ import { DragSelectList } from './DragSelectList';
 import { FileRow } from './FileRow';
 import { FolderRow } from './FolderRow';
 import { GridTile } from './GridTile';
+import { ReorderRow } from './ReorderRow';
 import { SelectRow } from './SelectRow';
 
 /** F4: the list's selection (entry keys: `file:<id>` / `folder:<id>`). */
@@ -47,6 +48,8 @@ export type FileEntriesListProps = {
   selection?: EntriesSelection;
   /** F6 search: the part of a file's name that matched (bold). */
   nameMatchOf?: (file: FileEntry) => { start: number; end: number } | null;
+  /** F7 Custom order: file rows get a drag handle; a drop moves the file by that many rows. */
+  reorder?: { onMoveBy: (fileId: string, steps: number) => void };
   testID?: string;
 };
 
@@ -71,6 +74,7 @@ export const FileEntriesList = memo(function FileEntriesList({
   highlightId,
   selection,
   nameMatchOf,
+  reorder,
   testID = 'files-entries',
 }: FileEntriesListProps) {
   const theme = useTheme();
@@ -84,6 +88,8 @@ export const FileEntriesList = memo(function FileEntriesList({
   const thumbnailSize = LIST_THUMBNAIL_DP[settings.thumbnailSize];
   const nameOf = useCallback((file: FileEntry) => displayFileName(file.name, settings.showExtensions), [settings.showExtensions]);
   const selecting = selection?.active === true;
+  // F7: while a Custom order handle is held, the list doesn't scroll under the finger.
+  const [reordering, setReordering] = useState(false);
   // F10: a locked folder shows the lock and "Locked" in the grid and while selecting too (FolderRow does it itself).
   const lockedNow = useLockedNowIds();
   const iconOf = useCallback(
@@ -146,7 +152,7 @@ export const FileEntriesList = memo(function FileEntriesList({
           />
         );
       }
-      return (
+      const row = (
         <FileRow
           file={item.file}
           name={nameOf(item.file)}
@@ -165,8 +171,15 @@ export const FileEntriesList = memo(function FileEntriesList({
           testID={`files-file-${item.file.id}`}
         />
       );
+      return reorder ? (
+        <ReorderRow name={nameOf(item.file)} onMoveBy={(steps) => reorder.onMoveBy(item.file.id, steps)} onDragChange={setReordering} testID={`files-reorder-${item.file.id}`}>
+          {row}
+        </ReorderRow>
+      ) : (
+        row
+      );
     },
-    [entries.length, folderIcon, folderMeta, highlightId, iconOf, locale, metaOf, nameMatchOf, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, selecting, selection, settings.showThumbnails, thumbnailSize],
+    [entries.length, folderIcon, folderMeta, highlightId, iconOf, locale, metaOf, nameMatchOf, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, reorder, selecting, selection, settings.showThumbnails, thumbnailSize],
   );
 
   const renderTile = useCallback<ListRenderItem<FolderListEntry>>(
@@ -217,7 +230,8 @@ export const FileEntriesList = memo(function FileEntriesList({
       columns={columns}
       rowGap={grid ? ds.space.grid : 0}
       paddingX={ds.space.screenX}
-      dragEnabled={Boolean(selection)}
+      dragEnabled={Boolean(selection) && !reorder}
+      scrollEnabled={!reordering}
       onDragStart={selection?.dragStart ?? noop}
       onDragOver={selection?.dragOver ?? noop}
       onDragEnd={selection?.dragEnd ?? noop}
