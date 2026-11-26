@@ -34,3 +34,30 @@ Differences from the plan in Faran's doc, and why:
 - `tsc --noEmit`: 0 errors
 - `eslint . --quiet`: 0 errors
 - JS tests: 2,751 / 2,751 pass (`integration/files` had 2,713)
+
+### Native tests
+
+`:vidorax-media:testReleaseUnitTest`: 1,255 / 1,255 pass (3 new: `FolderAccessTest`). Gradle hung once on a slow
+repository; re-run with HTTP timeouts.
+
+### Device test (release APK `5890419`, Android Studio emulator Pixel 8 / Android 16, installed over the 1.2.0-based
+`b5ccdd1` build with its data)
+
+| Step | Expected | Result |
+| --- | --- | --- |
+| Update over `b5ccdd1` with data | App DB v10 → v11 runs; no crash; library intact | PASS — no FATAL / JS error in logcat, Player tab still 1 video |
+| Permissions | Same as before | PASS — `aapt dump permissions` identical (38 entries) |
+| Files tab chips (F15) | "SD card" and "Folders I added" open the new pages | PASS |
+| Add folder (F15) | System picker → Movies → Allow → listed as "Phone storage" | PASS |
+| Browse (F15) | Subfolders first, then files with sizes; subfolder opens | PASS (Clips › quiet-copy.mp4) |
+| Play in place (F15) | Video plays from the picked folder, no copy; mini player continues | PASS |
+| Import (F15) | Folder's videos copied into VidoraX, duplicates skipped | PASS — "3 copied. 2 were already saved."; Player tab 1 → 4 videos |
+| Delete → bin (F13) | Player tab Delete hides the video; still hidden after force-stop + relaunch | PASS — 4 → 3, still 3 after restart |
+| Backup v2 (F17) | "Back up all data" writes `vidorax.appBackup` v2 with a `files` section | PASS — sections settings, preferences, playlists, videoBookmarks, playStats, files; bin {on, 30}, lowSpace {on, 1 GB} |
+| Low space (F14) | Under 1 GB free: one notification; not again the same day | PASS — "Phone storage is low · 848.7 MB left…" on its own "Low storage" channel; relaunch posted none |
+
+Found and fixed during the device test (`a3f5b4a`): the picked-folder screen had no side gutter; "1 items" → "1 item".
+
+Not testable on a device yet (no screen until Hamza's packages): Restore / Empty bin / Undo (F8), duplicates and
+one-tap clean (F9), nested folder create/move (F1), restore of a v2 backup's `files` section (F11). Their logic is
+covered by the unit tests above.
