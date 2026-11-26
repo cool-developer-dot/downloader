@@ -6,9 +6,7 @@ import { ActionSheetModal } from '@/components/bottom-sheets/ActionSheetModal';
 import { ConfirmModal } from '@/components/modals/ConfirmModal';
 import { DsButton, DsButtonRow, DsCard, DsHeader, DsRow, DsRowGroup, DsScreen, DsSectionLabel, DsText } from '@/design';
 import { intlLocaleForLanguage, useTranslation } from '@/localization';
-import type { TranslationKey } from '@/localization/types';
 import { navigation, routePaths } from '@/navigation';
-import { DEFAULT_TABS, type DefaultTab } from '@/navigation/helpers/default-tab';
 import { announce } from '@/screens/files/announce';
 
 import { BackupPreviewModal } from './BackupPreviewModal';
@@ -17,17 +15,12 @@ import { backUpNow, shareNewestBackup, useLastBackupStore } from './backup-now';
 import { useFullBackup } from './useFullBackup';
 import { useSettingsBackupReset } from './useSettingsBackupReset';
 
-const TAB_LABELS: Record<DefaultTab, TranslationKey> = {
-  browser: 'settingsBackup.tabBrowser',
-  downloads: 'settingsBackup.tabDownloads',
-  player: 'settingsBackup.tabPlayer',
-};
-
 /**
  * Files F11 · design 62 Backup (`/backup`): the Last backup card ("Today · 2 MB" or "Never"), Back up now (the folder
  * chosen last time) and Restore (the existing preview, then Merge or Replace), Export data ("Save a copy to…", a folder
  * every time), Settings backup (settings only, as before), Send to device (the newest backup through the share sheet),
- * what is included, the Default tab, and "Reset VidoraX…" with the existing reset and its confirmation. All on the
+ * what is included, and "Reset VidoraX…" with the existing reset and its confirmation (the Default tab stays in
+ * Settings). All on the
  * existing backup service; nothing about the backup format changes. Cross-device sync, Backup queue and Auto upload are
  * left out (they need a server or an account).
  */
@@ -62,17 +55,6 @@ export const BackupScreen = memo(function BackupScreen() {
     }
   }, [t]);
 
-  const { defaultTab, setDefaultTab } = screen;
-  const tabActions = useMemo<ActionSheetItem[]>(
-    () =>
-      DEFAULT_TABS.map((tab) => ({
-        id: tab,
-        label: t(TAB_LABELS[tab]),
-        selected: defaultTab === tab,
-        onPress: () => setDefaultTab(tab),
-      })),
-    [defaultTab, setDefaultTab, t],
-  );
   const settingsActions = useMemo<ActionSheetItem[]>(
     () => [
       {
@@ -153,17 +135,7 @@ export const BackupScreen = memo(function BackupScreen() {
         {t('fileManager.backupIncludes')}
       </DsText>
 
-      <DsSectionLabel>{t('fileManager.backupStart')}</DsSectionLabel>
-      <DsRowGroup>
-        <DsRow
-          icon="layout-grid"
-          title={t('settingsBackup.defaultTab')}
-          subtitle={t('settingsBackup.defaultTabHint')}
-          value={t(TAB_LABELS[screen.defaultTab] ?? TAB_LABELS.browser)}
-          onPress={screen.openTabSheet}
-          testID="backup-default-tab"
-        />
-      </DsRowGroup>
+      <DsSectionLabel>{t('settingsBackup.reset')}</DsSectionLabel>
       <DsRowGroup>
         <DsRow icon="rotate-cw" title={t('fileManager.backupReset')} subtitle={t('settingsBackup.resetHint')} destructive onPress={screen.requestReset} testID="backup-reset" />
       </DsRowGroup>
@@ -175,13 +147,6 @@ export const BackupScreen = memo(function BackupScreen() {
         title={t('fileManager.backupSettings')}
         actions={settingsActions}
         testID="backup-settings-sheet"
-      />
-      <ActionSheetModal
-        visible={screen.tabSheetVisible}
-        onClose={screen.closeTabSheet}
-        title={t('settingsBackup.defaultTab')}
-        actions={tabActions}
-        testID="backup-default-tab-sheet"
       />
       <ConfirmModal
         visible={screen.resetConfirmVisible}

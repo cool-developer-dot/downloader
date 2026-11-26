@@ -344,5 +344,4 @@ export const filesEn = {
   backupFailed: 'The backup didn’t work. Try again.',
   backupShareTitle: 'VidoraX backup',
   backupTooBigToShare: 'This backup is too big to share. Use Export data instead.',
-  backupStart: 'Start',
 } as const;

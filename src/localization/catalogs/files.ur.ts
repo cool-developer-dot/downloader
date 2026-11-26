@@ -342,5 +342,4 @@ export const filesUr: CatalogStrings<typeof filesEn> = {
   backupFailed: 'بیک اپ نہیں ہو سکا۔ دوبارہ کوشش کریں۔',
   backupShareTitle: 'VidoraX بیک اپ',
   backupTooBigToShare: 'یہ بیک اپ شیئر کرنے کے لیے بہت بڑا ہے۔ اس کی جگہ ڈیٹا ایکسپورٹ کریں۔',
-  backupStart: 'آغاز',
 };
