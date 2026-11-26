@@ -45,6 +45,8 @@ export type FileEntriesListProps = {
   highlightId?: string;
   /** F4: a long press starts selecting (and a drag selects a range); while selecting a tap toggles. */
   selection?: EntriesSelection;
+  /** F6 search: the part of a file's name that matched (bold). */
+  nameMatchOf?: (file: FileEntry) => { start: number; end: number } | null;
   testID?: string;
 };
 
@@ -68,6 +70,7 @@ export const FileEntriesList = memo(function FileEntriesList({
   onRefresh,
   highlightId,
   selection,
+  nameMatchOf,
   testID = 'files-entries',
 }: FileEntriesListProps) {
   const theme = useTheme();
@@ -158,11 +161,12 @@ export const FileEntriesList = memo(function FileEntriesList({
           longPressOpensMore={!selection}
           onSelect={selection ? () => selection.startWith(item.key) : undefined}
           highlighted={item.file.id === highlightId}
+          nameMatch={nameMatchOf?.(item.file) ?? null}
           testID={`files-file-${item.file.id}`}
         />
       );
     },
-    [entries.length, folderIcon, folderMeta, highlightId, iconOf, locale, metaOf, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, selecting, selection, settings.showThumbnails, thumbnailSize],
+    [entries.length, folderIcon, folderMeta, highlightId, iconOf, locale, metaOf, nameMatchOf, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, selecting, selection, settings.showThumbnails, thumbnailSize],
   );
 
   const renderTile = useCallback<ListRenderItem<FolderListEntry>>(
