@@ -4,6 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Pressable } from '@/components/base/Pressable';
 import { ds, DsButton, DsCard, DsHeader, DsIcon, DsText } from '@/design';
+import { fileBytes, fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-index';
 import { useLockedNowIds } from '@/files/ui/locked-folders';
 import { useTheme } from '@/hooks/use-theme';
@@ -61,7 +62,7 @@ export const AddFilesModal = memo(function AddFilesModal({ visible, onClose, onM
 
   const shown = files;
   const pickedFiles = useMemo(() => (shown ?? []).filter((file) => picked.has(file.id)), [picked, shown]);
-  const spaceLabel = formatFileSize(pickedFiles.reduce((sum, file) => sum + vaultSealedLength(file.sizeBytes), 0));
+  const spaceLabel = formatFileSize(pickedFiles.reduce((sum, file) => sum + vaultSealedLength(fileBytes(file)), 0));
 
   const reset = useCallback(() => {
     setPicked(new Set());
@@ -113,7 +114,7 @@ export const AddFilesModal = memo(function AddFilesModal({ visible, onClose, onM
           onPress={() => toggle(item.id)}
           accessibilityRole="checkbox"
           accessibilityState={{ checked: on }}
-          accessibilityLabel={t('fileManager.selectFileA11y', { name: item.name, state: on ? t('fileManager.selected') : t('fileManager.notSelected') })}
+          accessibilityLabel={t('fileManager.selectFileA11y', { name: fileLabel(item), state: on ? t('fileManager.selected') : t('fileManager.notSelected') })}
           testID={`private-add-${item.id}`}
           style={({ pressed }) => ({
             flexDirection: 'row',
@@ -124,13 +125,13 @@ export const AddFilesModal = memo(function AddFilesModal({ visible, onClose, onM
             backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent',
           })}>
           <DsIcon name={on ? 'square-check' : 'square'} size={22} color={on ? 'primary' : 'textSecondary'} strokeWidth={1.8} />
-          <DsIcon name={fileTypeIcon(item.type)} size={18} color="primary" strokeWidth={1.6} />
+          <DsIcon name={fileTypeIcon(item.fileType)} size={18} color="primary" strokeWidth={1.6} />
           <View style={{ flex: 1, minWidth: 0 }}>
             <DsText variant="rowTitle" numberOfLines={1}>
-              {item.name}
+              {fileLabel(item)}
             </DsText>
             <DsText variant="rowSub" numberOfLines={1}>
-              {formatFileSize(item.sizeBytes) ?? ''}
+              {formatFileSize(fileBytes(item)) ?? ''}
             </DsText>
           </View>
         </Pressable>

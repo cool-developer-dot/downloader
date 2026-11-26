@@ -5,6 +5,7 @@ import { ActivityIndicator, View } from 'react-native';
 import { TextField } from '@/components/inputs/TextField';
 import { AppModal } from '@/components/modals/AppModal';
 import { ds, DsButton, DsCard, DsChip, DsChipRow, DsHeader, DsScreen, DsSearchField, DsText } from '@/design';
+import { fileBytes, fileLabel } from '@/files/ui/file-fields';
 import { FILE_TYPES, type FileType } from '@/files/ui/file-types';
 import { hiddenFolderIds, useLockedNowIds } from '@/files/ui/locked-folders';
 import type { FileEntry, FolderEntry } from '@/files/ui/files-source';
@@ -128,10 +129,10 @@ export const FilesSearchScreen = memo(function FilesSearchScreen() {
     const folderNames = new Map(data.folders.map((folder) => [folder.id, folder.name] as const));
     return withoutHiddenItems(data.files, new Set(hiddenIds), showHidden).map((file) => ({
       id: file.id,
-      name: file.name,
-      type: file.type,
-      sizeBytes: file.sizeBytes,
-      date: file.date,
+      name: fileLabel(file),
+      type: file.fileType,
+      sizeBytes: fileBytes(file),
+      date: file.downloadedAt,
       folderId: file.folderId,
       folderName: file.folderId ? (folderNames.get(file.folderId) ?? null) : null,
       tags: tagsById[file.id] ?? [],
