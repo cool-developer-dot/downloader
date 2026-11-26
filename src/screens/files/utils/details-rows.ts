@@ -11,6 +11,17 @@ import { fileExtension } from '@/files/ui/file-types';
 import { libraryFormatLabel } from '@/library/format-label';
 
 /** "640×356" from the library's WIDTHxHEIGHT; null for anything else. */
+/**
+ * A file with no tags reads this one shared empty list. A store selector must never return a new array (zustand 5
+ * compares by identity, so `?? []` would re-render without end).
+ */
+export const NO_TAGS: readonly string[] = [];
+
+/** A file's tags from the tags store's map, or the shared empty list. */
+export function tagsOf(tagsById: Readonly<Record<string, readonly string[]>>, id: string | null | undefined): readonly string[] {
+  return (id ? tagsById[id] : undefined) ?? NO_TAGS;
+}
+
 export function pictureSize(resolution: string | null | undefined): string | null {
   const match = /^([1-9]\d{1,4})\s*[x×]\s*([1-9]\d{1,4})$/i.exec((resolution ?? '').trim());
   return match ? `${match[1]}×${match[2]}` : null;

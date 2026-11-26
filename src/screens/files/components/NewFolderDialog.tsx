@@ -57,9 +57,8 @@ export const NewFolderDialog = memo(function NewFolderDialog({
           ? t('fileManager.folderNameTaken')
           : cause instanceof FilesError && cause.code === 'INVALID_NAME'
             ? t('files.emptyFolderName')
-            : cause instanceof Error
-              ? cause.message
-              : t('errors.unexpected'),
+            : // Never the storage layer's own English text: a translated message.
+              t('errors.unexpected'),
       );
     } finally {
       setBusy(false);
