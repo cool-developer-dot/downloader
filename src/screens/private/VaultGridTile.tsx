@@ -56,7 +56,8 @@ export const VaultGridTile = memo(function VaultGridTile({ item, thumbnail, size
           justifyContent: 'center',
         }}>
         {thumbnail && !item.unreadable ? (
-          <Image source={{ uri: thumbnail }} style={{ position: 'absolute', width: size, height: size }} contentFit="cover" />
+          // Never cached: a decrypted private thumbnail must not reach the image cache on disk.
+          <Image source={{ uri: thumbnail }} cachePolicy="none" style={{ position: 'absolute', width: size, height: size }} contentFit="cover" />
         ) : null}
         {item.unreadable ? (
           <DsIcon name="alert-triangle" size={22} color="error" strokeWidth={2} />

@@ -5,6 +5,7 @@ import { AppModal } from '@/components/modals/AppModal';
 import { DsText } from '@/design';
 import { tagColorOf } from '@/files/organize/tag-colors';
 import { fileLabel } from '@/files/ui/file-fields';
+import { tagsOf } from '@/screens/files/utils/details-rows';
 import type { FileEntry } from '@/files/ui/files-index';
 import { useItemTagsStore, useTagColorsStore } from '@/library/item-organize-store';
 import { useTranslation } from '@/localization';
@@ -20,7 +21,8 @@ export type TagsDialogProps = { file: FileEntry | null; onClose: () => void };
  */
 export const TagsDialog = memo(function TagsDialog({ file, onClose }: TagsDialogProps) {
   const { t } = useTranslation();
-  const tags = useItemTagsStore((s) => (file ? (s.tagsById[file.id] ?? []) : []));
+  // One shared empty list for an untagged file (a new `[]` here would re-render without end).
+  const tags = useItemTagsStore((s) => tagsOf(s.tagsById, file?.id));
   const colors = useTagColorsStore((s) => s.colors);
   return (
     <AppModal visible={file !== null} onClose={onClose} title={file ? t('fileManager.tagsTitle', { name: fileLabel(file) }) : undefined} showCloseButton testID="files-tags">
