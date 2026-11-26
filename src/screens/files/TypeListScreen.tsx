@@ -3,6 +3,7 @@ import { memo, useCallback, useMemo, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
 import { ds, DsCard, DsHeader, DsScreen, DsText } from '@/design';
+import { fileBytes } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-source';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { useSelection } from '@/files/ui/use-selection';
@@ -71,7 +72,7 @@ export const TypeListScreen = memo(function TypeListScreen() {
   const closeMenu = useCallback(() => setMenuFile(null), []);
   const onChanged = useCallback(() => void reload(), [reload]);
 
-  const totalBytes = files.reduce((sum, file) => sum + file.sizeBytes, 0);
+  const totalBytes = files.reduce((sum, file) => sum + fileBytes(file), 0);
   const subtitle = [fileCountText(files.length, t), totalBytes > 0 ? formatFileBytes(totalBytes) : null].filter(Boolean).join(' · ');
 
   return (

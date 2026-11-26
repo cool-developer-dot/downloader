@@ -8,6 +8,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 
 import type { FileEntry } from '@/files/ui/files-index';
+import { fileLabel } from '@/files/ui/file-fields';
 import { fileDetailsPath, navigation, openPlayer, routePaths } from '@/navigation';
 
 import { openTargetOf } from './utils/open-target';
@@ -31,7 +32,7 @@ async function openPdf(file: FileEntry): Promise<OpenFileResult> {
     copy.delete();
   }
   await new File(media.finalPath).copy(copy);
-  const title = (file.name || file.title).slice(0, 120);
+  const title = (fileLabel(file) || file.displayName).slice(0, 120);
   navigation.push(`${routePaths.pdfViewer}?path=${encodeURIComponent(plainPath(copy.uri))}&title=${encodeURIComponent(title)}`);
   return 'opened';
 }

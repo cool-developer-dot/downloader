@@ -15,7 +15,8 @@ import {
 } from '@/files/rename/batch-rename';
 import { createClashResolver, findClash, keepBothName, type ClashChoice } from '@/files/rename/name-clash';
 import { deleteForReplace, renameFileTo } from '@/files/rename/rename-runtime';
-import { listFolder, type FileEntry } from '@/files/ui/files-source';
+import { fileLabel } from '@/files/ui/file-fields';
+import { folderPath, listFolder, type FileEntry } from '@/files/ui/files-source';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation, type TranslationKey } from '@/localization';
 import { navigation } from '@/navigation';
@@ -100,7 +101,7 @@ export const BatchRenameScreen = memo(function BatchRenameScreen() {
     }
   }, [caseTo, digits, find, kind, matchCase, position, prefix, replaceWith, start, suffix, text]);
 
-  const results = useMemo(() => (files ? batchRename(files.map((file) => file.name), mode) : []), [files, mode]);
+  const results = useMemo(() => (files ? batchRename(files.map((file) => fileLabel(file)), mode) : []), [files, mode]);
   const canApply = canApplyRename(results) && !progress;
 
   const apply = useCallback(async () => {
@@ -117,34 +118,35 @@ export const BatchRenameScreen = memo(function BatchRenameScreen() {
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index]!;
       let next = results[index]!.to;
-      if (next === file.name) continue;
+      if (next === fileLabel(file)) continue;
       done += 1;
       setProgress({ done, total });
       try {
         // A clash with a file of the same folder that is not being renamed in this batch.
         const listing = await listFolder(file.folderId);
         const others = listing.files.filter((other) => !batchIds.has(other.id));
-        const clashing = findClash(next, others.map((other) => other.name));
+        const clashing = findClash(next, others.map((other) => fileLabel(other)));
         if (clashing) {
           pendingName = next;
-          pendingFolder = listing.folder?.name ?? t('filesTab.title');
+          const path = file.folderId ? await folderPath(file.folderId) : [];
+          pendingFolder = path[path.length - 1]?.name ?? t('filesTab.title');
           resolve ??= createClashResolver(() => clash.ask(pendingName, pendingFolder, true));
           const choice = await resolve();
           if (choice === 'skip') {
-            failed.push({ name: file.name, reason: 'skipped' });
+            failed.push({ name: fileLabel(file), reason: 'skipped' });
             continue;
           }
           if (choice === 'keep-both') {
-            next = keepBothName(next, others.map((other) => other.name));
+            next = keepBothName(next, others.map((other) => fileLabel(other)));
           } else {
-            const victim = others.find((other) => other.name.toLocaleLowerCase() === clashing.toLocaleLowerCase());
+            const victim = others.find((other) => fileLabel(other).toLocaleLowerCase() === clashing.toLocaleLowerCase());
             if (victim) await deleteForReplace(victim.id);
           }
         }
         await renameFileTo(file.id, next);
         renamed += 1;
       } catch {
-        failed.push({ name: file.name, reason: 'failed' });
+        failed.push({ name: fileLabel(file), reason: 'failed' });
       }
     }
     setProgress(null);
