@@ -11,7 +11,6 @@ import { getV2Engine, pageFavoriteChange, setEngineFavorite } from '@/downloads/
 import { translate, type TranslationKey } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import { useDownloadsStore } from '@/store/downloads';
-import { requestDelete as requestFilesDelete } from '@/files/trash/useDeleteWithUndo';
 import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import {
   normalizeFavoriteSourceKey,
@@ -297,19 +296,6 @@ export function useDownloadDetailsScreen() {
       setActionError(null);
 
       if (action === 'remove') {
-        // Files F8: a finished download's file goes through the one delete door (F2's Confirm before delete, the bin,
-        // the Undo bar); a download still on its way keeps its own removal below.
-        if (item?.status === 'COMPLETED') {
-          requestFilesDelete({
-            ids: [downloadId],
-            source: 'downloads',
-            name: item.title ?? undefined,
-            onDone: (result) => {
-              if (result.deleted.includes(downloadId) || result.trashed.includes(downloadId)) goBack();
-            },
-          });
-          return;
-        }
         // Files F2 #800: with Confirm before delete off, no "Delete from VidoraX?".
         if (!isConfirmBeforeDeleteOn()) {
           void confirmDeleteRef.current?.();
@@ -371,7 +357,7 @@ export function useDownloadDetailsScreen() {
         await onShareFile();
       }
     },
-    [cancel, downloadId, goBack, item, onOpenFile, onShareFile, pause, resume, retry],
+    [cancel, downloadId, onOpenFile, onShareFile, pause, resume, retry],
   );
 
   const confirmDelete = useCallback(async () => {

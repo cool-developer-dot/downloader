@@ -40,7 +40,7 @@ import { buildTypeTiles, tileA11y } from './utils/type-tiles';
  */
 export const FilesScreen = memo(function FilesScreen() {
   const theme = useTheme();
-  const { t, language } = useTranslation();
+  const { t, language, rtl } = useTranslation();
   const { data, status, refreshing, refresh, reload } = useFilesHome();
   // F8: the Recycle bin's count, read only while F13's bin is live.
   const bin = useRecycleBin(filesCapabilities.recycleBin);
@@ -87,7 +87,7 @@ export const FilesScreen = memo(function FilesScreen() {
         subtitle={subtitle}
         // F6: design 26's 🔍 opens Files search; F7: ⋮ → Organize now.
         action={
-          <View style={{ flexDirection: 'row', gap: 8 }}>
+          <View style={{ flexDirection: rtl.rowDirection, gap: 8 }}>
             <DsIconButton icon="search" accessibilityLabel={t('filesTab.searchA11y')} onPress={() => navigation.push(routePaths.filesSearch)} testID="files-search" />
             <DsIconButton icon="ellipsis-vertical" accessibilityLabel={t('fileManager.filesMenuA11y')} onPress={() => setOrganizeOpen(true)} testID="files-menu" />
           </View>

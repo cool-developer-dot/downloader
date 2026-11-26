@@ -290,7 +290,8 @@ export function useLibraryScreen() {
   const continueWatchingItems = useMemo(() => {
     // P9 #628: a hidden folder's videos stay out of the Library's Continue watching row too.
     const libraryById = new Map(
-      applyFolderExclusion(enrichedCanonical, queryExcludedFolderIds).map((item) => [item.id, item] as const),
+      // Files F7 #911: a hidden file stays out of Continue watching too.
+      applyFolderExclusion(shownCanonical, queryExcludedFolderIds).map((item) => [item.id, item] as const),
     );
     const rows = [];
     for (const summary of continueQuery.items) {
@@ -315,7 +316,7 @@ export function useLibraryScreen() {
       });
     }
     return rows;
-  }, [continueQuery.items, enrichedCanonical, queryExcludedFolderIds]);
+  }, [continueQuery.items, queryExcludedFolderIds, shownCanonical]);
 
   const qualities = useMemo(
     () => listDistinctQualities(enrichedCanonical),

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { exactBytes, formatLine, pathLine, pictureSize } from './details-rows';
+import { exactBytes, formatLine, NO_TAGS, pathLine, pictureSize, tagsOf } from './details-rows';
 
 describe('Files F3 · design 56: the details rows', () => {
   test('the "MP4 · 640×356" line', () => {
@@ -28,5 +28,13 @@ describe('Files F3 · design 56: the details rows', () => {
     assert.equal(exactBytes(-5, 'en-US'), '0');
     assert.equal(pathLine('Files', ['Movies', '2026']), 'Files › Movies › 2026');
     assert.equal(pathLine('Files', []), 'Files');
+  });
+
+  test('an untagged file always reads the same empty list (a store selector must not make a new one)', () => {
+    const tagsById = { a: ['work', 'trip'] };
+    assert.deepEqual(tagsOf(tagsById, 'a'), ['work', 'trip']);
+    assert.equal(tagsOf(tagsById, 'b'), NO_TAGS);
+    assert.equal(tagsOf(tagsById, 'c'), tagsOf({}, 'd'));
+    assert.equal(tagsOf(tagsById, null), NO_TAGS);
   });
 });

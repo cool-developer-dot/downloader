@@ -8,7 +8,8 @@ import { ds, DsButton, DsCard, DsChip, DsChipRow, DsHeader, DsScreen, DsSearchFi
 import { fileBytes, fileLabel } from '@/files/ui/file-fields';
 import { FILE_TYPES, type FileType } from '@/files/ui/file-types';
 import { hiddenFolderIds, useLockedNowIds } from '@/files/ui/locked-folders';
-import type { FileEntry, FolderEntry } from '@/files/ui/files-source';
+import { subscribeFiles, type FileEntry, type FolderEntry } from '@/files/ui/files-source';
+import { inSelectionOrder } from '@/files/ui/selection';
 import { useSelection } from '@/files/ui/use-selection';
 import {
   DATE_RANGES,
@@ -110,12 +111,16 @@ export const FilesSearchScreen = memo(function FilesSearchScreen() {
   const now = data?.now ?? 0;
 
   const load = useCallback(async () => {
-    const next = await listAllFilesAndFolders().catch(() => ({ files: [] as FileEntry[], folders: [] as FolderEntry[] }));
+    const next = await listAllFilesAndFolders({ includeHidden: showHidden }).catch(() => ({ files: [] as FileEntry[], folders: [] as FolderEntry[] }));
     setData({ ...next, now: Date.now() });
-  }, []);
+  }, [showHidden]);
+  // On focus, and again whenever the files change while the search is in front (no polling).
   useFocusEffect(
     useCallback(() => {
       void load();
+      return subscribeFiles(() => {
+        void load();
+      });
     }, [load]),
   );
   useEffect(() => () => {
@@ -161,7 +166,7 @@ export const FilesSearchScreen = memo(function FilesSearchScreen() {
   const openFile = useOpenFile(files);
   const keys = useMemo(() => entries.map((entry) => entry.key), [entries]);
   const selection = useSelection(keys);
-  const selectedEntries = useMemo<SelectedEntry[]>(() => entries.filter((entry) => selection.selected.has(entry.key)), [entries, selection.selected]);
+  const selectedEntries = useMemo<SelectedEntry[]>(() => inSelectionOrder(entries, selection.selected), [entries, selection.selected]);
   const { clear: clearSelection } = selection;
   // F5 + F6: the search results' More ⋮ (Rename; F7 adds Tag, Color and Hide).
   const moreActions = useSelectionMoreActions();

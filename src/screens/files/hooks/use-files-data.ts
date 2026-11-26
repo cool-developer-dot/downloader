@@ -119,7 +119,11 @@ export function useFilesHome() {
   const lockedNow = useLockedNowIds();
   const { hiddenIds, showHidden } = useHiddenFilter();
   const load = useCallback(async (): Promise<FilesHome> => {
-    const [listing, space, all] = await Promise.all([listFolder(null), storageSpace(), listAllFilesAndFolders()]);
+    const [listing, space, all] = await Promise.all([
+      listFolder(null, { includeHidden: showHidden }),
+      storageSpace(),
+      listAllFilesAndFolders({ includeHidden: showHidden }),
+    ]);
     // F7: a deleted folder's colour is forgotten (only once the folder list really loaded).
     const folders = useFoldersStore.getState();
     if (folders.initialized && !folders.error) {
@@ -144,14 +148,14 @@ export function useFilesHome() {
 }
 
 /** Every file and folder VidoraX keeps (walked through `listFolder`, so subfolders count once F12 nests them). */
-export async function listAllFilesAndFolders(): Promise<{ files: FileEntry[]; folders: FolderEntry[] }> {
+export async function listAllFilesAndFolders(opts?: { includeHidden?: boolean }): Promise<{ files: FileEntry[]; folders: FolderEntry[] }> {
   const files: FileEntry[] = [];
   const folders: FolderEntry[] = [];
   const seen = new Set<string>();
   const queue: (string | null)[] = [null];
   while (queue.length > 0) {
     const folderId = queue.shift()!;
-    const listing = await listFolder(folderId);
+    const listing = await listFolder(folderId, opts);
     files.push(...listing.files);
     for (const folder of listing.folders) {
       if (!seen.has(folder.id)) {
@@ -170,8 +174,8 @@ export async function listAllFiles(): Promise<FileEntry[]> {
 }
 
 /** Every file a list may show now: a locked folder's files stay out until it is opened with the PIN (F10). */
-export async function listVisibleFiles(lockedNow: readonly string[]): Promise<FileEntry[]> {
-  const all = await listAllFilesAndFolders();
+export async function listVisibleFiles(lockedNow: readonly string[], opts?: { includeHidden?: boolean }): Promise<FileEntry[]> {
+  const all = await listAllFilesAndFolders(opts);
   return lockedNow.length === 0 ? all.files : withoutLockedFiles(all.files, hiddenFolderIds(lockedNow, all.folders));
 }
 
@@ -193,7 +197,7 @@ export function useAllFiles() {
   const lockedNow = useLockedNowIds();
   const { hiddenIds, showHidden } = useHiddenFilter();
   const load = useCallback(
-    async () => withoutHiddenItems(await listVisibleFiles(lockedNow), hiddenIds, showHidden),
+    async () => withoutHiddenItems(await listVisibleFiles(lockedNow, { includeHidden: showHidden }), hiddenIds, showHidden),
     [hiddenIds, lockedNow, showHidden],
   );
   return useReloading(load, NO_FILES);
@@ -230,7 +234,7 @@ export function useFolderView(folderId: string) {
       const existing = new Set(paths.filter((p) => p.length > 0).map((p) => p[p.length - 1]!.id));
       return { ...EMPTY_FOLDER, gone: { fallbackId: nearestExistingFolder(ancestors, (id) => existing.has(id)) } };
     }
-    const listing = await listFolder(folderId);
+    const listing = await listFolder(folderId, { includeHidden: showHidden });
     lastChainRef.current = path.map((entry) => entry.id);
     const shown = { ...listing, files: withoutHiddenItems(listing.files, hiddenIds, showHidden) };
     return { folder, listing: shown, path, statsById: await statsFor(listing.folders), gone: null };

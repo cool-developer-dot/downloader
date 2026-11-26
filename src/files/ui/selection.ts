@@ -11,6 +11,21 @@ export type DragMode = 'select' | 'unselect';
 
 export const EMPTY_SELECTION: ReadonlySet<string> = new Set<string>();
 
+/**
+ * The selected rows in the order they were picked (a tap adds to the end; a drag adds its range; Select all and Invert
+ * follow the list), so a batch — "Number them" in F5 — goes in selection order, not list order. Rows no longer shown
+ * are skipped.
+ */
+export function inSelectionOrder<T extends { key: string }>(rows: readonly T[], selected: ReadonlySet<string>): T[] {
+  const byKey = new Map(rows.map((row) => [row.key, row] as const));
+  const ordered: T[] = [];
+  for (const key of selected) {
+    const row = byKey.get(key);
+    if (row) ordered.push(row);
+  }
+  return ordered;
+}
+
 /** Selects `id` if it isn't, unselects it if it is. */
 export function toggleSelection(selected: ReadonlySet<string>, id: string): Set<string> {
   const next = new Set(selected);
