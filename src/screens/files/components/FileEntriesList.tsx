@@ -3,6 +3,7 @@ import { FlatList, RefreshControl, useWindowDimensions, View, type ListRenderIte
 
 import { ds, type DsIconName } from '@/design';
 import { displayFileName } from '@/files/ui/display-name';
+import { fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry, FolderEntry } from '@/files/ui/files-index';
 import { GRID_COLUMNS, LIST_THUMBNAIL_DP, useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { useTheme } from '@/hooks/use-theme';
@@ -60,7 +61,7 @@ export const FileEntriesList = memo(function FileEntriesList({
   const grid = settings.viewMode === 'grid';
   const columns = grid ? GRID_COLUMNS[settings.thumbnailSize] : 1;
   const tileWidth = Math.floor((width - ds.space.screenX * 2 - ds.space.grid * (columns - 1)) / columns);
-  const nameOf = useCallback((file: FileEntry) => displayFileName(file.name, settings.showExtensions), [settings.showExtensions]);
+  const nameOf = useCallback((file: FileEntry) => displayFileName(fileLabel(file), settings.showExtensions), [settings.showExtensions]);
 
   // F3 Show in folder: scroll the highlighted file into view once its row is in the list.
   const listRef = useRef<FlatList<FolderListEntry>>(null);
@@ -131,7 +132,7 @@ export const FileEntriesList = memo(function FileEntriesList({
         <GridTile
           title={nameOf(item.file)}
           meta={fileMetaLine(item.file, locale)}
-          icon={fileTypeIcon(item.file.type)}
+          icon={fileTypeIcon(item.file.fileType)}
           pictureUri={settings.showThumbnails ? item.file.thumbnailUri : null}
           width={tileWidth}
           onPress={() => onPressFile(item.file)}

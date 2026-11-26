@@ -5,6 +5,7 @@
 
 import type { DsIconName } from '@/design/DsIcon';
 import type { FileType } from '@/files/ui/file-types';
+import { fileBytes, fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry, FolderEntry, FolderStats } from '@/files/ui/files-index';
 import type { FilesSortDirection, FilesSortKey } from '@/files/ui/files-view-settings';
 import { sortFileRows, type SortFields } from '@/files/ui/sort-files';
@@ -59,9 +60,10 @@ export function formatFileDate(iso: string | null | undefined, locale: string): 
 }
 
 /** A file row's second line, "size · date", with whatever of the two is known. */
-export function fileMetaLine(file: Pick<FileEntry, 'sizeBytes' | 'date'>, locale: string): string {
-  const size = file.sizeBytes > 0 ? formatFileBytes(file.sizeBytes) : null;
-  return [size, formatFileDate(file.date, locale)].filter((part): part is string => Boolean(part)).join(' · ');
+export function fileMetaLine(file: Pick<FileEntry, 'fileSize' | 'downloadedAt'>, locale: string): string {
+  const bytes = fileBytes(file);
+  const size = bytes > 0 ? formatFileBytes(bytes) : null;
+  return [size, formatFileDate(file.downloadedAt, locale)].filter((part): part is string => Boolean(part)).join(' · ');
 }
 
 type Translate = (key: TranslationKey, params?: InterpolationParams) => string;
@@ -101,7 +103,7 @@ export function fileEntryOf(file: FileEntry): FolderListEntry {
 function sortFieldsOf(row: FolderListEntry, folderSizes: Readonly<Record<string, number>> | undefined): SortFields {
   return row.kind === 'folder'
     ? { isFolder: true, name: row.folder.name, date: row.folder.createdAt, sizeBytes: folderSizes?.[row.folder.id] ?? 0, type: null }
-    : { isFolder: false, name: row.file.name, date: row.file.date, sizeBytes: row.file.sizeBytes, type: row.file.type };
+    : { isFolder: false, name: fileLabel(row.file), date: row.file.downloadedAt, sizeBytes: fileBytes(row.file), type: row.file.fileType };
 }
 
 export type FolderListOptions = {

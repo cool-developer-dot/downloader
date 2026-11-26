@@ -3,6 +3,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 
 import { ds, DsCard, DsHeader, DsRow, DsRowGroup, DsScreen, DsText } from '@/design';
+import { filesCapabilities } from '@/files/api';
 import type { FileEntry, FolderEntry } from '@/files/ui/files-index';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { folderLookupOf } from '@/files/ui/folder-tree';
@@ -14,6 +15,7 @@ import { useAndroidBackHandler } from '@/navigation/hooks';
 import { announce } from './announce';
 import { Breadcrumbs } from './components/Breadcrumbs';
 import { FileEntriesList } from './components/FileEntriesList';
+import { NewFolderDialog } from './components/NewFolderDialog';
 import { useFolderView } from './hooks/use-files-data';
 import { useFilesSettingsAction } from './hooks/use-files-settings-action';
 import { useOpenFile } from './hooks/use-open-file';
@@ -42,11 +44,13 @@ export const FolderScreen = memo(function FolderScreen() {
   const settings = useFilesViewSettings();
   const settingsAction = useFilesSettingsAction();
   const [menuFile, setMenuFile] = useState<FileEntry | null>(null);
+  // "New folder inside" (F12): only while nested folders are live (`filesCapabilities.nestedFolders`).
+  const [newFolderOpen, setNewFolderOpen] = useState(false);
 
   const lookup = useMemo(() => folderLookupOf(data.path), [data.path]);
   const crumbs = useMemo(() => buildBreadcrumbs(folderId, lookup, t('filesTab.title')), [folderId, lookup, t]);
   const up = upTarget(folderId, lookup);
-  const folder = data.listing?.folder ?? null;
+  const folder = data.folder;
 
   const entries = useMemo(() => {
     if (!data.listing) {
@@ -115,6 +119,18 @@ export const FolderScreen = memo(function FolderScreen() {
           />
         </DsRowGroup>
       ) : null}
+      {filesCapabilities.nestedFolders && folder ? (
+        <DsRowGroup>
+          <DsRow
+            icon="folder-plus"
+            title={t('downloads.newFolder')}
+            accessibilityLabel={t('fileManager.newFolderInside', { name: folder.name })}
+            onPress={() => setNewFolderOpen(true)}
+            trailing="none"
+            testID="files-folder-new-folder"
+          />
+        </DsRowGroup>
+      ) : null}
     </View>
   );
 
@@ -158,6 +174,9 @@ export const FolderScreen = memo(function FolderScreen() {
         testID="files-folder-list"
       />
       <FileActionsSheet file={menuFile} onClose={closeMenu} onOpen={openFile} onChanged={onChanged} />
+      {filesCapabilities.nestedFolders ? (
+        <NewFolderDialog visible={newFolderOpen} parentId={folderId} onClose={() => setNewFolderOpen(false)} testID="files-folder-new-folder-dialog" />
+      ) : null}
     </DsScreen>
   );
 });
