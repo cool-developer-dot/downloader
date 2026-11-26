@@ -97,8 +97,9 @@ function RenameBody({
       announce(t('fileManager.renamedOne'));
       onRenamed?.();
       onClose();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : t('fileManager.reasonFailed'));
+    } catch {
+      // Never the engine's own English text: "Couldn't be renamed", translated.
+      setError(t('fileManager.reasonFailed'));
     } finally {
       setBusy(false);
     }

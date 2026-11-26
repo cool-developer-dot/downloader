@@ -35,7 +35,8 @@ export function batchActionsFor(
   const allPlayable = hasItems && !anyFolder && files.every((file) => !file.missing && (file.type === 'video' || file.type === 'audio'));
   const allLockable = hasItems && !anyFolder && files.every((file) => !file.missing && file.canMoveToPrivate === true);
   return {
-    move: { visible: true, enabled: hasItems && (!anyFolder || options.nestedFolders === true) },
+    // F12: with a folder selected, Move (that is, "Move folder") is hidden until nested folders are live.
+    move: { visible: !anyFolder || options.nestedFolders === true, enabled: hasItems && (!anyFolder || options.nestedFolders === true) },
     share: { visible: !anyFolder, enabled: files.length > 0 && !anyFolder && !anyMissing },
     delete: { visible: true, enabled: files.length > 0 },
     'add-to-playlist': { visible: true, enabled: allPlayable },

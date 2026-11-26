@@ -80,7 +80,8 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
       file
         ? fileActionsFor({
             type: file.fileType,
-            missing: false,
+            // A file the library could not find on the phone gets only Details and Delete.
+            missing: file.localAvailability === 'missing',
             canLock: canMoveToPrivate(file.id),
             canSaveTo: getTreeExportPort() !== null,
             canChecksum: typeof fileIntegrity()?.computeChecksum === 'function',
