@@ -16,6 +16,7 @@ const file = (name: string, overrides: Partial<FileEntry> = {}): FileEntry => ({
   date: null,
   folderId: null,
   thumbnailUri: null,
+  favorite: false,
   ...overrides,
 });
 const folder = (name: string): FolderEntry => ({ id: name, name, parentId: null, createdAt: null });

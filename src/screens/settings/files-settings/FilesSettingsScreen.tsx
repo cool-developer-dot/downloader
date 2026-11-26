@@ -24,6 +24,7 @@ import { AppearanceSection } from '@/screens/settings/components/AppearanceSecti
 import { selectThemeMode, useThemeStore, type ThemePreference } from '@/store/theme';
 
 import { FilePickerModal } from '@/screens/files/components/FilePickerModal';
+import { useSaveLocationStore } from '@/downloads/v2/save-location-store';
 
 import { ChoiceSheet, type ChoiceOption } from '../browser-settings/ChoiceSheet';
 
@@ -75,6 +76,10 @@ export const FilesSettingsScreen = memo(function FilesSettingsScreen() {
   const [sortPage, setSortPage] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [checksumPickerOpen, setChecksumPickerOpen] = useState(false);
+  // F7 #946: where new downloads go — the existing save location (Download settings), or VidoraX's own folder.
+  const saveLocationEnabled = useSaveLocationStore((s) => s.enabled);
+  const saveLocationFolder = useSaveLocationStore((s) => s.folderName);
+  const defaultFolder = saveLocationEnabled && saveLocationFolder ? saveLocationFolder : t('filesTab.vidoraxPath');
   const closeSheet = useCallback(() => setSheet(null), []);
 
   // The Sort by page is part of this screen: Back returns to the settings.
@@ -219,6 +224,13 @@ export const FilesSettingsScreen = memo(function FilesSettingsScreen() {
           subtitle={t('fileManager.showExtensionsHint')}
           toggle={{ value: settings.showExtensions, onValueChange: (on) => setFilesViewSettings({ showExtensions: on }) }}
           testID="files-settings-extensions"
+        />
+        <DsRow
+          icon="folder"
+          title={t('fileManager.defaultFolder', { folder: defaultFolder })}
+          accessibilityHint={t('fileManager.defaultFolderHint')}
+          onPress={() => navigation.push(routePaths.downloadSettings)}
+          testID="files-settings-default-folder"
         />
         <DsRow
           icon="palette"

@@ -5,7 +5,7 @@
  */
 
 import { useFocusEffect } from 'expo-router';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   folderPath,
@@ -24,6 +24,11 @@ import {
 import { nearestExistingFolder } from '@/files/ui/folder-tree';
 import { typeCountsOf } from '@/files/ui/files-index';
 import { hiddenFolderIds, useLockedNowIds, withoutLockedFiles } from '@/files/ui/locked-folders';
+import { withoutHiddenItems } from '@/files/organize/hidden-items';
+import { useFolderColorsStore } from '@/files/organize/organize-stores';
+import { useFilesViewSettings } from '@/files/ui/files-view-settings';
+import { useItemHiddenStore } from '@/library/item-organize-store';
+import { useFoldersStore } from '@/store/organization/folders';
 import { useFilesRevision } from '@/files/ui/use-files-revision';
 
 export type LoadStatus = 'loading' | 'ready' | 'error';
@@ -92,12 +97,22 @@ async function statsFor(folders: readonly FolderEntry[]): Promise<Record<string,
 
 export type FilesHome = {
   listing: FolderListing | null;
+  /** F7 #750: how many favourite files (the "Favorites · {n}" row). */
+  favoritesCount: number;
   statsById: Record<string, FolderStats>;
   counts: TypeCounts | null;
   space: StorageSpace | null;
 };
 
-const EMPTY_HOME: FilesHome = { listing: null, statsById: {}, counts: null, space: null };
+const EMPTY_HOME: FilesHome = { listing: null, favoritesCount: 0, statsById: {}, counts: null, space: null };
+
+/** F7 #911: hidden files leave every Files list until "Show hidden files" is on. */
+function useHiddenFilter(): { hiddenIds: ReadonlySet<string>; showHidden: boolean } {
+  const hiddenIds = useItemHiddenStore((state) => state.hiddenIds);
+  const { showHidden } = useFilesViewSettings();
+  const set = useMemo(() => new Set(hiddenIds), [hiddenIds]);
+  return { hiddenIds: set, showHidden };
+}
 
 /**
  * The Files tab: the top-level folders with their stats, the type counts and the free space. F10: a locked folder's
@@ -105,17 +120,29 @@ const EMPTY_HOME: FilesHome = { listing: null, statsById: {}, counts: null, spac
  */
 export function useFilesHome() {
   const lockedNow = useLockedNowIds();
+  const { hiddenIds, showHidden } = useHiddenFilter();
   const load = useCallback(async (): Promise<FilesHome> => {
-    const [listing, space] = await Promise.all([listFolder(null), storageSpace()]);
+    const [listing, space, all] = await Promise.all([listFolder(null), storageSpace(), listAllFilesAndFolders()]);
+    // F7: a deleted folder's colour is forgotten (only once the folder list really loaded).
+    const folders = useFoldersStore.getState();
+    if (folders.initialized && !folders.error) {
+      useFolderColorsStore.getState().prune(all.folders.map((folder) => folder.id));
+    }
+    const visible = withoutHiddenItems(withoutLockedFiles(all.files, hiddenFolderIds(lockedNow, all.folders)), hiddenIds, showHidden);
     let counts: TypeCounts;
-    if (lockedNow.length === 0) {
+    if (lockedNow.length === 0 && (showHidden || hiddenIds.size === 0)) {
       counts = await typeCounts();
     } else {
-      const all = await listAllFilesAndFolders();
-      counts = typeCountsOf(withoutLockedFiles(all.files, hiddenFolderIds(lockedNow, all.folders)));
+      counts = typeCountsOf(visible);
     }
-    return { listing, counts, space, statsById: await statsFor(listing.folders) };
-  }, [lockedNow]);
+    return {
+      listing,
+      counts,
+      space,
+      favoritesCount: visible.filter((file) => file.favorite).length,
+      statsById: await statsFor(listing.folders),
+    };
+  }, [hiddenIds, lockedNow, showHidden]);
   return useReloading(load, EMPTY_HOME);
 }
 
@@ -153,10 +180,14 @@ export async function listVisibleFiles(lockedNow: readonly string[]): Promise<Fi
 
 const NO_FILES: FileEntry[] = [];
 
-/** All the files a type list may show (the type lists filter them with `fileTypeOf`). */
+/** All the files a type list may show (the type lists filter them with `fileTypeOf`); hidden ones only when shown. */
 export function useAllFiles() {
   const lockedNow = useLockedNowIds();
-  const load = useCallback(() => listVisibleFiles(lockedNow), [lockedNow]);
+  const { hiddenIds, showHidden } = useHiddenFilter();
+  const load = useCallback(
+    async () => withoutHiddenItems(await listVisibleFiles(lockedNow), hiddenIds, showHidden),
+    [hiddenIds, lockedNow, showHidden],
+  );
   return useReloading(load, NO_FILES);
 }
 
@@ -177,6 +208,7 @@ const EMPTY_FOLDER: FolderView = { listing: null, path: [], statsById: {}, gone:
  */
 export function useFolderView(folderId: string) {
   const lastChainRef = useRef<string[]>([]);
+  const { hiddenIds, showHidden } = useHiddenFilter();
   const load = useCallback(async (): Promise<FolderView> => {
     const [listing, path] = await Promise.all([listFolder(folderId), folderPath(folderId)]);
     if (!listing.folder || path.length === 0) {
@@ -188,7 +220,8 @@ export function useFolderView(folderId: string) {
       return { ...EMPTY_FOLDER, gone: { fallbackId: nearestExistingFolder(ancestors, (id) => existing.has(id)) } };
     }
     lastChainRef.current = path.map((folder) => folder.id);
-    return { listing, path, statsById: await statsFor(listing.folders), gone: null };
-  }, [folderId]);
+    const shown = { ...listing, files: withoutHiddenItems(listing.files, hiddenIds, showHidden) };
+    return { listing: shown, path, statsById: await statsFor(listing.folders), gone: null };
+  }, [folderId, hiddenIds, showHidden]);
   return useReloading(load, EMPTY_FOLDER);
 }

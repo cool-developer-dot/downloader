@@ -23,6 +23,8 @@ export type FileEntry = {
   date: string | null;
   folderId: string | null;
   thumbnailUri: string | null;
+  /** F7 #750: the library's favourite flag. */
+  favorite: boolean;
 };
 
 export type FolderEntry = {
@@ -56,6 +58,7 @@ export type FileSourceItem = {
   downloadedAt: string | null;
   folderId: string | null;
   thumbnailUri: string | null;
+  favorite?: boolean;
 };
 
 /** What a folder record must carry (`MediaFolderItem`, plus `parentId` once F12 adds it). */
@@ -103,6 +106,7 @@ export function toFileEntry(item: FileSourceItem): FileEntry {
     date: item.downloadedAt,
     folderId: item.folderId,
     thumbnailUri: item.thumbnailUri,
+    favorite: item.favorite === true,
   };
 }
 

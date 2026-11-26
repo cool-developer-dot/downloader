@@ -4,6 +4,7 @@ import { ActivityIndicator, FlatList, RefreshControl, View, type ListRenderItem 
 import {
   ds,
   DsButton,
+  DsIconButton,
   DsCard,
   DsChip,
   DsChipRow,
@@ -24,6 +25,7 @@ import { filesFolderPath, filesTypePath, navigation, routePaths } from '@/naviga
 
 import { FolderRow } from './components/FolderRow';
 import { NewFolderDialog } from './components/NewFolderDialog';
+import { OrganizeNowModal } from './components/OrganizeNowModal';
 import { useFilesHome } from './hooks/use-files-data';
 import { folderListEntries, folderMetaLine, formatFileBytes } from './utils/file-rows';
 import { buildTypeTiles, tileA11y } from './utils/type-tiles';
@@ -37,8 +39,9 @@ import { buildTypeTiles, tileA11y } from './utils/type-tiles';
 export const FilesScreen = memo(function FilesScreen() {
   const theme = useTheme();
   const { t, language } = useTranslation();
-  const { data, status, refreshing, refresh } = useFilesHome();
+  const { data, status, refreshing, refresh, reload } = useFilesHome();
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [organizeOpen, setOrganizeOpen] = useState(false);
   const settings = useFilesViewSettings();
 
   const free = formatFileBytes(data.space?.freeBytes);
@@ -78,8 +81,13 @@ export const FilesScreen = memo(function FilesScreen() {
       <DsHeader
         title={t('filesTab.title')}
         subtitle={subtitle}
-        // F6: design 26's 🔍 opens Files search.
-        action={{ icon: 'search', accessibilityLabel: t('filesTab.searchA11y'), onPress: () => navigation.push(routePaths.filesSearch), testID: 'files-search' }}
+        // F6: design 26's 🔍 opens Files search; F7: ⋮ → Organize now.
+        action={
+          <View style={{ flexDirection: 'row', gap: 8 }}>
+            <DsIconButton icon="search" accessibilityLabel={t('filesTab.searchA11y')} onPress={() => navigation.push(routePaths.filesSearch)} testID="files-search" />
+            <DsIconButton icon="ellipsis-vertical" accessibilityLabel={t('fileManager.filesMenuA11y')} onPress={() => setOrganizeOpen(true)} testID="files-menu" />
+          </View>
+        }
       />
       <DsChipRow>
         <DsChip label={t('filesTab.internal')} selected />
@@ -102,6 +110,13 @@ export const FilesScreen = memo(function FilesScreen() {
         })}
       </DsTileGrid>
       <DsRowGroup>
+        {/* F7 #750: the favourite files, above Private folder. */}
+        <DsRow
+          icon="heart"
+          title={t('fileManager.favoritesRow', { count: data.favoritesCount })}
+          onPress={() => navigation.push(routePaths.filesFavorites)}
+          testID="files-favorites"
+        />
         <DsRow
           icon="lock"
           title={t('filesTab.privateFolder')}
@@ -176,6 +191,7 @@ export const FilesScreen = memo(function FilesScreen() {
         testID="files-list"
       />
       <NewFolderDialog visible={newFolderOpen} onClose={() => setNewFolderOpen(false)} />
+      <OrganizeNowModal visible={organizeOpen} onClose={() => setOrganizeOpen(false)} onDone={() => void reload()} />
     </DsScreen>
   );
 });
