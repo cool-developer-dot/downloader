@@ -7,6 +7,7 @@ import {
   ALWAYS_ON_PROTECTIONS,
   DEFAULT_SECURITY_SETTINGS,
   getSecuritySettings,
+  isInfoRowProtection,
   normalizeSecuritySettings,
   securityPageModel,
   setBlockScreenshots,
@@ -26,6 +27,13 @@ describe('Files F10 · design 64: the Security page', () => {
     for (const key of ALWAYS_ON_PROTECTIONS) {
       assert.deepEqual(page.protections[key], { on: true, canChange: false });
     }
+  });
+
+  test('Malware warning is a plain "Always on" row; encryption and Hide history stay switches', () => {
+    assert.deepEqual(
+      ALWAYS_ON_PROTECTIONS.filter((key) => isInfoRowProtection(key)),
+      ['malwareWarning'],
+    );
   });
 
   test('the stored values: Block screenshots on is kept; only `true` counts as on', () => {

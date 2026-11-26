@@ -7,7 +7,8 @@
  *   (`vidorax.mmkv.privacy.blockScreenshotsApp.v1`). Private keeps its own switch (Settings → Privacy).
  * - File encryption (#909), Hide history and Malware warning are protections VidoraX never turns off: Private files are
  *   always encrypted (AES-256-GCM, no unencrypted mode), a file moved into Private always leaves every history, and P8
- *   always warns before a file that isn't what its name says is opened. Their switches show On and can't be changed.
+ *   always warns before a file that isn't what its name says is opened. Encryption and Hide history show a switch
+ *   that stays On; Malware warning is a plain row reading "Always on" (P8 has no setting to show as a switch).
  */
 
 import { mmkvKeys } from '@/storage/constants';
@@ -21,6 +22,13 @@ export const DEFAULT_SECURITY_SETTINGS: Readonly<SecuritySettings> = { blockScre
 /** The protections shown as switches that are always on. */
 export const ALWAYS_ON_PROTECTIONS = ['fileEncryption', 'hideHistory', 'malwareWarning'] as const;
 export type AlwaysOnProtection = (typeof ALWAYS_ON_PROTECTIONS)[number];
+
+/** The always-on protections drawn as a plain info row ("Malware warning · Always on") instead of a switch. */
+export const INFO_ROW_PROTECTIONS: readonly AlwaysOnProtection[] = ['malwareWarning'];
+
+export function isInfoRowProtection(key: AlwaysOnProtection): boolean {
+  return INFO_ROW_PROTECTIONS.includes(key);
+}
 
 export type LockAfter = 'immediately';
 
