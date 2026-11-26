@@ -3,6 +3,7 @@ import { ActivityIndicator, View } from 'react-native';
 
 import { AppModal } from '@/components/modals/AppModal';
 import { DsButton, DsButtonRow, DsText } from '@/design';
+import { fileBytes } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-index';
 import { formatFileSize } from '@/media-detection/utils/format';
 import { useTranslation } from '@/localization';
@@ -35,7 +36,7 @@ export const PrivateBatchMoveDialog = memo(function PrivateBatchMoveDialog({ fil
   const [understood, setUnderstood] = useState(false);
   const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const count = files?.length ?? 0;
-  const space = formatFileSize((files ?? []).reduce((sum, file) => sum + vaultSealedLength(file.sizeBytes), 0)) ?? '';
+  const space = formatFileSize((files ?? []).reduce((sum, file) => sum + vaultSealedLength(fileBytes(file)), 0)) ?? '';
 
   const close = useCallback(() => {
     if (progress) return;

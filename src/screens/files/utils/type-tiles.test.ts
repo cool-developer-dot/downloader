@@ -3,6 +3,7 @@ import { describe, test } from 'node:test';
 
 import { buildFilesIndex, typeCountsOf } from '@/files/ui/files-index';
 import { fileTypeOf } from '@/files/ui/file-types';
+import { libraryItem } from '@/files/ui/test-fixtures';
 
 import { buildTypeTiles, tileA11y, tileFiles, TILE_TYPES } from './type-tiles';
 
@@ -19,14 +20,7 @@ const MIXED = [
   { id: 'z1', fileName: 'photos.zip', mimeType: 'application/zip' },
   { id: 'p1', fileName: 'app.apk', mimeType: 'application/vnd.android.package-archive' },
   { id: 'o1', fileName: 'data', mimeType: null },
-].map((item) => ({
-  ...item,
-  displayName: `Title ${item.id}`,
-  fileSize: '1000',
-  downloadedAt: null,
-  folderId: null,
-  thumbnailUri: null,
-}));
+].map((item) => libraryItem({ ...item, displayName: `Title ${item.id}`, fileSize: '1000' }));
 
 /** One file of each FileType: video, audio, image, doc, archive, apk, other. */
 const SEVEN_FILES = [
@@ -37,14 +31,7 @@ const SEVEN_FILES = [
   { id: '5', fileName: 'photos.zip', mimeType: 'application/zip' },
   { id: '6', fileName: 'app.apk', mimeType: 'application/vnd.android.package-archive' },
   { id: '7', fileName: 'data.bin', mimeType: 'application/octet-stream' },
-].map((item) => ({
-  ...item,
-  displayName: item.fileName,
-  fileSize: '1000',
-  downloadedAt: null,
-  folderId: null,
-  thumbnailUri: null,
-}));
+].map((item) => libraryItem({ ...item, displayName: item.fileName, fileSize: '1000' }));
 
 describe('Files F1 #753: the type tiles', () => {
   test('on the 11-file mixed library, each tile holds only its own type, and its count is its list', () => {
@@ -61,7 +48,7 @@ describe('Files F1 #753: the type tiles', () => {
     });
     for (const tile of tiles) {
       const list = tileFiles(files, tile.type);
-      assert.ok(list.every((file) => fileTypeOf({ mimeType: file.mimeType, fileName: file.name }) === tile.type), tile.type);
+      assert.ok(list.every((file) => fileTypeOf({ mimeType: file.mimeType, fileName: file.fileName }) === tile.type), tile.type);
       assert.equal(tile.count, list.length, tile.type);
     }
     // The file of no known type is on no tile.

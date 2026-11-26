@@ -8,6 +8,7 @@ import { completedActionErrorMessageKey } from '@/downloads/completed-file/actio
 import { confirmLibraryFileAction } from '@/downloads/safety/file-safety-dialog';
 import { fileIntegrity } from '@/downloads/v2/file-integrity';
 import { getTreeExportPort, pickTreeFolder } from '@/downloads/v2/tree-export-port';
+import { fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-index';
 import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import { useTheme } from '@/hooks/use-theme';
@@ -74,7 +75,7 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
     () =>
       file
         ? fileActionsFor({
-            type: file.type,
+            type: file.fileType,
             missing: false,
             canLock: canMoveToPrivate(file.id),
             canSaveTo: getTreeExportPort() !== null,
@@ -105,7 +106,7 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
   const saveTo = useCallback(
     async (target: FileEntry) => {
       const port = getTreeExportPort();
-      if (!port || !(await confirmLibraryFileAction(target.id, 'save', target.name))) {
+      if (!port || !(await confirmLibraryFileAction(target.id, 'save', fileLabel(target)))) {
         return;
       }
       const treeUri = await pickTreeFolder();
@@ -164,8 +165,8 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
           // The folder it is in (the type's list when it is in none), with its row highlighted.
           if (target.folderId) {
             navigation.push(`${filesFolderPath(target.folderId)}?highlight=${encodeURIComponent(target.id)}`);
-          } else if (target.type !== 'other') {
-            navigation.push(`${filesTypePath(target.type)}?highlight=${encodeURIComponent(target.id)}`);
+          } else if (target.fileType !== 'other') {
+            navigation.push(`${filesTypePath(target.fileType)}?highlight=${encodeURIComponent(target.id)}`);
           } else {
             navigation.navigate(routePaths.files);
           }
@@ -229,7 +230,7 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
             {file ? (
               <View accessibilityRole="header" style={{ marginBottom: 10, gap: 2 }}>
                 <DsText variant="cardTitle" numberOfLines={2}>
-                  {file.name}
+                  {fileLabel(file)}
                 </DsText>
                 <DsText variant="rowSub" numberOfLines={1}>
                   {fileMetaLine(file, intlLocaleForLanguage(language))}

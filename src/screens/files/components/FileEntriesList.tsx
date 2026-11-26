@@ -3,6 +3,7 @@ import { RefreshControl, useWindowDimensions, View, type FlatList, type ListRend
 
 import { ds, type DsIconName } from '@/design';
 import { displayFileName } from '@/files/ui/display-name';
+import { fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry, FolderEntry } from '@/files/ui/files-index';
 import { GRID_COLUMNS, LIST_THUMBNAIL_DP, useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { useLockedNowIds } from '@/files/ui/locked-folders';
@@ -82,7 +83,7 @@ export const FileEntriesList = memo(function FileEntriesList({
   const columns = grid ? GRID_COLUMNS[settings.thumbnailSize] : 1;
   const tileWidth = Math.floor((width - ds.space.screenX * 2 - ds.space.grid * (columns - 1)) / columns);
   const thumbnailSize = LIST_THUMBNAIL_DP[settings.thumbnailSize];
-  const nameOf = useCallback((file: FileEntry) => displayFileName(file.name, settings.showExtensions), [settings.showExtensions]);
+  const nameOf = useCallback((file: FileEntry) => displayFileName(fileLabel(file), settings.showExtensions), [settings.showExtensions]);
   const selecting = selection?.active === true;
   // F10: a locked folder shows the lock and "Locked" in the grid and while selecting too (FolderRow does it itself).
   const lockedNow = useLockedNowIds();
@@ -120,7 +121,7 @@ export const FileEntriesList = memo(function FileEntriesList({
           <SelectRow
             title={isFolder ? item.folder.name : nameOf(item.file)}
             meta={isFolder ? metaOf(item.folder) : fileMetaLine(item.file, locale)}
-            icon={isFolder ? iconOf(item.folder) : fileTypeIcon(item.file.type)}
+            icon={isFolder ? iconOf(item.folder) : fileTypeIcon(item.file.fileType)}
             pictureUri={!isFolder && settings.showThumbnails ? item.file.thumbnailUri : null}
             thumbnailSize={thumbnailSize}
             selected={selection.selected.has(item.key)}
@@ -189,7 +190,7 @@ export const FileEntriesList = memo(function FileEntriesList({
         <GridTile
           title={nameOf(item.file)}
           meta={fileMetaLine(item.file, locale)}
-          icon={fileTypeIcon(item.file.type)}
+          icon={fileTypeIcon(item.file.fileType)}
           pictureUri={settings.showThumbnails ? item.file.thumbnailUri : null}
           width={tileWidth}
           onPress={toggle ?? (() => onPressFile(item.file))}
