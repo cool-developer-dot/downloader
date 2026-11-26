@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useReducer, useState } from 'react';
 
 import { AppModal } from '@/components/modals/AppModal';
 import { DsHeader, DsIcon, DsRow, DsRowGroup, DsScreen, DsSectionLabel } from '@/design';
@@ -26,7 +26,7 @@ import { selectThemeMode, useThemeStore, type ThemePreference } from '@/store/th
 import { FilePickerModal } from '@/screens/files/components/FilePickerModal';
 import { filesCapabilities } from '@/files/api';
 import { keepLabel } from '@/files/ui/bin-labels';
-import { getBinSettings, setBinSettings } from '@/files/ui/trash-port';
+import { getBinSettings, onBinChanged, setBinSettings } from '@/files/ui/trash-port';
 import { useSaveLocationStore } from '@/downloads/v2/save-location-store';
 
 import { ChoiceSheet, type ChoiceOption } from '../browser-settings/ChoiceSheet';
@@ -77,7 +77,10 @@ export const FilesSettingsScreen = memo(function FilesSettingsScreen() {
   const themeMode = useThemeStore(selectThemeMode);
   const [sheet, setSheet] = useState<Sheet>(null);
   // F8: the bin's own settings (F13's), shown while its bin is live.
-  const [binSettings, setBinSettingsShown] = useState(() => getBinSettings());
+  // Read fresh on every render, and a render whenever F13 says the bin changed (the Recycle bin page can change it).
+  const [, binChanged] = useReducer((count: number) => count + 1, 0);
+  useEffect(() => onBinChanged(binChanged), []);
+  const binSettings = getBinSettings();
   const [sortPage, setSortPage] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
   const [checksumPickerOpen, setChecksumPickerOpen] = useState(false);
@@ -269,7 +272,7 @@ export const FilesSettingsScreen = memo(function FilesSettingsScreen() {
               value: binSettings.enabled,
               onValueChange: (enabled) => {
                 setBinSettings({ enabled });
-                setBinSettingsShown(getBinSettings());
+                binChanged();
               },
             }}
             testID="files-settings-recycle-bin"
