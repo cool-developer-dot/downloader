@@ -73,6 +73,7 @@ import { privacyBackupEn } from './catalogs/privacyBackup.en';
 import { playerEngineEn } from './catalogs/playerEngine.en';
 import { playerCastEn } from './catalogs/playerCast.en';
 import { playerDesignEn } from './catalogs/playerDesign.en';
+import { filesCoreEn } from './catalogs/filesCore.en';
 
 export const en = {
   common: {
@@ -2995,4 +2996,6 @@ export const en = {
   playerCast: playerCastEn,
   // The Player screens of the 65-screen design (Faran, 2026-11-24)
   playerDesign: playerDesignEn,
+  // File Manager core (Faran's F12–F17): low space alert, SD card and added folders, opening files from other apps
+  filesCore: filesCoreEn,
 } as const;

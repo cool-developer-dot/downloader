@@ -75,6 +75,7 @@ import { privacyBackupUr } from './catalogs/privacyBackup.ur';
 import { playerEngineUr } from './catalogs/playerEngine.ur';
 import { playerCastUr } from './catalogs/playerCast.ur';
 import { playerDesignUr } from './catalogs/playerDesign.ur';
+import { filesCoreUr } from './catalogs/filesCore.ur';
 
 export const ur: CatalogStrings<typeof en> = {
   common: {
@@ -2998,4 +2999,5 @@ export const ur: CatalogStrings<typeof en> = {
   playerCast: playerCastUr,
   // The Player screens of the 65-screen design (Faran, 2026-11-24)
   playerDesign: playerDesignUr,
+  filesCore: filesCoreUr,
 };
