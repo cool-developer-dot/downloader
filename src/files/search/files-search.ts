@@ -56,6 +56,8 @@ export type SearchFilters = {
   recent?: boolean;
   /** F7 #977: files with a tag of this colour. */
   tagColor?: string | null;
+  /** F9: larger than this many bytes (Storage's "> 100 MB" chip). */
+  minBytes?: number | null;
 };
 
 export type SearchInput = {
@@ -189,6 +191,7 @@ function passesFilters(item: SearchItem, filters: SearchFilters, now: number): b
   if (filters.oldMonths && !isOld(item.date, filters.oldMonths, now)) return false;
   if (filters.recent && !isRecent(item, now)) return false;
   if (filters.tagColor && !(item.tagColors ?? []).includes(filters.tagColor)) return false;
+  if (filters.minBytes && !(item.sizeBytes > filters.minBytes)) return false;
   return true;
 }
 
@@ -252,6 +255,13 @@ export function searchFiles<T extends SearchItem>(items: readonly T[], input: Se
 /** Whether any filter is on (the empty state then offers Clear filters). */
 export function hasFilters(filters: SearchFilters): boolean {
   return Boolean(
-    (filters.types && filters.types.length > 0) || filters.size || filters.date || filters.extension || filters.oldMonths || filters.recent || filters.tagColor,
+    (filters.types && filters.types.length > 0) ||
+      filters.size ||
+      filters.date ||
+      filters.extension ||
+      filters.oldMonths ||
+      filters.recent ||
+      filters.tagColor ||
+      filters.minBytes,
   );
 }
