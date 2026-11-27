@@ -16,8 +16,12 @@
  * (PIN, recovery code, fingerprint unlock), the play queue, the downloads and the library themselves, the browser's
  * data (B20 has its own backup, `vidorax.backup`).
  *
- * Versions: this is version 1 of `vidorax.appBackup`. A file from a newer VidoraX is refused, never half-read. A
- * Settings Backup file (`vidorax.settings` v1, the older format) is read as a backup holding settings only.
+ * - `files` (F17, version 2): the File Manager's folders, item tags and notes, bin and low space settings
+ *   (files-section.ts).
+ *
+ * Versions: this is version 2 of `vidorax.appBackup` (v2 added `files`; a v1 file is read as before). A file from a
+ * newer VidoraX is refused, never half-read. A Settings Backup file (`vidorax.settings` v1, the older format) is read
+ * as a backup holding settings only.
  */
 
 import { normalizePlaylistName } from '@/playlists/playlist-names';
@@ -25,9 +29,10 @@ import { MAX_BOOKMARKS_PER_VIDEO, normalizeBookmarkName } from '@/player/video-b
 import { parseSettingsBackup, SETTINGS_BACKUP_FORMAT, SETTINGS_BACKUP_VERSION } from '@/store/settings/backup';
 
 import { preferenceCounts, readBackupPreferences } from './backup-preferences';
+import { filesBackupCounts, readBackupFiles, type BackupFiles } from './files-section';
 
 export const APP_BACKUP_FORMAT = 'vidorax.appBackup';
-export const APP_BACKUP_VERSION = 1;
+export const APP_BACKUP_VERSION = 2;
 /** B20's browser backup: told apart, so the user is sent to the right place. */
 export const BROWSER_BACKUP_FORMAT = 'vidorax.backup';
 
@@ -78,6 +83,8 @@ export type AppBackupSections = {
   playlists?: BackupPlaylist[];
   videoBookmarks?: BackupVideoBookmark[];
   playStats?: BackupPlayStat[];
+  /** F17 (v2): the File Manager's data. */
+  files?: BackupFiles;
 };
 
 export type AppBackup = {
@@ -90,7 +97,7 @@ export type AppBackup = {
 };
 
 export type SectionName = keyof AppBackupSections;
-export const SECTION_NAMES: readonly SectionName[] = ['settings', 'preferences', 'playlists', 'videoBookmarks', 'playStats'];
+export const SECTION_NAMES: readonly SectionName[] = ['settings', 'preferences', 'playlists', 'videoBookmarks', 'playStats', 'files'];
 
 /** Pure: the file's text. Sections that are missing are left out (an empty list is written as one). */
 export function appBackupJson(sections: AppBackupSections, exportedAt: Date): string {
@@ -337,6 +344,9 @@ export function parseAppBackup(text: string, settingsDefaults: Readonly<Record<s
   if (raw.playStats !== undefined) {
     sections.playStats = readBackupPlayStats(raw.playStats);
   }
+  if (raw.files !== undefined) {
+    sections.files = readBackupFiles(raw.files);
+  }
   return {
     ok: true,
     backup: { source: 'app', fileVersion: version, exportedAt: isoOrNull(data.exportedAt), sections },
@@ -351,7 +361,8 @@ export type BackupPreviewRow =
   | { section: 'hiddenFolders'; count: number }
   | { section: 'playlists'; count: number; videos: number }
   | { section: 'videoBookmarks'; count: number }
-  | { section: 'playStats'; count: number };
+  | { section: 'playStats'; count: number }
+  | { section: 'files'; count: number; items: number };
 
 export type BackupPreview = {
   rows: BackupPreviewRow[];
@@ -387,6 +398,10 @@ export function backupPreview(backup: AppBackup): BackupPreview {
   }
   if (sections.playStats) {
     rows.push({ section: 'playStats', count: sections.playStats.length });
+  }
+  if (sections.files) {
+    const counts = filesBackupCounts(sections.files);
+    rows.push({ section: 'files', count: counts.folders, items: counts.items });
   }
   return {
     rows,
