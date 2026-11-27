@@ -52,7 +52,10 @@ export async function collectAppBackup(now: Date = new Date()): Promise<AppBacku
     .settings;
   const preferences = collectPreferences(readStoredPreference);
   const userData = await readBackupUserData();
-  return { settings, preferences, ...userData };
+  // F17: the File Manager's folders, tags, notes and settings (never media, Private or the bin's items).
+  const { collectFilesBackup } = await import('./files-section.runtime');
+  const files = await collectFilesBackup().catch(() => undefined);
+  return { settings, preferences, ...userData, ...(files ? { files } : {}) };
 }
 
 /** Saves the backup where the user picks (or shares it). */
@@ -92,7 +95,7 @@ export async function pickAppBackup(): Promise<PickedAppBackup> {
   return { status: 'picked', backup: parsed.backup, ignored: parsed.ignored };
 }
 
-export type AppRestoreSummary = UserDataRestoreSummary & { settings: number; preferences: number };
+export type AppRestoreSummary = UserDataRestoreSummary & { settings: number; preferences: number; filesItems?: number };
 
 /**
  * Restores a backup the user confirmed. The database part first, in one transaction: if it fails, nothing at all is
@@ -139,5 +142,11 @@ export async function restoreAppBackup(backup: AppBackup, mode: RestoreMode): Pr
   if (sections.playStats) {
     void refreshPlayCounts();
   }
-  return { ...userData, settings, preferences };
+  let filesItems: number | undefined;
+  if (sections.files) {
+    const { restoreFilesBackup } = await import('./files-section.runtime');
+    const files = await restoreFilesBackup(sections.files, mode).catch(() => null);
+    filesItems = files ? files.foldersAdded + files.itemsUpdated + files.settings : 0;
+  }
+  return { ...userData, settings, preferences, ...(filesItems !== undefined ? { filesItems } : {}) };
 }
