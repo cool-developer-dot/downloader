@@ -116,6 +116,10 @@ export const routePaths = {
   networkStream: '/network-stream',
   /** Design 25: Player settings (Settings → Player, and every Player page's ⚙). */
   playerSettings: '/player-settings',
+  /** F15: the folders picked in Android's folder picker (design 27 "Folders VidoraX can open"; `?only=sd` = SD card). */
+  addedFolders: '/files/added-folders',
+  /** F15: inside one picked folder (`?tree=&doc=&name=`). */
+  addedFolder: '/files/added-folder',
   /** P7 #617 / #618: the user's playlists of local videos (Playlist Download is `downloadsPlaylist`). */
   playlists: '/playlists',
 

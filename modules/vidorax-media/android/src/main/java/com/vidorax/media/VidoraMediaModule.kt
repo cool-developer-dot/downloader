@@ -725,6 +725,13 @@ class VidoraMediaModule : Module() {
       TreeExport(context, services.library).release(treeUri)
     }
 
+    // F15 Files: "SD card" and "Folders I added" (folders picked in Android's folder picker; read-only).
+    Function("listGrantedFolders") { -> com.vidorax.media.files.FolderAccess(context.contentResolver).grantedTrees() }
+
+    AsyncFunction("listFolderDocuments") Coroutine { treeUri: String, parentDocumentId: String? ->
+      com.vidorax.media.files.FolderAccess(context.contentResolver).listDocuments(treeUri, parentDocumentId).map { it.toMap() }
+    }
+
     AsyncFunction("getFolderName") Coroutine { treeUri: String ->
       TreeExport(context, services.library).folderName(treeUri)
     }

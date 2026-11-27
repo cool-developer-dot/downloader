@@ -67,7 +67,8 @@ describe('P11 backup file: round trip', () => {
     assert.deepEqual(parsed.backup, { source: 'app', fileVersion: APP_BACKUP_VERSION, exportedAt: NOW.toISOString(), sections });
     const raw = JSON.parse(text) as { format: string; version: number };
     assert.equal(raw.format, APP_BACKUP_FORMAT);
-    assert.equal(raw.version, 1);
+    // F17 made it 2 (the File Manager's `files` section); version 1 files still restore (files-section.test.ts).
+    assert.equal(raw.version, APP_BACKUP_VERSION);
   });
 
   test('a byte-order mark and an unknown section are fine (the section is listed as ignored)', () => {

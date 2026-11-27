@@ -50,11 +50,12 @@ export function changedKeys(
 }
 
 /** Which parts a restore of this backup writes (for the confirm's wording and the order). */
-export function restoreParts(backup: AppBackup): { settings: boolean; preferences: boolean; userData: boolean } {
+export function restoreParts(backup: AppBackup): { settings: boolean; preferences: boolean; userData: boolean; files: boolean } {
   const { sections } = backup;
   return {
     settings: sections.settings !== undefined,
     preferences: sections.preferences !== undefined,
     userData: sections.playlists !== undefined || sections.videoBookmarks !== undefined || sections.playStats !== undefined,
+    files: sections.files !== undefined,
   };
 }
