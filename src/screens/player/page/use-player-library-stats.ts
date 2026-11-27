@@ -229,10 +229,10 @@ export function usePlayerLibraryStats({
       } catch {
         // already released
       }
-      // The Library's own "Delete from VidoraX" (the same service, loaded the same way).
-      const { deleteCompletedFileFromVidoraX } = await import('@/downloads/completed-file/delete/delete-service');
-      const result = await deleteCompletedFileFromVidoraX(mediaId);
-      if (!result.ok) {
+      // The Library's own delete (F13: into the recycle bin while it is on, permanent otherwise).
+      const { deleteItems } = await import('@/files/trash/trash-api');
+      const result = await deleteItems([mediaId], { source: 'player' });
+      if (result.trashed.length === 0 && result.deleted.length === 0) {
         // As the Library's delete: the video stays, and the user can try again.
         announcePlayer(t('library.deleteFailed'));
         return;
