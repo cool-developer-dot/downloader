@@ -1,11 +1,16 @@
 import { useEffect } from 'react';
 
-import { relockAllFolders, relocksOn } from '@/files/ui/locked-folders';
+import { registerFilesBackupKey } from '@/backup/files-section.runtime';
+import { relockAllFolders, relocksOn, reloadLockedFolders } from '@/files/ui/locked-folders';
+import { mmkvKeys } from '@/storage/constants';
 import { APP_SECURE_OWNER, appHoldsSecure } from '@/privacy/secure-window';
 import { holdSecureWindow } from '@/privacy/secure-window.runtime';
 import { useAppLockStore } from '@/security/app-lock';
 
 import { useSecuritySettings } from './security-settings';
+
+// Files F10 (Faran's F17): which folders are locked joins every backup (folder ids only — never the PIN).
+registerFilesBackupKey(mmkvKeys.filesLockedFolders, reloadLockedFolders);
 
 /**
  * Files F10, mounted once in the app's stack:

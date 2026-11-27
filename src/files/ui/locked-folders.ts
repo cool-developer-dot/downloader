@@ -98,6 +98,11 @@ function writeLocked(ids: string[]): void {
 
 export const useLockedFoldersStore = createStore<LockedFoldersState>()(() => ({ locked: readLocked(), sessionUnlocked: [] }));
 
+/** Reads MMKV again after a backup restore wrote the key; every folder opened this session locks again. */
+export function reloadLockedFolders(): void {
+  useLockedFoldersStore.setState({ locked: readLocked(), sessionUnlocked: [] });
+}
+
 export function lockFolder(folderId: string): void {
   const { locked, sessionUnlocked } = useLockedFoldersStore.getState();
   if (!folderId || locked.includes(folderId)) {
