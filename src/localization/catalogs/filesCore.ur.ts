@@ -16,6 +16,8 @@ export const filesCoreUr: CatalogStrings<typeof filesCoreEn> = {
   sdCardSub: 'SD کارڈ پر آپ کے چنے ہوئے فولڈرز',
   storageAccessRow: 'فولڈرز جو VidoraX کھول سکتا ہے',
   storageAccessRowSub: '{count} فولڈرز',
+  storageAccessRowSubOne: '1 فولڈر',
+  storageAccessSection: 'اسٹوریج تک رسائی',
   onPhone: 'فون کی اسٹوریج',
   onSdCard: 'SD کارڈ',
   accessLost: 'رسائی ختم ہو گئی۔ دوبارہ چننے کے لیے ٹیپ کریں۔',

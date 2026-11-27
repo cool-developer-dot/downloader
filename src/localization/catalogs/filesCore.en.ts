@@ -21,6 +21,8 @@ export const filesCoreEn = {
   sdCardSub: 'Folders you picked on the SD card',
   storageAccessRow: 'Folders VidoraX can open',
   storageAccessRowSub: '{count} folders',
+  storageAccessRowSubOne: '1 folder',
+  storageAccessSection: 'Storage access',
   onPhone: 'Phone storage',
   onSdCard: 'SD card',
   accessLost: 'Access was removed. Tap to pick it again.',

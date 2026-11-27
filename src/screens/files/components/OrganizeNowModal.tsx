@@ -101,9 +101,13 @@ export const OrganizeNowModal = memo(function OrganizeNowModal({ visible, onClos
         ) : (
           <>
             <DsText variant="bodyStrong" accessibilityLiveRegion="polite" testID="files-organize-preview">
-              {t('fileManager.organizePreview', { files: plan.fileCount, folders: plan.folderCount })}
+              {plan.fileCount === 1
+                ? t('fileManager.organizePreviewOne')
+                : plan.folderCount === 1
+                  ? t('fileManager.organizePreviewOneFolder', { files: plan.fileCount })
+                  : t('fileManager.organizePreview', { files: plan.fileCount, folders: plan.folderCount })}
             </DsText>
-            {plan.newFolderCount > 0 ? <DsText variant="rowSub">{t('fileManager.organizeNewFolders', { count: plan.newFolderCount })}</DsText> : null}
+            {plan.newFolderCount > 0 ? <DsText variant="rowSub">{plan.newFolderCount === 1 ? t('fileManager.organizeNewFoldersOne') : t('fileManager.organizeNewFolders', { count: plan.newFolderCount })}</DsText> : null}
             <DsRowGroup>
               {plan.groups.slice(0, 8).map((group) => (
                 <DsRow key={group.name} icon="folder" title={group.name} value={String(group.fileIds.length)} />

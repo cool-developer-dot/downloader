@@ -44,7 +44,7 @@ export const FolderAccessSettingsRow = memo(function FolderAccessSettingsRow() {
     <DsRow
       icon="folder"
       title={t('filesCore.storageAccessRow')}
-      subtitle={t('filesCore.storageAccessRowSub', { count })}
+      subtitle={count === 1 ? t('filesCore.storageAccessRowSubOne') : t('filesCore.storageAccessRowSub', { count })}
       onPress={() => navigation.push(routePaths.addedFolders)}
       testID="files-settings-folder-access"
     />

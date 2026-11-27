@@ -17,6 +17,8 @@ import {
   type FilesViewMode,
 } from '@/files/ui/files-view-settings';
 import { useTranslation, type TranslationKey } from '@/localization';
+import { FolderAccessSettingsRow } from '@/files/folder-access/FolderAccessChips';
+import { OpenWithVidoraXRow } from '@/files/open-with/OpenWithVidoraXRow';
 import { fileChecksumPath, navigation, routePaths } from '@/navigation';
 import { useAndroidBackHandler } from '@/navigation/hooks';
 import { updateThemePreference } from '@/services/auth/settings.service';
@@ -286,6 +288,13 @@ export const FilesSettingsScreen = memo(function FilesSettingsScreen() {
           onPress={() => setChecksumPickerOpen(true)}
           testID="files-settings-checksum"
         />
+      </DsRowGroup>
+
+      {/* Faran's F15 (SD card and folders the user picked) and F16 (VidoraX as the app that opens videos). */}
+      <DsSectionLabel>{t('filesCore.storageAccessSection')}</DsSectionLabel>
+      <DsRowGroup testID="files-settings-storage-access">
+        <FolderAccessSettingsRow />
+        <OpenWithVidoraXRow />
       </DsRowGroup>
 
       <ChoiceSheet
