@@ -10,6 +10,7 @@ import { applyAnnotateTables } from './annotate-schema';
 import { applySavedPagesTables } from './saved-pages-schema';
 import { applyPlaylistTables } from './playlist-schema';
 import { applyLibraryStatsTables } from './library-stats-schema';
+import { applyFolderTreeSchema } from './folder-tree-schema';
 
 /**
  * Apply pragmas outside any transaction.
@@ -28,6 +29,7 @@ export async function applySchema(db: SQLiteDatabase): Promise<void> {
   await applyPlaylistTables(db);
   // P9: play counts and video bookmarks (app database only; library-stats-schema.ts).
   await applyLibraryStatsTables(db);
+  await applyFolderTreeSchema(db);
   await db.execAsync(`PRAGMA user_version = ${DATABASE_VERSION}`);
 }
 

@@ -316,6 +316,12 @@ export async function runAppInitializer(): Promise<RoutePath> {
       const { ensureItemOrganizeCleanup } = await import('@/library/item-organize-store');
       // A saved video's tags and note go with it when it is deleted.
       ensureItemOrganizeCleanup();
+      const { ensureRecycleBin } = await import('@/files/trash/ensure-recycle-bin');
+      // F13: deleted items wait in the recycle bin (hidden) until restored or purged after their keep time.
+      ensureRecycleBin();
+      const { ensureLowSpaceWatch } = await import('@/files/cleanup/cleanup-api');
+      // F14 #855: the low space alert checks at startup and whenever the app comes back.
+      ensureLowSpaceWatch();
     } catch (error) {
       if (__DEV__) {
         console.warn('[bootstrap] download engine init failed', error);

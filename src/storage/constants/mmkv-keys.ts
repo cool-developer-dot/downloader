@@ -104,6 +104,12 @@ export const mmkvKeys = {
   playerDailyLimit: 'vidorax.mmkv.player.dailyLimit.v1',
   /** Faran's P19: the equalizer, its presets (built-in and the user's), the effects, mono, balance (app-wide). */
   playerAudioEffects: 'vidorax.mmkv.player.audioEffects.v1',
+  /** Faran's F13: the recycle bin, `{ settings: { enabled, keepDays }, entries: { [id]: BinEntry } }`. */
+  filesBin: 'vidorax.files.bin.v1',
+  /** Faran's F14: the low space alert, `{ enabled, thresholdBytes, lastAlertDay }`. */
+  filesLowSpace: 'vidorax.files.lowSpace.v1',
+  /** Faran's F15: the folders added through Android's folder picker, `{ folders: [{ treeUri, label, addedAt }] }`. */
+  filesAddedFolders: 'vidorax.files.addedFolders.v1',
   // ── Files (Hamza's F1–F11) ──
   // F2 · File manager settings (design 27)
   // F10 · Private folder & Security (designs 28, 29, 64)

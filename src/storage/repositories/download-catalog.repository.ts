@@ -500,6 +500,28 @@ export class DownloadCatalogRepository {
     return this.upsert({ id, folderId, updatedAt: nowIso() });
   }
 
+  /** F12: moves every item of `fromFolderId` into `toFolderId` (null = no folder). Used when a folder is deleted. */
+  async moveFolderAssignments(fromFolderId: string, toFolderId: string | null): Promise<number> {
+    const trimmed = fromFolderId.trim();
+    if (!trimmed) {
+      return 0;
+    }
+    try {
+      const db = await getDatabase();
+      const result = await db.runAsync(
+        `UPDATE ${TABLE_NAMES.downloadsCatalog}
+         SET folder_id = ?, updated_at = ?
+         WHERE folder_id = ?`,
+        toFolderId,
+        nowIso(),
+        trimmed,
+      );
+      return result.changes ?? 0;
+    } catch (error) {
+      throw toStorageError(error, 'Failed to move folder assignments');
+    }
+  }
+
   async clearFolderAssignments(folderId: string): Promise<number> {
     const trimmed = folderId.trim();
     if (!trimmed) {
