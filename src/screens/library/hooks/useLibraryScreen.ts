@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
 
+import { useBinStore } from '@/files/trash/bin-store';
 import type { DownloadItem } from '@/api';
 import type { LocalDownloadRecord } from '@/downloads/engine/types';
 import { listLocalRecords } from '@/downloads/engine/persistence';
@@ -150,8 +151,12 @@ export function useLibraryScreen() {
     return map;
   }, [availabilityById]);
 
+  // F13: an item moved to (or back from) the recycle bin leaves (or rejoins) the list at once.
+  const binEntries = useBinStore((state) => state.entries);
+
   const canonicalItems = useMemo(() => {
     void transferSignature;
+    void binEntries;
     const transfers = useDownloadsStore.getState().transferById;
     return assembleCanonicalItems({
       downloads,
@@ -179,6 +184,7 @@ export function useLibraryScreen() {
     foldersById,
     localRecords,
     transferSignature,
+    binEntries,
   ]);
 
   const continueQuery = useContinueWatchingQuery();
@@ -607,12 +613,11 @@ export function useLibraryScreen() {
     setDeleteLoading(true);
     setActionError(null);
     try {
-      const { deleteCompletedFileFromVidoraX } = await import(
-        '@/downloads/completed-file/delete/delete-service'
-      );
-      const result = await deleteCompletedFileFromVidoraX(id);
-      if (!result.ok) {
-        setActionError(result.error.message);
+      // F13: into the recycle bin while it is on (restorable), permanent otherwise.
+      const { deleteItems } = await import('@/files/trash/trash-api');
+      const result = await deleteItems([id], { source: 'player' });
+      if (result.trashed.length === 0 && result.deleted.length === 0) {
+        setActionError('Unable to delete this download');
         return;
       }
       setDeleteConfirmId(null);

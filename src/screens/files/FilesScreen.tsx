@@ -18,6 +18,7 @@ import {
   DsTileGrid,
 } from '@/design';
 import { filesCapabilities } from '@/files/api';
+import { FolderAccessChips } from '@/files/folder-access/FolderAccessChips';
 import type { FolderEntry } from '@/files/ui/files-index';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { useTheme } from '@/hooks/use-theme';
@@ -95,6 +96,8 @@ export const FilesScreen = memo(function FilesScreen() {
       />
       <DsChipRow>
         <DsChip label={t('filesTab.internal')} selected />
+        {/* F15 (Faran): SD card and Folders I added. */}
+        <FolderAccessChips />
       </DsChipRow>
       <DsTileGrid>
         {tiles.map((tile) => {

@@ -1,7 +1,7 @@
 /**
- * Files F1: VidoraX's own files and folders in the F12 contract's shapes (`src/files/api.ts`). Pure: built from the
- * library's items and the folder list, so it is tested without a phone. The fill-in (`files-fill-in.ts`) feeds it the
- * app's real stores until Faran's engine lands.
+ * Files F1: VidoraX's own files and folders in the F12 contract's shapes (`src/files/api.ts`). Pure, so it is tested
+ * without a phone. Faran's engine (`src/files/engine`) serves the screens; these helpers give the screens their types
+ * and the counts they compute themselves (a locked folder's or a hidden file's files left out).
  *
  * Folder membership is the library's logical folder (`folderId`); a file whose folder no longer exists counts as
  * unfiled (it shows at the top level). Stats count a folder's subfolders too. Parent ids are followed generically, so
