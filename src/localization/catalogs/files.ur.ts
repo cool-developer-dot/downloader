@@ -292,6 +292,7 @@ export const filesUr: CatalogStrings<typeof filesEn> = {
   addFilesNone: 'لائبریری کی کوئی فائل پرائیویٹ میں منتقل نہیں ہو سکتی',
   addFilesMove: '{count} منتقل کریں',
   addFilesConfirmTitle: '{count} فائلیں پرائیویٹ میں منتقل کریں؟',
+  addFilesConfirmTitleOne: '1 فائل پرائیویٹ میں منتقل کریں؟',
   addFilesConfirmMessage: 'یہ پرائیویٹ میں انکرپٹ ہو کر آپ کی لائبریری، ڈاؤن لوڈز اور ہسٹری سے ہٹ جائیں گی۔ منتقلی کے دوران تقریباً {size} خالی جگہ درکار ہے۔',
   addFilesMoving: '{total} میں سے {done} منتقل ہو رہی ہیں…',
   addFilesDone: '{count} پرائیویٹ میں منتقل ہو گئیں',

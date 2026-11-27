@@ -294,6 +294,7 @@ export const filesEn = {
   addFilesNone: 'No library files can move to Private',
   addFilesMove: 'Move {count}',
   addFilesConfirmTitle: 'Move {count} files to Private?',
+  addFilesConfirmTitleOne: 'Move 1 file to Private?',
   addFilesConfirmMessage: 'They will be encrypted into Private and removed from your library, downloads and history. They need about {size} of free space while they move.',
   addFilesMoving: 'Moving {done} of {total}…',
   addFilesDone: '{count} moved to Private',

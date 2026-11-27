@@ -180,7 +180,9 @@ export const AddFilesModal = memo(function AddFilesModal({ visible, onClose, onM
             ) : (
               <DsCard>
                 <View style={{ gap: 12 }}>
-                  <DsText variant="bodyStrong">{t('fileManager.addFilesConfirmTitle', { count: pickedFiles.length })}</DsText>
+                  <DsText variant="bodyStrong">{pickedFiles.length === 1
+                    ? t('fileManager.addFilesConfirmTitleOne')
+                    : t('fileManager.addFilesConfirmTitle', { count: pickedFiles.length })}</DsText>
                   <DsText variant="body">{t('fileManager.addFilesConfirmMessage', { size: spaceLabel ?? '' })}</DsText>
                   <DsText variant="body">{t('privateVault.dataLossCompact')}</DsText>
                   {acknowledged ? null : (
