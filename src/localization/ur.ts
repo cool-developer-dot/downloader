@@ -76,6 +76,7 @@ import { playerEngineUr } from './catalogs/playerEngine.ur';
 import { playerCastUr } from './catalogs/playerCast.ur';
 import { playerDesignUr } from './catalogs/playerDesign.ur';
 import { filesCoreUr } from './catalogs/filesCore.ur';
+import { filesUr } from './catalogs/files.ur';
 
 export const ur: CatalogStrings<typeof en> = {
   common: {
@@ -3000,4 +3001,6 @@ export const ur: CatalogStrings<typeof en> = {
   // The Player screens of the 65-screen design (Faran, 2026-11-24)
   playerDesign: playerDesignUr,
   filesCore: filesCoreUr,
+  // The File Manager (Hamza's F1–F11): the Files tab and its screens, File manager settings, Private folder, Security
+  fileManager: filesUr,
 };

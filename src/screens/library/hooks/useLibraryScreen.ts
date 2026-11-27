@@ -29,6 +29,13 @@ import {
   setLibraryDurationBucket,
   useLibraryStatsStore,
 } from '@/library/library-stats-store';
+// Files F10 #910: a locked folder's videos stay out of the Player tab until it is opened with the PIN.
+import { hiddenFolderIds, useLockedNowIds } from '@/files/ui/locked-folders';
+// Files F7 #911: a hidden file stays out of the Player tab until Show hidden files is on.
+import { withoutHiddenItems } from '@/files/organize/hidden-items';
+import { useFilesViewSettings } from '@/files/ui/files-view-settings';
+import { requestDelete as requestFilesDelete } from '@/files/trash/useDeleteWithUndo';
+import { useItemHiddenStore } from '@/library/item-organize-store';
 import { translate, type TranslationKey } from '@/localization';
 import { navigation, openPlayer, routePaths, consumeSecondaryDestinationIntent } from '@/navigation';
 import {
@@ -232,11 +239,33 @@ export function useLibraryScreen() {
   );
   // ── end P9 ───────────────────────────────────────────────────────────────────────────────────────────────────
 
+  // Files F10 #910: locked folders (and the folders under them) join the folders the query leaves out, but not P9's
+  // own list — they are not counted as "hidden" and don't show in the folder visibility sheet.
+  const lockedNow = useLockedNowIds();
+  const queryExcludedFolderIds = useMemo(() => {
+    if (lockedNow.length === 0) {
+      return excludedFolderIds;
+    }
+    const folders = Object.values(foldersById).map((folder) => ({
+      id: folder.id,
+      name: folder.name,
+      parentId: (folder as { parentId?: string | null }).parentId ?? null,
+    }));
+    return [...new Set([...excludedFolderIds, ...hiddenFolderIds(lockedNow, folders)])];
+  }, [excludedFolderIds, foldersById, lockedNow]);
+
+  const hiddenItemIds = useItemHiddenStore((state) => state.hiddenIds);
+  const { showHidden } = useFilesViewSettings();
+  const shownCanonical = useMemo(
+    () => withoutHiddenItems(enrichedCanonical, new Set(hiddenItemIds), showHidden),
+    [enrichedCanonical, hiddenItemIds, showHidden],
+  );
+
   // "Recently downloaded" is judged at the library's last refresh (every focus and every completion
   // refreshes it), so rendering stays pure.
   const queryResult = useMemo(
     () =>
-      applyLibraryQuery(enrichedCanonical, {
+      applyLibraryQuery(shownCanonical, {
         search: searchQuery,
         filter,
         sort,
@@ -246,14 +275,14 @@ export function useLibraryScreen() {
         nowMs: lastReconciledAt ?? 0,
         durationBucket,
         durationById,
-        excludedFolderIds,
+        excludedFolderIds: queryExcludedFolderIds,
         playCounts,
       }),
     [
       durationBucket,
       durationById,
-      enrichedCanonical,
-      excludedFolderIds,
+      shownCanonical,
+      queryExcludedFolderIds,
       filter,
       folderId,
       lastReconciledAt,
@@ -267,7 +296,8 @@ export function useLibraryScreen() {
   const continueWatchingItems = useMemo(() => {
     // P9 #628: a hidden folder's videos stay out of the Library's Continue watching row too.
     const libraryById = new Map(
-      applyFolderExclusion(enrichedCanonical, excludedFolderIds).map((item) => [item.id, item] as const),
+      // Files F7 #911: a hidden file stays out of Continue watching too.
+      applyFolderExclusion(shownCanonical, queryExcludedFolderIds).map((item) => [item.id, item] as const),
     );
     const rows = [];
     for (const summary of continueQuery.items) {
@@ -292,7 +322,7 @@ export function useLibraryScreen() {
       });
     }
     return rows;
-  }, [continueQuery.items, enrichedCanonical, excludedFolderIds]);
+  }, [continueQuery.items, queryExcludedFolderIds, shownCanonical]);
 
   const qualities = useMemo(
     () => listDistinctQualities(enrichedCanonical),
@@ -571,10 +601,6 @@ export function useLibraryScreen() {
     }
   }, []);
 
-  const requestDeleteItem = useCallback((id: string) => {
-    setDeleteConfirmId(id);
-  }, []);
-
   const cancelDeleteItem = useCallback(() => {
     if (deleteLoading) {
       return;
@@ -582,11 +608,8 @@ export function useLibraryScreen() {
     setDeleteConfirmId(null);
   }, [deleteLoading]);
 
-  const confirmDeleteItem = useCallback(async () => {
-    const id = deleteConfirmId;
-    if (!id) {
-      return;
-    }
+  /** The delete itself, for one id (the dialog's Delete, or a request when Confirm before delete is off). */
+  const runDeleteItem = useCallback(async (id: string) => {
     setDeleteLoading(true);
     setActionError(null);
     try {
@@ -604,7 +627,30 @@ export function useLibraryScreen() {
     } finally {
       setDeleteLoading(false);
     }
-  }, [deleteConfirmId]);
+  }, []);
+
+  const confirmDeleteItem = useCallback(async () => {
+    const id = deleteConfirmId;
+    if (!id) {
+      return;
+    }
+    await runDeleteItem(id);
+  }, [deleteConfirmId, runDeleteItem]);
+
+  const requestDeleteItem = useCallback(
+    (id: string) => {
+      // Files F8: one door for every delete — F2's Confirm before delete (on or off), the bin, and the Undo bar.
+      requestFilesDelete({
+        ids: [id],
+        source: 'player',
+        name: enrichedCanonical.find((item) => item.id === id)?.displayName,
+        onDone: (result) => {
+          if (result.deleted.includes(id) || result.trashed.includes(id)) setActionItemId(null);
+        },
+      });
+    },
+    [enrichedCanonical],
+  );
 
   const openDownloads = useCallback(() => {
     navigation.push(routePaths.downloads);

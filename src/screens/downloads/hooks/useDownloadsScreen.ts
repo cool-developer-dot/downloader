@@ -13,6 +13,10 @@ import {
   routePaths,
 } from '@/navigation';
 import { useDownloads } from '@/storage/hooks';
+// Files F2 #800 Confirm before delete; F7 #911: a hidden file stays out of Downloads until Show hidden files is on.
+import { isConfirmBeforeDeleteOn, useFilesViewSettings } from '@/files/ui/files-view-settings';
+import { withoutHiddenIds } from '@/files/organize/hidden-items';
+import { useItemHiddenStore } from '@/library/item-organize-store';
 import {
   selectDownloadSectionMembershipSignature,
   useDownloadsStore,
@@ -29,7 +33,7 @@ function localizeCompletedActionError(code: Parameters<typeof completedActionErr
 
 export function useDownloadsScreen() {
   const {
-    orderedIds,
+    orderedIds: allOrderedIds,
     itemsById,
     total,
     loading,
@@ -62,6 +66,12 @@ export function useDownloadsScreen() {
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const hiddenItemIds = useItemHiddenStore((state) => state.hiddenIds);
+  const { showHidden } = useFilesViewSettings();
+  const orderedIds = useMemo(
+    () => withoutHiddenIds(allOrderedIds, new Set(hiddenItemIds), showHidden),
+    [allOrderedIds, hiddenItemIds, showHidden],
+  );
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hasFocusedOnceRef = useRef(false);
 
@@ -256,11 +266,6 @@ export function useDownloadsScreen() {
     statusFilter !== 'all' ||
     sort !== 'newest';
 
-  const requestDelete = useCallback((id: string) => {
-    setDeleteTargetId(id);
-    setActionError(null);
-  }, []);
-
   /**
    * A finished v2 download is only unlinked from this list — the engine keeps the library item and the file —
    * so the confirmation has to say that rather than promise a delete.
@@ -281,24 +286,46 @@ export function useDownloadsScreen() {
     setDeleteTargetId(null);
   }, [deleting]);
 
+  /** The removal itself, for one id (the dialog's button, or a request when Confirm before delete is off). */
+  const removeNow = useCallback(
+    async (id: string) => {
+      setDeleting(true);
+      setActionError(null);
+      try {
+        const ok = await remove(id);
+        if (ok) {
+          setDeleteTargetId(null);
+        } else {
+          setActionError('Couldn’t remove this download.');
+        }
+      } finally {
+        setDeleting(false);
+      }
+    },
+    [remove],
+  );
+
   const confirmDelete = useCallback(async () => {
     if (!deleteTargetId) {
       return;
     }
+    await removeNow(deleteTargetId);
+  }, [deleteTargetId, removeNow]);
 
-    setDeleting(true);
-    setActionError(null);
-    try {
-      const ok = await remove(deleteTargetId);
-      if (ok) {
-        setDeleteTargetId(null);
-      } else {
-        setActionError('Couldn’t remove this download.');
+  const requestDelete = useCallback(
+    (id: string) => {
+      // Files F2 #800: with Confirm before delete off, "Delete from VidoraX?" is skipped. A finished download's
+      // "Remove from Downloads?" (the file stays in the library) still asks.
+      const row = useDownloadsStore.getState().engineRowsById[id];
+      if (!isConfirmBeforeDeleteOn() && !(row && row.status === 'COMPLETED')) {
+        void removeNow(id);
+        return;
       }
-    } finally {
-      setDeleting(false);
-    }
-  }, [deleteTargetId, remove]);
+      setDeleteTargetId(id);
+      setActionError(null);
+    },
+    [removeNow],
+  );
 
   const onPause = useCallback(
     async (id: string) => {

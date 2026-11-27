@@ -1,0 +1,264 @@
+import { memo, useCallback, useEffect, useRef, useState, type ReactElement } from 'react';
+import { RefreshControl, useWindowDimensions, View, type FlatList, type ListRenderItem } from 'react-native';
+
+import { ds, type DsIconName } from '@/design';
+import { displayFileName } from '@/files/ui/display-name';
+import { fileLabel } from '@/files/ui/file-fields';
+import type { FileEntry, FolderEntry } from '@/files/ui/files-index';
+import { GRID_COLUMNS, LIST_THUMBNAIL_DP, useFilesViewSettings } from '@/files/ui/files-view-settings';
+import { useLockedNowIds } from '@/files/ui/locked-folders';
+import { useTheme } from '@/hooks/use-theme';
+import { intlLocaleForLanguage, useTranslation } from '@/localization';
+
+import { fileMetaLine, fileTypeIcon, type FolderListEntry } from '../utils/file-rows';
+import { DragSelectList } from './DragSelectList';
+import { FileRow } from './FileRow';
+import { FolderRow } from './FolderRow';
+import { GridTile } from './GridTile';
+import { ReorderRow } from './ReorderRow';
+import { SelectRow } from './SelectRow';
+
+/** F4: the list's selection (entry keys: `file:<id>` / `folder:<id>`). */
+export type EntriesSelection = {
+  active: boolean;
+  selected: ReadonlySet<string>;
+  toggle: (key: string) => void;
+  startWith: (key: string) => void;
+  dragStart: (index: number) => void;
+  dragOver: (index: number) => void;
+  dragEnd: () => void;
+};
+
+export type FileEntriesListProps = {
+  entries: readonly FolderListEntry[];
+  header: ReactElement;
+  empty: ReactElement | null;
+  /** A folder row's "{n} items · {size}". */
+  folderMeta: (folder: FolderEntry) => string;
+  onPressFile: (file: FileEntry) => void;
+  onMoreFile?: (file: FileEntry) => void;
+  onPressFolder: (folder: FolderEntry) => void;
+  onMoreFolder?: (folder: FolderEntry) => void;
+  /** A folder's tile icon (F10 draws a locked folder with the lock). */
+  folderIcon?: (folder: FolderEntry) => DsIconName;
+  refreshing: boolean;
+  onRefresh: () => void;
+  /** F3 Show in folder: this file's row is highlighted and scrolled to once. */
+  highlightId?: string;
+  /** F4: a long press starts selecting (and a drag selects a range); while selecting a tap toggles. */
+  selection?: EntriesSelection;
+  /** F6 search: the part of a file's name that matched (bold). */
+  nameMatchOf?: (file: FileEntry) => { start: number; end: number } | null;
+  /** F7 Custom order: file rows get a drag handle; a drop moves the file by that many rows. */
+  reorder?: { onMoveBy: (fileId: string, steps: number) => void };
+  testID?: string;
+};
+
+/**
+ * Files F1/F2/F4: a Files list of folders and files in one FlatList, drawn as F2's settings say — rows or the grid
+ * (4 / 3 / 2 columns), thumbnails or type icons at the chosen size, names with or without their extension. Any change
+ * on the File manager settings page redraws it at once. With a selection (F4) a long press starts selecting, and
+ * keeping the finger down and dragging selects a range (`DragSelectList`); while selecting, rows show their check box.
+ */
+export const FileEntriesList = memo(function FileEntriesList({
+  entries,
+  header,
+  empty,
+  folderMeta,
+  onPressFile,
+  onMoreFile,
+  onPressFolder,
+  onMoreFolder,
+  folderIcon,
+  refreshing,
+  onRefresh,
+  highlightId,
+  selection,
+  nameMatchOf,
+  reorder,
+  testID = 'files-entries',
+}: FileEntriesListProps) {
+  const theme = useTheme();
+  const { t, language, rtl } = useTranslation();
+  const { width } = useWindowDimensions();
+  const settings = useFilesViewSettings();
+  const locale = intlLocaleForLanguage(language);
+  const grid = settings.viewMode === 'grid';
+  const columns = grid ? GRID_COLUMNS[settings.thumbnailSize] : 1;
+  const tileWidth = Math.floor((width - ds.space.screenX * 2 - ds.space.grid * (columns - 1)) / columns);
+  const thumbnailSize = LIST_THUMBNAIL_DP[settings.thumbnailSize];
+  const nameOf = useCallback((file: FileEntry) => displayFileName(fileLabel(file), settings.showExtensions), [settings.showExtensions]);
+  const selecting = selection?.active === true;
+  // F7: while a Custom order handle is held, the list doesn't scroll under the finger.
+  const [reordering, setReordering] = useState(false);
+  // F10: a locked folder shows the lock and "Locked" in the grid and while selecting too (FolderRow does it itself).
+  const lockedNow = useLockedNowIds();
+  const iconOf = useCallback(
+    (folder: FolderEntry): DsIconName => (lockedNow.includes(folder.id) ? 'lock' : (folderIcon?.(folder) ?? 'folder')),
+    [folderIcon, lockedNow],
+  );
+  const metaOf = useCallback(
+    (folder: FolderEntry): string => (lockedNow.includes(folder.id) ? t('fileManager.folderLocked') : folderMeta(folder)),
+    [folderMeta, lockedNow, t],
+  );
+
+  // F3 Show in folder: scroll the highlighted file into view once its row is in the list.
+  const listRef = useRef<FlatList<FolderListEntry>>(null);
+  const scrolledToRef = useRef<string | null>(null);
+  const highlightIndex = highlightId ? entries.findIndex((entry) => entry.kind === 'file' && entry.file.id === highlightId) : -1;
+  useEffect(() => {
+    if (!highlightId || highlightIndex < 0 || scrolledToRef.current === highlightId) {
+      return undefined;
+    }
+    scrolledToRef.current = highlightId;
+    const timer = setTimeout(() => {
+      listRef.current?.scrollToIndex({ index: Math.floor(highlightIndex / columns), viewPosition: 0.3, animated: true });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [columns, highlightId, highlightIndex]);
+
+  const renderRow = useCallback<ListRenderItem<FolderListEntry>>(
+    ({ item, index }) => {
+      const first = index === 0;
+      const last = index === entries.length - 1;
+      if (selecting && selection) {
+        const isFolder = item.kind === 'folder';
+        return (
+          <SelectRow
+            title={isFolder ? item.folder.name : nameOf(item.file)}
+            meta={isFolder ? metaOf(item.folder) : fileMetaLine(item.file, locale)}
+            icon={isFolder ? iconOf(item.folder) : fileTypeIcon(item.file.fileType)}
+            pictureUri={!isFolder && settings.showThumbnails ? item.file.thumbnailUri : null}
+            thumbnailSize={thumbnailSize}
+            selected={selection.selected.has(item.key)}
+            onToggle={() => selection.toggle(item.key)}
+            first={first}
+            last={last}
+            testID={`files-select-${item.key}`}
+          />
+        );
+      }
+      if (item.kind === 'folder') {
+        return (
+          <FolderRow
+            folder={item.folder}
+            meta={folderMeta(item.folder)}
+            first={first}
+            last={last}
+            onPress={onPressFolder}
+            onMore={onMoreFolder}
+            icon={folderIcon?.(item.folder)}
+            longPressOpensMore={!selection}
+            testID={`files-folder-${item.folder.id}`}
+          />
+        );
+      }
+      const row = (
+        <FileRow
+          file={item.file}
+          name={nameOf(item.file)}
+          meta={fileMetaLine(item.file, locale)}
+          showThumbnail={settings.showThumbnails}
+          thumbnailSize={thumbnailSize}
+          first={first}
+          last={last}
+          onPress={onPressFile}
+          onMore={onMoreFile}
+          // F4: a long press selects (the gesture of DragSelectList); ⋮ keeps the actions sheet. TalkBack gets "Select".
+          longPressOpensMore={!selection}
+          onSelect={selection ? () => selection.startWith(item.key) : undefined}
+          highlighted={item.file.id === highlightId}
+          nameMatch={nameMatchOf?.(item.file) ?? null}
+          testID={`files-file-${item.file.id}`}
+        />
+      );
+      return reorder ? (
+        <ReorderRow name={nameOf(item.file)} onMoveBy={(steps) => reorder.onMoveBy(item.file.id, steps)} onDragChange={setReordering} testID={`files-reorder-${item.file.id}`}>
+          {row}
+        </ReorderRow>
+      ) : (
+        row
+      );
+    },
+    [entries.length, folderIcon, folderMeta, highlightId, iconOf, locale, metaOf, nameMatchOf, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, reorder, selecting, selection, settings.showThumbnails, thumbnailSize],
+  );
+
+  const renderTile = useCallback<ListRenderItem<FolderListEntry>>(
+    ({ item }) => {
+      const selected = selecting && selection ? selection.selected.has(item.key) : undefined;
+      const toggle = selecting && selection ? () => selection.toggle(item.key) : undefined;
+      return item.kind === 'folder' ? (
+        <GridTile
+          title={item.folder.name}
+          meta={metaOf(item.folder)}
+          icon={iconOf(item.folder)}
+          width={tileWidth}
+          onPress={toggle ?? (() => onPressFolder(item.folder))}
+          onLongPress={!selection && onMoreFolder ? () => onMoreFolder(item.folder) : undefined}
+          selected={selected}
+          accessibilityHint={selected === undefined ? t('fileManager.folderOpenHint') : t('fileManager.selectHint')}
+          testID={`files-folder-${item.folder.id}`}
+        />
+      ) : (
+        <GridTile
+          title={nameOf(item.file)}
+          meta={fileMetaLine(item.file, locale)}
+          icon={fileTypeIcon(item.file.fileType)}
+          pictureUri={settings.showThumbnails ? item.file.thumbnailUri : null}
+          width={tileWidth}
+          onPress={toggle ?? (() => onPressFile(item.file))}
+          onLongPress={!selection && onMoreFile ? () => onMoreFile(item.file) : undefined}
+          selected={selected}
+          accessibilityHint={selected === undefined ? t('fileManager.fileOpenHint') : t('fileManager.selectHint')}
+          testID={`files-file-${item.file.id}`}
+        />
+      );
+    },
+    [iconOf, locale, metaOf, nameOf, onMoreFile, onMoreFolder, onPressFile, onPressFolder, selecting, selection, settings.showThumbnails, t, tileWidth],
+  );
+
+  const noop = useCallback(() => undefined, []);
+
+  return (
+    <DragSelectList
+      // A new column count needs a new list (FlatList can't change `numColumns` on the fly).
+      key={grid ? `grid-${columns}` : 'list'}
+      listRef={listRef}
+      data={entries}
+      keyExtractor={(entry) => entry.key}
+      renderItem={grid ? renderTile : renderRow}
+      numColumns={columns}
+      columns={columns}
+      rowGap={grid ? ds.space.grid : 0}
+      paddingX={ds.space.screenX}
+      // F4's long press still selects in a Custom order folder; only the handle reorders.
+      dragEnabled={Boolean(selection)}
+      scrollEnabled={!reordering}
+      onDragStart={selection?.dragStart ?? noop}
+      onDragOver={selection?.dragOver ?? noop}
+      onDragEnd={selection?.dragEnd ?? noop}
+      columnWrapperStyle={grid ? { gap: ds.space.grid, flexDirection: rtl.rowDirection } : undefined}
+      ItemSeparatorComponent={grid ? GridGap : undefined}
+      ListHeaderComponent={header}
+      ListEmptyComponent={empty}
+      contentContainerStyle={{ paddingHorizontal: ds.space.screenX, paddingBottom: 24 }}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={theme.colors.primary}
+          colors={[theme.colors.primary]}
+          accessibilityLabel={t('common.refreshA11y')}
+        />
+      }
+      extraData={[settings, selection?.selected, selecting]}
+      onScrollToIndexFailed={({ averageItemLength, index }) => listRef.current?.scrollToOffset({ offset: averageItemLength * index, animated: true })}
+      testID={testID}
+    />
+  );
+});
+
+function GridGap() {
+  return <View style={{ height: ds.space.grid }} />;
+}

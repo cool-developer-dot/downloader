@@ -14,6 +14,12 @@ export {
   routePaths,
   downloadDetailsPath,
   playerPath,
+  filesTypePath,
+  filesFolderPath,
+  fileDetailsPath,
+  fileChecksumPath,
+  filesTypeBySizePath,
+  filesSearchWithPath,
   type PlayerRoute,
   type RoutePath,
 } from './route-paths';

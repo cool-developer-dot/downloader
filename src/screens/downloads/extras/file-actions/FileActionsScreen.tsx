@@ -15,6 +15,7 @@ import { canMoveToPrivate } from '@/private-vault/move-to-private.runtime';
 import { isRemoteControlAvailable, sendToComputer } from '@/remote/remote-control';
 import { DownloadCloudSaveAction } from '@/screens/downloads/components/DownloadCloudSaveAction';
 import { DownloadDeleteDialog } from '@/screens/downloads/components/DownloadDeleteDialog';
+import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import { DownloadIntegritySection } from '@/screens/downloads/components/DownloadIntegritySection';
 import { PrivateMoveDialog } from '@/screens/private/PrivateMoveDialog';
 import { usePrivateMove } from '@/screens/private/usePrivateMove';
@@ -140,6 +141,20 @@ export const FileActionsScreen = memo(function FileActionsScreen() {
     }
   }, [id]);
 
+  const requestDelete = useCallback(() => {
+    if (!item) {
+      toast(t('lightFileActions.missing'));
+      return;
+    }
+    // Files F2 #800: with Confirm before delete off, no "Delete from VidoraX?" (a finished download's "Remove from
+    // Downloads?" still asks).
+    if (!completed && !isConfirmBeforeDeleteOn()) {
+      void confirmDelete();
+      return;
+    }
+    setDeleteOpen(true);
+  }, [completed, confirmDelete, item, t]);
+
   // P6 #511: the video (and its page) to "Sent from phone" in the Web UI on the computer.
   const sendToDevice = useCallback(() => {
     if (!requireCompleted()) {
@@ -178,7 +193,7 @@ export const FileActionsScreen = memo(function FileActionsScreen() {
         <DsRow icon="lock" title={t('lightFileActions.lockFile')} onPress={lock} testID="file-actions-lock" />
         <DsRow icon="check" title={t('lightFileActions.verifyChecksum')} subtitle={t('lightFileActions.sha256')} onPress={verify} testID="file-actions-checksum" />
         <DsRow icon="pencil" title={t('common.rename')} onPress={() => (item ? setRenameOpen(true) : toast(t('lightFileActions.missing')))} testID="file-actions-rename" />
-        <DsRow icon="trash-2" title={t('common.delete')} onPress={() => (item ? setDeleteOpen(true) : toast(t('lightFileActions.missing')))} testID="file-actions-delete" />
+        <DsRow icon="trash-2" title={t('common.delete')} onPress={requestDelete} testID="file-actions-delete" />
       </DsRowGroup>
 
       <AppModal visible={cloudOpen} onClose={() => setCloudOpen(false)} title={t('lightFileActions.saveToCloud')} testID="file-actions-cloud-modal">

@@ -122,6 +122,33 @@ export const routePaths = {
   addedFolder: '/files/added-folder',
   /** P7 #617 / #618: the user's playlists of local videos (Playlist Download is `downloadsPlaylist`). */
   playlists: '/playlists',
+
+  // ── Files (Hamza's F1–F11): the Files tab's own screens are `filesTypePath` / `filesFolderPath` below ──
+  // F2 · File manager settings (design 27)
+  /** Files F2: File manager settings (Settings → File manager, and the ⚙ of every Files screen but the tab). */
+  filesSettings: '/files-settings',
+  // F3 · File details and checksum: `fileDetailsPath` / `fileChecksumPath` below
+  // F5 · Batch rename
+  /** Files F5 #793: rename the selected files at once (`?ids=` the files, comma-separated). */
+  filesBatchRename: '/files/batch-rename',
+  // F6 · Search
+  /** Files F6: search VidoraX's files (the Files tab's 🔍). */
+  filesSearch: '/files/search',
+  // F7 · Organize
+  /** Files F7 #750: the favourite files (the Files tab's "Favorites · {n}" row). */
+  filesFavorites: '/files/favorites',
+  // F10 · Security (design 64)
+  /** Files F10: the Security page (Settings → Privacy → Security, and the ⚙ of Private's PIN pad). */
+  security: '/security',
+  // F8 · Recycle bin (design 58)
+  /** Files F8: the Recycle bin (the Files tab's "Recycle bin · {n}" row, once F13's bin is live). */
+  filesRecycleBin: '/files/recycle-bin',
+  // F9 · Storage & cleaning (design 59)
+  /** Files F9: F14's duplicate groups, each keeping one copy (Storage → Duplicates, once F14 is live). */
+  filesDuplicates: '/files/duplicates',
+  /** Files F9 #856: clear downloads by rule, after a preview (Storage → Clean downloads). */
+  filesCleanDownloads: '/files/clean-downloads',
+  // F11 · Backup & reset (design 62)
 } as const;
 
 export type RoutePath = (typeof routePaths)[keyof typeof routePaths];
@@ -143,3 +170,43 @@ export function playerPath(id: string): PlayerRoute {
 export function playlistPath(id: string): `/playlists/${string}` {
   return `/playlists/${encodeURIComponent(id)}`;
 }
+
+/** Files F1 #753: the files of one type (`video`, `audio`, `image`, `doc`, `archive`, `apk`). */
+export function filesTypePath(type: string): `/files/type/${string}` {
+  return `/files/type/${encodeURIComponent(type)}`;
+}
+
+/** Files F1 #741–#743: one VidoraX folder (the folder screen walks up and down by changing its id). */
+export function filesFolderPath(id: string): `/files/folder/${string}` {
+  return `/files/folder/${encodeURIComponent(id)}`;
+}
+
+// ── Files F3–F7 route helpers, one block per package ──
+// F3 · File details and checksum
+/** Files F3 · design 56: one file's details. */
+export function fileDetailsPath(id: string): `/files/details/${string}` {
+  return `/files/details/${encodeURIComponent(id)}`;
+}
+/** Files F3 #827: one file's SHA-256, and a check against a pasted one. */
+export function fileChecksumPath(id: string): `/files/checksum/${string}` {
+  return `/files/checksum/${encodeURIComponent(id)}`;
+}
+// F5 · Batch rename
+// F6 · Search
+// F7 · Organize
+// F8 · Recycle bin
+// F9 · Storage & cleaning
+/** Files F9: a type's list, biggest file first (Storage's rows). */
+export function filesTypeBySizePath(type: string): string {
+  return `${filesTypePath(type)}?sort=size`;
+}
+/** Files F9: the search with filters set (Storage's rows and FILTERS chips). */
+export function filesSearchWithPath(options: { types?: readonly string[]; minMb?: number; oldMonths?: number; sort?: string }): string {
+  const query: string[] = [];
+  if (options.types && options.types.length > 0) query.push(`types=${encodeURIComponent(options.types.join(','))}`);
+  if (options.minMb) query.push(`minMb=${options.minMb}`);
+  if (options.oldMonths) query.push(`old=${options.oldMonths}`);
+  if (options.sort) query.push(`sort=${encodeURIComponent(options.sort)}`);
+  return query.length > 0 ? `${routePaths.filesSearch}?${query.join('&')}` : routePaths.filesSearch;
+}
+// F11 · Backup & reset

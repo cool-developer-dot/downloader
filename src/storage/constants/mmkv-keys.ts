@@ -110,6 +110,27 @@ export const mmkvKeys = {
   filesLowSpace: 'vidorax.files.lowSpace.v1',
   /** Faran's F15: the folders added through Android's folder picker, `{ folders: [{ treeUri, label, addedAt }] }`. */
   filesAddedFolders: 'vidorax.files.addedFolders.v1',
+  // ── Files (Hamza's F1–F11) ──
+  // F2 · File manager settings (design 27)
+  /** Files F2: how the Files lists look (view, thumbnails, sort, folders first, extensions) and Confirm before delete. */
+  filesViewSettings: 'vidorax.files.viewSettings.v1',
+  // F10 · Private folder & Security (designs 28, 29, 64)
+  /** Files F10 #910: the folders locked with Folder lock (ids); opening one asks for the App Lock PIN. */
+  filesLockedFolders: 'vidorax.files.lockedFolders.v1',
+  /** Files F10 #916: Block screenshots for the whole app (Security page; default off). Private keeps its own switch. */
+  privacyBlockScreenshotsApp: 'vidorax.mmkv.privacy.blockScreenshotsApp.v1',
+  // F7 · Organize (the ⋮ of design 45)
+  /** Files F7 #911: the ids of hidden files (they leave Files, the Player tab, Downloads and search). */
+  filesHidden: 'vidorax.files.hidden.v1',
+  /** Files F7 #977: each tag's colour (`{ [tag]: swatch }`). */
+  filesTagColors: 'vidorax.files.tagColors.v1',
+  /** Files F7 #778: each folder's icon colour (`{ [folderId]: swatch }`); Faran's folders.ts is never touched. */
+  filesFolderColors: 'vidorax.files.folderColors.v1',
+  /** Files F7 #954: each folder's own order (`{ [folderId]: { enabled, ids } }`). */
+  filesCustomOrder: 'vidorax.files.customOrder.v1',
+  // F8 · Recycle bin & Undo (design 58)
+  // F9 · Storage & cleaning (design 59)
+  // F11 · Backup & reset (design 62)
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];

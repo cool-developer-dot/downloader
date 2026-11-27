@@ -3,6 +3,7 @@ import { View } from 'react-native';
 
 import { SafeAreaScreen } from '@/components/common/SafeAreaScreen';
 import { BackupResetSection } from '@/screens/settings/backup-reset/BackupResetSection';
+import { FileManagerSection } from '@/screens/settings/files-settings/FileManagerSection';
 import { languageNameKey, useTranslation } from '@/localization';
 
 import {
@@ -119,6 +120,11 @@ export const SettingsScreen = memo(function SettingsScreen() {
 
           <SettingsStaggerItem index={9}>
             <LegalSection />
+          </SettingsStaggerItem>
+
+          {/* Files F2: File manager settings (design 27). */}
+          <SettingsStaggerItem index={10}>
+            <FileManagerSection disabled={saving} />
           </SettingsStaggerItem>
         </View>
       </View>

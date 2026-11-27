@@ -19,7 +19,11 @@ import { OrganizeHosts } from '@/screens/downloads/components/OrganizeHosts';
 import { MiniPlayerOverlay } from '@/screens/player/mini';
 import { ClipboardLinkBanner } from '@/browser/components/ClipboardLinkBanner';
 import { AppLockGate } from '@/security/app-lock';
+import { SecurityHost } from '@/screens/settings/security/SecurityHost';
+import { DeleteUndoHost } from '@/screens/files/components/DeleteUndoHost';
 import { TourAccessibilityScope, TourHost } from '@/tour';
+// Files F2 / F7 (Faran's F17): the File Manager's own settings keys join every backup.
+import '@/files/ui/files-backup-keys';
 
 export default function AppLayout() {
   const theme = useTheme();
@@ -61,10 +65,6 @@ export default function AppLayout() {
     () => createStackHeaderOptions(t('nav.appLockRotateRecovery'), theme),
     [t, theme],
   );
-  const storageHeaderOptions = useMemo(
-    () => createStackHeaderOptions(t('nav.storage'), theme),
-    [t, theme],
-  );
   const privacyHeaderOptions = useMemo(
     () => createStackHeaderOptions(t('nav.privacy'), theme),
     [t, theme],
@@ -84,6 +84,8 @@ export default function AppLayout() {
           {/* The one player session, shared by the Player screen and the mini player (outlives the Player screen). */}
           <PlayerSessionHost />
           <IncomingMediaHost />
+          {/* Files F10: Block screenshots for the whole app, and locked folders lock again with the app. */}
+          <SecurityHost />
           <Stack screenOptions={screenOptions}>
             <Stack.Screen
               name={appStackRouteNames.tabs}
@@ -129,10 +131,8 @@ export default function AppLayout() {
               name={appStackRouteNames.appLockRotateRecovery}
               options={appLockRotateRecoveryHeaderOptions}
             />
-            <Stack.Screen
-              name={appStackRouteNames.storage}
-              options={storageHeaderOptions}
-            />
+            {/* Files F9 · design 59: the Storage page draws its own header. */}
+            <Stack.Screen name={appStackRouteNames.storage} options={{ headerShown: false }} />
             <Stack.Screen
               name={appStackRouteNames.player}
               options={{
@@ -142,6 +142,8 @@ export default function AppLayout() {
               }}
             />
           </Stack>
+          {/* Files F8: every delete's Confirm before delete and its "… · Undo" bar (outlives the screen it came from). */}
+          <DeleteUndoHost />
           <OrganizeHosts />
           <MiniPlayerOverlay />
           <ClipboardLinkBanner />
