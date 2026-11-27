@@ -149,6 +149,8 @@ export const routePaths = {
   /** Files F9 #856: clear downloads by rule, after a preview (Storage → Clean downloads). */
   filesCleanDownloads: '/files/clean-downloads',
   // F11 · Backup & reset (design 62)
+  /** Files F11: the Backup page (Settings → Backup & reset). */
+  backup: '/backup',
 } as const;
 
 export type RoutePath = (typeof routePaths)[keyof typeof routePaths];
