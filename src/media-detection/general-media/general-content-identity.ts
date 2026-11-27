@@ -84,6 +84,22 @@ export function extractMediaUrlContentId(url: string | null | undefined): string
   }
 }
 
+/**
+ * Whether the page URL has this id as one whole path segment (`vimeo.com/1222284165`,
+ * `vimeo.com/channels/staffpicks/1222284165`). Used only for an id the page's own player data named, so a bare
+ * numeric path — which alone is never taken for an item (it may be a year or an article) — can confirm it.
+ */
+export function pageUrlNamesContentId(pageUrl: string | null | undefined, contentId: string | null | undefined): boolean {
+  if (!pageUrl || !contentId || !/^[A-Za-z0-9_-]{5,32}$/.test(contentId)) {
+    return false;
+  }
+  try {
+    return new URL(pageUrl).pathname.split('/').includes(contentId);
+  } catch {
+    return false;
+  }
+}
+
 /** The item id a general media identity names (`video:<id>`), or null for element/resource identities. */
 export function contentIdOfGeneralIdentity(identity: string | null | undefined): string | null {
   if (!identity || !identity.startsWith('video:')) {

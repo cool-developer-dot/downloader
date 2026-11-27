@@ -2583,6 +2583,37 @@ A full test pass using `docs/testing/VidoraX-1.2.0-Deep-Test-Prompt.md`. The rep
     can't be broken on demand). Test trick: fill `/sdcard` with `dd` to make a download fail with NO_SPACE; free
     the space before `adb install` (install fails on a full device).
 
+### 4.42 Vimeo: found, owned and offered with every quality (branch `faran/vimeo-config-source`, 2026-11-27)
+
+A client's `vimeo.com/<id>` link showed "Unsupported". Not DRM (that video is plain HLS): Vimeo's player plays split
+DASH through MediaSource from byte ranges named in the path, so nothing it fetches is a whole file, and the HLS master
+the engine downloads fine was never seen. Fixes:
+
+- **Page script reads Vimeo's own player config** (`injected-script.ts`, "Vimeo player config" block): from
+  `window.playerConfig` (player.vimeo.com), from the config the page fetched (fetch/XHR hooks), or that same signed
+  config URL fetched again from the resource list when the player loaded it before injection. Reports the HLS master
+  with title, current `video.thumbnail_url` (`_640` size) or old `thumbs`, length, size, and `contentId` = `video.id`.
+  A DRM config (`/drm/` path or a drm block) is reported encrypted — never offered.
+- **`contentId` on candidates** (bridge → extractors → dedupe → `DetectedMedia`). Correlation: an explicit id found as
+  a whole segment of the page URL (`vimeo.com/<id>`, `/channels/staffpicks/<id>`) is that page's item — STRONG before
+  play, and it passes the provenance check. A bare numeric path alone is still never an item id; a config naming
+  another video (the creator's background reel, the previous video after an in-page move) is not offered.
+- **Offer metadata** (`offer-metadata-seed.ts`): title/thumbnail/length come from the owned source, filled from the
+  candidate whose player data names this page's item — an autoplaying player fetches its own copy of the master,
+  which carries none.
+- **Quality sheet header** shows the page's host (design 33), not the CDN's (`pageHost` in `useQualitySelection`).
+- **Paste / Add link**: when the page's player names its item, the old paste pick steps aside (it took a
+  one-quality playlist and showed its byte size, "959 B"); the paste opens the sheet with the page's verified offer,
+  also when that page was already open (`verifiedBrowserOfferFor`).
+- Trace builds log `[VidoraVerify]` (which candidate each verification was for) and the offer's thumbnail/title.
+
+Emulator (Pixel 8, trace release build), all PASS: client link (before play, every quality to 2160p with real sizes,
+540p saved with title + audio); `vimeo.com/1246752032` Staff Pick before play (178p saved as "JAZZ INFERNAL", plays
+with sound); `/channels/staffpicks/<id>`; `player.vimeo.com/video/<id>`; tap another video on the page (offer moves,
+no stale offer; PLAY GUN saved with title + thumbnail); Add link → paste client link (from the same page and from
+another page); DRM `vimeo.com/76979871` → "Protected video — can't be downloaded". Gates: tsc 0, lint 0, JS
+2,772/2,772. Not covered: Vimeo players inside third-party pages' iframes (the page script runs in the top frame only).
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

@@ -625,3 +625,71 @@ describe('a .ts file the user opened is not an HLS segment', () => {
     assert.equal(isSegmentResource(media('https://cdn.example.com/v/12.m4s', { userRequested: true })), true);
   });
 });
+
+describe('Vimeo: the page player data names the item', () => {
+  const HLS = 'https://vod-adaptive-ak.vimeocdn.com/exp=1~acl=x~hmac=y/2c7ff520/v2/playlist/av/primary/prot/cXNyPTE/playlist.m3u8';
+
+  /** A vimeo.com page whose player has not started (an element with no source yet), and the config's HLS master. */
+  function vimeoPage(pageUrl: string, contentId: string | null) {
+    generalPageMediaContextStore.clearAll();
+    generalPageMediaContextStore.setActiveTab(TAB);
+    generalPageMediaContextStore.syncFromPageUrl({ tabId: TAB, pageUrl, navigationEpoch: 0 });
+    generalPageMediaContextStore.applyActiveVideoEvidence({
+      tabId: TAB,
+      navigationEpoch: 0,
+      evidence: {
+        pageUrl, elementIdentity: 'video:0', currentSrc: '', src: '', isBlob: false, paused: true, ended: false,
+        readyState: 0, videoWidth: 0, videoHeight: 0, muted: false, currentTimeBucket: 0, intersectionRatio: 1,
+        viewportCenterDistance: 0, isDisplayed: true, isVisibleStyle: true, recentlyPlayed: false,
+        explicitAdMarker: false, associatedContentId: null, observedAt: Date.now(),
+      },
+    });
+    const result = mediaDetectionPipeline.processNetworkUrl([], HLS, pageUrl, [], {
+      detectionSource: 'native_network',
+      hasRange: false,
+      isForMainFrame: false,
+      mimeType: 'application/x-mpegurl',
+    });
+    const base = result.media.find((item) => item.url === HLS) ?? result.media[0];
+    assert.ok(base, 'pipeline rejected the HLS master');
+    const context = generalPageMediaContextStore.get(TAB);
+    const media: DetectedMedia = {
+      ...base,
+      contentId,
+      frameUrl: 'https://vimeo.com/',
+      observedTabId: TAB,
+      observedNavigationEpoch: 0,
+      observedPageGeneration: context?.pageGeneration,
+    };
+    return selectCurrentGeneralMedia({
+      candidates: [media],
+      context,
+      tabId: TAB,
+      navigationEpoch: 0,
+      pageGeneration: context?.pageGeneration,
+      pageUrl,
+    });
+  }
+
+  test('vimeo.com/<id>: the config naming that id is the current video before play (STRONG)', () => {
+    const picked = vimeoPage('https://vimeo.com/1246752032?fl=wc&source_section=for_you', '1246752032');
+    assert.ok(picked.media);
+    assert.equal(picked.group.confidence, 'STRONG');
+  });
+
+  test('vimeo.com/channels/staffpicks/<id> is the same', () => {
+    const picked = vimeoPage('https://vimeo.com/channels/staffpicks/1246752032', '1246752032');
+    assert.equal(picked.group.confidence, 'STRONG');
+  });
+
+  test('a config naming another video (the one before an in-page move) is not this page’s', () => {
+    const picked = vimeoPage('https://vimeo.com/1246752032', '1222284165');
+    assert.notEqual(picked.group.confidence, 'STRONG');
+    assert.notEqual(picked.group.confidence, 'MEDIUM');
+  });
+
+  test('without the config id a bare numeric path proves nothing', () => {
+    const picked = vimeoPage('https://vimeo.com/1246752032', null);
+    assert.notEqual(picked.group.confidence, 'STRONG');
+  });
+});

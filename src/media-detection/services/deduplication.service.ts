@@ -108,6 +108,7 @@ function mergeMedia(prev: DetectedMedia, incoming: DetectedMedia): DetectedMedia
   return {
     ...prev,
     ownerElementIdentity: incoming.ownerElementIdentity ?? prev.ownerElementIdentity,
+    contentId: incoming.contentId ?? prev.contentId,
     frameUrl: incoming.frameUrl ?? prev.frameUrl,
     observedTabId: incoming.observedTabId ?? prev.observedTabId,
     observedNavigationEpoch: incoming.observedNavigationEpoch ?? prev.observedNavigationEpoch,

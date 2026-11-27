@@ -159,7 +159,15 @@ function ensureSlice(tabId: string): TabMediaSlice {
 function emit(): void {
   const active = slices.get(activeTabId ?? '__default__');
   if (active) {
-    traceOfferState({ tabId: activeTabId, status: active.state.status, mediaUrl: active.state.mediaUrl });
+    traceOfferState({
+      tabId: activeTabId,
+      status: active.state.status,
+      mediaUrl: active.state.mediaUrl,
+      thumbnailUrl: active.state.analysis?.thumbnailUrl ?? null,
+      titled: Boolean(active.state.analysis?.title),
+      mediaThumbnailUrl: active.state.media?.thumbnailUrl ?? null,
+      mediaSource: active.state.media?.detectionSource ?? null,
+    });
   }
   listeners.forEach((listener) => {
     try {

@@ -1,5 +1,5 @@
 import type { DetectedMedia } from '@/media-detection/types';
-import { recordPipelineOutcome, type PipelineStage } from '@/media-detection/pipeline/pipeline-outcome';
+import { recordPipelineOutcome, traceVerifiedCandidate, type PipelineStage } from '@/media-detection/pipeline/pipeline-outcome';
 
 import type { MediaResolutionOutcome } from './media-resolution-outcome';
 
@@ -24,13 +24,20 @@ function stageOf(outcome: MediaResolutionOutcome): PipelineStage {
 export function recordVerificationOutcome(input: {
   tabId: string | null;
   pageUrl: string | null;
-  media: Pick<DetectedMedia, 'url' | 'finalUrl'>;
+  media: Pick<DetectedMedia, 'url' | 'finalUrl'> & Partial<Pick<DetectedMedia, 'detectionSource' | 'contentId'>>;
   outcome: MediaResolutionOutcome;
 }): void {
   const { outcome } = input;
   if (outcome.kind === 'TRANSIENT_UNRESOLVED' && outcome.reason === 'VERIFYING') {
     return;
   }
+  traceVerifiedCandidate({
+    mediaUrl: input.media.finalUrl || input.media.url,
+    source: input.media.detectionSource ?? null,
+    named: Boolean(input.media.contentId),
+    outcome: outcome.kind,
+    reason: outcome.reason ?? null,
+  });
   recordPipelineOutcome({
     tabId: input.tabId,
     pageUrl: input.pageUrl,

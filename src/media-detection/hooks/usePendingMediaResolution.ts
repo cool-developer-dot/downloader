@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
+import { browserMediaActionService } from '@/browser/media-actions/browser-media-action.service';
 import { pendingNavigationService } from '@/browser/services';
 import { useBrowserStore } from '@/browser/stores';
 import { isBrowserHomeUrl } from '@/browser/utils';
@@ -9,6 +10,7 @@ import {
   PAGE_RESOLUTION_TIMING,
   isSocialPlatform,
   tryCompletePageResolutionFromStore,
+  type PageResolutionCandidateResult,
 } from '../services/page-media-resolution.service';
 import {
   pendingMediaResolutionService,
@@ -29,6 +31,25 @@ export type PendingMediaResolutionHandlers = {
   onWaitingPlayback?: (session: PendingMediaResolution) => void;
   onTimeout?: (session: PendingMediaResolution) => void;
 };
+
+/**
+ * The browser's verified offer for the pasted page: the paste opens the sheet with it. A page whose player named its
+ * own item (Vimeo) is resolved by that offer, with every quality and real sizes, and a page already open with an
+ * offer is not offered a second time — without this the paste would wait for an offer that already came.
+ */
+export function verifiedBrowserOfferFor(
+  session: Pick<PendingMediaResolution, 'canonicalUrl' | 'originalUrl'>,
+): (PageResolutionCandidateResult & { ok: true }) | null {
+  const state = browserMediaActionService.getState();
+  if (state.status !== 'verified' || !state.media || !state.analysis || !state.requestContext || !state.mediaUrl) {
+    return null;
+  }
+  const samePage = [session.canonicalUrl, session.originalUrl].some((url) => isSameDocumentUrl(state.pageUrl, url));
+  if (!samePage) {
+    return null;
+  }
+  return { ok: true, media: state.media, mediaUrl: state.mediaUrl, requestContext: state.requestContext, analysis: state.analysis };
+}
 
 /**
  * Browser-side watcher for Paste Link page-resolution sessions.
@@ -102,7 +123,7 @@ export function usePendingMediaResolution(
 
     completingRef.current = true;
     try {
-      const result = await tryCompletePageResolutionFromStore(session);
+      const result = (await tryCompletePageResolutionFromStore(session)) ?? verifiedBrowserOfferFor(session);
       if (result?.ok) {
         clearTimers();
         logPageFlow('resolved', {

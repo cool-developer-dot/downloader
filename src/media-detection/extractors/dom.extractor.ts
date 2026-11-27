@@ -32,6 +32,7 @@ export function extractFromDomCandidate(
   return {
     ...base,
     ownerElementIdentity: payload.ownerElementIdentity,
+    contentId: payload.contentId ?? null,
     frameUrl: payload.frameUrl,
     thumbnailUrl,
     duration: payload.duration,

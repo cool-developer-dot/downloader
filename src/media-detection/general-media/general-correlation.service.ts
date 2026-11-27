@@ -27,6 +27,7 @@ import { isSameGeneralContentNavigation } from './general-content-navigation';
 import {
   contentIdOfGeneralIdentity,
   extractMediaUrlContentId,
+  pageUrlNamesContentId,
   sameContentIdShape,
 } from './general-content-identity';
 import { recordPipelineOutcome } from '../pipeline/pipeline-outcome';
@@ -287,9 +288,13 @@ function buildEvidence(
   // before and is scrolled back to, or its manifest came before the change was reported); one naming another item
   // is never current.
   const currentContentId = contentIdOfGeneralIdentity(context.currentMediaIdentity);
-  const urlContentId =
-    extractMediaUrlContentId(media.finalUrl || media.url) ?? extractMediaUrlContentId(media.url);
-  const contentIdMatch = currentContentId != null && urlContentId === currentContentId;
+  // The page's own player data may name the item when the URL does not (Vimeo's config `video.id`).
+  const explicitId = media.contentId?.trim() || null;
+  const urlContentId = explicitId || extractMediaUrlContentId(media.finalUrl || media.url) || extractMediaUrlContentId(media.url);
+  // A page whose path is just the id (`vimeo.com/1222284165`) has no item identity of its own; the id its player data
+  // named, found as a whole segment of the page's path, is that page's item.
+  const pageNamesExplicitId = explicitId != null && currentContentId == null && pageUrlNamesContentId(context.pageUrl, explicitId);
+  const contentIdMatch = (currentContentId != null && urlContentId === currentContentId) || pageNamesExplicitId;
   const contentIdMismatch =
     currentContentId != null &&
     urlContentId != null &&
@@ -373,6 +378,7 @@ function buildEvidence(
     blobOnlyPenalty: isBlobOnlyResource(media),
     unsupportedSchemePenalty: isUnsupportedScheme(media),
     contentIdMatch,
+    explicitContentId: Boolean(media.contentId?.trim()) && contentIdMatch,
     contentIdMismatch,
   };
 }
@@ -452,8 +458,13 @@ function confidenceFromEvidence(
     return { confidence: 'REJECTED', reason: 'OFFSCREEN_PRELOAD', rank: -650 };
   }
 
-  // The request names the very item the current player shows.
-  if (evidence.contentIdMatch && !evidence.emptyPlayerPenalty && !evidence.tinyPreviewPenalty) {
+  // The request names the very item the current player shows. When the page's own player data named it (an explicit
+  // content id, e.g. Vimeo's config), a player that has not started yet is no doubt: the page is that one item.
+  if (
+    evidence.contentIdMatch &&
+    !evidence.tinyPreviewPenalty &&
+    (!evidence.emptyPlayerPenalty || evidence.explicitContentId)
+  ) {
     return { confidence: 'STRONG', reason: null, rank: 930 };
   }
 
@@ -554,7 +565,11 @@ export function correlateGeneralCandidate(
     const expected = context.playerKind === 'iframe' ? 'OWNER_FRAME' : 'TOP_DOCUMENT';
     const rejectionReason: GeneralRejectionReason | null =
       provenance === expected
-        ? context.playerKind === 'iframe' || evidence.recentObservation || evidence.currentSrcMatch === true
+        ? context.playerKind === 'iframe' ||
+          evidence.recentObservation ||
+          evidence.currentSrcMatch === true ||
+          // The page's own data named this very item (Vimeo's config id): proof whenever it was observed.
+          evidence.explicitContentId === true
           ? null
           : 'WEAK_UNCORRELATED_MEDIA'
         : provenance === 'UNKNOWN'

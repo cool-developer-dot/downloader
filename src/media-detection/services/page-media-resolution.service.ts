@@ -4,6 +4,7 @@ import { buildAnalysisFromVerification } from '@/downloads/analyze/analyze-from-
 import type { DetectedMedia } from '../types';
 import { isSameDocumentUrl } from '../utils';
 import { getMsePlaybackContext } from '../engine/mse-playback-context';
+import { pageUrlNamesContentId } from '../general-media/general-content-identity';
 import { describePlatformPage } from '../platform';
 import { useMediaDetectionStore } from '../stores';
 import { verifyMediaCandidate } from './candidate-verifier.service';
@@ -117,6 +118,11 @@ export async function startPageMediaResolution(
 /**
  * Attempt to complete pending resolution from the live detection store.
  */
+/** Whether a candidate's page player data (an explicit content id) names the item this page's URL names. */
+export function pagePlayerNamesItsItem(candidates: readonly DetectedMedia[], pageUrl: string): boolean {
+  return candidates.some((media) => Boolean(media.contentId) && pageUrlNamesContentId(pageUrl, media.contentId));
+}
+
 export async function tryCompletePageResolutionFromStore(
   session: PendingMediaResolution,
   signal?: AbortSignal,
@@ -146,6 +152,13 @@ export async function tryCompletePageResolutionFromStore(
   );
 
   if (!candidates.length) {
+    return null;
+  }
+
+  // The page's own player data named this page's item (Vimeo's config `video.id` on vimeo.com/<id>): the verified
+  // offer, which owns it by that id, opens the sheet with every quality and real sizes. This older pick would take
+  // whichever playlist the player fetched for itself — on Vimeo a one-quality playlist.
+  if (pagePlayerNamesItsItem(candidates, pageUrl)) {
     return null;
   }
 

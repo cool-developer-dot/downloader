@@ -256,6 +256,7 @@ const BrowserScreenBody = memo(function BrowserScreenBody() {
         openWithAnalysis(browserState.analysis, {
           sourceUrl,
           requestContext: options?.requestContext ?? browserState.requestContext,
+          pageUrl: browserState.pageUrl,
         });
         return;
       }

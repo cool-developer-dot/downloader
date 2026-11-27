@@ -63,6 +63,7 @@ import {
 import { selectPreferredVariant, dedupeVariants } from '../social-source/variant-policy';
 import type { VerifiedSocialMediaVariant } from '../social-source/types';
 import { hashIdentity as diagHash, logGeneralSource } from './general-source-diagnostics';
+import { offerMetadataSeed } from './offer-metadata-seed';
 import {
   hashHandoffIdentity,
   logAutomaticHandoff,
@@ -1355,7 +1356,7 @@ export async function buildVerifiedGeneralMediaOffer(
     mediaIdentityHash: diagHash(offer.mediaIdentity),
   });
 
-  const analysis = generalOfferToAnalysis(offer, preferred, input.candidates[0]!);
+  const analysis = generalOfferToAnalysis(offer, preferred, offerMetadataSeed(input.candidates, input.ownedResourceUrl, input.pageUrl));
   return { ok: true, offer, analysis };
 }
 

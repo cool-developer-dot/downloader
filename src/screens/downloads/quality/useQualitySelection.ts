@@ -62,6 +62,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { translate } from '@/localization';
 
+/** A page URL's host for the sheet's header (`vimeo.com`), or null. */
+function hostOfPage(pageUrl: string | null | undefined): string | null {
+  if (!pageUrl) {
+    return null;
+  }
+  try {
+    const url = new URL(pageUrl);
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.hostname.replace(/^www\./, '') || null : null;
+  } catch {
+    return null;
+  }
+}
+
 function isAbortError(error: unknown): boolean {
   if (!error || typeof error !== 'object') {
     return false;
@@ -151,6 +164,8 @@ export type UseQualitySelectionResult = {
   urlError: string | null;
   phase: AnalyzePhase;
   flowKind: AnalyzeFlowKind;
+  /** The host of the page an offer came from (a browser or pasted-page offer), or null. */
+  pageHost: string | null;
   platform: PlatformPageKind | null;
   progressMessage: string | null;
   selection: AnalyzedMediaSelection | null;
@@ -174,6 +189,8 @@ export type UseQualitySelectionResult = {
     options?: {
       sourceUrl?: string;
       requestContext?: MediaRequestContext | null;
+      /** The page the video was found on: its host heads the sheet (design 33), not the media CDN's. */
+      pageUrl?: string | null;
     },
   ) => void;
   close: () => void;
@@ -215,6 +232,7 @@ export function useQualitySelection(
   const [urlError, setUrlError] = useState<string | null>(null);
   const [phase, setPhase] = useState<AnalyzePhase>('idle');
   const [flowKind, setFlowKind] = useState<AnalyzeFlowKind>(null);
+  const [pageHost, setPageHost] = useState<string | null>(null);
   const [platform, setPlatform] = useState<PlatformPageKind | null>(null);
   const [selection, setSelection] = useState<AnalyzedMediaSelection | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -279,6 +297,7 @@ export function useQualitySelection(
     browserOfferRef.current = false;
     setPhase('idle');
     setFlowKind(null);
+    setPageHost(null);
     setPlatform(null);
     setSelection(null);
     setSelectedId(null);
@@ -520,9 +539,11 @@ export function useQualitySelection(
       openOptions?: {
         sourceUrl?: string;
         requestContext?: MediaRequestContext | null;
+        pageUrl?: string | null;
       },
     ) => {
       browserHandoffActiveRef.current = false;
+      setPageHost(hostOfPage(openOptions?.pageUrl));
       browserOfferRef.current = browserMediaActionService.isSelectionLocked();
       requestContextRef.current = openOptions?.requestContext ?? null;
       setUrlState(openOptions?.sourceUrl ?? analysis.sourceUrl);
@@ -649,6 +670,7 @@ export function useQualitySelection(
     pendingMediaResolutionService.clear();
     setPhase('idle');
     setFlowKind(null);
+    setPageHost(null);
     setPlatform(null);
     setSelection(null);
     setSelectedId(null);
@@ -990,6 +1012,7 @@ export function useQualitySelection(
     urlError,
     phase,
     flowKind,
+    pageHost,
     platform,
     progressMessage,
     selection,

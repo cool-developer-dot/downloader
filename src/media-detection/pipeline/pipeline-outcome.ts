@@ -292,7 +292,17 @@ export function pipelineMediaHash(url: string | null | undefined): string | null
 }
 
 /** Trace builds only: the active tab's CTA offer, whenever it changes (which media the "Video available" names). */
-export function traceOfferState(fields: { tabId: string | null; status: string; mediaUrl: string | null }): void {
+export function traceOfferState(fields: {
+  tabId: string | null;
+  status: string;
+  mediaUrl: string | null;
+  /** The offer's thumbnail (only its host is traced) and whether it carries a title. */
+  thumbnailUrl?: string | null;
+  titled?: boolean;
+  /** The offered media's own thumbnail host and how it was detected. */
+  mediaThumbnailUrl?: string | null;
+  mediaSource?: string | null;
+}): void {
   if (!TRACE_ENABLED) {
     return;
   }
@@ -302,6 +312,10 @@ export function traceOfferState(fields: { tabId: string | null; status: string; 
     mediaHash: hashOf(fields.mediaUrl),
     // The file name's first characters: the same file served by another CDN edge hashes differently.
     file: fields.mediaUrl ? (fields.mediaUrl.split('?')[0]!.split('/').pop() ?? '').slice(0, 12) : null,
+    thumb: hostOf(fields.thumbnailUrl ?? null),
+    titled: fields.titled ?? null,
+    mediaThumb: hostOf(fields.mediaThumbnailUrl ?? null),
+    src: fields.mediaSource ?? null,
   });
   if (line === lastOfferTrace) {
     return;
@@ -310,6 +324,30 @@ export function traceOfferState(fields: { tabId: string | null; status: string; 
   console.log('[VidoraOffer]', line);
 }
 let lastOfferTrace: string | null = null;
+
+/** Trace builds only: which candidate a verification outcome was for (how it was found, its file name, a named id). */
+export function traceVerifiedCandidate(fields: {
+  mediaUrl: string | null;
+  source: string | null;
+  named: boolean;
+  outcome: string;
+  reason: string | null;
+}): void {
+  if (!TRACE_ENABLED) {
+    return;
+  }
+  console.log(
+    '[VidoraVerify]',
+    JSON.stringify({
+      mediaHash: hashOf(fields.mediaUrl),
+      file: fields.mediaUrl ? (fields.mediaUrl.split('?')[0]!.split('/').pop() ?? '').slice(0, 16) : null,
+      src: fields.source,
+      named: fields.named,
+      outcome: fields.outcome,
+      reason: fields.reason,
+    }),
+  );
+}
 
 /**
  * Trace builds only: what the active tab's media-action area shows (the Download button and its file, or a status),

@@ -36,6 +36,8 @@ export interface BridgePageMetaPayload {
 
 export interface BridgeMediaCandidatePayload {
   ownerElementIdentity?: string | null;
+  /** See `DetectedMedia.contentId`. */
+  contentId?: string | null;
   frameUrl?: string | null;
   url: string;
   pageUrl: string;

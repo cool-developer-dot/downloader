@@ -95,6 +95,7 @@ export const QualitySelectionProvider = memo(function QualitySelectionProvider({
       openWithAnalysis(result.analysis, {
         sourceUrl: result.mediaUrl,
         requestContext: result.requestContext,
+        pageUrl,
       });
     },
     [isBrowserHandoffActive, openWithAnalysis],

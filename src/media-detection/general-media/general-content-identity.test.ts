@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 import {
   contentIdOfGeneralIdentity,
   extractMediaUrlContentId,
+  pageUrlNamesContentId,
   sameContentIdShape,
 } from './general-content-identity';
 
@@ -38,5 +39,22 @@ describe('the item a media URL names', () => {
     assert.equal(sameContentIdShape('xbdj9lm', 'xb3pcpa'), true);
     assert.equal(sameContentIdShape('4678791569058145', 'xb3pcpa'), false);
     assert.equal(sameContentIdShape('8812345', '8812399'), true);
+  });
+});
+
+describe('a page URL naming the id its player data named', () => {
+  test('a whole path segment counts, wherever it is', () => {
+    assert.equal(pageUrlNamesContentId('https://vimeo.com/1222284165?fl=wc', '1222284165'), true);
+    assert.equal(pageUrlNamesContentId('https://vimeo.com/channels/staffpicks/1222284165', '1222284165'), true);
+    assert.equal(pageUrlNamesContentId('https://player.vimeo.com/video/1222284165', '1222284165'), true);
+  });
+
+  test('part of a segment, the query, another id or garbage does not', () => {
+    assert.equal(pageUrlNamesContentId('https://vimeo.com/12222841650', '1222284165'), false);
+    assert.equal(pageUrlNamesContentId('https://vimeo.com/watch?v=1222284165', '1222284165'), false);
+    assert.equal(pageUrlNamesContentId('https://vimeo.com/1246752032', '1222284165'), false);
+    assert.equal(pageUrlNamesContentId('https://vimeo.com/1222284165', 'a/b'), false);
+    assert.equal(pageUrlNamesContentId('not a url', '1222284165'), false);
+    assert.equal(pageUrlNamesContentId(null, '1222284165'), false);
   });
 });

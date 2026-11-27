@@ -95,6 +95,7 @@ export function extractDetectedMedia(candidate: MediaCandidate): DetectedMedia |
   return {
     id,
     ownerElementIdentity: candidate.ownerElementIdentity,
+    contentId: candidate.contentId ?? null,
     frameUrl: candidate.frameUrl,
     url: finalUrl || candidate.url,
     sourceUrl: sourceUrl || candidate.url,

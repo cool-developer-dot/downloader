@@ -151,6 +151,8 @@ export type GeneralOwnershipEvidence = {
   unsupportedSchemePenalty: boolean;
   /** The URL names the item the current player shows. */
   contentIdMatch: boolean;
+  /** The content id came from the page's own player data (`DetectedMedia.contentId`), not from the URL. */
+  explicitContentId?: boolean;
   /** The URL names another item than the one the current player shows. */
   contentIdMismatch: boolean;
 };

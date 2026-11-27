@@ -922,9 +922,109 @@ ${MSE_OBSERVATION_SOURCE}
     } catch (eJson) {}
   }
 
+  // ---- Vimeo player config (vimeo.com, player.vimeo.com) ----
+  // Vimeo's player plays split DASH through MediaSource, from byte ranges named in the path: nothing it fetches is a
+  // whole file. Its own config also names an HLS master (video renditions + separate audio) that the engine downloads
+  // and merges. That config is read only as the page itself has it: window.playerConfig on a player page, the config
+  // the page fetched (seen in the fetch/XHR hooks), or that same config URL fetched again from the page's resource
+  // list when the player loaded it before this script was injected. A DRM config (stream paths under /drm/, or the
+  // player's own drm block) is reported as encrypted — never decrypted, never offered.
+  var vimeoSent = Object.create(null);
+  var vimeoRefetched = Object.create(null);
+  function isVimeoHost(host) {
+    var h = String(host || '').toLowerCase();
+    return h === 'vimeo.com' || h.slice(-10) === '.vimeo.com';
+  }
+  function isVimeoConfigUrl(u) {
+    try {
+      var parsed = new URL(String(u));
+      if (parsed.hostname.toLowerCase() !== 'player.vimeo.com') return false;
+      var parts = parsed.pathname.split('/');
+      return parts.length >= 4 && parts[1] === 'video' && /^[0-9]+$/.test(parts[2]) && parts[3] === 'config';
+    } catch (e) { return false; }
+  }
+  function vimeoCdnUrl(stream) {
+    try {
+      if (!stream || !stream.cdns) return null;
+      var cdn = stream.cdns[stream.default_cdn];
+      if (!cdn) {
+        var names = Object.keys(stream.cdns);
+        cdn = names.length ? stream.cdns[names[0]] : null;
+      }
+      return cdn ? (cdn.url || cdn.avc_url || null) : null;
+    } catch (e) { return null; }
+  }
+  // Current configs name one full-size image (video.thumbnail_url, ending in "-d"); "_640" asks for a small one.
+  function vimeoSizedThumb(u) {
+    if (typeof u !== 'string' || !u) return null;
+    return /-d$/.test(u) ? u + '_640' : u;
+  }
+  function vimeoFromConfig(cfg) {
+    try {
+      if (!cfg || typeof cfg !== 'object' || !cfg.request || !cfg.request.files) return false;
+      var files = cfg.request.files;
+      var hls = safeUrl(vimeoCdnUrl(files.hls));
+      if (!hls) return false;
+      var video = cfg.video && typeof cfg.video === 'object' ? cfg.video : {};
+      var key = String(video.id || '') + '|' + hls.split('?')[0];
+      if (vimeoSent[key]) return false;
+      vimeoSent[key] = 1;
+      var dash = vimeoCdnUrl(files.dash) || '';
+      var drm = hls.indexOf('/drm/') >= 0 || String(dash).indexOf('/drm/') >= 0 || !!(cfg.request.drm || files.drm);
+      var thumbs = video.thumbs && typeof video.thumbs === 'object' ? video.thumbs : {};
+      var duration = typeof video.duration === 'number' && video.duration > 0 ? video.duration : null;
+      var width = typeof video.width === 'number' && video.width > 0 ? video.width : null;
+      var height = typeof video.height === 'number' && video.height > 0 ? video.height : null;
+      enqueue({
+        url: hls,
+        pageUrl: pageUrl,
+        mimeType: 'application/x-mpegurl',
+        extension: 'm3u8',
+        title: (typeof video.title === 'string' && video.title.trim()) ? video.title.trim() : (document.title || null),
+        thumbnailUrl: safeUrl(thumbs['640'] || thumbs['960'] || thumbs['1280'] || vimeoSizedThumb(video.thumbnail_url) || thumbs.base || null),
+        duration: duration,
+        width: width,
+        height: height,
+        estimatedFileSize: null,
+        isLive: !!video.live_event,
+        isDrm: drm,
+        playlistType: 'master',
+        detectionSource: 'js_fetch',
+        tagName: null,
+        contentId: video.id != null && /^[0-9]{5,32}$/.test(String(video.id)) ? String(video.id) : null
+      });
+      return true;
+    } catch (e) { return false; }
+  }
+  function refetchVimeoConfig(u) {
+    try {
+      if (!window.fetch) return;
+      window.fetch(u, { credentials: 'include' }).then(function(res) {
+        if (!res || !res.ok) return null;
+        return res.json();
+      }).then(function(cfg) { if (cfg) vimeoFromConfig(cfg); }, function() {});
+    } catch (e) {}
+  }
+  function harvestVimeoConfig() {
+    try {
+      if (!isVimeoHost(location.hostname)) return;
+      if (window.playerConfig) vimeoFromConfig(window.playerConfig);
+      var entries = (window.performance && performance.getEntriesByType) ? performance.getEntriesByType('resource') : [];
+      var stop = Math.max(0, entries.length - 300);
+      for (var i = entries.length - 1; i >= stop; i--) {
+        var name = entries[i] && entries[i].name ? String(entries[i].name) : '';
+        if (!name || vimeoRefetched[name] || !isVimeoConfigUrl(name)) continue;
+        vimeoRefetched[name] = 1;
+        refetchVimeoConfig(name);
+      }
+    } catch (e) {}
+  }
+  // ---- end Vimeo player config ----
+
   function harvestEmbeddedMedia() {
     harvestJsonLd();
     harvestEmbeddedJsonUrls();
+    harvestVimeoConfig();
   }
 
   /**
@@ -1158,6 +1258,10 @@ ${MSE_OBSERVATION_SOURCE}
             var finalUrl = res.url || reqUrl;
             observeNetworkUrl(finalUrl, ct, 'js_fetch');
             if (reqUrl && reqUrl !== finalUrl) observeNetworkUrl(reqUrl, ct, 'js_fetch');
+            // Vimeo: the player's own config names the downloadable HLS master (read from a copy of the response).
+            if ((isVimeoConfigUrl(finalUrl) || isVimeoConfigUrl(reqUrl)) && res.ok && res.clone) {
+              res.clone().json().then(vimeoFromConfig, function() {});
+            }
           } catch (e3) {}
           return res;
         });
@@ -1181,6 +1285,11 @@ ${MSE_OBSERVATION_SOURCE}
             var ct = null;
             try { ct = xhr.getResponseHeader('content-type'); } catch (e) {}
             observeNetworkUrl(xhr.responseURL || xhr.__vidoraxUrl, ct, 'js_xhr');
+            if (isVimeoConfigUrl(xhr.responseURL || xhr.__vidoraxUrl) && xhr.status >= 200 && xhr.status < 300) {
+              var rt = xhr.responseType;
+              var body = rt === 'json' ? xhr.response : (rt === '' || rt === 'text') ? JSON.parse(xhr.responseText) : null;
+              if (body) vimeoFromConfig(body);
+            }
           } catch (e2) {}
         }, { once: true });
       } catch (e3) {}
@@ -1912,6 +2021,8 @@ ${MSE_OBSERVATION_SOURCE}
 
   function flushActiveVideo() {
     activeVideoTimer = null;
+    // A Vimeo player that started after load fetched its config just now: pick it up (cheap off Vimeo).
+    harvestVimeoConfig();
     try {
       var el = pickBestActiveVideo();
       var videoDisplayed = false;

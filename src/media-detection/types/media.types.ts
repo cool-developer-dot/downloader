@@ -103,6 +103,11 @@ export type MediaObservationStamp = Pick<
  */
 export interface DetectedMedia {
   ownerElementIdentity?: string | null;
+  /**
+   * The item this media is, as the page's own player data names it (Vimeo's player config `video.id`), when its URL does
+   * not say. Matched against the item the player shows, like an id in the URL path.
+   */
+  contentId?: string | null;
   frameUrl?: string | null;
   observedTabId?: string | null;
   observedNavigationEpoch?: number;
@@ -209,6 +214,11 @@ export interface MediaDetectionError {
 /** Lightweight candidate emitted by observers before enrichment. */
 export interface MediaCandidate {
   ownerElementIdentity?: string | null;
+  /**
+   * The item this media is, as the page's own player data names it (Vimeo's player config `video.id`), when its URL does
+   * not say. Matched against the item the player shows, like an id in the URL path.
+   */
+  contentId?: string | null;
   frameUrl?: string | null;
   /** Observation evidence only; never implies a supported or verified container. */
   videoElementEvidence?: boolean;

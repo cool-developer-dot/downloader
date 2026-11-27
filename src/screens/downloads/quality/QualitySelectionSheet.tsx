@@ -61,6 +61,7 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
     url,
     urlError,
     phase,
+    pageHost,
     platform,
     progressMessage,
     selection,
@@ -176,7 +177,8 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
   const showPlaybackFallback = phase === 'waiting_for_playback';
 
   const canPlay = phase === 'ready' && isPlayableOffer(selectedOption) && !creating && !analyzing;
-  const subtitle = selection ? resolveDisplayHost(selection) : hostOf(url.trim());
+  // Design 33: "Download video" over the page's host; a direct file link shows its own host.
+  const subtitle = pageHost ?? (selection ? resolveDisplayHost(selection) : hostOf(url.trim()));
 
   const footer = (() => {
     if (showAnalyzing) {
