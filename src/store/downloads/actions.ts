@@ -833,6 +833,8 @@ export function createDownloadsActions(
       await get().load(1);
     },
     create: async (input) => {
+      // F14 #855: warn (once a day) when the phone is low on space before another download starts.
+      void import('@/files/cleanup/cleanup-api').then((m) => m.checkLowSpace()).catch(() => undefined);
       const dedupeKey = createDedupeKey(input);
       if (createInFlightKeys.has(dedupeKey)) {
         return null;
