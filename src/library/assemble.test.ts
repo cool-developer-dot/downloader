@@ -4,7 +4,7 @@ import { test } from 'node:test';
 import { projectV2Download } from '../downloads/v2/projection.ts';
 import { downloadRecord, libraryItem, PAGE_URL } from '../downloads/v2/test-fixtures.ts';
 
-import { assembleCanonicalItems } from './assemble.ts';
+import { assembleCanonicalItems, setLibraryExclusion } from './assemble.ts';
 
 function build(rows: ReturnType<typeof projectV2Download>[], favoriteKeys: Set<string>) {
   const transfers = Object.fromEntries(rows.map((row) => [row.item.id, row.transfer]));
@@ -37,4 +37,17 @@ test('a row without a favorite of its own keeps the page favorite', () => {
   delete (v1Like.item as { favorite?: boolean }).favorite;
   const items = build([v1Like], new Set([PAGE_URL]));
   assert.equal(items[0]?.favorite, true);
+});
+
+test('F13: items in the recycle bin are left out until the exclusion is cleared', () => {
+  const rows = ['a', 'b'].map((id) =>
+    projectV2Download(downloadRecord({ id, state: 'completed' }), { library: libraryItem({ id }) }),
+  );
+  try {
+    setLibraryExclusion((id) => id === 'a');
+    assert.deepEqual(build(rows, new Set()).map((item) => item.id), ['b']);
+  } finally {
+    setLibraryExclusion(() => false);
+  }
+  assert.deepEqual(build(rows, new Set()).map((item) => item.id).sort(), ['a', 'b']);
 });
