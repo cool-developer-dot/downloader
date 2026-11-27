@@ -11,6 +11,7 @@ import {
 } from './schema';
 import { applyPlaylistTables } from './playlist-schema';
 import { applyLibraryStatsTables } from './library-stats-schema';
+import { applyFolderTreeSchema } from './folder-tree-schema';
 
 export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
   try {
@@ -83,6 +84,13 @@ export async function migrateDatabase(db: SQLiteDatabase): Promise<void> {
       // P9: play counts and video bookmarks (new tables only, IF NOT EXISTS; safe to run twice). App database only.
       await applyLibraryStatsTables(db);
       await db.execAsync('PRAGMA user_version = 10');
+    }
+
+    if (currentVersion < 11) {
+      // F12: nested library folders (media_folders.parent_id, names unique per parent). Existing folders stay at the
+      // root; safe to run twice. App database only.
+      await applyFolderTreeSchema(db);
+      await db.execAsync('PRAGMA user_version = 11');
     }
   } catch (error) {
     throw toStorageError(error, 'Failed to migrate local database', 'DATABASE_INIT_FAILED');

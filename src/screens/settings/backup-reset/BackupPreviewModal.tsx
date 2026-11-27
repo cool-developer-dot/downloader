@@ -17,6 +17,7 @@ const ROW_KEYS: Record<BackupPreviewRow['section'], TranslationKey> = {
   playlists: 'privacyBackup.previewPlaylists',
   videoBookmarks: 'privacyBackup.previewBookmarks',
   playStats: 'privacyBackup.previewPlayCounts',
+  files: 'filesCore.previewFiles',
 };
 
 export type BackupPreviewModalProps = {
@@ -65,7 +66,9 @@ export const BackupPreviewModal = memo(function BackupPreviewModal({
               <Text key={row.section} variant="body" testID={`${testID}-${row.section}`}>
                 {row.section === 'playlists'
                   ? t(ROW_KEYS[row.section], { count: row.count, videos: row.videos })
-                  : t(ROW_KEYS[row.section], { count: row.count })}
+                  : row.section === 'files'
+                    ? t(ROW_KEYS[row.section], { count: row.count, items: row.items })
+                    : t(ROW_KEYS[row.section], { count: row.count })}
               </Text>
             ))
           )}

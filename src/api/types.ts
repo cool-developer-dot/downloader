@@ -425,6 +425,8 @@ export interface DeleteFavoriteResponse {
 export interface MediaFolderItem {
   id: string;
   name: string;
+  /** F12: the parent folder; null/absent = the root. */
+  parentId?: string | null;
   createdAt: string;
   updatedAt: string;
 }

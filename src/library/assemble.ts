@@ -166,13 +166,22 @@ function mergeSource(params: {
   };
 }
 
+/**
+ * F13: ids the library leaves out (the recycle bin's items: still on disk, hidden until restored or purged). Set by
+ * src/files/trash at startup; nothing is left out until then. Kept as a setter so this module stays pure.
+ */
+let excludedFromLibrary: (id: string) => boolean = () => false;
+export function setLibraryExclusion(isExcluded: (id: string) => boolean): void {
+  excludedFromLibrary = isExcluded;
+}
+
 export function buildCanonicalLibrary(
   sources: LibraryBuildSource[],
 ): MediaLibraryItem[] {
   const mapped: MediaLibraryItem[] = [];
   for (const source of sources) {
     const item = mapToMediaLibraryItem(source);
-    if (item) {
+    if (item && !excludedFromLibrary(item.id)) {
       mapped.push(item);
     }
   }
