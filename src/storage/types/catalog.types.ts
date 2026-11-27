@@ -68,6 +68,8 @@ export type ListDownloadCatalogOptions = {
 export type MediaFolderEntry = {
   id: string;
   name: string;
+  /** F12 (app DB v11): the folder this one sits in; null/absent = the root. */
+  parentId?: string | null;
   normalizedName: string;
   createdAt: string;
   updatedAt: string;

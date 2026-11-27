@@ -27,6 +27,10 @@ import { useFolderColorsStore } from '@/files/organize/organize-stores';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { useItemHiddenStore } from '@/library/item-organize-store';
 import { useFoldersStore } from '@/store/organization/folders';
+import { setHiddenIdsProvider } from '@/files/api';
+
+// F7 #911: Faran's engine leaves hidden files out of listFolder unless `includeHidden`; this is where they live.
+setHiddenIdsProvider(() => new Set(useItemHiddenStore.getState().hiddenIds));
 
 export type LoadStatus = 'loading' | 'ready' | 'error';
 

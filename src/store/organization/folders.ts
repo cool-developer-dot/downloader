@@ -21,7 +21,10 @@ type FoldersState = {
 type FoldersActions = {
   ensureReady: () => Promise<void>;
   refetch: () => Promise<void>;
-  createFolder: (name: string) => Promise<MediaFolderItem>;
+  /** `parentId` (F12): the folder to create it in; omitted/null = the root. */
+  createFolder: (name: string, parentId?: string | null) => Promise<MediaFolderItem>;
+  /** F12: moves a folder under `parentId` (null = the root). Loops and depth are checked by src/files/api.ts. */
+  moveFolder: (id: string, parentId: string | null) => Promise<MediaFolderItem>;
   renameFolder: (id: string, name: string) => Promise<MediaFolderItem>;
   deleteFolder: (id: string) => Promise<void>;
   reset: () => void;
@@ -84,10 +87,10 @@ export const useFoldersStore = createStore<FoldersStore>()(
         }
       },
 
-      createFolder: async (name: string) => {
+      createFolder: async (name: string, parentId: string | null = null) => {
         set({ loading: true, error: null });
         try {
-          const entry = await mediaFolderRepository.create(name);
+          const entry = await mediaFolderRepository.create(name, parentId);
           const folder = folderEntryToApiItem(entry);
           const current = get();
           const nextItemsById = { ...current.itemsById, [folder.id]: folder };
@@ -153,6 +156,13 @@ export const useFoldersStore = createStore<FoldersStore>()(
         }
       },
 
+      moveFolder: async (id: string, parentId: string | null) => {
+        const entry = await mediaFolderRepository.move(id, parentId);
+        const moved = folderEntryToApiItem(entry);
+        set({ itemsById: { ...get().itemsById, [id]: moved }, error: null });
+        return moved;
+      },
+
       deleteFolder: async (id: string) => {
         const current = get();
         const prev = current.itemsById[id];
@@ -160,19 +170,40 @@ export const useFoldersStore = createStore<FoldersStore>()(
           throw new Error('Folder not found');
         }
 
-        // Unassign media first — never delete media files with the folder.
-        await downloadCatalogRepository.clearFolderAssignments(id);
+        // F12: the folder's media and subfolders move up into its parent (the root for a top-level folder). Media
+        // files are never deleted with a folder.
+        const parentId = prev.parentId ?? null;
+        await downloadCatalogRepository.moveFolderAssignments(id, parentId);
 
         try {
           const { useDownloadsStore } = await import('@/store/downloads');
           const store = useDownloadsStore.getState();
           for (const item of Object.values(store.itemsById)) {
             if (item.folderId === id) {
-              store.patchItem(item.id, { folderId: null });
+              store.patchItem(item.id, { folderId: parentId });
             }
           }
         } catch {
           // store patch is best-effort; catalog already cleared
+        }
+        try {
+          // The assignment cache would otherwise keep pointing at the deleted folder.
+          const { useMediaFolderAssignmentsStore } = await import('./folder-assignments');
+          useMediaFolderAssignmentsStore.setState((state) => {
+            let changed = false;
+            const next: Record<string, string | null> = {};
+            for (const [mediaId, folderId] of Object.entries(state.folderIdByMediaId)) {
+              if (folderId === id) {
+                changed = true;
+                next[mediaId] = parentId;
+              } else {
+                next[mediaId] = folderId;
+              }
+            }
+            return changed ? { folderIdByMediaId: next } : state;
+          });
+        } catch {
+          // best-effort, like the downloads patch above
         }
 
         set({
@@ -187,6 +218,8 @@ export const useFoldersStore = createStore<FoldersStore>()(
 
         try {
           await mediaFolderRepository.delete(id);
+          // Subfolders were re-parented (and maybe renamed) in the database: reload them.
+          await get().refetch();
         } catch (error) {
           set({
             itemsById: {
