@@ -21,6 +21,8 @@ import { ClipboardLinkBanner } from '@/browser/components/ClipboardLinkBanner';
 import { AppLockGate } from '@/security/app-lock';
 import { SecurityHost } from '@/screens/settings/security/SecurityHost';
 import { TourAccessibilityScope, TourHost } from '@/tour';
+// Files F2 / F7 (Faran's F17): the File Manager's own settings keys join every backup.
+import '@/files/ui/files-backup-keys';
 
 export default function AppLayout() {
   const theme = useTheme();
