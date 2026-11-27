@@ -12,6 +12,8 @@ import { getDatabase } from '../sqlite/client';
 interface FolderRow {
   id: string;
   name: string;
+  /** F12 (app DB v11); undefined only on a database not yet migrated. */
+  parent_id?: string | null;
   normalized_name: string;
   created_at: string;
   updated_at: string;
@@ -25,6 +27,7 @@ function mapRow(row: FolderRow): MediaFolderEntry {
   return {
     id: row.id,
     name: row.name,
+    parentId: row.parent_id ?? null,
     normalizedName: row.normalized_name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -35,6 +38,7 @@ export function folderEntryToApiItem(entry: MediaFolderEntry): MediaFolderItem {
   return {
     id: entry.id,
     name: entry.name,
+    parentId: entry.parentId ?? null,
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
   };
@@ -71,7 +75,23 @@ export class MediaFolderRepository {
     }
   }
 
-  async create(name: string): Promise<MediaFolderEntry> {
+  /** A folder with this name already in `parentId` (null = the root), other than `exceptId`. */
+  private async findSibling(
+    normalized: string,
+    parentId: string | null,
+    exceptId: string | null,
+  ): Promise<FolderRow | null> {
+    const db = await getDatabase();
+    return db.getFirstAsync<FolderRow>(
+      `SELECT * FROM ${TABLE_NAMES.mediaFolders}
+       WHERE normalized_name = ? AND IFNULL(parent_id, '') = ? AND id != ? LIMIT 1`,
+      normalized,
+      parentId ?? '',
+      exceptId ?? '',
+    );
+  }
+
+  async create(name: string, parentId: string | null = null): Promise<MediaFolderEntry> {
     const trimmed = name.trim().replace(/\s+/g, ' ');
     if (!trimmed) {
       throw new StorageError('Folder name is required', 'VALIDATION_FAILED');
@@ -83,11 +103,10 @@ export class MediaFolderRepository {
 
     try {
       const db = await getDatabase();
-      const existing = await db.getFirstAsync<FolderRow>(
-        `SELECT * FROM ${TABLE_NAMES.mediaFolders}
-         WHERE normalized_name = ? LIMIT 1`,
-        normalized,
-      );
+      if (parentId != null && !(await this.getById(parentId))) {
+        throw new StorageError('Parent folder not found', 'NOT_FOUND');
+      }
+      const existing = await this.findSibling(normalized, parentId, null);
       if (existing) {
         throw new StorageError(
           'A folder with this name already exists',
@@ -97,11 +116,12 @@ export class MediaFolderRepository {
 
       await db.runAsync(
         `INSERT INTO ${TABLE_NAMES.mediaFolders}
-          (id, name, normalized_name, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)`,
+          (id, name, normalized_name, parent_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         id,
         trimmed,
         normalized,
+        parentId,
         now,
         now,
       );
@@ -139,12 +159,7 @@ export class MediaFolderRepository {
       }
 
       const db = await getDatabase();
-      const conflict = await db.getFirstAsync<FolderRow>(
-        `SELECT * FROM ${TABLE_NAMES.mediaFolders}
-         WHERE normalized_name = ? AND id != ? LIMIT 1`,
-        normalized,
-        trimmedId,
-      );
+      const conflict = await this.findSibling(normalized, existing.parentId ?? null, trimmedId);
       if (conflict) {
         throw new StorageError(
           'A folder with this name already exists',
@@ -176,7 +191,44 @@ export class MediaFolderRepository {
   }
 
   /**
-   * Deletes the folder row only. Caller must clear media folder_id assignments.
+   * F12: moves a folder under `parentId` (null = the root). The caller checks loops and depth (`moveProblem` in
+   * src/files/engine/folder-tree.ts); this refuses only a name already used in the new parent.
+   */
+  async move(id: string, parentId: string | null): Promise<MediaFolderEntry> {
+    const existing = await this.getById(id);
+    if (!existing) {
+      throw new StorageError('Folder not found', 'NOT_FOUND');
+    }
+    try {
+      if (parentId != null && !(await this.getById(parentId))) {
+        throw new StorageError('Parent folder not found', 'NOT_FOUND');
+      }
+      if (await this.findSibling(existing.normalizedName, parentId, existing.id)) {
+        throw new StorageError('A folder with this name already exists', 'VALIDATION_FAILED');
+      }
+      const db = await getDatabase();
+      await db.runAsync(
+        `UPDATE ${TABLE_NAMES.mediaFolders} SET parent_id = ?, updated_at = ? WHERE id = ?`,
+        parentId,
+        nowIso(),
+        existing.id,
+      );
+      const moved = await this.getById(existing.id);
+      if (!moved) {
+        throw new Error('Folder move failed');
+      }
+      return moved;
+    } catch (error) {
+      if (error instanceof StorageError) {
+        throw error;
+      }
+      throw toStorageError(error, 'Failed to move folder');
+    }
+  }
+
+  /**
+   * Deletes the folder row. Its subfolders move up into its parent (a clashing name gets " (2)", " (3)", …). The caller
+   * moves the folder's items (`downloadCatalogRepository.moveFolderAssignments`); files are never deleted here.
    */
   async delete(id: string): Promise<boolean> {
     const trimmed = id.trim();
@@ -185,6 +237,32 @@ export class MediaFolderRepository {
     }
     try {
       const db = await getDatabase();
+      const folder = await this.getById(trimmed);
+      if (folder) {
+        const parentId = folder.parentId ?? null;
+        const children = await db.getAllAsync<FolderRow>(
+          `SELECT * FROM ${TABLE_NAMES.mediaFolders} WHERE parent_id = ?`,
+          trimmed,
+        );
+        for (const child of children) {
+          let name = child.name;
+          let attempt = 2;
+          while (await this.findSibling(normalizeFolderName(name), parentId, child.id)) {
+            name = `${child.name} (${attempt})`;
+            attempt += 1;
+          }
+          await db.runAsync(
+            `UPDATE ${TABLE_NAMES.mediaFolders}
+             SET parent_id = ?, name = ?, normalized_name = ?, updated_at = ?
+             WHERE id = ?`,
+            parentId,
+            name,
+            normalizeFolderName(name),
+            nowIso(),
+            child.id,
+          );
+        }
+      }
       const result = await db.runAsync(
         `DELETE FROM ${TABLE_NAMES.mediaFolders} WHERE id = ?`,
         trimmed,
@@ -204,11 +282,12 @@ export class MediaFolderRepository {
       const db = await getDatabase();
       await db.runAsync(
         `INSERT OR IGNORE INTO ${TABLE_NAMES.mediaFolders}
-          (id, name, normalized_name, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?)`,
+          (id, name, normalized_name, parent_id, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         entry.id,
         entry.name,
         entry.normalizedName || normalizeFolderName(entry.name),
+        entry.parentId ?? null,
         entry.createdAt,
         entry.updatedAt,
       );
