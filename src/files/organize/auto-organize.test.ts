@@ -67,4 +67,16 @@ describe('Files F7 #937: auto organize', () => {
     assert.equal(plan.folderCount, 3);
     assert.equal(plan.newFolderCount, 2);
   });
+
+  test('files the browser handed to Android are never planned: they can’t go into a VidoraX folder', () => {
+    const plan = planAutoOrganize(
+      [file('1'), file('sysdl:5', { type: 'doc' }), file('sysdl:6', { type: 'apk' })],
+      [],
+      'type',
+      LABELS,
+    );
+    assert.deepEqual(plan.groups.map((group) => [group.name, group.fileIds]), [['Videos', ['1']]]);
+    assert.equal(plan.fileCount, 1);
+    assert.equal(plan.newFolderCount, 1);
+  });
 });

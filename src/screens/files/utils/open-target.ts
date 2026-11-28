@@ -13,6 +13,7 @@
 
 import { isPdfFile, isZipFile } from '@/files/ui/file-types';
 import type { FileEntry } from '@/files/ui/files-index';
+import { libraryFilesOnly } from '@/files/ui/library-files';
 
 export type OpenTarget = 'player' | 'pdf' | 'archive' | 'apk-details' | 'open-with';
 
@@ -36,7 +37,10 @@ export function openTargetOf(file: Pick<FileEntry, 'fileType' | 'mimeType' | 'fi
   }
 }
 
-/** The ids the Player steps through from a list: its playable files, in the order shown. */
+/**
+ * The ids the Player steps through from a list: its playable files, in the order shown. A file the browser handed to
+ * Android plays on its own (as a phone file), so it is never in the queue.
+ */
 export function playableQueue(files: readonly Pick<FileEntry, 'id' | 'fileType'>[]): string[] {
-  return files.filter((file) => file.fileType === 'video' || file.fileType === 'audio').map((file) => file.id);
+  return libraryFilesOnly(files.filter((file) => file.fileType === 'video' || file.fileType === 'audio')).map((file) => file.id);
 }

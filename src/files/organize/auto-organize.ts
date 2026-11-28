@@ -8,6 +8,7 @@
  */
 
 import type { FileType } from '@/files/ui/file-types';
+import { isSystemDownloadId } from '@/files/ui/library-files';
 
 export const ORGANIZE_BY = ['type', 'site', 'month'] as const;
 export type OrganizeBy = (typeof ORGANIZE_BY)[number];
@@ -56,7 +57,8 @@ export function planAutoOrganize(
   const byName = new Map(existingFolders.map((folder) => [folder.name.trim().toLocaleLowerCase(), folder] as const));
   const groups = new Map<string, OrganizeGroup>();
   for (const file of files) {
-    if (file.folderId) {
+    // A file the browser handed to Android lives in Android's Downloads: it can't go into a VidoraX folder.
+    if (file.folderId || isSystemDownloadId(file.id)) {
       continue;
     }
     const name = keyOf(file, by, labels);

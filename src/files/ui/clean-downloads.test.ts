@@ -70,6 +70,18 @@ describe('Files F9 · #856 Clean downloads', () => {
     );
   });
 
+  test('“Watched to the end” never picks a file the browser handed to Android (a PDF, ZIP, APK or picture)', () => {
+    // Faran's DownloadManager rows say `completed: true`; that isn't watch history.
+    const browser = [
+      libraryItem({ id: 'sysdl:41', fileName: 'Ticket.pdf', mimeType: 'application/pdf', completed: true, fileSize: '1000' }),
+      libraryItem({ id: 'sysdl:42', fileName: 'App.apk', completed: true, downloadedAt: monthsAgo(13), fileSize: '1000' }),
+    ].map(toFileEntry);
+    const watchedVideo = toFileEntry(libraryItem({ id: 'seen', fileName: 'clip.mp4', completed: true }));
+    assert.deepEqual(cleanCandidates([...browser, watchedVideo], { watched: true }, { now: NOW }).map((file) => file.id), ['seen']);
+    // The other rules still see them: an old browser download is an old download.
+    assert.deepEqual(cleanCandidates(browser, { olderThanMonths: 12 }, { now: NOW }).map((file) => file.id), ['sysdl:42']);
+  });
+
   test('Private and missing files are left out, even when every rule matches', () => {
     const all = ids({ watched: true, olderThanMonths: 12, larger: true });
     assert.ok(!all.includes('private'));

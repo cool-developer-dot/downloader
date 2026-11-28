@@ -12,6 +12,7 @@ import type { PlaybackSummary } from '@/playback/domain/merge';
 import { enrichLibraryWithPlayback } from '@/playback/enrich-library';
 
 import { fileBytes } from './file-fields';
+import { isSystemDownloadId } from './library-files';
 
 export const CLEAN_OLDER_MONTHS = [3, 6, 12] as const;
 export type CleanOlderMonths = (typeof CLEAN_OLDER_MONTHS)[number];
@@ -53,7 +54,8 @@ export function cleanCandidates<T extends Pick<FileEntry, 'id' | 'completed' | '
   return files.filter((file) => {
     if (file.localAvailability !== 'available') return false;
     if (options.privateIds?.has(file.id)) return false;
-    if (rules.watched && file.completed !== true) return false;
+    // A file the browser handed to Android says `completed: true` (no watch history), so "Watched" never picks it.
+    if (rules.watched && (file.completed !== true || isSystemDownloadId(file.id))) return false;
     if (cutoff !== null) {
       const at = file.downloadedAt ? Date.parse(file.downloadedAt) : Number.NaN;
       if (Number.isNaN(at) || at >= cutoff) return false;

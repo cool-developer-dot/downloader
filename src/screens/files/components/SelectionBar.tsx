@@ -73,7 +73,13 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
       entries.map((entry) =>
         entry.kind === 'folder'
           ? { kind: 'folder', id: entry.folder.id }
-          : { kind: 'file', id: entry.file.id, type: entry.file.fileType, canMoveToPrivate: canMoveToPrivate(entry.file.id) },
+          : {
+              kind: 'file',
+              id: entry.file.id,
+              type: entry.file.fileType,
+              canMoveToPrivate: canMoveToPrivate(entry.file.id),
+              systemDownload: isSystemDownloadId(entry.file.id),
+            },
       ),
     [entries],
   );

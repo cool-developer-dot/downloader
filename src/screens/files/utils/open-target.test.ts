@@ -35,4 +35,15 @@ describe('Files F1: tapping a file', () => {
       ['a', 'c'],
     );
   });
+
+  test('⏮ / ⏭ never step onto a file the browser handed to Android (it plays on its own)', () => {
+    assert.deepEqual(
+      playableQueue([
+        { id: 'a', fileType: 'video' },
+        { id: 'sysdl:3', fileType: 'audio' },
+        { id: 'c', fileType: 'audio' },
+      ]),
+      ['a', 'c'],
+    );
+  });
 });
