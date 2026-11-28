@@ -50,6 +50,13 @@ describe('Files F4: batch actions', () => {
     assert.deepEqual(enabled(items), ['move', 'delete']);
   });
 
+  test('a file the browser handed to Android: only Delete (and More); no Move, Share or Add to playlist', () => {
+    // Its file lives in Android's Downloads, so it can't go into a VidoraX folder, one share sheet or a playlist.
+    const items = [video('1'), video('sysdl:7', { systemDownload: true, canMoveToPrivate: false })];
+    assert.deepEqual(enabled(items), ['delete']);
+    assert.deepEqual(enabled([video('sysdl:8', { type: 'image', systemDownload: true, canMoveToPrivate: false })], 2), ['delete', 'more']);
+  });
+
   test('nothing selected: nothing is enabled', () => {
     assert.deepEqual(enabled([], 3), []);
   });

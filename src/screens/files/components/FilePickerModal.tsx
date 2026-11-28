@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ds, DsCard, DsHeader, DsText } from '@/design';
 import { fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-index';
+import { libraryFilesOnly } from '@/files/ui/library-files';
 import { useTheme } from '@/hooks/use-theme';
 import { intlLocaleForLanguage, useTranslation } from '@/localization';
 
@@ -35,7 +36,8 @@ export const FilePickerModal = memo(function FilePickerModal({ visible, title, o
     void listAllFiles()
       .catch(() => [] as FileEntry[])
       .then((all) => {
-        if (live) setFiles([...all].sort((a, b) => fileLabel(a).localeCompare(fileLabel(b), undefined, { sensitivity: 'base', numeric: true })));
+        // The checksum needs VidoraX's own file: one the browser handed to Android isn't offered.
+        if (live) setFiles(libraryFilesOnly(all).sort((a, b) => fileLabel(a).localeCompare(fileLabel(b), undefined, { sensitivity: 'base', numeric: true })));
       });
     return () => {
       live = false;

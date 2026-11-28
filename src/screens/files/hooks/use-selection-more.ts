@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 
 import { hiddenCountForms } from '@/files/ui/count-wordings';
+import { libraryFilesOnly } from '@/files/ui/library-files';
 import { useItemHiddenStore } from '@/library/item-organize-store';
 import { translatePlural, useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
@@ -30,7 +31,8 @@ export function useSelectionMoreActions(): MoreAction[] {
         id: 'rename',
         label: t('common.rename'),
         onPress: (entries) => {
-          const ids = entries.flatMap((entry) => (entry.kind === 'file' ? [entry.file.id] : []));
+          // VidoraX's own files only: one the browser handed to Android can't be renamed by VidoraX.
+          const ids = libraryFilesOnly(entries.flatMap((entry) => (entry.kind === 'file' ? [entry.file] : []))).map((file) => file.id);
           if (ids.length > 0) {
             navigation.push(`${routePaths.filesBatchRename}?ids=${encodeURIComponent(ids.join(','))}`);
           }
