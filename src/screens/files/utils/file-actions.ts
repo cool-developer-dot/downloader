@@ -35,9 +35,20 @@ export type FileActionContext = {
   canSaveTo: boolean;
   /** `computeChecksum` exists on this build. */
   canChecksum: boolean;
+  /**
+   * A file the browser handed to Android's DownloadManager (a picture, a document, an archive…), not a library item:
+   * it plays or opens, shares and deletes; the library-only rows (Details, Show in folder, Save to…, Lock, checksum,
+   * Rename) don't apply.
+   */
+  systemDownload?: boolean;
 };
 
+const SYSTEM_DOWNLOAD_ACTIONS: readonly FileAction[] = ['play', 'share', 'send-to-device', 'open-with', 'delete'];
+
 function applies(action: FileAction, context: FileActionContext): boolean {
+  if (context.systemDownload && !SYSTEM_DOWNLOAD_ACTIONS.includes(action)) {
+    return false;
+  }
   switch (action) {
     case 'play':
       return context.type === 'video' || context.type === 'audio';

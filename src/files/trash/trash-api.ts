@@ -12,6 +12,8 @@ import { projectV2LibraryItem } from '@/downloads/v2/projection';
 import { getMediaById } from '@/library';
 import { useDownloadsStore } from '@/store/downloads';
 
+import { deleteSystemDownloads, isSystemDownloadId, loadSystemDownloadItems } from '../system-downloads/system-downloads';
+
 import { fileTypeOf, type FileType } from '../engine/file-types';
 import { bytesOf } from '../engine/files-query';
 import {
@@ -37,11 +39,30 @@ export type BinListEntry = {
 };
 
 async function permanentlyDelete(id: string): Promise<boolean> {
+  // A file the browser handed to Android's DownloadManager: DownloadManager deletes it.
+  if (isSystemDownloadId(id)) {
+    return (await deleteSystemDownloads([id]).catch(() => [] as string[])).includes(id);
+  }
   const result = await deleteCompletedFileFromVidoraX(id);
   return result.ok;
 }
 
 async function entryFor(id: string, now: number): Promise<BinEntry | null> {
+  if (isSystemDownloadId(id)) {
+    const item = (await loadSystemDownloadItems()).find((candidate) => candidate.id === id);
+    return item
+      ? {
+          id,
+          title: item.displayName || item.fileName,
+          fileName: item.fileName,
+          fileType: fileTypeOf(item.mimeType, item.fileName),
+          sizeBytes: bytesOf(item.fileSize),
+          trashedAt: now,
+          folderId: null,
+          engineOwned: false,
+        }
+      : null;
+  }
   const store = useDownloadsStore.getState();
   const media = await getMediaById(id).catch(() => null);
   const download = store.itemsById[id];
@@ -139,7 +160,7 @@ export async function restoreFromBin(ids: string[]): Promise<void> {
   if (engineItems.length > 0) {
     useDownloadsStore.getState().applyEngineEntries(engineItems.map(projectV2LibraryItem));
   }
-  if (restoring.some((id) => !entries[id]!.engineOwned)) {
+  if (restoring.some((id) => !entries[id]!.engineOwned && !isSystemDownloadId(id))) {
     await useDownloadsStore.getState().refresh().catch(() => undefined);
   }
 }

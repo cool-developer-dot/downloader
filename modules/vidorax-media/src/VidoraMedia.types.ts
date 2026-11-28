@@ -890,6 +890,20 @@ export interface StorageStats {
   totalBytes: number;
 }
 
+/** Files: one download VidoraX's browser handed to Android's DownloadManager (see `listSystemDownloads`). */
+export interface SystemDownload {
+  /** DownloadManager's id, as a string. */
+  id: string;
+  /** The file name. */
+  title: string;
+  mimeType: string | null;
+  sizeBytes: number;
+  /** Epoch ms. */
+  modifiedAt: number;
+  /** DownloadManager's `content://` link to the file (readable by VidoraX; shown as a picture's thumbnail). */
+  uri: string;
+}
+
 /** F15: a child of a picked folder (see `listFolderDocuments`). */
 export interface FolderDocument {
   documentId: string;
@@ -1205,6 +1219,19 @@ export interface VidoraMediaModuleApi {
    * folder tree. Missing on older builds.
    */
   listFolderDocuments?(treeUri: string, parentDocumentId: string | null): Promise<FolderDocument[]>;
+  /**
+   * Files: the finished downloads VidoraX's browser handed to Android's DownloadManager (pictures, documents, archives,
+   * apps, audio the engine does not keep) whose file is still there, newest first. Missing on older builds.
+   */
+  listSystemDownloads?(): Promise<SystemDownload[]>;
+  /** Deletes those downloads and their files; resolves with how many were removed. */
+  removeSystemDownloads?(ids: string[]): Promise<number>;
+  /** Android's chooser to open one in another app. ERR_NO_APP when none can. */
+  openSystemDownloadWith?(id: string, mimeType: string | null, title: string | null): Promise<void>;
+  /** The share sheet with one attached. */
+  shareSystemDownload?(id: string, mimeType: string | null, title: string | null): Promise<void>;
+  /** Copies one into the app's cache folder (`targetPath` must be inside it). */
+  copySystemDownloadTo?(id: string, targetPath: string): Promise<void>;
   /** Show in Folder (#398), best effort: false when no installed app opens folders. */
   openFolder?(folderUri: string): Promise<boolean>;
   getStorageStats(): Promise<StorageStats>;

@@ -7,6 +7,7 @@ import { completedActionErrorMessageKey } from '@/downloads/completed-file/actio
 import { confirmLibraryFileAction } from '@/downloads/safety/file-safety-dialog';
 import { fileIntegrity } from '@/downloads/v2/file-integrity';
 import { getTreeExportPort, pickTreeFolder } from '@/downloads/v2/tree-export-port';
+import { isSystemDownloadId, openSystemDownloadWith, shareSystemDownload } from '@/files/system-downloads/system-downloads';
 import { requestDelete } from '@/files/trash/useDeleteWithUndo';
 import { fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-index';
@@ -82,6 +83,7 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
             canLock: canMoveToPrivate(file.id),
             canSaveTo: getTreeExportPort() !== null,
             canChecksum: typeof fileIntegrity()?.computeChecksum === 'function',
+            systemDownload: isSystemDownloadId(file.id),
           })
         : [],
     [file],
@@ -112,6 +114,10 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
 
   const shareFile = useCallback(
     async (target: FileEntry) => {
+      if (isSystemDownloadId(target.id)) {
+        await shareSystemDownload(target).catch(() => announce(t('files.shareFailed')));
+        return;
+      }
       try {
         const { shareCompletedFile } = await import('@/downloads/completed-file/action-service');
         const result = await shareCompletedFile(target.id);
@@ -125,6 +131,10 @@ export const FileActionsSheet = memo(function FileActionsSheet({ file, onClose, 
 
   const openWith = useCallback(
     async (target: FileEntry) => {
+      if (isSystemDownloadId(target.id)) {
+        await openSystemDownloadWith(target).catch(() => announce(t('files.openFailed')));
+        return;
+      }
       try {
         const { openCompletedFile } = await import('@/downloads/completed-file/action-service');
         const result = await openCompletedFile(target.id);

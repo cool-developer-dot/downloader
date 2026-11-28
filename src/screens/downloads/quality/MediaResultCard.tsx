@@ -16,6 +16,8 @@ import type { TranslationKey } from '@/localization/types';
 import { formatDuration } from '@/media-detection/utils';
 
 export type MediaResultCardProps = {
+  /** A link to a file that is not a video or audio (a picture, a document…): "File found", nothing being measured. */
+  asFile?: boolean;
   selection: AnalyzedMediaSelection;
   selectedOption: DownloadQualityOption | null;
   testID?: string;
@@ -54,6 +56,7 @@ function formatSizeLabel(option: DownloadQualityOption | null, t: Translate): st
 export const MediaResultCard = memo(function MediaResultCard({
   selection,
   selectedOption,
+  asFile = false,
   testID = 'quality-media-result-card',
 }: MediaResultCardProps) {
   const theme = useTheme();
@@ -68,7 +71,7 @@ export const MediaResultCard = memo(function MediaResultCard({
     '—';
 
   const qualityLabel = selectedOption?.label ?? '—';
-  const sizeLabel = formatSizeLabel(selectedOption, t);
+  const sizeLabel = asFile ? '—' : formatSizeLabel(selectedOption, t);
   const durationLabel = formatDuration(selection.duration) ?? '—';
   const audioLabel = formatAudioStatus(selectedOption, t) ?? '—';
 
@@ -99,10 +102,10 @@ export const MediaResultCard = memo(function MediaResultCard({
       <View
         style={{ flexDirection: rtl.rowDirection, alignItems: 'center', gap: ds.space.rowGap }}
         accessibilityRole="summary"
-        accessibilityLabel={t('mediaResult.videoFoundA11y', { title })}>
-        <DsThumb uri={thumbnail} kind="video" icon={selection.mediaType === 'audio' ? 'music' : 'play'} />
+        accessibilityLabel={t(asFile ? 'mediaResult.fileFoundA11y' : 'mediaResult.videoFoundA11y', { title })}>
+        <DsThumb uri={thumbnail} kind="video" icon={asFile ? 'file-text' : selection.mediaType === 'audio' ? 'music' : 'play'} />
         <View style={{ flex: 1, gap: 1 }}>
-          <DsText variant="section">{t('mediaResult.videoFound')}</DsText>
+          <DsText variant="section">{t(asFile ? 'mediaResult.fileFound' : 'mediaResult.videoFound')}</DsText>
           <DsText variant="rowTitle" numberOfLines={2}>
             {title}
           </DsText>
