@@ -34,7 +34,7 @@ import { hiddenFolderIds, useLockedNowIds } from '@/files/ui/locked-folders';
 // Files F7 #911: a hidden file stays out of the Player tab until Show hidden files is on.
 import { withoutHiddenItems } from '@/files/organize/hidden-items';
 import { useFilesViewSettings } from '@/files/ui/files-view-settings';
-import { requestDelete as requestFilesDelete } from '@/files/trash/useDeleteWithUndo';
+import { requestDelete as requestFilesDelete, runDelete as runFilesDelete } from '@/files/trash/useDeleteWithUndo';
 import { useItemHiddenStore } from '@/library/item-organize-store';
 import { translate, type TranslationKey } from '@/localization';
 import { navigation, openPlayer, routePaths, consumeSecondaryDestinationIntent } from '@/navigation';
@@ -613,9 +613,8 @@ export function useLibraryScreen() {
     setDeleteLoading(true);
     setActionError(null);
     try {
-      // F13: into the recycle bin while it is on (restorable), permanent otherwise.
-      const { deleteItems } = await import('@/files/trash/trash-api');
-      const result = await deleteItems([id], { source: 'player' });
+      // F8's door (F13 underneath): into the recycle bin while it is on (restorable, with Undo), permanent otherwise.
+      const result = await runFilesDelete({ ids: [id], source: 'player' });
       if (result.trashed.length === 0 && result.deleted.length === 0) {
         setActionError('Unable to delete this download');
         return;

@@ -11,6 +11,8 @@ import { getV2Engine, pageFavoriteChange, setEngineFavorite } from '@/downloads/
 import { translate, type TranslationKey } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import { useDownloadsStore } from '@/store/downloads';
+import { requestDelete as requestFilesDelete } from '@/files/trash/useDeleteWithUndo';
+import { downloadsDeleteRoute, wasDeleted } from '@/files/ui/delete-door';
 import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import {
   normalizeFavoriteSourceKey,
@@ -296,6 +298,19 @@ export function useDownloadDetailsScreen() {
       setActionError(null);
 
       if (action === 'remove') {
+        // Files F8 (Faran, 2026-11-28): a finished download's file goes through the door into the Recycle bin.
+        if (downloadsDeleteRoute(item?.status) === 'door') {
+          const id = downloadId;
+          requestFilesDelete({
+            ids: [id],
+            source: 'downloads',
+            name: item?.title || item?.fileName || undefined,
+            onDone: (result) => {
+              if (wasDeleted(result, id)) goBack();
+            },
+          });
+          return;
+        }
         // Files F2 #800: with Confirm before delete off, no "Delete from VidoraX?".
         if (!isConfirmBeforeDeleteOn()) {
           void confirmDeleteRef.current?.();
@@ -357,7 +372,7 @@ export function useDownloadDetailsScreen() {
         await onShareFile();
       }
     },
-    [cancel, downloadId, onOpenFile, onShareFile, pause, resume, retry],
+    [cancel, downloadId, goBack, item?.fileName, item?.status, item?.title, onOpenFile, onShareFile, pause, resume, retry],
   );
 
   const confirmDelete = useCallback(async () => {
