@@ -24,22 +24,22 @@ export const rowSizeExactForms: CountForms = { one: 'fileManager.rowSizeExactOne
 // گئیں / سکیں / رہیں for more.
 
 /** F4 · the toast after Move: "{count} moved to {folder}". */
-export const movedCountForms: CountForms = { one: 'fileManager.movedCount', other: 'fileManager.movedCount' };
+export const movedCountForms: CountForms = { one: 'fileManager.movedCountOne', other: 'fileManager.movedCount' };
 
 /** F4 and F10 · after Move or Move to Private: "{count} couldn’t be moved". */
-export const moveFailedForms: CountForms = { one: 'fileManager.moveFailed', other: 'fileManager.moveFailed' };
+export const moveFailedForms: CountForms = { one: 'fileManager.moveFailedOne', other: 'fileManager.moveFailed' };
 
 /** F5 · after a batch rename: "{count} renamed". */
-export const renamedCountForms: CountForms = { one: 'fileManager.renamedCount', other: 'fileManager.renamedCount' };
+export const renamedCountForms: CountForms = { one: 'fileManager.renamedCountOne', other: 'fileManager.renamedCount' };
 
 /** F7 · after Hide: "{count} hidden. To lock files, use Private folder." */
-export const hiddenCountForms: CountForms = { one: 'fileManager.hiddenCount', other: 'fileManager.hiddenCount' };
+export const hiddenCountForms: CountForms = { one: 'fileManager.hiddenCountOne', other: 'fileManager.hiddenCount' };
 
 /** F10 · after Add files to Private: "{count} moved to Private". */
-export const addFilesDoneForms: CountForms = { one: 'fileManager.addFilesDone', other: 'fileManager.addFilesDone' };
+export const addFilesDoneForms: CountForms = { one: 'fileManager.addFilesDoneOne', other: 'fileManager.addFilesDone' };
 
 /** F10 · after Add files to Private: "{count} couldn’t be moved and stayed in your library". */
-export const addFilesFailedForms: CountForms = { one: 'fileManager.addFilesFailed', other: 'fileManager.addFilesFailed' };
+export const addFilesFailedForms: CountForms = { one: 'fileManager.addFilesFailedOne', other: 'fileManager.addFilesFailed' };
 
 /** F8 · the Undo bar: "{count} couldn’t be deleted". */
-export const undoFailedForms: CountForms = { one: 'fileManager.undoFailed', other: 'fileManager.undoFailed' };
+export const undoFailedForms: CountForms = { one: 'fileManager.undoFailedOne', other: 'fileManager.undoFailed' };
