@@ -58,6 +58,8 @@ import { useFoldersStore } from '@/store/organization/folders';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 import { useLibraryStore } from '@/store/library';
 
+import { playerQueueFor } from '../utils/library-kind';
+
 /** P9 #711: the background length backfill starts this long after the Library's list last changed. */
 const LENGTH_BACKFILL_START_DELAY_MS = 3000;
 
@@ -663,7 +665,7 @@ export function useLibraryScreen() {
   // Previous / Next in the Player step through the library as shown (filter, search and sort applied).
   const openLibraryItem = useCallback(
     (id: string) => {
-      openPlayer(id, visibleItems.map((item) => item.id));
+      openPlayer(id, playerQueueFor(id, visibleItems));
     },
     [visibleItems],
   );

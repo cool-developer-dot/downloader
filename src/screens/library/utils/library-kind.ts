@@ -40,3 +40,8 @@ export function countByKind(items: readonly Pick<MediaLibraryItem, 'mimeType' | 
   }
   return { videos: items.length - audio, audio };
 }
+
+/** The Player's Previous / Next for a row tapped on the Player tab: the library as shown (filter, search, sort). */
+export function playerQueueFor(_id: string, shown: readonly { id: string }[]): string[] {
+  return shown.map((item) => item.id);
+}
