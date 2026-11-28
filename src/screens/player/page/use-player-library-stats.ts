@@ -3,6 +3,7 @@ import type { VideoPlayer } from 'expo-video';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { showAppDialog } from '@/components/modals/app-dialog';
+import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import { useTranslation } from '@/localization';
 import { setWatchHistoryPaused, useWatchHistoryPaused } from '@/playback/history-pause-preference';
 import { isDeviceMediaId } from '@/player/device-media';
@@ -211,14 +212,22 @@ export function usePlayerLibraryStats({
       return;
     }
     const hasNext = nextAfterQuickDelete(usePlayQueueStore.getState().ids, mediaId) != null;
-    const confirmed = await showAppDialog({
-      title: t('libraryStats.quickDeleteTitle', { name: title ?? t('player.untitled') }),
-      message: t(hasNext ? 'libraryStats.quickDeleteMessageNext' : 'libraryStats.quickDeleteMessageClose'),
-      confirmLabel: t('libraryStats.quickDeleteConfirm'),
-      cancelLabel: t('common.cancel'),
-      variant: 'error',
-    });
-    if (!confirmed || deletingRef.current) {
+    // F8's door (Faran, 2026-11-28: every delete goes to the Recycle bin): F2's Confirm before delete, the bin, Undo.
+    const door = await import('@/files/trash/useDeleteWithUndo');
+    const toBin = door.binIsOn();
+    if (isConfirmBeforeDeleteOn()) {
+      const confirmed = await showAppDialog({
+        title: toBin ? t('fileManager.toBinTitleOne') : t('libraryStats.quickDeleteTitle', { name: title ?? t('player.untitled') }),
+        message: t(hasNext ? 'libraryStats.quickDeleteMessageNext' : 'libraryStats.quickDeleteMessageClose'),
+        confirmLabel: toBin ? t('fileManager.toBinConfirm') : t('libraryStats.quickDeleteConfirm'),
+        cancelLabel: t('common.cancel'),
+        variant: 'error',
+      });
+      if (!confirmed) {
+        return;
+      }
+    }
+    if (deletingRef.current) {
       return;
     }
     deletingRef.current = true;
@@ -229,15 +238,16 @@ export function usePlayerLibraryStats({
       } catch {
         // already released
       }
-      // The Library's own delete (F13: into the recycle bin while it is on, permanent otherwise).
-      const { deleteItems } = await import('@/files/trash/trash-api');
-      const result = await deleteItems([mediaId], { source: 'player' });
+      // Into the recycle bin while it is on (the Undo bar says so), permanent otherwise; copies outside VidoraX stay.
+      const result = await door.runDelete({ ids: [mediaId], source: 'player', name: title ?? undefined });
       if (result.trashed.length === 0 && result.deleted.length === 0) {
         // As the Library's delete: the video stays, and the user can try again.
         announcePlayer(t('library.deleteFailed'));
         return;
       }
-      announcePlayer(t('libraryStats.quickDeleteDone'));
+      if (result.deleted.length > 0) {
+        announcePlayer(t('libraryStats.quickDeleteDone'));
+      }
       // P6's queue: the next video becomes the one playing, then the deleted one can leave the queue.
       setPlayQueueCurrent(next);
       removeFromPlayQueue(mediaId);

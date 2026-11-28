@@ -19,9 +19,12 @@ export async function renameFileTo(id: string, newName: string): Promise<void> {
   useDownloadsStore.getState().patchItem(id, { fileName: newName, title: newName });
 }
 
-/** Replace in a clash: the file already there goes through the app's delete (the bin, once F8 lands). */
+/**
+ * Replace in a clash: the file already there goes through F8's door into the Recycle bin, with Undo. The clash
+ * dialog's Replace is the confirm, so F2's Confirm before delete doesn't ask a second time.
+ */
 export async function deleteForReplace(id: string): Promise<boolean> {
-  const { deleteItems } = await import('@/files/ui/trash-port');
-  const result = await deleteItems([id], { source: 'files' }).catch(() => ({ trashed: [] as string[], deleted: [] as string[] }));
+  const { runDelete } = await import('@/files/trash/useDeleteWithUndo');
+  const result = await runDelete({ ids: [id], source: 'files' }).catch(() => ({ trashed: [] as string[], deleted: [] as string[] }));
   return result.trashed.includes(id) || result.deleted.includes(id);
 }

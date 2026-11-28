@@ -8,6 +8,7 @@
 import { useCallback } from 'react';
 
 import { filesCapabilities } from '@/files/api';
+import { createDeleteDoor } from '@/files/ui/delete-door';
 import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import { deleteItems, getBinSettings, restoreFromBin } from '@/files/ui/trash-port';
 import { createUndoSnackbar } from '@/files/ui/undo-snackbar';
@@ -39,18 +40,17 @@ export function binIsOn(): boolean {
   return filesCapabilities.recycleBin && getBinSettings().enabled;
 }
 
+// The door itself is pure (`delete-door.ts`); this is the app's, with Faran's deleteItems, F2's setting and the bar.
+const door = createDeleteDoor<DeleteSource>({
+  deleteItems,
+  confirmOn: isConfirmBeforeDeleteOn,
+  ask: (pending) => useDeleteConfirmStore.setState({ pending, busy: false }),
+  showBar: (result, requested) => deleteUndoSnackbar.show(result, requested),
+});
+
 /** Deletes now (no dialog) and shows the bar. */
-export async function runDelete(request: DeleteRequest): Promise<DeleteResult> {
-  const ids = [...new Set(request.ids)];
-  let result: DeleteResult = { trashed: [], deleted: [] };
-  try {
-    result = await deleteItems(ids, { source: request.source });
-  } catch {
-    // Shown below as "couldn't be deleted".
-  }
-  deleteUndoSnackbar.show(result, ids.length);
-  request.onDone?.(result);
-  return result;
+export function runDelete(request: DeleteRequest): Promise<DeleteResult> {
+  return door.run(request);
 }
 
 /** Undo for the bar's batch: brings its files back from the bin (to the same folder). Returns how many. */
@@ -65,14 +65,7 @@ export async function undoDelete(batchId: number): Promise<number> {
 
 /** Asks first when Confirm before delete is on; otherwise deletes at once. */
 export function requestDelete(request: DeleteRequest): void {
-  if (request.ids.length === 0) {
-    return;
-  }
-  if (isConfirmBeforeDeleteOn()) {
-    useDeleteConfirmStore.setState({ pending: request, busy: false });
-    return;
-  }
-  void runDelete(request);
+  door.request(request);
 }
 
 export function useDeleteWithUndo() {

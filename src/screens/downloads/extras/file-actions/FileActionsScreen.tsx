@@ -15,6 +15,8 @@ import { canMoveToPrivate } from '@/private-vault/move-to-private.runtime';
 import { isRemoteControlAvailable, sendToComputer } from '@/remote/remote-control';
 import { DownloadCloudSaveAction } from '@/screens/downloads/components/DownloadCloudSaveAction';
 import { DownloadDeleteDialog } from '@/screens/downloads/components/DownloadDeleteDialog';
+import { requestDelete as requestFilesDelete } from '@/files/trash/useDeleteWithUndo';
+import { downloadsDeleteRoute, wasDeleted } from '@/files/ui/delete-door';
 import { isConfirmBeforeDeleteOn } from '@/files/ui/files-view-settings';
 import { DownloadIntegritySection } from '@/screens/downloads/components/DownloadIntegritySection';
 import { PrivateMoveDialog } from '@/screens/private/PrivateMoveDialog';
@@ -146,14 +148,26 @@ export const FileActionsScreen = memo(function FileActionsScreen() {
       toast(t('lightFileActions.missing'));
       return;
     }
-    // Files F2 #800: with Confirm before delete off, no "Delete from VidoraX?" (a finished download's "Remove from
-    // Downloads?" still asks).
-    if (!completed && !isConfirmBeforeDeleteOn()) {
+    // Files F8 (Faran, 2026-11-28): a finished download's file goes through the door into the Recycle bin, with F2's
+    // Confirm before delete and Undo, like every other delete.
+    if (downloadsDeleteRoute(item.status) === 'door') {
+      requestFilesDelete({
+        ids: [id],
+        source: 'downloads',
+        name: item.title || item.fileName || undefined,
+        onDone: (result) => {
+          if (wasDeleted(result, id)) navigation.back();
+        },
+      });
+      return;
+    }
+    // Files F2 #800: with Confirm before delete off, no "Delete from VidoraX?".
+    if (!isConfirmBeforeDeleteOn()) {
       void confirmDelete();
       return;
     }
     setDeleteOpen(true);
-  }, [completed, confirmDelete, item, t]);
+  }, [confirmDelete, id, item, t]);
 
   // P6 #511: the video (and its page) to "Sent from phone" in the Web UI on the computer.
   const sendToDevice = useCallback(() => {

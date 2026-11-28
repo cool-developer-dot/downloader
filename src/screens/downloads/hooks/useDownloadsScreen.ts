@@ -14,6 +14,8 @@ import {
 } from '@/navigation';
 import { useDownloads } from '@/storage/hooks';
 // Files F2 #800 Confirm before delete; F7 #911: a hidden file stays out of Downloads until Show hidden files is on.
+import { requestDelete as requestFilesDelete } from '@/files/trash/useDeleteWithUndo';
+import { downloadsDeleteRoute } from '@/files/ui/delete-door';
 import { isConfirmBeforeDeleteOn, useFilesViewSettings } from '@/files/ui/files-view-settings';
 import { withoutHiddenIds } from '@/files/organize/hidden-items';
 import { useItemHiddenStore } from '@/library/item-organize-store';
@@ -314,10 +316,15 @@ export function useDownloadsScreen() {
 
   const requestDelete = useCallback(
     (id: string) => {
-      // Files F2 #800: with Confirm before delete off, "Delete from VidoraX?" is skipped. A finished download's
-      // "Remove from Downloads?" (the file stays in the library) still asks.
       const row = useDownloadsStore.getState().engineRowsById[id];
-      if (!isConfirmBeforeDeleteOn() && !(row && row.status === 'COMPLETED')) {
+      // Files F8 (Faran, 2026-11-28): a finished download's file goes through the door into the Recycle bin, with F2's
+      // Confirm before delete and Undo, like every other delete.
+      if (downloadsDeleteRoute(row?.status) === 'door') {
+        requestFilesDelete({ ids: [id], source: 'downloads', name: row?.title || row?.fileName || undefined });
+        return;
+      }
+      // Files F2 #800: with Confirm before delete off, "Delete from VidoraX?" is skipped.
+      if (!isConfirmBeforeDeleteOn()) {
         void removeNow(id);
         return;
       }

@@ -20,11 +20,12 @@ function appDeps(): ReplacementDeps {
       return Boolean(state.engineRowsById[id] ?? state.itemsById[id]);
     },
     deleteOld: async (id, newId) => {
-      // The new copy keeps the old one's tags and note.
+      // The new copy keeps the old one's tags and note. The old copy goes to the Recycle bin like every delete
+      // (Faran, 2026-11-28), so a Replace can be undone from the bin until it is emptied.
       carryItemOrganize(id, newId);
-      const { deleteCompletedFileFromVidoraX } = await import('@/downloads/completed-file/delete/delete-service');
-      const result = await deleteCompletedFileFromVidoraX(id);
-      return result.ok;
+      const { deleteItems } = await import('@/files/trash/trash-api');
+      const result = await deleteItems([id], { source: 'downloads' });
+      return result.trashed.includes(id) || result.deleted.includes(id);
     },
     now: Date.now,
   };
