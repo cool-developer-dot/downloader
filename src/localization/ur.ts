@@ -425,6 +425,8 @@ export const ur: CatalogStrings<typeof en> = {
   mediaResult: {
     videoFound: 'ویڈیو مل گئی',
     videoFoundA11y: 'ویڈیو مل گئی۔ {title}',
+    fileFound: 'فائل مل گئی',
+    fileFoundA11y: 'فائل مل گئی۔ {title}',
     thumbnailA11y: 'ویڈیو کا تھمب نیل',
     placeholderA11y: 'ویڈیو کی جگہ',
     calculating: 'حساب ہو رہا ہے…',
@@ -1250,6 +1252,9 @@ export const ur: CatalogStrings<typeof en> = {
     pasteAction: 'پیسٹ',
     retryAction: 'دوبارہ کوشش',
     changeLinkAction: 'دوسرا لنک استعمال کریں',
+    downloadFileAction: 'فائل ڈاؤن لوڈ کریں',
+    downloadFileStarted: 'ڈاؤن لوڈ ہو رہی ہے۔ مکمل ہونے پر Files میں ہوگی۔',
+    downloadFileFailed: 'یہ فائل ڈاؤن لوڈ نہیں ہو سکی۔',
     downloadAction: 'ڈاؤن لوڈ شروع کریں',
     downloadNamed: '{label} ڈاؤن لوڈ',
     recordAction: 'ریکارڈنگ شروع کریں',

@@ -1,6 +1,7 @@
 import * as Clipboard from 'expo-clipboard';
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AccessibilityInfo,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -13,6 +14,8 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { DsButton, DsButtonRow, DsChip, DsChipRow, DsHeader, DsRowGroup, DsSearchField, DsText, ds } from '@/design';
+import { getVidoraWeb, isVidoraWebAvailable } from '@modules/vidorax-web';
+
 import { isAnalyzeBusy } from '@/downloads/analyze/analyze-state-machine';
 import { resolveDisplayHost } from '@/downloads/quality';
 import { SourceCheckBadge } from '@/downloads/safety/SourceCheckBadge';
@@ -180,6 +183,19 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
   // Design 33: "Download video" over the page's host; a direct file link shows its own host.
   const subtitle = pageHost ?? (selection ? resolveDisplayHost(selection) : hostOf(url.trim()));
 
+  const downloadAsFile = useCallback(async () => {
+    const link = url.trim();
+    let started = false;
+    try {
+      started = isVidoraWebAvailable() ? await getVidoraWeb().startSystemDownload(link, null, null, selection?.mimeType ?? null) : false;
+    } catch {
+      started = false;
+    }
+    AccessibilityInfo.announceForAccessibility(t(started ? 'downloads.downloadFileStarted' : 'downloads.downloadFileFailed'));
+    ToastAndroid.show(t(started ? 'downloads.downloadFileStarted' : 'downloads.downloadFileFailed'), ToastAndroid.SHORT);
+    if (started) close();
+  }, [close, selection?.mimeType, t, url]);
+
   const footer = (() => {
     if (showAnalyzing) {
       return <DsButton label={progressMessage ?? t('downloads.analyzing')} fullWidth disabled loading testID="quality-selection-analyzing-cta" />;
@@ -249,8 +265,21 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
       );
     }
     if (phase === 'empty') {
-      return isBrowserQualityHandoff ? null : (
-        <DsButton label={t('downloads.changeLinkAction')} variant="secondary" fullWidth onPress={resetToInput} testID="quality-selection-change-link" />
+      if (isBrowserQualityHandoff) {
+        return null;
+      }
+      const changeLink = (
+        <DsButton label={t('downloads.changeLinkAction')} variant="secondary" flex fullWidth onPress={resetToInput} testID="quality-selection-change-link" />
+      );
+      // A direct link to a file that is not a video or audio (a picture, a PDF, an archive…): Android's downloader saves
+      // it, and Files lists it with everything else VidoraX downloaded.
+      return flowKind === 'direct' && /^https?:\/\//i.test(url.trim()) ? (
+        <DsButtonRow>
+          {changeLink}
+          <DsButton label={t('downloads.downloadFileAction')} icon="download" flex onPress={() => void downloadAsFile()} testID="quality-selection-download-file" />
+        </DsButtonRow>
+      ) : (
+        changeLink
       );
     }
     if (showPlaybackFallback) {
@@ -308,7 +337,7 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
               showsVerticalScrollIndicator={false}
               contentContainerStyle={{ paddingHorizontal: ds.space.screenX, paddingBottom: 8, gap: ds.space.stack }}>
               <DsHeader
-                title={showInput ? t('downloads.qualitySheetTitle') : t('lightVideoSheet.title')}
+                title={showInput ? t('downloads.qualitySheetTitle') : phase === 'empty' && flowKind === 'direct' && selection?.options.length === 0 ? t('downloads.downloadFileAction') : t('lightVideoSheet.title')}
                 subtitle={subtitle ?? t('downloads.qualitySheetSubtitle')}
                 action={{
                   icon: 'settings',
@@ -367,7 +396,7 @@ export const QualitySelectionSheet = memo(function QualitySelectionSheet({
 
               {phase === 'empty' && selection ? (
                 <>
-                  <MediaResultCard selection={selection} selectedOption={selectedOption} />
+                  <MediaResultCard selection={selection} selectedOption={selectedOption} asFile={flowKind === 'direct' && selection.options.length === 0} />
                   <SourceCheckBadge urls={[url, selection.sourceUrl, selection.finalUrl]} testID="quality-source-check-empty" />
                   {selection.options.length > 0 ? (
                     <DsRowGroup>

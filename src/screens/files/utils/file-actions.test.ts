@@ -67,3 +67,11 @@ describe('Files F3 · design 45: which rows the actions sheet shows', () => {
     assert.ok(rows.includes('play'));
   });
 });
+
+describe('a file Android’s downloader saved for the browser (picture, document, archive…)', () => {
+  test('plays or opens, shares and deletes; the library-only rows are hidden', () => {
+    assert.deepEqual(fileActionsFor(ctx('image', { systemDownload: true })), ['share', 'send-to-device', 'open-with', 'delete']);
+    assert.deepEqual(fileActionsFor(ctx('audio', { systemDownload: true })), ['play', 'share', 'send-to-device', 'open-with', 'delete']);
+    assert.deepEqual(fileActionsFor(ctx('apk', { systemDownload: true })), ['share', 'send-to-device', 'delete']);
+  });
+});

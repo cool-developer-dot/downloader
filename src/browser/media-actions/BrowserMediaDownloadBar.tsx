@@ -4,6 +4,7 @@ import {
   ActivityIndicator,
   Pressable,
   StyleSheet,
+  ToastAndroid,
 } from 'react-native';
 import Animated, {
   Easing,
@@ -24,12 +25,15 @@ import { IconButton } from '@/components/buttons/IconButton';
 import { Icon } from '@/components/base/Icon';
 import { Text } from '@/components/base/Text';
 import { BROWSER_TOUCH_TARGET } from '@/browser/constants';
+import { useBrowserStore } from '@/browser/stores';
+import { getVidoraWeb, isVidoraWebAvailable } from '@modules/vidorax-web';
 import { useTheme } from '@/hooks/use-theme';
 import { useTranslation, type TranslationKey } from '@/localization';
 
 import type { BrowserMediaStatusNotice } from './browser-download-presentation';
 import { toastForUserTriggeredDownloadOutcome } from './media-resolution-outcome';
 import { useBrowserMediaAction } from './useBrowserMediaAction';
+import { pageFileName } from './page-file';
 
 const HORIZONTAL_INSET = 0;
 
@@ -134,6 +138,7 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
 }: BrowserMediaDownloadBarProps) {
   const theme = useTheme();
   const { t } = useTranslation();
+  const currentUrl = useBrowserStore((state) => state.currentUrl);
 
   const action = useBrowserMediaAction({
     onOpenQualitySheet: onRequestDownload,
@@ -267,6 +272,9 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
   const iconStyle = useAnimatedStyle(() => ({ opacity: pulse.value }));
 
   const notice = presentation.statusNotice;
+  // The page itself is a file VidoraX doesn't keep as a video (a WAV, a FLAC, an OGV…): Android's downloader saves it,
+  // and Files lists it with everything else VidoraX downloaded.
+  const fileName = notice === 'UNSUPPORTED' ? pageFileName(currentUrl) : null;
   if (!presentation.showCard && !toastVisible && !notice) {
     return null;
   }
@@ -404,6 +412,30 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
             </Box>
           </Pressable>
         </Animated.View>
+      ) : fileName && currentUrl ? (
+        <Animated.View entering={FadeInDown.duration(220)} exiting={FadeOutDown.duration(160)} style={{ width: '100%', elevation: 8 }}>
+          <Pressable
+            testID="browser-media-download-file"
+            accessibilityRole="button"
+            accessibilityLabel={t('downloads.downloadFileAction')}
+            onPress={() => void downloadPageFile(currentUrl, t)}
+            style={{
+              minHeight: BROWSER_TOUCH_TARGET,
+              width: '100%',
+              paddingHorizontal: theme.spacing[16],
+              backgroundColor: theme.colors.card,
+              borderTopWidth: StyleSheet.hairlineWidth,
+              borderTopColor: theme.colors.border,
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexDirection: 'row',
+            }}>
+            <Text variant="button" color="textPrimary" numberOfLines={1} style={{ flexShrink: 1 }}>
+              {t('downloads.downloadFileAction')} · {fileName}
+            </Text>
+            <Icon name="download" size={20} color="primary" />
+          </Pressable>
+        </Animated.View>
       ) : notice && noticeLabel ? (
         // The current video is not (or not yet) a Download: say what it is, never point at a previous video.
         <Animated.View
@@ -451,3 +483,13 @@ export const BrowserMediaDownloadBar = memo(function BrowserMediaDownloadBar({
     </Box>
   );
 });
+
+async function downloadPageFile(url: string, t: (key: TranslationKey) => string): Promise<void> {
+  let started = false;
+  try {
+    started = isVidoraWebAvailable() ? await getVidoraWeb().startSystemDownload(url, null, null, null) : false;
+  } catch {
+    started = false;
+  }
+  ToastAndroid.show(t(started ? 'downloads.downloadFileStarted' : 'downloads.downloadFileFailed'), ToastAndroid.SHORT);
+}

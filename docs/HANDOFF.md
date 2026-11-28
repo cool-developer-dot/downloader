@@ -2614,6 +2614,30 @@ no stale offer; PLAY GUN saved with title + thumbnail); Add link → paste clien
 another page); DRM `vimeo.com/76979871` → "Protected video — can't be downloaded". Gates: tsc 0, lint 0, JS
 2,772/2,772. Not covered: Vimeo players inside third-party pages' iframes (the page script runs in the top frame only).
 
+### 4.45 Every downloadable format in Files (branch `faran/all-formats`, 2026-11-28)
+
+The client's formats guide (`Downloadable_File_Formats_Guide.docx`, 266 named / 260 listed DRM-free formats) needs
+every format downloadable and usable. Before: only video/audio the engine keeps reached Files; pictures, documents,
+archives, apps and most audio went to Android's DownloadManager (phone's Downloads folder) and Files' Images, Docs,
+Archives and APKs lists were always empty.
+
+- **Native `files/SystemDownloads.kt`** (`listSystemDownloads`, `removeSystemDownloads`, `openSystemDownloadWith`,
+  `shareSystemDownload`, `copySystemDownloadTo`): DownloadManager answers an app only with its own downloads, so this
+  is exactly what VidoraX's browser downloaded — no permission, nothing copied; files stay in the phone's Downloads.
+- **Files** (`src/files/system-downloads/*`): they join `loadItems` as `sysdl:<id>` items (every tile, search, counts).
+  Tap: audio/video play in VidoraX's player from Android's link, PDF in VidoraX's viewer, others in another app, APK
+  never opens (no install). ⋮: Play/Share/Send/Open with/Tags/Hide/Delete; library-only rows hidden. Delete → Recycle
+  bin (hidden in place), emptying it deletes through DownloadManager. Batch: only Delete applies to them.
+- **Add link**: a direct link to a non-media file shows "File found" + **Download file** (was stuck on "Calculating…").
+- **Browser bar**: a page that is itself a file VidoraX can't keep (WAV, FLAC, OGV…) offers "Download file · name"
+  instead of "This video can't be downloaded". Long-press "Download image" already used the same path.
+
+Emulator (Pixel 8, release): PDF (Docs, opens in viewer), ZIP (Archives), JPG via Add link (Images, thumbnail), WAV via
+page player (Audio, plays in VidoraX), FLAC via the new bar button (Audio), delete → bin → empty removes the file from
+the phone, APK after the safety warning (APKs). Gates: tsc 0, lint 0, JS 2,916/2,916, native files tests pass.
+Still not possible (by nature): live RTMP/RTSP/SRT/WebRTC (not files); WMV/ASF, RealMedia, MXF and pro/rare codecs
+save fine but play only in another app (no decoder in Android / media3).
+
 ## 5. How to resume
 
 1. **Read `docs/ARCHITECTURE.md` in full** if you haven't. It is the spec. Then `docs/ROADMAP.md` for what comes next.

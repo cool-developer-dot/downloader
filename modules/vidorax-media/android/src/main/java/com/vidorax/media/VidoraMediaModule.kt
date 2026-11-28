@@ -725,6 +725,32 @@ class VidoraMediaModule : Module() {
       TreeExport(context, services.library).release(treeUri)
     }
 
+    // Files: the files VidoraX's browser downloaded through Android's DownloadManager (pictures, documents, archives…).
+    AsyncFunction("listSystemDownloads") Coroutine { ->
+      withContext(Dispatchers.IO) { com.vidorax.media.files.SystemDownloads(context).list().map { it.toMap() } }
+    }
+
+    AsyncFunction("removeSystemDownloads") Coroutine { ids: List<String> ->
+      withContext(Dispatchers.IO) { com.vidorax.media.files.SystemDownloads(context).remove(ids.mapNotNull { it.toLongOrNull() }) }
+    }
+
+    AsyncFunction("openSystemDownloadWith") Coroutine { id: String, mimeType: String?, title: String? ->
+      val dl = id.toLongOrNull() ?: throw NotFoundException("No such download")
+      withContext(Dispatchers.Main) { com.vidorax.media.files.SystemDownloads(context).openWith(appContext.currentActivity, dl, mimeType, title) }
+    }
+
+    AsyncFunction("shareSystemDownload") Coroutine { id: String, mimeType: String?, title: String? ->
+      val dl = id.toLongOrNull() ?: throw NotFoundException("No such download")
+      withContext(Dispatchers.Main) { com.vidorax.media.files.SystemDownloads(context).share(appContext.currentActivity, dl, mimeType, title) }
+    }
+
+    AsyncFunction("copySystemDownloadTo") Coroutine { id: String, targetPath: String ->
+      val dl = id.toLongOrNull() ?: throw NotFoundException("No such download")
+      val target = java.io.File(targetPath.removePrefix("file://"))
+      if (!target.canonicalPath.startsWith(context.cacheDir.canonicalPath)) throw InvalidRequestException("Only into the app's cache")
+      withContext(Dispatchers.IO) { com.vidorax.media.files.SystemDownloads(context).copyTo(dl, target) }
+    }
+
     // F15 Files: "SD card" and "Folders I added" (folders picked in Android's folder picker; read-only).
     Function("listGrantedFolders") { -> com.vidorax.media.files.FolderAccess(context.contentResolver).grantedTrees() }
 

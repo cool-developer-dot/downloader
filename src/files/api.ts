@@ -14,6 +14,8 @@ import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assi
 import { useFoldersStore } from '@/store/organization/folders';
 import type { MediaFolderItem } from '@/api/types';
 
+import { loadSystemDownloadItems, useSystemDownloadsRevision } from './system-downloads/system-downloads';
+import { useBinStore } from './trash/bin-store';
 import { fileTypeOf as fileTypeOfImpl, type FileType } from './engine/file-types';
 import {
   computeFolderStats,
@@ -75,10 +77,14 @@ async function loadFolders(): Promise<FolderNode[]> {
 }
 
 async function loadItems(): Promise<MediaLibraryItem[]> {
-  const { items } = await getLibrary();
+  const [{ items }, downloaded] = await Promise.all([getLibrary(), loadSystemDownloadItems()]);
   const assignments = useMediaFolderAssignmentsStore.getState();
   // The assignment cache is ahead of the catalog right after a move: use what the user just did.
-  return items.map((item) => ({ ...item, folderId: assignments.getEffectiveFolderId(item.id, item.folderId) }));
+  const library = items.map((item) => ({ ...item, folderId: assignments.getEffectiveFolderId(item.id, item.folderId) }));
+  // The files the browser handed to Android's DownloadManager (pictures, documents, archives…): in no folder; while
+  // in the Recycle bin they are hidden here, like a library item (the library leaves those out itself).
+  const binned = useBinStore.getState().entries;
+  return [...library, ...downloaded.filter((item) => !binned[item.id])];
 }
 
 export async function listFolder(
@@ -200,6 +206,8 @@ export function subscribeFiles(listener: () => void): () => void {
     useFoldersStore.subscribe(listener),
     useDownloadsStore.subscribe(listener),
     useMediaFolderAssignmentsStore.subscribe(listener),
+    useSystemDownloadsRevision.subscribe(listener),
+    useBinStore.subscribe(listener),
   ];
   return () => {
     for (const unsubscribe of unsubscribers) {

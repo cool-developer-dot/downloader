@@ -424,6 +424,8 @@ export const en = {
   mediaResult: {
     videoFound: 'Video found',
     videoFoundA11y: 'Video found. {title}',
+    fileFound: 'File found',
+    fileFoundA11y: 'File found. {title}',
     thumbnailA11y: 'Video thumbnail',
     placeholderA11y: 'Video placeholder',
     calculating: 'Calculating…',
@@ -1246,6 +1248,9 @@ export const en = {
     pasteAction: 'Paste',
     retryAction: 'Try again',
     changeLinkAction: 'Use a different link',
+    downloadFileAction: 'Download file',
+    downloadFileStarted: 'Downloading. It will be in Files when it finishes.',
+    downloadFileFailed: 'This file could not be downloaded.',
     downloadAction: 'Start download',
     downloadNamed: 'Download {label}',
     recordAction: 'Start recording',

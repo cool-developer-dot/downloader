@@ -11,6 +11,13 @@ import type { FileEntry } from '@/files/ui/files-index';
 import { fileLabel } from '@/files/ui/file-fields';
 import { fileDetailsPath, navigation, openPlayer, routePaths } from '@/navigation';
 
+import {
+  isSystemDownloadId,
+  openSystemDownloadWith,
+  systemDownloadMediaId,
+  systemDownloadPdfCopy,
+} from '@/files/system-downloads/system-downloads';
+
 import { openTargetOf } from './utils/open-target';
 
 export type OpenFileResult = 'opened' | 'cancelled' | 'no-app' | 'failed';
@@ -47,7 +54,42 @@ async function openWithAndroid(file: FileEntry): Promise<OpenFileResult> {
 }
 
 /** Opens `file`; `playable` is the list it was picked from (the Player's ⏮ / ⏭ step through its videos). */
+/** A file the browser handed to Android's DownloadManager: plays in VidoraX, a PDF in its viewer, the rest in other apps. */
+async function openSystemDownload(file: FileEntry): Promise<OpenFileResult> {
+  const target = openTargetOf(file);
+  // VidoraX never installs apps (that needs REQUEST_INSTALL_PACKAGES): an APK is kept, shared or deleted, not opened.
+  if (target === 'apk-details') {
+    return 'cancelled';
+  }
+  if (target === 'player') {
+    const mediaId = systemDownloadMediaId(file);
+    if (mediaId) {
+      openPlayer(mediaId, [mediaId]);
+      return 'opened';
+    }
+  }
+  if (target === 'pdf') {
+    const path = await systemDownloadPdfCopy(file);
+    const title = (fileLabel(file) || file.displayName).slice(0, 120);
+    navigation.push(`${routePaths.pdfViewer}?path=${encodeURIComponent(path)}&title=${encodeURIComponent(title)}`);
+    return 'opened';
+  }
+  try {
+    await openSystemDownloadWith(file);
+    return 'opened';
+  } catch (error) {
+    return (error as { code?: string } | null)?.code === 'ERR_NO_APP' ? 'no-app' : 'failed';
+  }
+}
+
 export async function openFileEntry(file: FileEntry, playable: readonly string[]): Promise<OpenFileResult> {
+  if (isSystemDownloadId(file.id)) {
+    try {
+      return await openSystemDownload(file);
+    } catch {
+      return 'failed';
+    }
+  }
   try {
     switch (openTargetOf(file)) {
       case 'player':

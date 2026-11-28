@@ -10,6 +10,7 @@ import { confirmLibraryFileAction } from '@/downloads/safety/file-safety-dialog'
 import { getV2Engine } from '@/downloads/v2/engine-port';
 import { batchActionsFor, type BatchAction, type BatchItem } from '@/files/ui/batch-actions';
 import { requestDelete } from '@/files/trash/useDeleteWithUndo';
+import { isSystemDownloadId } from '@/files/system-downloads/system-downloads';
 import { fileLabel } from '@/files/ui/file-fields';
 import { filesCapabilities, listFolder, moveFolder, type FileEntry, type FolderEntry } from '@/files/ui/files-source';
 import { useTheme } from '@/hooks/use-theme';
@@ -63,6 +64,9 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
   const { t, rtl } = useTranslation();
   const files = useMemo(() => entries.flatMap((entry) => (entry.kind === 'file' ? [entry.file] : [])), [entries]);
   const folders = useMemo(() => entries.flatMap((entry) => (entry.kind === 'folder' ? [entry.folder] : [])), [entries]);
+  // Files the browser handed to Android's DownloadManager only delete here; moving, sharing in one sheet, playlists and
+  // Private are for VidoraX's own library files.
+  const libraryFiles = useMemo(() => files.filter((file) => !isSystemDownloadId(file.id)), [files]);
   const items = useMemo<BatchItem[]>(
     () =>
       entries.map((entry) =>
@@ -87,14 +91,14 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
       setFolderPicker(null);
       const store = useMediaFolderAssignmentsStore.getState();
       // F5 #797: what is already in the target folder (not the files being moved).
-      const movingIds = new Set(files.map((file) => file.id));
+      const movingIds = new Set(libraryFiles.map((file) => file.id));
       const there = (await listFolder(folderId).catch(() => null))?.files.filter((file) => !movingIds.has(file.id)) ?? [];
       const names = there.map((file) => fileLabel(file));
       // "Do this for all" (#797): each clash asks until an answer is for all.
       let clashingName = '';
-      const choose = createClashResolver(() => clash.ask(clashingName, folderName, files.length > 1));
+      const choose = createClashResolver(() => clash.ask(clashingName, folderName, libraryFiles.length > 1));
       let moved = 0;
-      for (const file of files) {
+      for (const file of libraryFiles) {
         try {
           if (file.folderId === folderId) {
             continue;
@@ -136,7 +140,7 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
       if (moved < total) announce(t('fileManager.moveFailed', { count: total - moved }));
       onDone();
     },
-    [clash, files, folders, onDone, t],
+    [clash, files, folders, libraryFiles, onDone, t],
   );
 
   const deleteNow = useCallback(() => {
@@ -155,7 +159,7 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
   const share = useCallback(async () => {
     const engine = getV2Engine();
     const ids: string[] = [];
-    for (const file of files) {
+    for (const file of libraryFiles) {
       // P8 #461: the warning for a file that isn't what its name says, before it leaves the app.
       if (await confirmLibraryFileAction(file.id, 'share', fileLabel(file))) ids.push(file.id);
     }
@@ -167,7 +171,7 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
     } catch {
       announce(t('files.shareFailed'));
     }
-  }, [files, onDone, t]);
+  }, [libraryFiles, onDone, t]);
 
   const run = useCallback(
     (action: BatchAction) => {
@@ -183,10 +187,10 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
           deleteNow();
           return;
         case 'add-to-playlist':
-          setPlaylistInputs(files.map((file) => ({ mediaId: file.id, title: file.displayName || fileLabel(file), fileName: file.fileName, durationSeconds: null })));
+          setPlaylistInputs(libraryFiles.map((file) => ({ mediaId: file.id, title: file.displayName || fileLabel(file), fileName: file.fileName, durationSeconds: null })));
           return;
         case 'move-to-private':
-          setPrivateFiles(files);
+          setPrivateFiles(libraryFiles);
           return;
         case 'more':
           setMoreOpen(true);
@@ -195,7 +199,7 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
           return;
       }
     },
-    [deleteNow, files, folders, share],
+    [deleteNow, folders, libraryFiles, share],
   );
 
   const pickerActions = useMemo<ActionSheetItem[]>(
