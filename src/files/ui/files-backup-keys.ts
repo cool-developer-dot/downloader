@@ -7,6 +7,7 @@
 import { registerFilesBackupKey } from '@/backup/files-section.runtime';
 import { useCustomOrderStore, useFolderColorsStore } from '@/files/organize/organize-stores';
 import { useItemHiddenStore, useTagColorsStore } from '@/library/item-organize-store';
+import { reloadSecuritySettings, SECURITY_SETTINGS_BACKUP_KEY } from '@/screens/settings/security/security-settings';
 import { mmkvKeys } from '@/storage/constants';
 
 import { reloadFilesViewSettings } from './files-view-settings';
@@ -18,3 +19,5 @@ registerFilesBackupKey(mmkvKeys.filesHidden, () => void useItemHiddenStore.persi
 registerFilesBackupKey(mmkvKeys.filesTagColors, () => void useTagColorsStore.persist.rehydrate());
 registerFilesBackupKey(mmkvKeys.filesFolderColors, () => void useFolderColorsStore.persist.rehydrate());
 registerFilesBackupKey(mmkvKeys.filesCustomOrder, () => void useCustomOrderStore.persist.rehydrate());
+// F10/F11 · Security: the app-wide Block screenshots (Faran, 2026-11-28). App Lock's PIN and recovery code stay out.
+registerFilesBackupKey(SECURITY_SETTINGS_BACKUP_KEY, reloadSecuritySettings);

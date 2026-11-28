@@ -12,7 +12,7 @@
  */
 
 import { mmkvKeys } from '@/storage/constants';
-import { mmkvGetBoolean, mmkvSetBoolean } from '@/storage/mmkv';
+import { mmkvGetBoolean, mmkvGetObject, mmkvSetBoolean, mmkvSetObject } from '@/storage/mmkv';
 import { createStore } from '@/store/shared/create-store';
 
 export type SecuritySettings = { blockScreenshots: boolean };
@@ -60,9 +60,36 @@ export function securityPageModel(input: { appLockEnabled: boolean; settings: Se
   };
 }
 
+/**
+ * F11 (Faran, 2026-11-28): where these settings are kept so a backup carries them. It's a `vidorax.files.*` key, so
+ * F17's `registerFilesBackupKey` takes it (`files-backup-keys.ts`). It holds only `{ blockScreenshots }`, never
+ * anything of App Lock's.
+ */
+export const SECURITY_SETTINGS_BACKUP_KEY = mmkvKeys.filesSecuritySettings;
+
+/** What a backup holds for these settings. */
+export function securitySettingsBackupValue(settings: SecuritySettings): SecuritySettings {
+  return { blockScreenshots: settings.blockScreenshots === true };
+}
+
+/** The settings from storage: the backed-up key when it's there, else the older app-wide Block screenshots value. */
+export function securitySettingsFromStorage(input: { stored: unknown; legacyBlockScreenshots: boolean | undefined }): SecuritySettings {
+  if (input.stored && typeof input.stored === 'object') {
+    return normalizeSecuritySettings(input.stored as { blockScreenshots?: unknown });
+  }
+  return normalizeSecuritySettings({ blockScreenshots: input.legacyBlockScreenshots });
+}
+
 function read(): SecuritySettings {
   try {
-    return normalizeSecuritySettings({ blockScreenshots: mmkvGetBoolean(mmkvKeys.privacyBlockScreenshotsApp) });
+    const stored = mmkvGetObject<unknown>(SECURITY_SETTINGS_BACKUP_KEY);
+    const legacy = mmkvGetBoolean(mmkvKeys.privacyBlockScreenshotsApp);
+    const settings = securitySettingsFromStorage({ stored, legacyBlockScreenshots: legacy });
+    if (stored == null && legacy !== undefined) {
+      // Once: a phone that set it before backups carried it moves it to the backed-up key.
+      mmkvSetObject(SECURITY_SETTINGS_BACKUP_KEY, securitySettingsBackupValue(settings));
+    }
+    return settings;
   } catch {
     return { ...DEFAULT_SECURITY_SETTINGS };
   }
@@ -80,6 +107,7 @@ export function getSecuritySettings(): SecuritySettings {
 
 export function setBlockScreenshots(on: boolean): void {
   try {
+    mmkvSetObject(SECURITY_SETTINGS_BACKUP_KEY, securitySettingsBackupValue({ blockScreenshots: on }));
     mmkvSetBoolean(mmkvKeys.privacyBlockScreenshotsApp, on);
   } catch {
     // Kept for this run even when it can't be saved.
