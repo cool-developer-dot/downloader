@@ -43,7 +43,14 @@ export const filesCoreEn = {
   importA11y: 'Copy this folder’s videos into VidoraX',
   importTitle: 'Import to VidoraX',
   importDone: '{imported} copied. {duplicates} were already saved.',
+  importCopied: '{count} copied.',
+  importAlreadyOne: '1 was already saved.',
+  importAlready: '{count} were already saved.',
   importFailed: 'Couldn’t import this folder.',
   // F17 · the backup's File Manager part (restore preview)
-  previewFiles: 'File Manager: {count} folders, tags and notes of {items} files, its settings',
+  previewFiles: 'File Manager: {folders}, tags and notes of {files}, its settings',
+  countFoldersOne: '1 folder',
+  countFolders: '{count} folders',
+  countFilesOne: '1 file',
+  countFiles: '{count} files',
 } as const;

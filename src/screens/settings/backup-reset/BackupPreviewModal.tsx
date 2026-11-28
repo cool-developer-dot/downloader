@@ -5,9 +5,14 @@ import { Box } from '@/components/base/Box';
 import { Text } from '@/components/base/Text';
 import { Button } from '@/components/buttons/Button';
 import { AppModal } from '@/components/modals/AppModal';
-import { useTranslation, type TranslationKey } from '@/localization';
+import { translatePlural, useTranslation, type TranslationKey } from '@/localization';
 import type { BackupPreview, BackupPreviewRow } from '@/backup/backup-format';
 import type { RestoreMode } from '@/backup/backup-restore';
+
+// "1 folder", "1 file", "1 video" — never "1 folders".
+const VIDEOS = { one: 'privacyBackup.countVideosOne', other: 'privacyBackup.countVideos' } as const;
+const FOLDERS = { one: 'filesCore.countFoldersOne', other: 'filesCore.countFolders' } as const;
+const FILES = { one: 'filesCore.countFilesOne', other: 'filesCore.countFiles' } as const;
 
 const ROW_KEYS: Record<BackupPreviewRow['section'], TranslationKey> = {
   settings: 'privacyBackup.previewSettings',
@@ -65,10 +70,12 @@ export const BackupPreviewModal = memo(function BackupPreviewModal({
             preview.rows.map((row) => (
               <Text key={row.section} variant="body" testID={`${testID}-${row.section}`}>
                 {row.section === 'playlists'
-                  ? t(ROW_KEYS[row.section], { count: row.count, videos: row.videos })
+                  ? t(ROW_KEYS[row.section], { count: row.count, videos: translatePlural(row.videos, VIDEOS) })
                   : row.section === 'files'
-                    ? t(ROW_KEYS[row.section], { count: row.count, items: row.items })
-                    : t(ROW_KEYS[row.section], { count: row.count })}
+                    ? t(ROW_KEYS[row.section], { folders: translatePlural(row.count, FOLDERS), files: translatePlural(row.items, FILES) })
+                    : row.section === 'playStats'
+                      ? t(ROW_KEYS[row.section], { videos: translatePlural(row.count, VIDEOS) })
+                      : t(ROW_KEYS[row.section], { count: row.count })}
               </Text>
             ))
           )}

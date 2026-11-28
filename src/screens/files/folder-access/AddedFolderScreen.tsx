@@ -6,7 +6,7 @@ import { ds, DsHeader, DsRow, DsScreen, DsText } from '@/design';
 import type { DsIconName } from '@/design/DsIcon';
 import type { FileType } from '@/files/engine/file-types';
 import { importFolder, listPicked, playableIdOf, type PickedDocument } from '@/files/folder-access/folder-access-api';
-import { useTranslation } from '@/localization';
+import { translatePlural, useTranslation } from '@/localization';
 import { navigation, openPlayer } from '@/navigation';
 import { routePaths } from '@/navigation/constants/route-paths';
 import { formatBytesLabel } from '@/storage-manager';
@@ -62,7 +62,14 @@ export const AddedFolderScreen = memo(function AddedFolderScreen() {
     const result = await importFolder(tree).catch(() => null);
     Alert.alert(
       t('filesCore.importTitle'),
-      result ? t('filesCore.importDone', { imported: result.imported, duplicates: result.duplicates }) : t('filesCore.importFailed'),
+      result
+        ? [
+            t('filesCore.importCopied', { count: result.imported }),
+            result.duplicates > 0 ? translatePlural(result.duplicates, { one: 'filesCore.importAlreadyOne', other: 'filesCore.importAlready' }) : '',
+          ]
+            .filter(Boolean)
+            .join(' ')
+        : t('filesCore.importFailed'),
     );
   }, [t, tree]);
 
