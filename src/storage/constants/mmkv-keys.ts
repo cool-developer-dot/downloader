@@ -133,6 +133,11 @@ export const mmkvKeys = {
   // F11 · Backup & reset (design 62)
   /** Files F11: this phone's last backup (when, its size, the folder it went to); device-only, never itself backed up. */
   filesLastBackup: 'vidorax.files.lastBackup.v1',
+  /**
+   * Files F10/F11: the Security page's stored settings (`{ blockScreenshots }`), backed up through F17. Before it, Block
+   * screenshots was only `privacyBlockScreenshotsApp` (still written, and read once to move a phone's setting over).
+   */
+  filesSecuritySettings: 'vidorax.files.securitySettings.v1',
 } as const;
 
 export type MmkvKey = (typeof mmkvKeys)[keyof typeof mmkvKeys];
