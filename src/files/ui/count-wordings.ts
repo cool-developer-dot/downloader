@@ -8,14 +8,14 @@ import type { TranslationKey } from '@/localization/types';
 
 export type CountForms = Readonly<{ one: TranslationKey; other: TranslationKey }>;
 
-/** F5 · the batch rename header ("Rename {count} files"). */
-export const renameTitleForms: CountForms = { one: 'fileManager.renameTitle', other: 'fileManager.renameTitle' };
+/** F5 · the batch rename header: "Rename 1 file", "Rename {count} files". */
+export const renameTitleForms: CountForms = { one: 'fileManager.renameTitleOne', other: 'fileManager.renameTitle' };
 
-/** F7 · the toast after a tag goes on the selected files ("“{tag}” added to {count} files"). */
-export const tagAddedForms: CountForms = { one: 'fileManager.tagAdded', other: 'fileManager.tagAdded' };
+/** F7 · the toast after a tag goes on the selected files: "“{tag}” added to 1 file", "… to {count} files". */
+export const tagAddedForms: CountForms = { one: 'fileManager.tagAddedOne', other: 'fileManager.tagAdded' };
 
-/** F7 · the toast after Organize now ("{count} files organized"). */
-export const organizeDoneForms: CountForms = { one: 'fileManager.organizeDone', other: 'fileManager.organizeDone' };
+/** F7 · the toast after Organize now: "1 file organized", "{count} files organized". */
+export const organizeDoneForms: CountForms = { one: 'fileManager.organizeDoneOne', other: 'fileManager.organizeDone' };
 
-/** F3 · File details' exact size ("{bytes} bytes"); the count is the whole number of bytes (`wholeBytes`). */
-export const rowSizeExactForms: CountForms = { one: 'fileManager.rowSizeExact', other: 'fileManager.rowSizeExact' };
+/** F3 · File details' exact size: "1 byte", "{bytes} bytes"; the count is the whole number of bytes (`wholeBytes`). */
+export const rowSizeExactForms: CountForms = { one: 'fileManager.rowSizeExactOne', other: 'fileManager.rowSizeExact' };
