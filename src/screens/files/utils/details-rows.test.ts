@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, test } from 'node:test';
 
-import { exactBytes, formatLine, NO_TAGS, pathLine, pictureSize, tagsOf } from './details-rows';
+import { exactBytes, formatLine, NO_TAGS, pathLine, pictureSize, tagsOf, wholeBytes } from './details-rows';
 
 describe('Files F3 · design 56: the details rows', () => {
   test('the "MP4 · 640×356" line', () => {
@@ -26,6 +26,11 @@ describe('Files F3 · design 56: the details rows', () => {
   test('the exact bytes and the folder path', () => {
     assert.equal(exactBytes(1234567, 'en-US'), '1,234,567');
     assert.equal(exactBytes(-5, 'en-US'), '0');
+    // The count for "1 byte" / "{bytes} bytes" is the same whole number that exactBytes shows.
+    assert.equal(wholeBytes(1), 1);
+    assert.equal(wholeBytes(1.9), 1);
+    assert.equal(wholeBytes(Number.NaN), 0);
+    assert.equal(exactBytes(1.9, 'en-US'), '1');
     assert.equal(pathLine('Files', ['Movies', '2026']), 'Files › Movies › 2026');
     assert.equal(pathLine('Files', []), 'Files');
   });

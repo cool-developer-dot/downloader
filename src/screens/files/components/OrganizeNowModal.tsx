@@ -4,8 +4,9 @@ import { ActivityIndicator, View } from 'react-native';
 import { AppModal } from '@/components/modals/AppModal';
 import { DsButton, DsChip, DsChipRow, DsRow, DsRowGroup, DsText } from '@/design';
 import { ORGANIZE_BY, planAutoOrganize, siteOf, type OrganizeBy, type OrganizePlan } from '@/files/organize/auto-organize';
+import { organizeDoneForms } from '@/files/ui/count-wordings';
 import { createFolder, listFolder, type FileEntry, type FolderEntry } from '@/files/ui/files-source';
-import { intlLocaleForLanguage, useTranslation, type TranslationKey } from '@/localization';
+import { intlLocaleForLanguage, translatePlural, useTranslation, type TranslationKey } from '@/localization';
 import { useDownloadsStore } from '@/store/downloads';
 import { useMediaFolderAssignmentsStore } from '@/store/organization/folder-assignments';
 
@@ -80,10 +81,10 @@ export const OrganizeNowModal = memo(function OrganizeNowModal({ visible, onClos
       }
     }
     setBusy(false);
-    announce(t('fileManager.organizeDone', { count: moved }));
+    announce(translatePlural(moved, organizeDoneForms, undefined, language));
     onDone();
     onClose();
-  }, [onClose, onDone, plan, source, t]);
+  }, [language, onClose, onDone, plan, source]);
 
   return (
     <AppModal visible={visible} onClose={busy ? undefined : onClose} title={t('fileManager.organizeNow')} showCloseButton={!busy} testID="files-organize">

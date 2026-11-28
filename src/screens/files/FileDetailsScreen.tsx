@@ -10,11 +10,12 @@ import { ds, DsButton, DsButtonRow, DsCard, DsHeader, DsIcon, DsRow, DsRowGroup,
 import { completedActionErrorMessageKey } from '@/downloads/completed-file/action-errors';
 import { fileIntegrity, storedChecksum } from '@/downloads/v2/file-integrity';
 import { getV2Engine } from '@/downloads/v2/engine-port';
+import { rowSizeExactForms } from '@/files/ui/count-wordings';
 import { fileBytes, fileLabel } from '@/files/ui/file-fields';
 import { fileTypeOf, folderPath, fullPathOf, type FileEntry } from '@/files/ui/files-source';
 import { useItemNotesStore, useItemTagsStore } from '@/library/item-organize-store';
 import { formatDuration } from '@/media-detection/utils/format';
-import { intlLocaleForLanguage, useTranslation, type TranslationKey } from '@/localization';
+import { intlLocaleForLanguage, translatePlural, useTranslation, type TranslationKey } from '@/localization';
 import { fileChecksumPath, navigation, openPlayer } from '@/navigation';
 import { DownloadSafetySection } from '@/screens/downloads/components/DownloadSafetySection';
 import { useDownloadDetailsScreen } from '@/screens/downloads/hooks/useDownloadDetailsScreen';
@@ -23,7 +24,7 @@ import { formatDownloadDate, formatDurableBitrate, formatSourceHost } from '@/sc
 import { announce } from './announce';
 import { listAllFiles } from './hooks/use-files-data';
 import { useFilesSettingsAction } from './hooks/use-files-settings-action';
-import { exactBytes, formatLine, pathLine, tagsOf } from './utils/details-rows';
+import { exactBytes, formatLine, pathLine, tagsOf, wholeBytes } from './utils/details-rows';
 import { fileTypeIcon, formatFileBytes } from './utils/file-rows';
 
 /** What the native library knows about the file (codecs, picture size, length, its page). */
@@ -206,7 +207,7 @@ export const FileDetailsScreen = memo(function FileDetailsScreen() {
           title={t('fileManager.rowSize')}
           subtitle={
             expanded === 'size'
-              ? t('fileManager.rowSizeExact', { bytes: exactBytes(sizeBytes, locale) })
+              ? translatePlural(wholeBytes(sizeBytes), rowSizeExactForms, { bytes: exactBytes(sizeBytes, locale) }, language)
               : (formatFileBytes(sizeBytes) ?? '—')
           }
           onPress={() => toggle('size')}

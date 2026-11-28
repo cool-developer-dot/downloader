@@ -15,10 +15,11 @@ import {
 } from '@/files/rename/batch-rename';
 import { createClashResolver, findClash, keepBothName, type ClashChoice } from '@/files/rename/name-clash';
 import { deleteForReplace, renameFileTo } from '@/files/rename/rename-runtime';
+import { renameTitleForms } from '@/files/ui/count-wordings';
 import { fileLabel } from '@/files/ui/file-fields';
 import { folderPath, listFolder, type FileEntry } from '@/files/ui/files-source';
 import { useTheme } from '@/hooks/use-theme';
-import { useTranslation, type TranslationKey } from '@/localization';
+import { translatePlural, useTranslation, type TranslationKey } from '@/localization';
 import { navigation } from '@/navigation';
 
 import { announce } from './announce';
@@ -55,7 +56,7 @@ type Failure = { name: string; reason: 'skipped' | 'failed' };
  */
 export const BatchRenameScreen = memo(function BatchRenameScreen() {
   const theme = useTheme();
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const settingsAction = useFilesSettingsAction();
   const idsParam = useLocalSearchParams<{ ids?: string | string[] }>().ids;
   const ids = useMemo(() => (Array.isArray(idsParam) ? idsParam.join(',') : (idsParam ?? '')).split(',').filter(Boolean), [idsParam]);
@@ -223,7 +224,7 @@ export const BatchRenameScreen = memo(function BatchRenameScreen() {
 
   const header = (
     <View style={{ gap: ds.space.stack, paddingBottom: ds.space.stack }}>
-      <DsHeader title={t('fileManager.renameTitle', { count: files?.length ?? ids.length })} onBack={() => navigation.back()} action={settingsAction} />
+      <DsHeader title={translatePlural(files?.length ?? ids.length, renameTitleForms, undefined, language)} onBack={() => navigation.back()} action={settingsAction} />
       <DsChipRow>
         {(Object.keys(MODE_LABELS) as ModeKind[]).map((value) => (
           <DsChip key={value} label={t(MODE_LABELS[value])} selected={kind === value} onPress={() => setKind(value)} testID={`files-rename-mode-${value}`} />

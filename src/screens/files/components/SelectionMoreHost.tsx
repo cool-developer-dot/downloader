@@ -6,10 +6,11 @@ import { AppModal } from '@/components/modals/AppModal';
 import { DsButton, DsText } from '@/design';
 import { useFolderColorsStore } from '@/files/organize/organize-stores';
 import type { SwatchId } from '@/files/organize/swatches';
+import { tagAddedForms } from '@/files/ui/count-wordings';
 import { cleanTag, tagProblem } from '@/library/item-organize';
 import { useItemTagsStore, useTagColorsStore } from '@/library/item-organize-store';
 import { createStore } from '@/store/shared/create-store';
-import { useTranslation } from '@/localization';
+import { translatePlural, useTranslation } from '@/localization';
 
 import { announce } from '../announce';
 import { SwatchPicker } from './SwatchPicker';
@@ -33,7 +34,7 @@ export const SelectionMoreHost = memo(function SelectionMoreHost() {
 });
 
 function MoreDialog({ pending }: { pending: NonNullable<Pending> }) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const [tag, setTag] = useState('');
   const [color, setColor] = useState<SwatchId | null>(null);
   const close = () => useSelectionMoreStore.setState({ pending: null });
@@ -73,7 +74,7 @@ function MoreDialog({ pending }: { pending: NonNullable<Pending> }) {
               useItemTagsStore.getState().addTag(id, clean);
             }
             if (color) useTagColorsStore.getState().setColor(clean, color);
-            announce(t('fileManager.tagAdded', { tag: clean, count: pending.fileIds.length }));
+            announce(translatePlural(pending.fileIds.length, tagAddedForms, { tag: clean }, language));
             close();
             pending.done();
           }}

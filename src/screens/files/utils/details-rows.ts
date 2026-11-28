@@ -51,9 +51,14 @@ export function formatLine(input: {
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
+/** The whole number of bytes that `exactBytes` shows, so "1 byte" and the number it shows always agree. */
+export function wholeBytes(bytes: number): number {
+  return Math.max(0, Math.trunc(Number.isFinite(bytes) ? bytes : 0));
+}
+
 /** The exact size, with the language's digit grouping ("1,234,567"). */
 export function exactBytes(bytes: number, locale: string): string {
-  const whole = Math.max(0, Math.trunc(Number.isFinite(bytes) ? bytes : 0));
+  const whole = wholeBytes(bytes);
   try {
     return new Intl.NumberFormat(locale).format(whole);
   } catch {
