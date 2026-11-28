@@ -11,10 +11,11 @@ import { getV2Engine } from '@/downloads/v2/engine-port';
 import { batchActionsFor, type BatchAction, type BatchItem } from '@/files/ui/batch-actions';
 import { requestDelete } from '@/files/trash/useDeleteWithUndo';
 import { isSystemDownloadId } from '@/files/system-downloads/system-downloads';
+import { movedCountForms, moveFailedForms } from '@/files/ui/count-wordings';
 import { fileLabel } from '@/files/ui/file-fields';
 import { filesCapabilities, listFolder, moveFolder, type FileEntry, type FolderEntry } from '@/files/ui/files-source';
 import { useTheme } from '@/hooks/use-theme';
-import { useTranslation, type TranslationKey } from '@/localization';
+import { translatePlural, useTranslation, type TranslationKey } from '@/localization';
 import { canMoveToPrivate } from '@/private-vault/move-to-private.runtime';
 import { AddToPlaylistSheet } from '@/screens/playlists/components/AddToPlaylistSheet';
 import type { PlaylistItemInput } from '@/storage/repositories/playlists.repository';
@@ -61,7 +62,7 @@ const BUTTONS: { action: BatchAction; icon: DsIconName; label: TranslationKey }[
 export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreActions = [], testID = 'files-selection-bar' }: SelectionBarProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const { t, rtl } = useTranslation();
+  const { t, rtl, language } = useTranslation();
   const files = useMemo(() => entries.flatMap((entry) => (entry.kind === 'file' ? [entry.file] : [])), [entries]);
   const folders = useMemo(() => entries.flatMap((entry) => (entry.kind === 'folder' ? [entry.folder] : [])), [entries]);
   // Files the browser handed to Android's DownloadManager only delete here; moving, sharing in one sheet, playlists and
@@ -136,11 +137,11 @@ export const SelectionBar = memo(function SelectionBar({ entries, onDone, moreAc
         }
       }
       const total = files.length + movingFolders.length;
-      announce(t('fileManager.movedCount', { count: moved, folder: folderName }));
-      if (moved < total) announce(t('fileManager.moveFailed', { count: total - moved }));
+      announce(translatePlural(moved, movedCountForms, { folder: folderName }, language));
+      if (moved < total) announce(translatePlural(total - moved, moveFailedForms, undefined, language));
       onDone();
     },
-    [clash, files, folders, libraryFiles, onDone, t],
+    [clash, files, folders, language, libraryFiles, onDone],
   );
 
   const deleteNow = useCallback(() => {

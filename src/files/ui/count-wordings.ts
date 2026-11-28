@@ -19,3 +19,27 @@ export const organizeDoneForms: CountForms = { one: 'fileManager.organizeDoneOne
 
 /** F3 · File details' exact size: "1 byte", "{bytes} bytes"; the count is the whole number of bytes (`wholeBytes`). */
 export const rowSizeExactForms: CountForms = { one: 'fileManager.rowSizeExactOne', other: 'fileManager.rowSizeExact' };
+
+// The English of these needs no noun ("1 moved to Trips"), but the Urdu verb does: گئی / سکی / رہی for one file,
+// گئیں / سکیں / رہیں for more.
+
+/** F4 · the toast after Move: "{count} moved to {folder}". */
+export const movedCountForms: CountForms = { one: 'fileManager.movedCount', other: 'fileManager.movedCount' };
+
+/** F4 and F10 · after Move or Move to Private: "{count} couldn’t be moved". */
+export const moveFailedForms: CountForms = { one: 'fileManager.moveFailed', other: 'fileManager.moveFailed' };
+
+/** F5 · after a batch rename: "{count} renamed". */
+export const renamedCountForms: CountForms = { one: 'fileManager.renamedCount', other: 'fileManager.renamedCount' };
+
+/** F7 · after Hide: "{count} hidden. To lock files, use Private folder." */
+export const hiddenCountForms: CountForms = { one: 'fileManager.hiddenCount', other: 'fileManager.hiddenCount' };
+
+/** F10 · after Add files to Private: "{count} moved to Private". */
+export const addFilesDoneForms: CountForms = { one: 'fileManager.addFilesDone', other: 'fileManager.addFilesDone' };
+
+/** F10 · after Add files to Private: "{count} couldn’t be moved and stayed in your library". */
+export const addFilesFailedForms: CountForms = { one: 'fileManager.addFilesFailed', other: 'fileManager.addFilesFailed' };
+
+/** F8 · the Undo bar: "{count} couldn’t be deleted". */
+export const undoFailedForms: CountForms = { one: 'fileManager.undoFailed', other: 'fileManager.undoFailed' };

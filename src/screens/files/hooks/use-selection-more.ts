@@ -1,7 +1,8 @@
 import { useMemo } from 'react';
 
+import { hiddenCountForms } from '@/files/ui/count-wordings';
 import { useItemHiddenStore } from '@/library/item-organize-store';
-import { useTranslation } from '@/localization';
+import { translatePlural, useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 
 import { announce } from '../announce';
@@ -21,7 +22,7 @@ function idsOf(entries: readonly SelectedEntry[]) {
  * Hide (the selected files; not encryption — Private is the lock).
  */
 export function useSelectionMoreActions(): MoreAction[] {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   return useMemo<MoreAction[]>(
     () => [
       // F5 #793: rename the selected files at once.
@@ -61,11 +62,11 @@ export function useSelectionMoreActions(): MoreAction[] {
           const { fileIds } = idsOf(entries);
           if (fileIds.length === 0) return;
           useItemHiddenStore.getState().setHidden(fileIds, true);
-          announce(t('fileManager.hiddenCount', { count: fileIds.length }));
+          announce(translatePlural(fileIds.length, hiddenCountForms, undefined, language));
           done();
         },
       },
     ],
-    [t],
+    [language, t],
   );
 }

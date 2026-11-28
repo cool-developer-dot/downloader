@@ -3,10 +3,11 @@ import { ActivityIndicator, View } from 'react-native';
 
 import { AppModal } from '@/components/modals/AppModal';
 import { DsButton, DsButtonRow, DsText } from '@/design';
+import { moveFailedForms } from '@/files/ui/count-wordings';
 import { fileBytes } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-index';
 import { formatFileSize } from '@/media-detection/utils/format';
-import { useTranslation } from '@/localization';
+import { translatePlural, useTranslation } from '@/localization';
 import { navigation, routePaths } from '@/navigation';
 import { moveLibraryItemToPrivate } from '@/private-vault/move-to-private.runtime';
 import { vaultSealedLength } from '@/private-vault/vault-format';
@@ -30,7 +31,7 @@ export type PrivateBatchMoveDialogProps = {
  * through the app's delete path, forget its history), one after another. Without App Lock it offers the setup.
  */
 export const PrivateBatchMoveDialog = memo(function PrivateBatchMoveDialog({ files, onClose, onDone }: PrivateBatchMoveDialogProps) {
-  const { t } = useTranslation();
+  const { t, language } = useTranslation();
   const acknowledged = usePrivateVaultPrefs((s) => s.dataLossAcknowledged);
   const appLockEnabled = useAppLockStore((s) => s.isEnabled);
   const [understood, setUnderstood] = useState(false);
@@ -60,9 +61,9 @@ export const PrivateBatchMoveDialog = memo(function PrivateBatchMoveDialog({ fil
     setProgress(null);
     setUnderstood(false);
     if (moved > 0) announce(t('privateVault.moved'));
-    if (moved < files.length) announce(t('fileManager.moveFailed', { count: files.length - moved }));
+    if (moved < files.length) announce(translatePlural(files.length - moved, moveFailedForms, undefined, language));
     onDone();
-  }, [files, onDone, t, understood]);
+  }, [files, language, onDone, t, understood]);
 
   return (
     <AppModal visible={files !== null} onClose={close} title={t('privateVault.moveTitle')} showCloseButton={!progress} testID="files-private-batch">

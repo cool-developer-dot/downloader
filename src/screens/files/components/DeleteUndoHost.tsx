@@ -12,22 +12,23 @@ import {
   undoDelete,
   useDeleteConfirmStore,
 } from '@/files/trash/useDeleteWithUndo';
+import { undoFailedForms } from '@/files/ui/count-wordings';
 import { getBinSettings } from '@/files/ui/trash-port';
 import { UNDO_VISIBLE_MS, type UndoOffer } from '@/files/ui/undo-snackbar';
 import { useTheme } from '@/hooks/use-theme';
-import { useTranslation, type TranslateFn } from '@/localization';
+import { translatePlural, useTranslation, type SupportedLanguage, type TranslateFn } from '@/localization';
 
 import { announce } from '../announce';
 
 /** The bar's words: "3 files moved to Recycle bin", "1 file deleted", and "2 couldn't be deleted" after either. */
-function offerMessage(offer: UndoOffer, t: TranslateFn): string {
+function offerMessage(offer: UndoOffer, t: TranslateFn, language: SupportedLanguage): string {
   const parts: string[] = [];
   const moved = offer.trashedIds.length;
   if (moved > 0) parts.push(moved === 1 ? t('fileManager.undoMovedOne') : t('fileManager.undoMovedOther', { count: moved }));
   if (offer.deletedCount > 0) {
     parts.push(offer.deletedCount === 1 ? t('fileManager.undoDeletedOne') : t('fileManager.undoDeletedOther', { count: offer.deletedCount }));
   }
-  if (offer.failedCount > 0) parts.push(t('fileManager.undoFailed', { count: offer.failedCount }));
+  if (offer.failedCount > 0) parts.push(translatePlural(offer.failedCount, undoFailedForms, undefined, language));
   return parts.join(' · ');
 }
 
@@ -90,7 +91,7 @@ function DeleteConfirm() {
 
 function UndoBar() {
   const theme = useTheme();
-  const { t, rtl } = useTranslation();
+  const { t, rtl, language } = useTranslation();
   const offer = useSyncExternalStore(deleteUndoSnackbar.subscribe, deleteUndoSnackbar.get, deleteUndoSnackbar.get);
 
   useEffect(() => {
@@ -112,7 +113,7 @@ function UndoBar() {
     };
   }, [offer]);
 
-  const message = offer ? offerMessage(offer, t) : '';
+  const message = offer ? offerMessage(offer, t, language) : '';
 
   useEffect(() => {
     if (message) AccessibilityInfo.announceForAccessibility(message);

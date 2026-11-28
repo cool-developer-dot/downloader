@@ -15,7 +15,7 @@ import {
 } from '@/files/rename/batch-rename';
 import { createClashResolver, findClash, keepBothName, type ClashChoice } from '@/files/rename/name-clash';
 import { deleteForReplace, renameFileTo } from '@/files/rename/rename-runtime';
-import { renameTitleForms } from '@/files/ui/count-wordings';
+import { renamedCountForms, renameTitleForms } from '@/files/ui/count-wordings';
 import { fileLabel } from '@/files/ui/file-fields';
 import { folderPath, listFolder, type FileEntry } from '@/files/ui/files-source';
 import { useTheme } from '@/hooks/use-theme';
@@ -152,13 +152,13 @@ export const BatchRenameScreen = memo(function BatchRenameScreen() {
       }
     }
     setProgress(null);
-    announce(t('fileManager.renamedCount', { count: renamed }));
+    announce(translatePlural(renamed, renamedCountForms, undefined, language));
     if (failed.length === 0) {
       navigation.back();
     } else {
       setFailures(failed);
     }
-  }, [clash, files, results, t]);
+  }, [clash, files, language, results, t]);
 
   const problemText = useCallback(
     (problem: NonNullable<RenameResult['problem']>) => t(PROBLEM_KEYS[problem], { characters: ILLEGAL_NAME_CHARACTERS.join(' ') }),

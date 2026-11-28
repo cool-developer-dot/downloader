@@ -4,12 +4,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Pressable } from '@/components/base/Pressable';
 import { ds, DsButton, DsCard, DsHeader, DsIcon, DsText } from '@/design';
+import { addFilesDoneForms, addFilesFailedForms } from '@/files/ui/count-wordings';
 import { fileBytes, fileLabel } from '@/files/ui/file-fields';
 import type { FileEntry } from '@/files/ui/files-index';
 import { useLockedNowIds } from '@/files/ui/locked-folders';
 import { useTheme } from '@/hooks/use-theme';
 import { formatFileSize } from '@/media-detection/utils/format';
-import { useTranslation } from '@/localization';
+import { translatePlural, useTranslation } from '@/localization';
 import { canMoveToPrivate, moveLibraryItemToPrivate } from '@/private-vault/move-to-private.runtime';
 import { vaultSealedLength } from '@/private-vault/vault-format';
 import { usePrivateVaultPrefs } from '@/private-vault/vault-prefs-store';
@@ -36,7 +37,7 @@ type Phase = { kind: 'pick' } | { kind: 'confirm' } | { kind: 'moving'; done: nu
  */
 export const AddFilesModal = memo(function AddFilesModal({ visible, onClose, onMoved }: AddFilesModalProps) {
   const theme = useTheme();
-  const { t, rtl } = useTranslation();
+  const { t, rtl, language } = useTranslation();
   const acknowledged = usePrivateVaultPrefs((s) => s.dataLossAcknowledged);
   const lockedNow = useLockedNowIds();
   const [files, setFiles] = useState<FileEntry[] | null>(null);
@@ -99,12 +100,12 @@ export const AddFilesModal = memo(function AddFilesModal({ visible, onClose, onM
       const result = await moveLibraryItemToPrivate(ids[index]!).catch(() => ({ ok: false as const }));
       if (result.ok) moved += 1;
     }
-    if (moved > 0) announce(t('fileManager.addFilesDone', { count: moved }));
-    if (moved < ids.length) announce(t('fileManager.addFilesFailed', { count: ids.length - moved }));
+    if (moved > 0) announce(translatePlural(moved, addFilesDoneForms, undefined, language));
+    if (moved < ids.length) announce(translatePlural(ids.length - moved, addFilesFailedForms, undefined, language));
     reset();
     onMoved();
     onClose();
-  }, [onClose, onMoved, pickedFiles, reset, t, understood]);
+  }, [language, onClose, onMoved, pickedFiles, reset, understood]);
 
   const renderFile = useCallback<ListRenderItem<FileEntry>>(
     ({ item }) => {
